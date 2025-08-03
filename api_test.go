@@ -13,7 +13,7 @@ type Invoice struct {
 type InvoiceItem struct {
 	ID          string  `json:"id" pretty:"hide"`
 	Description string  `json:"description"`
-	Amount      float64 `json:"amount", pretty:"currency"`
+	Amount      float64 `json:"amount"  pretty:"currency"`
 	Quantity    float64 `json:"quantity" pretty:"float,digits:2"`
 	Total       float64 `json:"total" pretty:"currency"`
 }

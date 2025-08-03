@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"gopkg.in/yaml.v3"
-	
+
 	"github.com/flanksource/clicky/api"
 )
 
@@ -55,7 +55,7 @@ func (p *StructParser) parseStruct(val reflect.Value) (*api.PrettyObject, error)
 		jsonTag := field.Tag.Get("json")
 
 		// Skip hidden fields
-		if prettyTag == "hide" {
+		if prettyTag == api.FormatHide {
 			continue
 		}
 
@@ -71,7 +71,7 @@ func (p *StructParser) parseStruct(val reflect.Value) (*api.PrettyObject, error)
 		prettyField.Type = p.inferType(fieldVal)
 
 		// Handle table formatting for slices
-		if prettyField.Format == "table" && fieldVal.Kind() == reflect.Slice {
+		if prettyField.Format == api.FormatTable && fieldVal.Kind() == reflect.Slice {
 			tableField, err := p.parseTableField(fieldVal, prettyField)
 			if err != nil {
 				return nil, err
@@ -88,57 +88,7 @@ func (p *StructParser) parseStruct(val reflect.Value) (*api.PrettyObject, error)
 
 // parsePrettyTag parses the pretty tag into a api.PrettyField
 func (p *StructParser) parsePrettyTag(tag string) api.PrettyField {
-	field := api.PrettyField{
-		FormatOptions: make(map[string]string),
-		ColorOptions:  make(map[string]string),
-	}
-
-	if tag == "" {
-		return field
-	}
-
-	parts := strings.Split(tag, ",")
-	for i, part := range parts {
-		part = strings.TrimSpace(part)
-
-		if i == 0 {
-			// First part is the main format
-			field.Format = part
-			continue
-		}
-
-		// Parse key=value pairs
-		if strings.Contains(part, "=") {
-			kv := strings.SplitN(part, "=", 2)
-			key := strings.TrimSpace(kv[0])
-			value := strings.TrimSpace(kv[1])
-
-			switch key {
-			case "sort":
-				field.FormatOptions["sort"] = value
-			case "dir", "direction":
-				field.FormatOptions["dir"] = value
-			case "format":
-				field.FormatOptions["format"] = value
-			case "digits":
-				field.FormatOptions["digits"] = value
-			case "green", "red", "blue", "yellow", "cyan", "magenta":
-				field.ColorOptions[key] = value
-			default:
-				field.FormatOptions[key] = value
-			}
-		} else {
-			// Simple flags
-			switch part {
-			case "asc", "desc":
-				field.FormatOptions["dir"] = part
-			default:
-				field.FormatOptions[part] = "true"
-			}
-		}
-	}
-
-	return field
+	return api.ParsePrettyTag(tag)
 }
 
 // inferType infers the type of a field value
@@ -194,6 +144,8 @@ func (p *StructParser) parseTableField(val reflect.Value, field api.PrettyField)
 			Rows:          []map[string]interface{}{},
 			SortField:     field.FormatOptions["sort"],
 			SortDirection: field.FormatOptions["dir"],
+			HeaderStyle:   field.TableOptions.HeaderStyle,
+			RowStyle:      field.TableOptions.RowStyle,
 		}
 		return field, nil
 	}
@@ -235,6 +187,8 @@ func (p *StructParser) parseTableField(val reflect.Value, field api.PrettyField)
 		Rows:          rows,
 		SortField:     field.FormatOptions["sort"],
 		SortDirection: field.FormatOptions["dir"],
+		HeaderStyle:   field.TableOptions.HeaderStyle,
+		RowStyle:      field.TableOptions.RowStyle,
 	}
 
 	return field, nil
@@ -257,7 +211,7 @@ func (p *StructParser) getTableFields(val reflect.Value) ([]api.PrettyField, err
 		jsonTag := field.Tag.Get("json")
 
 		// Skip hidden fields
-		if prettyTag == "hide" {
+		if prettyTag == api.FormatHide {
 			continue
 		}
 
@@ -295,7 +249,7 @@ func (p *StructParser) structToRow(val reflect.Value) (map[string]interface{}, e
 		jsonTag := field.Tag.Get("json")
 
 		// Skip hidden fields
-		if prettyTag == "hide" {
+		if prettyTag == api.FormatHide {
 			continue
 		}
 
@@ -419,7 +373,7 @@ func (p *StructParser) ParseDataWithSchema(data interface{}, schema *api.PrettyO
 		}
 
 		// Check if this is a table field
-		if field.Format == "table" && (fieldVal.Kind() == reflect.Slice || fieldVal.Kind() == reflect.Array) {
+		if field.Format == api.FormatTable && (fieldVal.Kind() == reflect.Slice || fieldVal.Kind() == reflect.Array) {
 			// Parse table data
 			tableRows := p.parseTableData(fieldVal, field)
 			result.Tables[field.Name] = tableRows
@@ -564,7 +518,7 @@ func (p *StructParser) enhanceFieldWithHeuristics(field api.PrettyField, val ref
 	}
 
 	// For table fields, parse the table structure
-	if enhanced.Format == "table" && (val.Kind() == reflect.Slice || val.Kind() == reflect.Array) {
+	if enhanced.Format == api.FormatTable && (val.Kind() == reflect.Slice || val.Kind() == reflect.Array) {
 		tableField, err := p.parseTableField(val, enhanced)
 		if err != nil {
 			return enhanced, err
@@ -596,7 +550,7 @@ func (p *StructParser) inferFormat(fieldName string, val reflect.Value) string {
 	if (val.Kind() == reflect.Slice || val.Kind() == reflect.Array) &&
 		(strings.Contains(fieldNameLower, "item") || strings.Contains(fieldNameLower, "list") ||
 			strings.Contains(fieldNameLower, "entries") || strings.Contains(fieldNameLower, "records")) {
-		return "table"
+		return api.FormatTable
 	}
 
 	// Float patterns
@@ -616,9 +570,9 @@ func (p *StructParser) inferColorOptions(fieldName string, val reflect.Value) ma
 
 	// Status field color patterns
 	if strings.Contains(fieldNameLower, "status") {
-		colorOptions["green"] = "completed"
-		colorOptions["green"] = "success"
-		colorOptions["green"] = "active"
+		colorOptions[api.ColorGreen] = "completed"
+		colorOptions[api.ColorGreen] = "success"
+		colorOptions[api.ColorGreen] = "active"
 		colorOptions["yellow"] = "pending"
 		colorOptions["yellow"] = "processing"
 		colorOptions["red"] = "failed"
@@ -630,7 +584,7 @@ func (p *StructParser) inferColorOptions(fieldName string, val reflect.Value) ma
 	if strings.Contains(fieldNameLower, "priority") {
 		colorOptions["red"] = "high"
 		colorOptions["yellow"] = "medium"
-		colorOptions["green"] = "low"
+		colorOptions[api.ColorGreen] = "low"
 	}
 
 	// Level field color patterns
@@ -639,13 +593,13 @@ func (p *StructParser) inferColorOptions(fieldName string, val reflect.Value) ma
 		colorOptions["red"] = "error"
 		colorOptions["yellow"] = "warning"
 		colorOptions["blue"] = "info"
-		colorOptions["green"] = "debug"
+		colorOptions[api.ColorGreen] = "debug"
 	}
 
 	// Numeric value color patterns
 	if val.Kind() >= reflect.Int && val.Kind() <= reflect.Float64 {
 		if strings.Contains(fieldNameLower, "score") || strings.Contains(fieldNameLower, "rating") {
-			colorOptions["green"] = ">=80"
+			colorOptions[api.ColorGreen] = ">=80"
 			colorOptions["yellow"] = ">=60"
 			colorOptions["red"] = "<60"
 		}
@@ -657,7 +611,7 @@ func (p *StructParser) inferColorOptions(fieldName string, val reflect.Value) ma
 // createNestedFieldValue creates a api.FieldValue with nested fields for struct/map types
 func (p *StructParser) createNestedFieldValue(field api.PrettyField, val reflect.Value) api.FieldValue {
 	nestedFields := make(map[string]api.FieldValue)
-	
+
 	if val.Kind() == reflect.Map {
 		// Handle map as nested fields - combine schema definitions with existing map data
 		if len(field.Fields) > 0 {
@@ -666,24 +620,24 @@ func (p *StructParser) createNestedFieldValue(field api.PrettyField, val reflect
 			for _, fieldDef := range field.Fields {
 				schemaFields[fieldDef.Name] = fieldDef
 			}
-			
+
 			// Process all keys in the map
 			for _, key := range val.MapKeys() {
 				if key.Kind() == reflect.String {
 					keyStr := key.String()
 					mapValue := val.MapIndex(key)
-					
+
 					if mapValue.IsValid() {
 						if mapValue.Kind() == reflect.Interface && !mapValue.IsNil() {
 							mapValue = mapValue.Elem()
 						}
-						
+
 						var nestedField api.PrettyField
-						
+
 						// Use schema definition if available, otherwise create a default one
 						if schemaDef, exists := schemaFields[keyStr]; exists {
 							nestedField = schemaDef
-							
+
 							// Handle date format options
 							if nestedField.DateFormat != "" {
 								if nestedField.FormatOptions == nil {
@@ -701,9 +655,9 @@ func (p *StructParser) createNestedFieldValue(field api.PrettyField, val reflect
 								Type: api.InferValueType(mapValue.Interface()),
 							}
 						}
-						
+
 						// Recursively handle nested maps/structs
-						if (mapValue.Kind() == reflect.Map || mapValue.Kind() == reflect.Struct) {
+						if mapValue.Kind() == reflect.Map || mapValue.Kind() == reflect.Struct {
 							nestedFieldValue := p.createNestedFieldValue(nestedField, mapValue)
 							nestedFields[keyStr] = nestedFieldValue
 						} else {
@@ -722,20 +676,20 @@ func (p *StructParser) createNestedFieldValue(field api.PrettyField, val reflect
 				if key.Kind() == reflect.String {
 					keyStr := key.String()
 					mapValue := val.MapIndex(key)
-					
+
 					if mapValue.IsValid() {
 						if mapValue.Kind() == reflect.Interface && !mapValue.IsNil() {
 							mapValue = mapValue.Elem()
 						}
-						
+
 						// Create a simple api.PrettyField for each map key
 						nestedField := api.PrettyField{
 							Name: keyStr,
 							Type: api.InferValueType(mapValue.Interface()),
 						}
-						
+
 						// Recursively handle nested maps/structs
-						if (mapValue.Kind() == reflect.Map || mapValue.Kind() == reflect.Struct) {
+						if mapValue.Kind() == reflect.Map || mapValue.Kind() == reflect.Struct {
 							nestedFieldValue := p.createNestedFieldValue(nestedField, mapValue)
 							nestedFields[keyStr] = nestedFieldValue
 						} else {
@@ -755,11 +709,11 @@ func (p *StructParser) createNestedFieldValue(field api.PrettyField, val reflect
 		for i := 0; i < val.NumField(); i++ {
 			structField := typ.Field(i)
 			fieldVal := val.Field(i)
-			
+
 			if !fieldVal.CanInterface() {
 				continue
 			}
-			
+
 			// Get field name (prefer JSON tag)
 			fieldName := structField.Name
 			jsonTag := structField.Tag.Get("json")
@@ -768,15 +722,15 @@ func (p *StructParser) createNestedFieldValue(field api.PrettyField, val reflect
 					fieldName = parts[0]
 				}
 			}
-			
+
 			// Create api.PrettyField for struct field
 			nestedField := api.PrettyField{
 				Name: fieldName,
 				Type: p.inferType(fieldVal),
 			}
-			
+
 			// Recursively handle nested maps/structs
-			if (fieldVal.Kind() == reflect.Map || fieldVal.Kind() == reflect.Struct) {
+			if fieldVal.Kind() == reflect.Map || fieldVal.Kind() == reflect.Struct {
 				nestedFieldValue := p.createNestedFieldValue(nestedField, fieldVal)
 				nestedFields[fieldName] = nestedFieldValue
 			} else {
@@ -788,7 +742,7 @@ func (p *StructParser) createNestedFieldValue(field api.PrettyField, val reflect
 			}
 		}
 	}
-	
+
 	return api.FieldValue{
 		Field:        field,
 		Value:        val.Interface(),

@@ -6,6 +6,8 @@ import (
 	"reflect"
 	"sort"
 	"strings"
+	
+	"github.com/flanksource/clicky/api"
 )
 
 // CSVFormatter handles CSV formatting
@@ -105,44 +107,26 @@ func (f *CSVFormatter) formatSlice(val reflect.Value) (string, error) {
 
 // formatStruct formats a single struct as CSV
 func (f *CSVFormatter) formatStruct(val reflect.Value) (string, error) {
-	var output strings.Builder
-	writer := csv.NewWriter(&output)
-	writer.Comma = f.Separator
-
-	// Write headers
-	headers := f.getStructHeaders(val)
-	if err := writer.Write(headers); err != nil {
-		return "", err
-	}
-
-	// Write data row
-	row := f.getStructRow(val)
-	if err := writer.Write(row); err != nil {
-		return "", err
-	}
-
-	writer.Flush()
-	if err := writer.Error(); err != nil {
-		return "", err
-	}
-
-	return output.String(), nil
+	return f.formatSingleRow(f.getStructHeaders(val), f.getStructRow(val))
 }
 
 // formatMap formats a single map as CSV
 func (f *CSVFormatter) formatMap(val reflect.Value) (string, error) {
+	return f.formatSingleRow(f.getMapHeaders(val), f.getMapRow(val))
+}
+
+// formatSingleRow formats headers and a single data row as CSV
+func (f *CSVFormatter) formatSingleRow(headers []string, row []string) (string, error) {
 	var output strings.Builder
 	writer := csv.NewWriter(&output)
 	writer.Comma = f.Separator
 
 	// Write headers
-	headers := f.getMapHeaders(val)
 	if err := writer.Write(headers); err != nil {
 		return "", err
 	}
 
 	// Write data row
-	row := f.getMapRow(val)
 	if err := writer.Write(row); err != nil {
 		return "", err
 	}
@@ -174,7 +158,7 @@ func (f *CSVFormatter) getStructHeaders(val reflect.Value) []string {
 
 		// Skip hidden fields
 		prettyTag := field.Tag.Get("pretty")
-		if prettyTag == "hide" {
+		if prettyTag == api.FormatHide {
 			continue
 		}
 
@@ -230,7 +214,7 @@ func (f *CSVFormatter) getStructRow(val reflect.Value) []string {
 
 		// Skip hidden fields
 		prettyTag := field.Tag.Get("pretty")
-		if prettyTag == "hide" {
+		if prettyTag == api.FormatHide {
 			continue
 		}
 

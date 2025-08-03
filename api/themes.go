@@ -2,6 +2,32 @@ package api
 
 import "github.com/charmbracelet/lipgloss"
 
+type Color struct {
+	Hex     string
+	Opacity float64
+}
+
+type Font struct {
+	Name   string
+	Weight string
+	Size   float64
+}
+
+type Padding struct {
+	Top    float64
+	Right  float64
+	Bottom float64
+	Left   float64
+}
+
+type Class struct {
+	Name       string
+	Background *Color
+	Foreground *Color
+	Font       *Font
+	Padding    *Padding
+}
+
 // Theme defines color schemes and styles
 type Theme struct {
 	Primary   lipgloss.Color

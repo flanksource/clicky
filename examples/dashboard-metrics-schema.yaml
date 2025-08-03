@@ -1,0 +1,100 @@
+# Dashboard Metrics Schema with Advanced Styling
+fields:
+  - name: "metric_name"
+    type: "string"
+    style: "text-slate-900 font-bold text-lg"
+    
+  - name: "current_value"
+    type: "float"
+    style: "text-3xl font-bold text-blue-600"
+    format_options:
+      digits: "2"
+    
+  - name: "change_percent"
+    type: "float"
+    style: "font-mono font-bold"
+    color_options:
+      green: ">=0"
+      red: "<0"
+    format_options:
+      digits: "1"
+    
+  - name: "status_indicator"
+    type: "string"
+    style: "uppercase font-bold text-xs tracking-wider"
+    color_options:
+      green: "healthy"
+      yellow: "warning"
+      red: "critical"
+      blue: "info"
+    
+  - name: "trend"
+    type: "string"
+    style: "font-semibold"
+    color_options:
+      green: "up"
+      red: "down"
+      gray: "stable"
+    
+  - name: "breakdown"
+    type: "array"
+    format: "table"
+    table_options:
+      title: "Metric Breakdown"
+      header_style: "bg-gradient-to-r from-blue-500 to-blue-600 text-white font-bold"
+      row_style: "text-gray-700 border-b border-gray-200"
+      fields:
+        - name: "category"
+          type: "string"
+          style: "text-gray-800 font-medium"
+        - name: "value"
+          type: "float"
+          style: "text-right font-mono"
+        - name: "percentage"
+          type: "float"
+          style: "text-right text-gray-500"
+          format_options:
+            digits: "1"
+        - name: "trend_7d"
+          type: "float"
+          style: "text-right font-bold"
+          color_options:
+            green: ">=0"
+            red: "<0"
+        - name: "trend_30d"
+          type: "float"
+          style: "text-right font-bold"
+          color_options:
+            green: ">=0"
+            red: "<0"
+    
+  - name: "alerts"
+    type: "array"
+    format: "table"
+    table_options:
+      title: "Active Alerts"
+      header_style: "bg-red-50 text-red-900 font-semibold"
+      row_style: "text-gray-700"
+      fields:
+        - name: "severity"
+          type: "string"
+          style: "font-bold uppercase text-xs"
+          color_options:
+            red: "critical"
+            orange: "high"
+            yellow: "medium"
+            blue: "low"
+        - name: "message"
+          type: "string"
+          style: "text-gray-800"
+        - name: "triggered_at"
+          type: "string"
+          format: "date"
+          style: "text-gray-500 text-sm"
+    
+  - name: "last_updated"
+    type: "string"
+    format: "date"
+    style: "text-gray-400 text-xs italic"
+    format_options:
+      format: "2006-01-02 15:04:05 MST"

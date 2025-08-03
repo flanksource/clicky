@@ -1,156 +1,537 @@
-# golangci-lint configuration
-run:
-  timeout: 5m
-  issues-exit-code: 1
-  tests: true
-  modules-download-mode: readonly
+# golangci-lint configuration - Best practices for 2025
+# Version: 1.62.0+ compatible
 
+run:
+  # Timeout for analysis
+  timeout: 5m
+
+  # Include test files
+  tests: true
+
+  # Go version to target
+  go: "1.23"
+
+# Output configuration
 output:
-  format: colored-line-number
+  # Format of the output
+  formats:
+    - format: colored-line-number
+      path: stdout
+
+  # Print lines of code with issue
   print-issued-lines: true
+
+  # Print linter name in the end of issue text
   print-linter-name: true
 
+  # Sort results
+  sort-results: true
+
+# Linter settings
 linters-settings:
-  govet:
-    check-shadowing: true
-    settings:
-      printf:
-        funcs:
-          - (github.com/golangci/golangci-lint/pkg/logutils.Log).Infof
-          - (github.com/golangci/golangci-lint/pkg/logutils.Log).Warnf
-          - (github.com/golangci/golangci-lint/pkg/logutils.Log).Errorf
-          - (github.com/golangci/golangci-lint/pkg/logutils.Log).Fatalf
-  
-  golint:
-    min-confidence: 0.8
-  
+  # Error handling
+  errcheck:
+    # Check type assertions
+    check-type-assertions: true
+    # Check for missing error checks in deferred calls
+    check-blank: true
+    # Exclude functions from checking
+    exclude-functions:
+      - io.Copy
+      - fmt.Printf
+      - fmt.Fprintf
+      - fmt.Println
+
+  # Go fmt
+  gofmt:
+    # Simplify code
+    simplify: true
+
+  # Go imports
   goimports:
-    local-prefixes: clicky
-  
-  gocyclo:
-    min-complexity: 15
-  
-  maligned:
-    suggest-new: true
-  
-  dupl:
-    threshold: 100
-  
-  goconst:
-    min-len: 2
-    min-occurrences: 2
-  
-  misspell:
-    locale: US
-  
-  lll:
-    line-length: 140
-  
-  unused:
-    check-exported: false
-  
-  unparam:
-    check-exported: false
-  
-  nakedret:
-    max-func-lines: 30
-  
-  prealloc:
-    simple: true
-    range-loops: true
-    for-loops: false
-  
+    # Put local imports after 3rd party
+    local-prefixes: github.com/flanksource/clicky
+
+  # Go critic - comprehensive linter
   gocritic:
     enabled-tags:
+      - diagnostic
       - performance
       - style
       - experimental
     disabled-checks:
-      - wrapperFunc
-      - dupImport # https://github.com/go-critic/go-critic/issues/845
+      - whyNoLint # Sometimes we need nolint without explanation
+      - commentedOutCode # Can be useful during development
+      - hugeParam # Not always bad for performance
+    settings:
+      captLocal:
+        paramsOnly: false
+      rangeValCopy:
+        sizeThreshold: 512
+        skipTestFuncs: true
 
+  # Cyclomatic complexity
+  gocyclo:
+    # Minimal complexity to report
+    min-complexity: 15
+
+  # Cognitive complexity
+  gocognit:
+    # Minimal complexity to report
+    min-complexity: 20
+
+  # Duplicate code detection
+  dupl:
+    # Minimum lines count to detect duplicate
+    threshold: 100
+
+  # Go security
+  gosec:
+    # Enable all rules
+    severity: low
+    confidence: low
+    # Exclude specific rules if needed
+    excludes:
+      - G104 # Handled by errcheck
+      - G107 # URL provided as variable (often needed)
+    # Configure specific rules
+    config:
+      G301: "0750" # File permissions
+      G302: "0640" # File creation permissions
+      G306: "0640" # WriteFile permissions
+
+  # Magic numbers
+  gomnd:
+    checks:
+      - argument
+      - case
+      - condition
+      - operation
+      - return
+      - assign
+    ignored-numbers:
+      - "0"
+      - "1"
+      - "2"
+      - "10"
+      - "100"
+      - "1000"
+    ignored-files:
+      - '.*_test\.go$'
+    ignored-functions:
+      - 'strconv\..*'
+      - 'time\..*'
+
+  # Line length
+  lll:
+    # Max line length
+    line-length: 140
+    # Tab width in spaces
+    tab-width: 1
+
+  # Misspell
+  misspell:
+    # Locale to use
+    locale: US
+    # Ignore words
+    ignore-words:
+      - clicky
+      - flanksource
+
+  # Unused parameters
+  unparam:
+    # Check exported functions
+    check-exported: true
+
+  # Nakedret
+  nakedret:
+    # Max function length to check
+    max-func-lines: 30
+
+  # Prealloc
+  prealloc:
+    # Only simple loops
+    simple: true
+    # Range loops
+    range-loops: true
+    # For loops
+    for-loops: true
+
+  # Revive - comprehensive linter
+  revive:
+    # Fail on any issue
+    severity: warning
+    rules:
+      # Performance rules
+      - name: time-equal
+      - name: string-of-int
+      - name: early-return
+      - name: redundant-import-alias
+      - name: import-alias-naming
+        arguments:
+          - "^[a-z][a-z0-9]*$"
+      # Style rules
+      - name: var-naming
+        arguments:
+          - ["ID", "URL", "API", "URI", "HTTP", "JSON", "CSV", "YAML", "HTML", "SQL"]
+      - name: package-comments
+        disabled: true # Not always necessary for internal packages
+      - name: exported
+        arguments:
+          - "checkPrivateReceivers"
+          - "sayRepetitiveInsteadOfStutters"
+      # Error handling
+      - name: error-return
+      - name: error-strings
+      - name: error-naming
+      - name: errorf
+      # Code clarity
+      - name: indent-error-flow
+      - name: superfluous-else
+      - name: confusing-naming
+      - name: get-return
+      - name: modifies-parameter
+      - name: confusing-results
+      - name: deep-exit
+      - name: flag-parameter
+      - name: unnecessary-stmt
+      - name: struct-tag
+      - name: modifies-value-receiver
+      - name: constant-logical-expr
+      - name: bool-literal-in-expr
+      - name: redefines-builtin-id
+      # Security
+      - name: file-header
+        disabled: true
+      - name: imports-blocklist
+        arguments:
+          - "crypto/md5"
+          - "crypto/sha1"
+          - "crypto/rc4"
+
+  # Stylecheck
+  stylecheck:
+    # Check all exported names
+    checks: ["all", "-ST1003", "-ST1000"] # ST1003: MixedCaps, ST1000: package comments
+    # Initialisms
+    initialisms:
+      [
+        "ACL",
+        "API",
+        "ASCII",
+        "CPU",
+        "CSS",
+        "DNS",
+        "EOF",
+        "GUID",
+        "HTML",
+        "HTTP",
+        "HTTPS",
+        "ID",
+        "IP",
+        "JSON",
+        "QPS",
+        "RAM",
+        "RPC",
+        "SLA",
+        "SMTP",
+        "SQL",
+        "SSH",
+        "TCP",
+        "TLS",
+        "TTL",
+        "UDP",
+        "UI",
+        "UID",
+        "UUID",
+        "URI",
+        "URL",
+        "UTF8",
+        "VM",
+        "XML",
+        "XMPP",
+        "XSRF",
+        "XSS",
+        "CSV",
+        "YAML",
+      ]
+
+  # Govet
+  govet:
+    # Enable all analyzers
+    enable-all: true
+
+  # Exhaustive
+  exhaustive:
+    # Check switch statements
+    check:
+      - switch
+    # Check generated files
+    check-generated: false
+    # Default signifies exhaustive
+    default-signifies-exhaustive: true
+
+  # Wrapcheck - check error wrapping
+  wrapcheck:
+    # Check errors from external packages
+    ignoreSigs:
+      - .Errorf(
+      - errors.New(
+      - errors.Unwrap(
+      - errors.Join(
+      - .Wrap(
+      - .Wrapf(
+
+  # Errorlint
+  errorlint:
+    # Check error wrapping
+    errorf: true
+    # Check type assertions
+    asserts: true
+    # Check comparisons
+    comparison: true
+
+  # Gofumpt
+  gofumpt:
+    # Extra rules
+    extra-rules: true
+
+  # Gomodguard
+  gomodguard:
+    blocked:
+      modules:
+        - github.com/golang/protobuf:
+            recommendations:
+              - google.golang.org/protobuf
+            reason: "Use google.golang.org/protobuf instead"
+      versions:
+        - github.com/sirupsen/logrus:
+            version: "< 1.9.0"
+            reason: "Security vulnerabilities in older versions"
+
+  # Tagliatelle
+  tagliatelle:
+    case:
+      rules:
+        json: snake
+        yaml: snake
+        xml: camel
+        env: upperSnake
+        toml: snake
+
+  # Funlen
+  funlen:
+    # Max function length
+    lines: 100
+    statements: 60
+
+  # Nestif
+  nestif:
+    # Max nesting level
+    min-complexity: 5
+
+  # Cyclop
+  cyclop:
+    # Max cyclomatic complexity
+    max-complexity: 15
+    # Package average
+    package-average: 0.0
+    # Skip tests
+    skip-tests: true
+
+# Linters to enable
 linters:
   enable:
-    - bodyclose
-    - deadcode
-    - depguard
-    - dogsled
-    - dupl
-    - errcheck
-    - exhaustive
-    - exportloopref
-    - funlen
-    - gochecknoinits
-    - goconst
-    - gocritic
-    - gocyclo
-    - gofmt
-    - goimports
-    - golint
-    - gomnd
-    - goprintffuncname
-    - gosec
-    - gosimple
-    - govet
-    - ineffassign
-    - interfacer
-    - lll
-    - misspell
-    - nakedret
-    - noctx
-    - nolintlint
-    - rowserrcheck
-    - scopelint
-    - staticcheck
-    - structcheck
-    - stylecheck
-    - typecheck
-    - unconvert
-    - unparam
-    - unused
-    - varcheck
-    - whitespace
-  
-  disable:
-    - maligned
-    - prealloc
+    # Default linters (always enabled)
+    - errcheck # Check for unchecked errors
+    - gosimple # Simplify code
+    - govet # Go vet
+    - ineffassign # Detect ineffective assignments
+    - staticcheck # Advanced static analysis
+    - typecheck # Type checking
+    - unused # Find unused code
 
+    # Error handling
+    - errorlint # Error wrapping and comparison
+    - wrapcheck # Check error wrapping
+    - nilerr # Find code returning nil even with non-nil error
+
+    # Security
+    - gosec # Security scanner
+    - copyloopvar # Check loop variable copies (replaces exportloopref)
+
+    # Code quality and style
+    - bodyclose # Check HTTP response body closure
+    - dupl # Duplicate code detection
+    - gocognit # Cognitive complexity
+    - goconst # Find repeated constants
+    - gocritic # Comprehensive linter
+    - gocyclo # Cyclomatic complexity
+    - gofmt # Check formatting
+    - gofumpt # Stricter gofmt
+    - goimports # Check imports
+    - revive # Fast, configurable linter
+    - misspell # Find misspellings
+    - nakedret # Find naked returns
+    - prealloc # Find slice preallocation opportunities
+    - unconvert # Remove unnecessary conversions
+    - unparam # Find unused parameters
+    - whitespace # Check for unnecessary whitespace
+    - stylecheck # Replacement for golint
+
+    # Testing
+    - usetesting # Use t.Setenv and other testing helpers
+    - testpackage # Check test package naming
+    - thelper # Detect test helpers without t.Helper()
+    - tparallel # Check t.Parallel() usage
+
+    # Performance
+    - prealloc # Find slice preallocation opportunities
+
+    # Maintainability
+    - funlen # Function length
+    - nestif # Check deeply nested if statements
+    - cyclop # Calculate cyclomatic complexity
+    - maintidx # Maintainability index
+
+    # Dependencies
+    - gomodguard # Check blocked dependencies
+
+    # Modern Go features
+    - nilnil # Check for return of nil, nil
+    - ireturn # Check interface returns
+    - exhaustive # Check exhaustiveness of enum switches
+    - forcetypeassert # Check force type assertions
+    - wastedassign # Find wasted assignments
+    - asciicheck # Check for non-ASCII identifiers
+    - bidichk # Check for dangerous unicode character sequences
+    - contextcheck # Check context.Context is passed correctly
+    - durationcheck # Check for multiplications of time.Duration
+    - makezero # Find slice append with non-zero length
+    - noctx # Find HTTP requests without context.Context
+    - predeclared # Find code shadowing predeclared identifiers
+    - promlinter # Check Prometheus metrics naming
+    - rowserrcheck # Check sql.Rows.Err()
+    - sqlclosecheck # Check sql.Rows/Stmt Close() calls
+    - grouper # Check for grouped imports
+    - decorder # Check declaration order
+    - containedctx # Check for struct contained context.Context
+    - tagliatelle # Check struct tag naming
+
+  disable:
+    # Too strict or opinionated
+    - gochecknoglobals # Globals can be useful for constants
+    - gochecknoinits # Init functions can be useful
+    - lll # Line length can be handled by formatter
+    - nlreturn # Too opinionated about newlines
+    - wsl # Too opinionated about whitespace
+    - testifylint # Only if using testify
+    - paralleltest # Not always necessary
+    - forbidigo # Too restrictive
+    - varnamelen # Too opinionated about variable name length
+    - depguard # Can be too restrictive
+    - exhaustruct # Not all structs need all fields initialized
+    - nonamedreturns # Named returns can be useful
+    - exportloopref # Replaced by copyloopvar
+    - tenv # Replaced by usetesting
+
+# Issues configuration
 issues:
+  # Maximum issues to report
+  max-issues-per-linter: 0
+  max-same-issues: 0
+
+  # Make issues output unique by line
+  uniq-by-line: true
+
+  # Exclude directories
+  exclude-dirs:
+    - vendor
+    - third_party
+    - testdata
+    - examples
+    - dist
+
+  # Exclude files
+  exclude-files:
+    - ".*\\.pb\\.go$"
+    - ".*\\.gen\\.go$"
+    - "mock_.*\\.go$"
+
+  # Include/exclude rules
   exclude-rules:
+    # Exclude linters from test files
     - path: _test\.go
       linters:
-        - gomnd
-        - funlen
-        - goconst
-        - gocyclo
-        - errcheck
         - dupl
         - gosec
-    
+        - goconst
+        - funlen
+        - gocognit
+        - gocyclo
+        - maintidx
+        - wrapcheck
+        - errorlint
+        - forcetypeassert
+        - nestif
+
+    # Exclude specific directories
+    - path: examples/
+      linters:
+        - gosec
+        - errcheck
+        - wrapcheck
+        - exhaustive
+
+    # Exclude main packages
     - path: cmd/
       linters:
         - gomnd
-    
-    - linters:
-        - lll
-      source: "^//go:generate "
-  
-  exclude:
-    # errcheck: Almost all programs ignore errors on these functions and in most cases it's ok
-    - Error return value of .((os\.)?std(out|err)\..*|.*Close|.*Flush|os\.Remove(All)?|.*printf?|os\.(Un)?Setenv). is not checked
-    
-    # golint: Exported functions should have comments or be unexported
-    - exported (type|method|function) .* should have comment or be unexported
-    
-    # golint: Don't use underscores in Go names
-    - don't use underscores in Go names
-    
-    # govet: Common false positives
-    - (possible misuse of unsafe.Pointer|should have signature)
-    
-    # staticcheck: Developers tend to write in C-style with an explicit 'break' in a 'switch', so it's ok to ignore
-    - ineffective break statement. Did you mean to break out of the outer loop
-  
+        - funlen
+
+    # Exclude generated files
+    - path: \.gen\.go
+      linters:
+        - stylecheck
+        - revive
+        - gocritic
+
+    # Allow TODO comments
+    - text: "TODO"
+      linters:
+        - godot
+        - revive
+
+  # Don't exclude default patterns
   exclude-use-default: false
-  max-issues-per-linter: 50
-  max-same-issues: 3
+
+  # Exclude specific messages
+  exclude:
+    # Allow TODO/FIXME comments
+    - "^TODO:"
+    - "^FIXME:"
+    # Common test patterns
+    - "^Error return value of .((os\\.)?std(out|err)\\..*|.*Close|.*Flush|os\\.Remove(All)?|.*print(f|ln)?|os\\.(Un)?Setenv). is not checked$"
+    # Allow certain unused parameters in interfaces
+    - "^unused parameter: 'ctx'$"
+
+  # Fix found issues
+  fix: false
+
+# Severity
+severity:
+  # Set default severity
+  default-severity: warning
+
+  # Specific severities per linter
+  rules:
+    - linters:
+        - gosec
+      severity: error
+    - linters:
+        - dupl
+      severity: info
+    - linters:
+        - stylecheck
+        - revive
+      severity: warning

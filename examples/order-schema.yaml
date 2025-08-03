@@ -1,16 +1,15 @@
 fields:
   - name: "id"
     type: "string"
-    format: "color"
-    color_options:
-      blue: "*"
+    style: "text-blue-600 font-bold"
 
   - name: "customer"
     type: "struct"
+    style: "text-red-700"
 
   - name: "status"
     type: "string"
-    format: "color"
+    style: "font-bold uppercase"
     color_options:
       green: "completed"
       yellow: "processing"
@@ -19,7 +18,7 @@ fields:
 
   - name: "priority"
     type: "string"
-    format: "color"
+    style: "bg-opacity-20 px-2 py-1 rounded"
     color_options:
       red: "high"
       yellow: "medium"
@@ -28,24 +27,29 @@ fields:
   - name: "total_amount"
     type: "float"
     format: "currency"
+    style: "text-red-600 font-bold text-lg"
 
   - name: "currency"
     type: "string"
+    style: "text-gray-500"
 
   - name: "order_date"
     type: "string"
     format: "date"
+    style: "text-indigo-600"
     format_options:
       format: "epoch"
 
   - name: "estimated_delivery"
     type: "string"
     format: "date"
+    style: "text-amber-600 font-semibold"
     format_options:
       format: "epoch"
 
   - name: "shipping_address"
     type: "struct"
+    style: "text-gray-700"
 
   - name: "items"
     type: "array"
@@ -55,32 +59,39 @@ fields:
       dir: "desc"
     table_options:
       title: "Order Items"
+      header_style: "bg-blue-50 text-blue-900 font-bold uppercase"
+
       fields:
         - name: "name"
           type: "string"
+          style: "text-white-800 font-medium"
         - name: "category"
           type: "string"
-          format: "color"
+          style: "italic"
           color_options:
             blue: "Electronics"
             green: "Accessories"
             purple: "Software"
         - name: "quantity"
           type: "int"
+          style: "text-center"
         - name: "unit_price"
           type: "float"
           format: "currency"
+
         - name: "discount_percent"
           type: "float"
           format: "float"
+          style: "text-red-500"
           format_options:
             digits: "1"
         - name: "line_total"
           type: "float"
           format: "currency"
+          style: "text-green-600 font-bold"
         - name: "warranty_months"
           type: "int"
-          format: "color"
+          style: "font-mono title"
           color_options:
             green: ">=36"
             yellow: ">=24"
@@ -88,13 +99,17 @@ fields:
 
   - name: "payment"
     type: "struct"
+    style: "bg-green-50 text-green-800"
     fields:
       - name: processed_at
         type: date
         date_format: "epoch"
+        style: "text-emerald-600"
 
   - name: "notes"
     type: "string"
+    style: "text-gray-600 italic"
 
   - name: "internal_reference"
     type: "string"
+    style: "text-purple-600 font-mono"

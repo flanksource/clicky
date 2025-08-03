@@ -1,23 +1,23 @@
 package clicky
 
 import (
-	"strings"
-	"testing"
 	"github.com/flanksource/clicky/api"
 	"github.com/flanksource/clicky/formatters"
+	"strings"
+	"testing"
 )
 
 func TestMapFieldsRendering(t *testing.T) {
 	// Create test data with nested maps
 	testData := map[string]interface{}{
-		"name":        "John Doe",
-		"age":         30,
-		"address":     map[string]interface{}{
-			"street": "123 Main St",
-			"city":   "New York",
+		"name": "John Doe",
+		"age":  30,
+		"address": map[string]interface{}{
+			"street":  "123 Main St",
+			"city":    "New York",
 			"country": "USA",
 		},
-		"metadata":    map[string]interface{}{
+		"metadata": map[string]interface{}{
 			"created_at": "2023-01-01",
 			"source":     "api",
 		},
@@ -49,7 +49,7 @@ func TestMapFieldsRendering(t *testing.T) {
 	}
 
 	parser := NewStructParser()
-	
+
 	// Test ParseDataWithSchema
 	t.Run("ParseDataWithSchema", func(t *testing.T) {
 		prettyData, err := parser.ParseDataWithSchema(testData, schema)
@@ -77,7 +77,7 @@ func TestMapFieldsRendering(t *testing.T) {
 		if _, exists := prettyData.Tables["items"]; !exists {
 			t.Error("items table not found in Tables")
 		}
-		
+
 		if len(prettyData.Tables["items"]) != 2 {
 			t.Errorf("Expected 2 items in table, got %d", len(prettyData.Tables["items"]))
 		}
@@ -231,8 +231,8 @@ func TestMapFieldsEdgeCases(t *testing.T) {
 			name: "map_with_special_characters",
 			data: map[string]interface{}{
 				"special": map[string]interface{}{
-					"key with spaces": "value with spaces",
-					"key-with-dashes": "value-with-dashes",
+					"key with spaces":      "value with spaces",
+					"key-with-dashes":      "value-with-dashes",
 					"key_with_underscores": "value_with_underscores",
 				},
 			},
@@ -266,7 +266,7 @@ func TestMapFieldsEdgeCases(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			parser := NewStructParser()
-			
+
 			// Test parsing
 			prettyData, err := parser.ParseDataWithSchema(tt.data, tt.schema)
 			if err != nil {
@@ -321,7 +321,7 @@ func TestMapInTableFields(t *testing.T) {
 			},
 			{
 				"id":   2,
-				"name": "Event 2", 
+				"name": "Event 2",
 				"metadata": map[string]interface{}{
 					"source":   "webhook",
 					"priority": "low",
@@ -398,9 +398,9 @@ func TestSchemaTypeMismatch(t *testing.T) {
 			"age":   30,
 		},
 		"settings": map[string]interface{}{
-			"theme":       "dark",
-			"language":    "en",
-			"auto_save":   true,
+			"theme":     "dark",
+			"language":  "en",
+			"auto_save": true,
 		},
 	}
 

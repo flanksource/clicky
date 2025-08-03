@@ -10,6 +10,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/flanksource/clicky/api"
+	"github.com/flanksource/clicky/formatters"
 )
 
 // PrettyParser handles parsing of structs with pretty tags
@@ -95,57 +96,7 @@ func (p *PrettyParser) parseStruct(val reflect.Value) (string, error) {
 
 // parsePrettyTag parses the pretty tag into a PrettyField
 func (p *PrettyParser) parsePrettyTag(tag string) api.PrettyField {
-	field := api.PrettyField{
-		FormatOptions: make(map[string]string),
-		ColorOptions:  make(map[string]string),
-	}
-
-	if tag == "" {
-		return field
-	}
-
-	parts := strings.Split(tag, ",")
-	for i, part := range parts {
-		part = strings.TrimSpace(part)
-
-		if i == 0 {
-			// First part is the main format
-			field.Format = part
-			continue
-		}
-
-		// Parse key=value pairs
-		if strings.Contains(part, "=") {
-			kv := strings.SplitN(part, "=", 2)
-			key := strings.TrimSpace(kv[0])
-			value := strings.TrimSpace(kv[1])
-
-			switch key {
-			case "sort":
-				field.FormatOptions["sort"] = value
-			case "dir", "direction":
-				field.FormatOptions["dir"] = value
-			case "format":
-				field.FormatOptions["format"] = value
-			case "digits":
-				field.FormatOptions["digits"] = value
-			case "green", "red", "blue", "yellow", "cyan", "magenta":
-				field.ColorOptions[key] = value
-			default:
-				field.FormatOptions[key] = value
-			}
-		} else {
-			// Simple flags
-			switch part {
-			case "asc", "desc":
-				field.FormatOptions["dir"] = part
-			default:
-				field.FormatOptions[part] = "true"
-			}
-		}
-	}
-
-	return field
+	return api.ParsePrettyTag(tag)
 }
 
 // formatField formats a single field
@@ -164,6 +115,15 @@ func (p *PrettyParser) formatField(name string, val reflect.Value, field api.Pre
 
 // formatValue formats a value based on the pretty field configuration
 func (p *PrettyParser) formatValue(val reflect.Value, field api.PrettyField) string {
+	// Check for custom render function first
+	if field.RenderFunc != nil {
+		var value interface{}
+		if val.IsValid() {
+			value = val.Interface()
+		}
+		return field.RenderFunc(value, field, p.Theme)
+	}
+
 	if !val.IsValid() || (val.Kind() == reflect.Ptr && val.IsNil()) {
 		return p.applyStyle("null", lipgloss.NewStyle().Foreground(p.Theme.Muted))
 	}
@@ -181,6 +141,8 @@ func (p *PrettyParser) formatValue(val reflect.Value, field api.PrettyField) str
 		return p.formatFloat(val, field.FormatOptions["digits"])
 	case "color":
 		return p.formatWithColor(val, field.ColorOptions)
+	case "tree":
+		return p.formatAsTree(val, field)
 	default:
 		return p.formatDefault(val)
 	}
@@ -273,7 +235,7 @@ func (p *PrettyParser) formatWithColor(val reflect.Value, colorOptions map[strin
 			style := lipgloss.NewStyle()
 			if !p.NoColor {
 				switch color {
-				case "green":
+				case api.ColorGreen:
 					style = style.Foreground(p.Theme.Success)
 				case "red":
 					style = style.Foreground(p.Theme.Error)
@@ -716,4 +678,30 @@ func stripAnsi(s string) string {
 	}
 
 	return result.String()
+}
+
+// formatAsTree formats a value as a tree structure
+func (p *PrettyParser) formatAsTree(val reflect.Value, field api.PrettyField) string {
+	// Create tree formatter
+	formatter := formatters.NewTreeFormatter(p.Theme, p.NoColor, field.TreeOptions)
+	
+	// Convert value to tree node
+	var node api.TreeNode
+	
+	// Check if value already implements TreeNode
+	if val.CanInterface() {
+		if treeNode, ok := val.Interface().(api.TreeNode); ok {
+			node = treeNode
+		} else {
+			// Try to convert to tree node
+			node = formatters.ConvertToTreeNode(val.Interface())
+		}
+	}
+	
+	if node == nil {
+		return p.formatDefault(val)
+	}
+	
+	// Format the tree
+	return formatter.FormatTreeFromRoot(node)
 }

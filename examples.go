@@ -2,9 +2,9 @@ package clicky
 
 import (
 	"fmt"
-	"time"
-	"github.com/flanksource/clicky/api"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/flanksource/clicky/api"
+	"time"
 )
 
 // Usage examples demonstrating all features of the Pretty formatter
