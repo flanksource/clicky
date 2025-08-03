@@ -144,6 +144,8 @@ func (p *StructParser) parseTableField(val reflect.Value, field api.PrettyField)
 			Rows:          []map[string]interface{}{},
 			SortField:     field.FormatOptions["sort"],
 			SortDirection: field.FormatOptions["dir"],
+			HeaderStyle:   field.TableOptions.HeaderStyle,
+			RowStyle:      field.TableOptions.RowStyle,
 		}
 		return field, nil
 	}
@@ -185,6 +187,8 @@ func (p *StructParser) parseTableField(val reflect.Value, field api.PrettyField)
 		Rows:          rows,
 		SortField:     field.FormatOptions["sort"],
 		SortDirection: field.FormatOptions["dir"],
+		HeaderStyle:   field.TableOptions.HeaderStyle,
+		RowStyle:      field.TableOptions.RowStyle,
 	}
 
 	return field, nil

@@ -3,6 +3,7 @@ package formatters
 import (
 	"fmt"
 	"github.com/flanksource/clicky/api"
+	"github.com/flanksource/clicky/api/tailwind"
 	"reflect"
 	"sort"
 	"strings"
@@ -103,17 +104,23 @@ func (f *PrettyFormatter) formatSummaryFields(fields []api.PrettyField, val refl
 
 // formatFieldForSummary formats a field for the summary section with pretty field names
 func (f *PrettyFormatter) formatFieldForSummary(name string, val reflect.Value, field api.PrettyField) string {
-	labelStyle := lipgloss.NewStyle().Bold(true)
-	if !f.NoColor {
-		labelStyle = labelStyle.Foreground(f.Theme.Primary)
-	}
-
 	prettyName := f.prettifyFieldName(name)
 	valueStr := f.formatValue(val.Interface(), field)
 
-	return fmt.Sprintf("%s: %s",
-		f.applyStyle(prettyName, labelStyle),
-		valueStr)
+	// Apply label_style if specified, otherwise use default
+	var styledLabel string
+	if field.LabelStyle != "" {
+		styledLabel = f.applyTailwindStyleToText(prettyName, field.LabelStyle)
+	} else {
+		// Default label style
+		labelStyle := lipgloss.NewStyle().Bold(true)
+		if !f.NoColor {
+			labelStyle = labelStyle.Foreground(f.Theme.Primary)
+		}
+		styledLabel = f.applyStyle(prettyName, labelStyle)
+	}
+
+	return fmt.Sprintf("%s: %s", styledLabel, valueStr)
 }
 
 // prettifyFieldName converts field names to readable format
@@ -228,6 +235,11 @@ func (f *PrettyFormatter) formatValue(value interface{}, field api.PrettyField) 
 
 	// Get formatted string from FieldValue
 	formatted := fieldValue.Formatted()
+
+	// Apply style if specified
+	if field.Style != "" {
+		return f.applyTailwindStyleToText(formatted, field.Style)
+	}
 
 	// Apply color styling using FieldValue.Color()
 	if color := fieldValue.Color(); color != "" {
@@ -690,6 +702,56 @@ func (f *PrettyFormatter) getColorStyle(color string) lipgloss.Style {
 	return style
 }
 
+
+// toLipglossStyle converts a tailwind.Style to lipgloss.Style
+func (f *PrettyFormatter) toLipglossStyle(style tailwind.Style) lipgloss.Style {
+	lipStyle := lipgloss.NewStyle()
+	
+	if style.Foreground != "" {
+		lipStyle = lipStyle.Foreground(lipgloss.Color(style.Foreground))
+	}
+	if style.Background != "" {
+		lipStyle = lipStyle.Background(lipgloss.Color(style.Background))
+	}
+	if style.Bold {
+		lipStyle = lipStyle.Bold(true)
+	}
+	if style.Faint {
+		lipStyle = lipStyle.Faint(true)
+	}
+	if style.Italic {
+		lipStyle = lipStyle.Italic(true)
+	}
+	if style.Underline {
+		lipStyle = lipStyle.Underline(true)
+	}
+	if style.Strikethrough {
+		lipStyle = lipStyle.Strikethrough(true)
+	}
+	if style.MaxWidth > 0 {
+		lipStyle = lipStyle.MaxWidth(style.MaxWidth)
+	}
+	
+	return lipStyle
+}
+
+// applyTailwindStyleToText applies both style and text transform to text
+func (f *PrettyFormatter) applyTailwindStyleToText(text string, styleStr string) string {
+	if f.NoColor {
+		// If no color, still apply text transforms
+		parsedStyle := tailwind.ParseStyle(styleStr)
+		if parsedStyle.TextTransform != "" {
+			text = tailwind.TransformText(text, parsedStyle.TextTransform)
+		}
+		return text
+	}
+	
+	// Apply style and get transformed text
+	transformedText, style := tailwind.ApplyStyle(text, styleStr)
+	lipglossStyle := f.toLipglossStyle(style)
+	return f.applyStyle(transformedText, lipglossStyle)
+}
+
 // formatPrettyData formats PrettyData without using reflection
 func (f *PrettyFormatter) formatPrettyData(data *api.PrettyData) (string, error) {
 	var sections []string
@@ -742,7 +804,7 @@ func (f *PrettyFormatter) formatSummaryFieldsData(fields []api.PrettyField, valu
 
 		var leftFormatted string
 		if leftExists {
-			leftFormatted = f.formatFieldValueData(leftField.Name, leftVal)
+			leftFormatted = f.formatFieldValueData(leftField.Name, leftVal, leftField)
 		} else {
 			// Field not in data
 			leftFormatted = f.formatMissingField(leftField.Name)
@@ -755,7 +817,7 @@ func (f *PrettyFormatter) formatSummaryFieldsData(fields []api.PrettyField, valu
 
 			var rightFormatted string
 			if rightExists {
-				rightFormatted = f.formatFieldValueData(rightField.Name, rightVal)
+				rightFormatted = f.formatFieldValueData(rightField.Name, rightVal, rightField)
 			} else {
 				rightFormatted = f.formatMissingField(rightField.Name)
 			}
@@ -775,17 +837,15 @@ func (f *PrettyFormatter) formatSummaryFieldsData(fields []api.PrettyField, valu
 }
 
 // formatFieldValueData formats a single field value
-func (f *PrettyFormatter) formatFieldValueData(name string, val api.FieldValue) string {
-	labelStyle := lipgloss.NewStyle().Bold(true)
-	if !f.NoColor {
-		labelStyle = labelStyle.Foreground(f.Theme.Primary)
-	}
-
+func (f *PrettyFormatter) formatFieldValueData(name string, val api.FieldValue, field api.PrettyField) string {
 	prettyName := f.prettifyFieldName(name)
 	formatted := val.Formatted()
 
-	// Apply color styling using FieldValue.Color()
-	if color := val.Color(); color != "" {
+	// Apply field style if specified (highest priority)
+	if field.Style != "" {
+		formatted = f.applyTailwindStyleToText(formatted, field.Style)
+	} else if color := val.Color(); color != "" {
+		// Apply color styling using FieldValue.Color()
 		style := f.getColorStyle(color)
 		formatted = f.applyStyle(formatted, style)
 	} else {
@@ -793,9 +853,20 @@ func (f *PrettyFormatter) formatFieldValueData(name string, val api.FieldValue) 
 		formatted = f.applyFormatStyle(formatted, val.Field.Format)
 	}
 
-	return fmt.Sprintf("%s: %s",
-		f.applyStyle(prettyName, labelStyle),
-		formatted)
+	// Apply label_style if specified, otherwise use default
+	var styledLabel string
+	if field.LabelStyle != "" {
+		styledLabel = f.applyTailwindStyleToText(prettyName, field.LabelStyle)
+	} else {
+		// Default label style
+		labelStyle := lipgloss.NewStyle().Bold(true)
+		if !f.NoColor {
+			labelStyle = labelStyle.Foreground(f.Theme.Primary)
+		}
+		styledLabel = f.applyStyle(prettyName, labelStyle)
+	}
+
+	return fmt.Sprintf("%s: %s", styledLabel, formatted)
 }
 
 // formatMissingField formats a field that has no data
@@ -834,11 +905,17 @@ func (f *PrettyFormatter) formatTableData(rows []api.PrettyDataRow, field api.Pr
 	// Add header row
 	headerRow := make([]string, len(headers))
 	for i, header := range headers {
-		style := lipgloss.NewStyle().Bold(true)
-		if !f.NoColor {
-			style = style.Foreground(f.Theme.Primary)
+		// Use header_style if specified
+		if field.TableOptions.HeaderStyle != "" {
+			headerRow[i] = f.applyTailwindStyleToText(header, field.TableOptions.HeaderStyle)
+		} else {
+			// Default header style
+			style := lipgloss.NewStyle().Bold(true)
+			if !f.NoColor {
+				style = style.Foreground(f.Theme.Primary)
+			}
+			headerRow[i] = f.applyStyle(header, style)
 		}
-		headerRow[i] = f.applyStyle(header, style)
 	}
 	tableRows = append(tableRows, headerRow)
 
@@ -850,8 +927,14 @@ func (f *PrettyFormatter) formatTableData(rows []api.PrettyDataRow, field api.Pr
 			if exists {
 				formatted := fieldValue.Formatted()
 
-				// Apply color styling using FieldValue.Color()
-				if color := fieldValue.Color(); color != "" {
+				// Apply individual field style first (highest priority)
+				if tableField.Style != "" {
+					formatted = f.applyTailwindStyleToText(formatted, tableField.Style)
+				} else if field.TableOptions.RowStyle != "" {
+					// Apply row_style if no individual field style
+					formatted = f.applyTailwindStyleToText(formatted, field.TableOptions.RowStyle)
+				} else if color := fieldValue.Color(); color != "" {
+					// Apply color styling using FieldValue.Color()
 					style := f.getColorStyle(color)
 					formatted = f.applyStyle(formatted, style)
 				} else {

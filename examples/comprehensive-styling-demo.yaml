@@ -1,0 +1,140 @@
+# Comprehensive Styling Demo Schema
+# Demonstrates all new styling features: style, label_style, header_style, row_style
+# Shows column style overriding row_style, and styling support for PDF and HTML
+
+fields:
+  - name: "title"
+    type: "string"
+    style: "text-3xl font-bold text-purple-700 uppercase"
+    label_style: "text-gray-400 text-xs"
+    
+  - name: "subtitle"
+    type: "string"
+    style: "text-lg italic text-gray-600"
+    label_style: "text-blue-600 font-semibold"
+    
+  - name: "status"
+    type: "string"
+    style: "uppercase bg-green-100 text-green-800 px-2 py-1 rounded font-bold"
+    label_style: "text-green-700 font-medium"
+    
+  - name: "priority"
+    type: "string"
+    style: "lowercase italic text-red-500"
+    label_style: "text-red-600 underline"
+    
+  - name: "user_details"
+    type: "struct"
+    label_style: "text-indigo-700 font-bold text-lg"
+    fields:
+      - name: "name"
+        type: "string"
+        style: "capitalize font-semibold text-blue-600"
+        label_style: "text-blue-400"
+      - name: "email"
+        type: "string"
+        style: "lowercase text-gray-600 italic"
+        label_style: "text-gray-500 text-sm"
+      - name: "role"
+        type: "string"
+        style: "uppercase bg-yellow-100 text-yellow-800 px-1 rounded text-xs"
+        label_style: "text-yellow-700"
+    
+  - name: "transactions"
+    type: "array"
+    format: "table"
+    table_options:
+      title: "Financial Transactions"
+      # Header style applies to all headers
+      header_style: "uppercase font-bold text-white bg-gradient-to-r from-blue-600 to-purple-600"
+      # Row style applies to all cells unless overridden by individual field styles
+      row_style: "text-gray-700 hover:bg-blue-50"
+      fields:
+        - name: "date"
+          type: "string"
+          format: "date"
+          style: "text-blue-500 font-mono"  # This overrides row_style
+        - name: "description"
+          type: "string"
+          style: "capitalize text-gray-800"  # This overrides row_style
+        - name: "amount"
+          type: "float"
+          format: "currency"
+          style: "font-bold text-green-600"  # This overrides row_style
+        - name: "status"
+          type: "string"
+          # No style specified, so row_style applies
+        - name: "category"
+          type: "string"
+          style: "uppercase bg-purple-100 text-purple-800 px-1 rounded text-xs"  # This overrides row_style
+    
+  - name: "team_metrics"
+    type: "array"
+    format: "table"
+    table_options:
+      title: "Team Performance Metrics"
+      header_style: "font-semibold text-green-800 bg-green-100 uppercase"
+      row_style: "text-sm text-gray-600"
+      fields:
+        - name: "member"
+          type: "string"
+          style: "font-bold text-indigo-700"  # Overrides row_style
+        - name: "tasks_completed"
+          type: "int"
+          style: "font-mono text-blue-600"  # Overrides row_style
+        - name: "efficiency"
+          type: "float"
+          # No style - uses row_style
+        - name: "rating"
+          type: "string"
+          style: "uppercase font-bold text-yellow-600"  # Overrides row_style
+    
+  - name: "summary_stats"
+    type: "struct"
+    label_style: "text-2xl font-bold text-gray-800"
+    fields:
+      - name: "total_revenue"
+        type: "float"
+        format: "currency"
+        style: "text-2xl font-bold text-green-600"
+        label_style: "text-green-700 uppercase tracking-wide"
+      - name: "total_transactions"
+        type: "int"
+        style: "text-xl font-semibold text-blue-600"
+        label_style: "text-blue-700 font-medium"
+      - name: "average_amount"
+        type: "float"
+        format: "currency"
+        style: "text-lg text-purple-600 italic"
+        label_style: "text-purple-700"
+    
+  - name: "text_transform_examples"
+    type: "struct"
+    label_style: "text-orange-600 font-bold"
+    fields:
+      - name: "uppercase_text"
+        type: "string"
+        style: "uppercase font-bold text-red-600"
+        label_style: "text-red-500 text-sm"
+      - name: "lowercase_text"
+        type: "string"
+        style: "lowercase italic text-green-600"
+        label_style: "text-green-500 text-sm"
+      - name: "capitalize_text"
+        type: "string"
+        style: "capitalize font-medium text-blue-600"
+        label_style: "text-blue-500 text-sm"
+      - name: "normal_case_text"
+        type: "string"
+        style: "normal-case text-purple-600"
+        label_style: "text-purple-500 text-sm"
+
+# This schema demonstrates:
+# 1. label_style support for field labels
+# 2. style support for field values  
+# 3. header_style for table headers
+# 4. row_style for table rows
+# 5. Column styles (field.style) overriding row_style
+# 6. Text transformations (uppercase, lowercase, capitalize, normal-case)
+# 7. Complex nested styling
+# 8. Tailwind classes that work in terminal, PDF, and HTML output

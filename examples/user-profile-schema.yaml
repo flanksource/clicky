@@ -1,0 +1,69 @@
+# User Profile Schema with Tailwind Styles
+fields:
+  - name: "username"
+    type: "string"
+    style: "text-indigo-700 font-bold text-xl capitalize"
+    
+  - name: "status"
+    type: "string"
+    style: "font-semibold"
+    color_options:
+      green: "online"
+      yellow: "away"
+      gray: "offline"
+      red: "do_not_disturb"
+    
+  - name: "role"
+    type: "string"
+    style: "bg-purple-100 text-purple-800 px-2 py-1 rounded font-medium"
+    
+  - name: "bio"
+    type: "string"
+    style: "text-gray-600 italic"
+    
+  - name: "joined_date"
+    type: "string"
+    format: "date"
+    style: "text-blue-600"
+    format_options:
+      format: "2006-01-02"
+    
+  - name: "stats"
+    type: "struct"
+    style: "bg-gray-50"
+    fields:
+      - name: "posts_count"
+        type: "int"
+        style: "text-green-600 font-bold"
+      - name: "followers"
+        type: "int"
+        style: "text-blue-600 font-bold"
+      - name: "following"
+        type: "int"
+        style: "text-purple-600 font-bold"
+    
+  - name: "recent_activity"
+    type: "array"
+    format: "table"
+    table_options:
+      title: "Recent Activity"
+      header_style: "bg-indigo-100 text-indigo-900 font-bold uppercase text-sm"
+      row_style: "text-gray-700 hover:bg-gray-50"
+      fields:
+        - name: "timestamp"
+          type: "string"
+          format: "date"
+          style: "text-gray-500 text-sm"
+        - name: "action"
+          type: "string"
+          style: "font-medium"
+        - name: "target"
+          type: "string"
+          style: "text-blue-600 underline"
+        - name: "result"
+          type: "string"
+          style: "font-semibold"
+          color_options:
+            green: "success"
+            red: "failed"
+            yellow: "pending"

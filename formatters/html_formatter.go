@@ -3,6 +3,7 @@ package formatters
 import (
 	"fmt"
 	"github.com/flanksource/clicky/api"
+	"github.com/flanksource/clicky/api/tailwind"
 	"html"
 	"strings"
 )
@@ -68,11 +69,19 @@ func (f *HTMLFormatter) Format(data *api.PrettyData) (string, error) {
 
 		prettyFieldName := f.prettifyFieldName(field.Name)
 
-		// Format field value with color styling
-		fieldHTML := f.formatFieldValueHTML(fieldValue)
+		// Format field value with styling
+		fieldHTML := f.formatFieldValueHTMLWithStyle(fieldValue, field)
+
+		// Apply label styling
+		var labelHTML string
+		if field.LabelStyle != "" {
+			labelHTML = f.applyTailwindStyleToHTML(prettyFieldName, field.LabelStyle)
+		} else {
+			labelHTML = fmt.Sprintf("<span class=\"text-sm font-medium text-gray-500\">%s</span>", html.EscapeString(prettyFieldName))
+		}
 
 		result.WriteString("                    <div>\n")
-		result.WriteString(fmt.Sprintf("                        <dt class=\"text-sm font-medium text-gray-500\">%s</dt>\n", html.EscapeString(prettyFieldName)))
+		result.WriteString(fmt.Sprintf("                        <dt>%s</dt>\n", labelHTML))
 		result.WriteString(fmt.Sprintf("                        <dd class=\"mt-1 text-sm\">%s</dd>\n", fieldHTML))
 		result.WriteString("                    </div>\n")
 	}
@@ -106,6 +115,20 @@ func (f *HTMLFormatter) Format(data *api.PrettyData) (string, error) {
 	}
 
 	return result.String(), nil
+}
+
+// applyTailwindStyleToHTML applies Tailwind styles to HTML content
+func (f *HTMLFormatter) applyTailwindStyleToHTML(text string, styleStr string) string {
+	if styleStr == "" {
+		return html.EscapeString(text)
+	}
+
+	// Apply text transformations and get style
+	transformedText, _ := tailwind.ApplyStyle(text, styleStr)
+	
+	// Escape the transformed text and wrap with style classes
+	escapedText := html.EscapeString(transformedText)
+	return fmt.Sprintf("<span class=\"%s\">%s</span>", styleStr, escapedText)
 }
 
 // getColorClass returns Tailwind CSS class for color
@@ -177,14 +200,25 @@ func (f *HTMLFormatter) splitCamelCase(s string) []string {
 	return words
 }
 
-// formatFieldValueHTML formats a FieldValue for HTML output
+// formatFieldValueHTML formats a FieldValue for HTML output (legacy function)
 func (f *HTMLFormatter) formatFieldValueHTML(fieldValue api.FieldValue) string {
+	// This is the legacy function, now delegating to the new one with empty field
+	return f.formatFieldValueHTMLWithStyle(fieldValue, api.PrettyField{})
+}
+
+// formatFieldValueHTMLWithStyle formats a FieldValue with field styling for HTML output
+func (f *HTMLFormatter) formatFieldValueHTMLWithStyle(fieldValue api.FieldValue, field api.PrettyField) string {
 	// Handle nested fields by formatting them as HTML
 	if fieldValue.HasNestedFields() {
 		return f.formatNestedFieldValue(fieldValue)
 	}
 
 	formatted := fieldValue.Formatted()
+
+	// Apply field style if specified (highest priority)
+	if field.Style != "" {
+		return f.applyTailwindStyleToHTML(formatted, field.Style)
+	}
 
 	// Apply color styling using FieldValue.Color()
 	if color := fieldValue.Color(); color != "" {
@@ -244,7 +278,13 @@ func (f *HTMLFormatter) formatTableDataHTML(rows []api.PrettyDataRow, field api.
 	result.WriteString("                    <thead class=\"bg-gray-50\">\n")
 	result.WriteString("                        <tr>\n")
 	for _, tableField := range field.TableOptions.Fields {
-		result.WriteString(fmt.Sprintf("                            <th class=\"px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider\">%s</th>\n", html.EscapeString(tableField.Name)))
+		var headerHTML string
+		if field.TableOptions.HeaderStyle != "" {
+			headerHTML = f.applyTailwindStyleToHTML(tableField.Name, field.TableOptions.HeaderStyle)
+		} else {
+			headerHTML = fmt.Sprintf("<span class=\"text-xs font-medium text-gray-500 uppercase tracking-wider\">%s</span>", html.EscapeString(tableField.Name))
+		}
+		result.WriteString(fmt.Sprintf("                            <th class=\"px-6 py-3 text-left\">%s</th>\n", headerHTML))
 	}
 	result.WriteString("                        </tr>\n")
 	result.WriteString("                    </thead>\n")
@@ -257,7 +297,16 @@ func (f *HTMLFormatter) formatTableDataHTML(rows []api.PrettyDataRow, field api.
 			fieldValue, exists := row[tableField.Name]
 			var cellContent string
 			if exists {
-				cellContent = f.formatFieldValueHTML(fieldValue)
+				// Apply styling with priority: tableField.Style > row_style
+				if tableField.Style != "" {
+					cellContent = f.formatFieldValueHTMLWithStyle(fieldValue, tableField)
+				} else if field.TableOptions.RowStyle != "" {
+					// Create a temporary field with row_style
+					tempField := api.PrettyField{Style: field.TableOptions.RowStyle}
+					cellContent = f.formatFieldValueHTMLWithStyle(fieldValue, tempField)
+				} else {
+					cellContent = f.formatFieldValueHTML(fieldValue)
+				}
 			} else {
 				cellContent = ""
 			}

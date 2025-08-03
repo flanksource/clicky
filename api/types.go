@@ -16,6 +16,8 @@ type PrettyField struct {
 	Format        string            `json:"format,omitempty" yaml:"format,omitempty"`
 	Label         string            `json:"label,omitempty" yaml:"label,omitempty"`
 	Default       string            `json:"default,omitempty" yaml:"default,omitempty"`
+	Style         string            `json:"style,omitempty" yaml:"style,omitempty"`
+	LabelStyle    string            `json:"label_style,omitempty" yaml:"label_style,omitempty"`
 	Color         string            `json:"color,omitempty" yaml:"color,omitempty"`
 	DateFormat    string            `json:"date_format,omitempty" yaml:"date_format,omitempty"`
 	FormatOptions map[string]string `json:"format_options,omitempty" yaml:"format_options,omitempty"`
@@ -33,6 +35,8 @@ type PrettyTable struct {
 	Rows          []map[string]interface{} `json:"rows,omitempty" yaml:"rows,omitempty"`
 	SortField     string                   `json:"sort_field,omitempty" yaml:"sort_field,omitempty"`
 	SortDirection string                   `json:"sort_direction,omitempty" yaml:"sort_direction,omitempty"`
+	HeaderStyle   string                   `json:"header_style,omitempty" yaml:"header_style,omitempty"`
+	RowStyle      string                   `json:"row_style,omitempty" yaml:"row_style,omitempty"`
 }
 
 // PrettyObject represents a collection of fields
@@ -865,6 +869,14 @@ func ParsePrettyTag(tag string) PrettyField {
 				field.FormatOptions["format"] = value
 			case "digits":
 				field.FormatOptions["digits"] = value
+			case "style":
+				field.Style = value
+			case "label_style":
+				field.LabelStyle = value
+			case "header_style":
+				field.TableOptions.HeaderStyle = value
+			case "row_style":
+				field.TableOptions.RowStyle = value
 			case ColorGreen, ColorRed, ColorBlue, "yellow", "cyan", "magenta":
 				field.ColorOptions[key] = value
 			default:
