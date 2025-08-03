@@ -329,6 +329,24 @@ func TestAllFormatters(t *testing.T) {
 			},
 		},
 		{
+			Name:      "PDFFormatter",
+			Formatter: formatters.NewPDFFormatter(),
+			Validate: func(t *testing.T, output string) {
+				// PDF files start with %PDF header
+				if !strings.HasPrefix(output, "%PDF") {
+					t.Errorf("PDF formatter should produce valid PDF starting with %%PDF header")
+				}
+				// Check that it's a reasonable size for a PDF
+				if len(output) < 1000 {
+					t.Errorf("PDF output seems too small: %d bytes", len(output))
+				}
+				// Check for PDF structure markers
+				if !strings.Contains(output, "endobj") {
+					t.Errorf("PDF should contain PDF object markers")
+				}
+			},
+		},
+		{
 			Name:      "MarkdownFormatter",
 			Formatter: formatters.NewMarkdownFormatter(),
 			Validate: func(t *testing.T, output string) {
@@ -397,6 +415,8 @@ func TestAllFormatters(t *testing.T) {
 				}
 				output, err = sf.formatCSVWithPrettyData(prettyData)
 			case *formatters.HTMLFormatter:
+				output, err = f.Format(prettyData)
+			case *formatters.PDFFormatter:
 				output, err = f.Format(prettyData)
 			case *formatters.MarkdownFormatter:
 				// Markdown formatter uses different interface

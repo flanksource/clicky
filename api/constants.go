@@ -26,6 +26,7 @@ const (
 	FormatYAML     = "yaml"
 	FormatCSV      = "csv"
 	FormatHTML     = "html"
+	FormatPDF      = "pdf"
 	FormatPretty   = "pretty"
 )
 

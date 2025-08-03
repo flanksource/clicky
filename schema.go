@@ -153,6 +153,8 @@ func (sf *SchemaFormatter) formatWithPrettyData(data *api.PrettyData, format str
 		return sf.formatCSVWithPrettyData(data)
 	case "html":
 		return sf.formatHTMLWithPrettyData(data)
+	case "pdf":
+		return sf.formatPDFWithPrettyData(data)
 	case "markdown":
 		formatter := formatters.NewMarkdownFormatter()
 		return formatter.Format(data.Values)
@@ -290,6 +292,12 @@ func (sf *SchemaFormatter) formatHTMLWithPrettyData(data *api.PrettyData) (strin
 	return htmlFormatter.Format(data)
 }
 
+// formatPDFWithPrettyData formats PrettyData as PDF
+func (sf *SchemaFormatter) formatPDFWithPrettyData(data *api.PrettyData) (string, error) {
+	pdfFormatter := formatters.NewPDFFormatter()
+	return pdfFormatter.Format(data)
+}
+
 
 // generateOutputFilename generates output filename based on pattern
 func (sf *SchemaFormatter) generateOutputFilename(outputPattern, dataFile, format string) string {
@@ -322,6 +330,8 @@ func (sf *SchemaFormatter) getExtensionForFormat(format string) string {
 		return "csv"
 	case "html":
 		return "html"
+	case "pdf":
+		return "pdf"
 	case "markdown":
 		return "md"
 	default:
