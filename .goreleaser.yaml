@@ -1,0 +1,202 @@
+# GoReleaser configuration for clicky
+version: 2
+
+project_name: clicky
+
+before:
+  hooks:
+    # You may remove this if you don't use go modules.
+    - go mod tidy
+    # you may remove this if you don't need go generate
+    - go generate ./...
+
+builds:
+  - id: clicky
+    main: ./cmd/clicky/main.go
+    binary: clicky
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - windows
+      - darwin
+    goarch:
+      - "386"
+      - amd64
+      - arm
+      - arm64
+    goarm:
+      - "6"
+      - "7"
+    ignore:
+      - goos: windows
+        goarch: arm
+      - goos: windows
+        goarch: arm64
+    ldflags:
+      - -s -w -X main.version={{.Version}} -X main.commit={{.Commit}} -X main.date={{.Date}}
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+archives:
+  - id: default
+    format: tar.gz
+    # this name template makes the OS and Arch compatible with the results of `uname`.
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- title .Os }}_
+      {{- if eq .Arch "amd64" }}x86_64
+      {{- else if eq .Arch "386" }}i386
+      {{- else }}{{ .Arch }}{{ end }}
+      {{- if .Arm }}v{{ .Arm }}{{ end }}
+    # use zip for windows archives
+    format_overrides:
+      - goos: windows
+        format: zip
+    files:
+      - README.md
+      - LICENSE*
+      - examples/**/*
+
+checksum:
+  name_template: 'checksums.txt'
+
+snapshot:
+  name_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  sort: asc
+  use: github
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^ci:"
+      - "^chore:"
+      - "^build:"
+      - "^fixup:"
+  groups:
+    - title: Features
+      regexp: '^.*?feat(\([[:word:]]+\))??!?:.+$'
+      order: 0
+    - title: "Bug fixes"
+      regexp: '^.*?fix(\([[:word:]]+\))??!?:.+$'
+      order: 1
+    - title: Others
+      order: 999
+
+# Homebrew tap
+brews:
+  - name: clicky
+    repository:
+      owner: "{{ .Env.GITHUB_OWNER | default \"flanksource\" }}"
+      name: homebrew-tap
+      branch: main
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    folder: Formula
+    homepage: https://github.com/{{ .Env.GITHUB_OWNER | default "flanksource" }}/clicky
+    description: "A command-line tool for parsing and formatting structured data with schemas"
+    license: "MIT"
+    skip_upload: auto
+    dependencies:
+      - name: git
+    install: |
+      bin.install "clicky"
+    test: |
+      system "#{bin}/clicky", "--version"
+
+# Scoop bucket for Windows
+scoops:
+  - name: clicky
+    repository:
+      owner: "{{ .Env.GITHUB_OWNER | default \"flanksource\" }}"
+      name: scoop-bucket
+      branch: main
+      token: "{{ .Env.SCOOP_BUCKET_GITHUB_TOKEN }}"
+    folder: bucket
+    homepage: https://github.com/{{ .Env.GITHUB_OWNER | default "flanksource" }}/clicky
+    description: "A command-line tool for parsing and formatting structured data with schemas"
+    license: "MIT"
+    skip_upload: auto
+
+# Docker images
+dockers:
+  - image_templates:
+      - "ghcr.io/{{ .Env.GITHUB_OWNER | default \"flanksource\" }}/clicky:{{ .Version }}-amd64"
+      - "ghcr.io/{{ .Env.GITHUB_OWNER | default \"flanksource\" }}/clicky:latest-amd64"
+    dockerfile: Dockerfile
+    use: buildx
+    build_flag_templates:
+      - "--pull"
+      - "--label=org.opencontainers.image.created={{.Date}}"
+      - "--label=org.opencontainers.image.title={{.ProjectName}}"
+      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
+      - "--label=org.opencontainers.image.version={{.Version}}"
+      - "--label=org.opencontainers.image.source={{.GitURL}}"
+      - "--platform=linux/amd64"
+    extra_files:
+      - examples/
+  - image_templates:
+      - "ghcr.io/{{ .Env.GITHUB_OWNER | default \"flanksource\" }}/clicky:{{ .Version }}-arm64"
+      - "ghcr.io/{{ .Env.GITHUB_OWNER | default \"flanksource\" }}/clicky:latest-arm64"
+    dockerfile: Dockerfile
+    use: buildx
+    build_flag_templates:
+      - "--pull"
+      - "--label=org.opencontainers.image.created={{.Date}}"
+      - "--label=org.opencontainers.image.title={{.ProjectName}}"
+      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
+      - "--label=org.opencontainers.image.version={{.Version}}"
+      - "--label=org.opencontainers.image.source={{.GitURL}}"
+      - "--platform=linux/arm64"
+    goarch: arm64
+    extra_files:
+      - examples/
+
+docker_manifests:
+  - name_template: "ghcr.io/{{ .Env.GITHUB_OWNER | default \"flanksource\" }}/clicky:{{ .Version }}"
+    image_templates:
+      - "ghcr.io/{{ .Env.GITHUB_OWNER | default \"flanksource\" }}/clicky:{{ .Version }}-amd64"
+      - "ghcr.io/{{ .Env.GITHUB_OWNER | default \"flanksource\" }}/clicky:{{ .Version }}-arm64"
+  - name_template: "ghcr.io/{{ .Env.GITHUB_OWNER | default \"flanksource\" }}/clicky:latest"
+    image_templates:
+      - "ghcr.io/{{ .Env.GITHUB_OWNER | default \"flanksource\" }}/clicky:latest-amd64"
+      - "ghcr.io/{{ .Env.GITHUB_OWNER | default \"flanksource\" }}/clicky:latest-arm64"
+
+# Release settings
+release:
+  github:
+    owner: "{{ .Env.GITHUB_OWNER | default \"flanksource\" }}"
+    name: clicky
+  draft: false
+  prerelease: auto
+  mode: replace
+  header: |
+    ## Clicky {{ .Tag }} ({{ .Date }})
+    
+    Welcome to this new release of Clicky!
+  footer: |
+    ## Docker Images
+    
+    ```bash
+    docker pull ghcr.io/{{ .Env.GITHUB_OWNER | default "flanksource" }}/clicky:{{ .Tag }}
+    ```
+    
+    ## Installation
+    
+    ### Using Go
+    ```bash
+    go install github.com/{{ .Env.GITHUB_OWNER | default "flanksource" }}/clicky/cmd/clicky@{{ .Tag }}
+    ```
+    
+    ### Using Homebrew (macOS/Linux)
+    ```bash
+    brew install {{ .Env.GITHUB_OWNER | default "flanksource" }}/tap/clicky
+    ```
+    
+    ### Using Scoop (Windows)
+    ```bash
+    scoop bucket add {{ .Env.GITHUB_OWNER | default "flanksource" }} https://github.com/{{ .Env.GITHUB_OWNER | default "flanksource" }}/scoop-bucket.git
+    scoop install clicky
+    ```
+  extra_files:
+    - glob: ./examples/**/*

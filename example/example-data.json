@@ -1,0 +1,61 @@
+{
+  "id": "ORD-2024-4567",
+  "customer": {
+    "name": "Acme Corporation",
+    "email": "orders@acme.com",
+    "account_type": "premium"
+  },
+  "status": "processing",
+  "priority": "high",
+  "total_amount": 15750.00,
+  "currency": "USD",
+  "order_date": "1722470400",
+  "estimated_delivery": "1723075200",
+  "shipping_address": {
+    "street": "123 Business Ave",
+    "city": "San Francisco",
+    "state": "CA",
+    "zip": "94105",
+    "country": "USA"
+  },
+  "items": [
+    {
+      "sku": "LAPTOP-PRO-15",
+      "name": "Professional Laptop 15-inch",
+      "category": "Electronics",
+      "quantity": 5,
+      "unit_price": 2800.00,
+      "discount_percent": 10.0,
+      "line_total": 12600.00,
+      "warranty_months": 36
+    },
+    {
+      "sku": "DOCK-STATION-USB",
+      "name": "USB-C Docking Station",
+      "category": "Accessories",
+      "quantity": 5,
+      "unit_price": 450.00,
+      "discount_percent": 5.0,
+      "line_total": 2137.50,
+      "warranty_months": 24
+    },
+    {
+      "sku": "MONITOR-4K-27",
+      "name": "4K Monitor 27-inch",
+      "category": "Electronics",
+      "quantity": 3,
+      "unit_price": 675.00,
+      "discount_percent": 15.0,
+      "line_total": 1721.25,
+      "warranty_months": 36
+    }
+  ],
+  "payment": {
+    "method": "corporate_card",
+    "card_last_four": "8392",
+    "authorization_code": "AUTH123456",
+    "processed_at": "1722470460"
+  },
+  "notes": "Expedited processing requested for new employee onboarding",
+  "internal_reference": "IT-SETUP-Q3-2024"
+}

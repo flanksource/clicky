@@ -1,0 +1,100 @@
+fields:
+  - name: "id"
+    type: "string"
+    format: "color"
+    color_options:
+      blue: "*"
+
+  - name: "customer"
+    type: "struct"
+
+  - name: "status"
+    type: "string"
+    format: "color"
+    color_options:
+      green: "completed"
+      yellow: "processing"
+      orange: "pending"
+      red: "cancelled"
+
+  - name: "priority"
+    type: "string"
+    format: "color"
+    color_options:
+      red: "high"
+      yellow: "medium"
+      green: "low"
+
+  - name: "total_amount"
+    type: "float"
+    format: "currency"
+
+  - name: "currency"
+    type: "string"
+
+  - name: "order_date"
+    type: "string"
+    format: "date"
+    format_options:
+      format: "epoch"
+
+  - name: "estimated_delivery"
+    type: "string"
+    format: "date"
+    format_options:
+      format: "epoch"
+
+  - name: "shipping_address"
+    type: "struct"
+
+  - name: "items"
+    type: "array"
+    format: "table"
+    format_options:
+      sort: "line_total"
+      dir: "desc"
+    table_options:
+      title: "Order Items"
+      fields:
+        - name: "name"
+          type: "string"
+        - name: "category"
+          type: "string"
+          format: "color"
+          color_options:
+            blue: "Electronics"
+            green: "Accessories"
+            purple: "Software"
+        - name: "quantity"
+          type: "int"
+        - name: "unit_price"
+          type: "float"
+          format: "currency"
+        - name: "discount_percent"
+          type: "float"
+          format: "float"
+          format_options:
+            digits: "1"
+        - name: "line_total"
+          type: "float"
+          format: "currency"
+        - name: "warranty_months"
+          type: "int"
+          format: "color"
+          color_options:
+            green: ">=36"
+            yellow: ">=24"
+            red: "<24"
+
+  - name: "payment"
+    type: "struct"
+    fields:
+      - name: processed_at
+        type: date
+        date_format: "epoch"
+
+  - name: "notes"
+    type: "string"
+
+  - name: "internal_reference"
+    type: "string"

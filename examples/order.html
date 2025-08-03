@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Clicky Output</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 min-h-screen p-6">
+    <div class="max-w-7xl mx-auto space-y-8">
+        <div class="bg-white rounded-lg shadow">
+            <div class="px-6 py-4 border-b border-gray-200">
+                <h2 class="text-xl font-semibold text-gray-900">Items</h2>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="min-w-full table-auto">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">name</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">category</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">quantity</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">unit_price</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">discount_percent</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">line_total</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">warranty_months</th>
+                        </tr>
+                    </thead>
+                    <tbody class="bg-white divide-y divide-gray-200">
+                        <tr class="hover:bg-gray-50">
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">Professional Laptop 15-inch</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">Electronics</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">5</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">2800</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">10</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">12600</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">36</td>
+                        </tr>
+                        <tr class="hover:bg-gray-50">
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">USB-C Docking Station</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">Accessories</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">5</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">450</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">5</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">2137.5</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">24</td>
+                        </tr>
+                        <tr class="hover:bg-gray-50">
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">4K Monitor 27-inch</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">Electronics</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">3</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">675</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">15</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">1721.25</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">36</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <div class="bg-white rounded-lg shadow">
+            <div class="px-6 py-4 border-b border-gray-200">
+                <h2 class="text-xl font-semibold text-gray-900">Summary</h2>
+            </div>
+            <div class="px-6 py-4">
+                <dl class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500">Id</dt>
+                        <dd class="mt-1 text-sm text-gray-900">ORD-2024-4567</dd>
+                    </div>
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500">Customer</dt>
+                        <dd class="mt-1 text-sm text-gray-900">{Acme Corporation orders@acme.com premium}</dd>
+                    </div>
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500">Status</dt>
+                        <dd class="mt-1 text-sm text-gray-900">processing</dd>
+                    </div>
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500">Priority</dt>
+                        <dd class="mt-1 text-sm text-gray-900">high</dd>
+                    </div>
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500">Total Amount</dt>
+                        <dd class="mt-1 text-sm text-gray-900">15750</dd>
+                    </div>
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500">Currency</dt>
+                        <dd class="mt-1 text-sm text-gray-900">USD</dd>
+                    </div>
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500">Order Date</dt>
+                        <dd class="mt-1 text-sm text-gray-900">1722470400</dd>
+                    </div>
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500">Estimated Delivery</dt>
+                        <dd class="mt-1 text-sm text-gray-900">1723075200</dd>
+                    </div>
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500">Shipping Address</dt>
+                        <dd class="mt-1 text-sm text-gray-900">{123 Business Ave San Francisco CA 94105 USA}</dd>
+                    </div>
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500">Payment</dt>
+                        <dd class="mt-1 text-sm text-gray-900">{corporate_card 8392 AUTH123456 1722470460}</dd>
+                    </div>
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500">Notes</dt>
+                        <dd class="mt-1 text-sm text-gray-900">Expedited processing requested for new employee onboarding</dd>
+                    </div>
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500">Internal Reference</dt>
+                        <dd class="mt-1 text-sm text-gray-900">IT-SETUP-Q3-2024</dd>
+                    </div>
+                </dl>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
