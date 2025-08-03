@@ -209,8 +209,8 @@ func (sf *SchemaFormatter) formatCSVWithPrettyData(data *api.PrettyData) (string
 	return csvFormatter.Format([]interface{}{summaryMap})
 }
 
-// formatJSONWithPrettyData formats PrettyData as JSON including both values and tables
-func (sf *SchemaFormatter) formatJSONWithPrettyData(data *api.PrettyData) (string, error) {
+// formatPrettyDataToMap converts PrettyData to a map for JSON/YAML formatting
+func (sf *SchemaFormatter) formatPrettyDataToMap(data *api.PrettyData) map[string]interface{} {
 	output := make(map[string]interface{})
 
 	// Add all values using Formatted() for consistency with other formatters
@@ -240,65 +240,46 @@ func (sf *SchemaFormatter) formatJSONWithPrettyData(data *api.PrettyData) (strin
 		output[key] = tableData
 	}
 
+	return output
+}
+
+// formatJSONWithPrettyData formats PrettyData as JSON including both values and tables
+func (sf *SchemaFormatter) formatJSONWithPrettyData(data *api.PrettyData) (string, error) {
+	output := sf.formatPrettyDataToMap(data)
 	formatter := formatters.NewJSONFormatter()
 	return formatter.Format(output)
 }
 
 // formatFieldValueForJSON formats a api.FieldValue for JSON output using Formatted()
 func (sf *SchemaFormatter) formatFieldValueForJSON(fieldValue api.FieldValue) interface{} {
-	formatted := fieldValue.Formatted()
+	// Always use formatted value if field has a special format (like currency, date, etc.)
+	if fieldValue.Field.Format != "" {
+		return fieldValue.Formatted()
+	}
 
-	// Try to preserve numeric types where possible
+	// Try to preserve numeric types where possible for fields without special formatting
 	switch fieldValue.Field.Type {
-	case "int":
+	case api.FieldTypeInt:
 		if fieldValue.IntValue != nil {
 			return *fieldValue.IntValue
 		}
-	case "float":
+	case api.FieldTypeFloat:
 		if fieldValue.FloatValue != nil {
 			return *fieldValue.FloatValue
 		}
-	case "boolean":
+	case api.FieldTypeBoolean:
 		if fieldValue.BooleanValue != nil {
 			return *fieldValue.BooleanValue
 		}
 	}
 
-	// For all other types (including dates), use the formatted string
-	return formatted
+	// For all other types, use the formatted string
+	return fieldValue.Formatted()
 }
 
 // formatYAMLWithPrettyData formats PrettyData as YAML using the same structure as JSON
 func (sf *SchemaFormatter) formatYAMLWithPrettyData(data *api.PrettyData) (string, error) {
-	output := make(map[string]interface{})
-
-	// Add all values using the same logic as JSON
-	for key, fieldValue := range data.Values {
-		if len(fieldValue.NestedFields) > 0 {
-			// Handle nested fields recursively
-			nestedOutput := make(map[string]interface{})
-			for nestedKey, nestedFieldValue := range fieldValue.NestedFields {
-				nestedOutput[nestedKey] = sf.formatFieldValueForJSON(nestedFieldValue)
-			}
-			output[key] = nestedOutput
-		} else {
-			output[key] = sf.formatFieldValueForJSON(fieldValue)
-		}
-	}
-
-	// Add all tables using the same logic as JSON
-	for key, tableRows := range data.Tables {
-		tableData := make([]map[string]interface{}, len(tableRows))
-		for i, row := range tableRows {
-			rowData := make(map[string]interface{})
-			for fieldName, fieldValue := range row {
-				rowData[fieldName] = sf.formatFieldValueForJSON(fieldValue)
-			}
-			tableData[i] = rowData
-		}
-		output[key] = tableData
-	}
-
+	output := sf.formatPrettyDataToMap(data)
 	formatter := formatters.NewYAMLFormatter()
 	return formatter.Format(output)
 }

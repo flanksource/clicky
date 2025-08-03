@@ -1,8 +1,8 @@
 package formatters
 
 import (
-	"github.com/flanksource/clicky/api"
 	"fmt"
+	"github.com/flanksource/clicky/api"
 	"html"
 	"strings"
 )
@@ -57,7 +57,7 @@ func (f *HTMLFormatter) Format(data *api.PrettyData) (string, error) {
 	// Process summary fields (non-table, non-hidden)
 	for _, field := range data.Schema.Fields {
 		// Skip table fields
-		if field.Format == "table" {
+		if field.Format == api.FormatTable {
 			continue
 		}
 
@@ -83,7 +83,7 @@ func (f *HTMLFormatter) Format(data *api.PrettyData) (string, error) {
 	// Then handle tables
 	for _, field := range data.Schema.Fields {
 		// Check for table format
-		if field.Format == "table" {
+		if field.Format == api.FormatTable {
 			tableData, exists := data.GetTable(field.Name)
 			if exists && len(tableData) > 0 {
 				// Add section title
@@ -94,10 +94,7 @@ func (f *HTMLFormatter) Format(data *api.PrettyData) (string, error) {
 				result.WriteString("            </div>\n")
 
 				// Format as table with Tailwind styling
-				tableHTML, err := f.formatTableDataHTML(tableData, field)
-				if err != nil {
-					return "", err
-				}
+				tableHTML := f.formatTableDataHTML(tableData, field)
 				result.WriteString(tableHTML)
 				result.WriteString("        </div>\n")
 			}
@@ -195,11 +192,11 @@ func (f *HTMLFormatter) formatFieldValueHTML(fieldValue api.FieldValue) string {
 	}
 
 	// Check for special formatting
-	if fieldValue.Field.Format == "currency" {
+	if fieldValue.Field.Format == api.FormatCurrency {
 		return fmt.Sprintf("<span class=\"text-green-600 font-medium\">%s</span>", html.EscapeString(formatted))
 	}
 
-	if fieldValue.Field.Format == "date" {
+	if fieldValue.Field.Format == api.FormatDate {
 		return fmt.Sprintf("<span class=\"text-blue-600\">%s</span>", html.EscapeString(formatted))
 	}
 
@@ -234,9 +231,9 @@ func (f *HTMLFormatter) formatNestedFieldValue(fieldValue api.FieldValue) string
 }
 
 // formatTableDataHTML formats table data for HTML output
-func (f *HTMLFormatter) formatTableDataHTML(rows []api.PrettyDataRow, field api.PrettyField) (string, error) {
+func (f *HTMLFormatter) formatTableDataHTML(rows []api.PrettyDataRow, field api.PrettyField) string {
 	if len(rows) == 0 {
-		return "            <p class=\"text-gray-500 text-center py-8\">No data available</p>", nil
+		return "            <p class=\"text-gray-500 text-center py-8\">No data available</p>"
 	}
 
 	var result strings.Builder
@@ -272,5 +269,5 @@ func (f *HTMLFormatter) formatTableDataHTML(rows []api.PrettyDataRow, field api.
 	result.WriteString("                </table>\n")
 	result.WriteString("            </div>\n")
 
-	return result.String(), nil
+	return result.String()
 }

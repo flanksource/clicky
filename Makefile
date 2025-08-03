@@ -1,11 +1,8 @@
 .PHONY: test build clean install
 
-# Run tests (focus on main functionality)
-test:
-	go test -v -run "Test(FormatterMatrix|DateFormatting|NestedMaps)" ./...
 
 # Run all tests (including legacy)
-test-all:
+test:
 	go test -v ./...
 
 # Run tests with coverage

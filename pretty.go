@@ -95,57 +95,7 @@ func (p *PrettyParser) parseStruct(val reflect.Value) (string, error) {
 
 // parsePrettyTag parses the pretty tag into a PrettyField
 func (p *PrettyParser) parsePrettyTag(tag string) api.PrettyField {
-	field := api.PrettyField{
-		FormatOptions: make(map[string]string),
-		ColorOptions:  make(map[string]string),
-	}
-
-	if tag == "" {
-		return field
-	}
-
-	parts := strings.Split(tag, ",")
-	for i, part := range parts {
-		part = strings.TrimSpace(part)
-
-		if i == 0 {
-			// First part is the main format
-			field.Format = part
-			continue
-		}
-
-		// Parse key=value pairs
-		if strings.Contains(part, "=") {
-			kv := strings.SplitN(part, "=", 2)
-			key := strings.TrimSpace(kv[0])
-			value := strings.TrimSpace(kv[1])
-
-			switch key {
-			case "sort":
-				field.FormatOptions["sort"] = value
-			case "dir", "direction":
-				field.FormatOptions["dir"] = value
-			case "format":
-				field.FormatOptions["format"] = value
-			case "digits":
-				field.FormatOptions["digits"] = value
-			case "green", "red", "blue", "yellow", "cyan", "magenta":
-				field.ColorOptions[key] = value
-			default:
-				field.FormatOptions[key] = value
-			}
-		} else {
-			// Simple flags
-			switch part {
-			case "asc", "desc":
-				field.FormatOptions["dir"] = part
-			default:
-				field.FormatOptions[part] = "true"
-			}
-		}
-	}
-
-	return field
+	return api.ParsePrettyTag(tag)
 }
 
 // formatField formats a single field
@@ -273,7 +223,7 @@ func (p *PrettyParser) formatWithColor(val reflect.Value, colorOptions map[strin
 			style := lipgloss.NewStyle()
 			if !p.NoColor {
 				switch color {
-				case "green":
+				case api.ColorGreen:
 					style = style.Foreground(p.Theme.Success)
 				case "red":
 					style = style.Foreground(p.Theme.Error)

@@ -28,18 +28,17 @@ type PrettyField struct {
 
 // PrettyTable represents table configuration
 type PrettyTable struct {
-	Title         string        `json:"title,omitempty" yaml:"title,omitempty"`
-	Fields        []PrettyField `json:"fields" yaml:"fields"`
+	Title         string                   `json:"title,omitempty" yaml:"title,omitempty"`
+	Fields        []PrettyField            `json:"fields" yaml:"fields"`
 	Rows          []map[string]interface{} `json:"rows,omitempty" yaml:"rows,omitempty"`
-	SortField     string        `json:"sort_field,omitempty" yaml:"sort_field,omitempty"`
-	SortDirection string        `json:"sort_direction,omitempty" yaml:"sort_direction,omitempty"`
+	SortField     string                   `json:"sort_field,omitempty" yaml:"sort_field,omitempty"`
+	SortDirection string                   `json:"sort_direction,omitempty" yaml:"sort_direction,omitempty"`
 }
 
 // PrettyObject represents a collection of fields
 type PrettyObject struct {
 	Fields []PrettyField `json:"fields" yaml:"fields"`
 }
-
 
 // FieldValue represents a parsed field value with type-safe accessors
 type FieldValue struct {
@@ -61,48 +60,48 @@ func (v FieldValue) Formatted() string {
 	if len(v.NestedFields) > 0 {
 		return v.formatNestedFields()
 	}
-	
+
 	// Use specific format based on field type and format
 	switch v.Field.Format {
 	case "currency":
 		return v.formatCurrency()
-	case "date":
+	case FieldTypeDate:
 		return v.formatDate()
-	case "float":
+	case FieldTypeFloat:
 		return v.formatFloat()
-	case "duration":
+	case FieldTypeDuration:
 		return v.formatDuration()
 	default:
 		// Default formatting based on type
 		switch v.Field.Type {
-		case "string":
+		case FieldTypeString:
 			if v.StringValue != nil {
 				return *v.StringValue
 			}
-		case "int":
+		case FieldTypeInt:
 			if v.IntValue != nil {
 				return fmt.Sprintf("%d", *v.IntValue)
 			}
-		case "float":
+		case FieldTypeFloat:
 			if v.FloatValue != nil {
 				return fmt.Sprintf("%f", *v.FloatValue)
 			}
-		case "boolean":
+		case FieldTypeBoolean:
 			if v.BooleanValue != nil {
 				return fmt.Sprintf("%t", *v.BooleanValue)
 			}
-		case "date":
+		case FieldTypeDate:
 			return v.formatDate()
-		case "duration":
+		case FieldTypeDuration:
 			return v.formatDuration()
-		case "array":
+		case FieldTypeArray:
 			return v.formatArray()
-		case "map":
+		case FieldTypeMap:
 			// Use the reflection-based map formatter with pretty field names
 			return v.Field.formatMapValueReflection(v.Value)
 		}
 	}
-	
+
 	// Fallback to string representation
 	return fmt.Sprintf("%v", v.Value)
 }
@@ -110,23 +109,23 @@ func (v FieldValue) Formatted() string {
 // formatNestedFields formats nested fields as struct-like fields (no braces)
 func (v FieldValue) formatNestedFields() string {
 	if len(v.NestedFields) == 0 {
-		return "(empty)"
+		return EmptyValue
 	}
-	
+
 	// Get sorted keys
 	keys := make([]string, 0, len(v.NestedFields))
 	for k := range v.NestedFields {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
-	
+
 	var lines []string
 	for _, key := range keys {
 		fieldValue := v.NestedFields[key]
 		// Pretty print the key name
 		prettyKey := v.Field.prettifyFieldName(key)
 		formatted := fieldValue.Formatted()
-		
+
 		// Handle nested formatting with proper indentation
 		if strings.Contains(formatted, "\n") {
 			// Multi-line value, indent it
@@ -138,10 +137,10 @@ func (v FieldValue) formatNestedFields() string {
 			}
 			formatted = "\n" + strings.Join(indentedLines, "\n")
 		}
-		
+
 		lines = append(lines, fmt.Sprintf("%s: %s", prettyKey, formatted))
 	}
-	
+
 	return strings.Join(lines, "\n")
 }
 
@@ -152,14 +151,14 @@ func (v FieldValue) formatCurrency() string {
 	if sym, ok := v.Field.FormatOptions["symbol"]; ok {
 		symbol = sym
 	}
-	
+
 	if v.FloatValue != nil {
 		return fmt.Sprintf("%s%.2f", symbol, *v.FloatValue)
 	}
 	if v.IntValue != nil {
 		return fmt.Sprintf("%s%d.00", symbol, *v.IntValue)
 	}
-	
+
 	// Try to parse from Value
 	if val, ok := v.Value.(float64); ok {
 		return fmt.Sprintf("%s%.2f", symbol, val)
@@ -167,28 +166,28 @@ func (v FieldValue) formatCurrency() string {
 	if val, ok := v.Value.(int); ok {
 		return fmt.Sprintf("%s%d.00", symbol, val)
 	}
-	
+
 	return fmt.Sprintf("%v", v.Value)
 }
 
 // formatDate formats a value as a date
 func (v FieldValue) formatDate() string {
-	format := "2006-01-02 15:04:05"
+	format := DateTimeFormat
 	if v.Field.DateFormat != "" {
 		format = v.Field.DateFormat
 	} else if f, ok := v.Field.FormatOptions["format"]; ok {
 		format = f
 	}
-	
+
 	// Handle special "epoch" format
 	if format == "epoch" {
-		format = "2006-01-02 15:04:05"
+		format = DateTimeFormat
 	}
-	
+
 	if v.TimeValue != nil {
 		return v.TimeValue.Format(format)
 	}
-	
+
 	// Try to parse from Value
 	switch val := v.Value.(type) {
 	case time.Time:
@@ -203,7 +202,7 @@ func (v FieldValue) formatDate() string {
 			return t.Format(format)
 		} else if t, err := time.Parse("2006-01-02", val); err == nil {
 			return t.Format(format)
-		} else if t, err := time.Parse("2006-01-02 15:04:05", val); err == nil {
+		} else if t, err := time.Parse(DateTimeFormat, val); err == nil {
 			return t.Format(format)
 		}
 		return val
@@ -216,7 +215,7 @@ func (v FieldValue) formatDate() string {
 		nsec := int64((val - float64(sec)) * 1e9)
 		return time.Unix(sec, nsec).Format(format)
 	}
-	
+
 	return fmt.Sprintf("%v", v.Value)
 }
 
@@ -228,18 +227,18 @@ func (v FieldValue) formatFloat() string {
 			digits = parsed
 		}
 	}
-	
+
 	format := fmt.Sprintf("%%.%df", digits)
-	
+
 	if v.FloatValue != nil {
 		return fmt.Sprintf(format, *v.FloatValue)
 	}
-	
+
 	// Try to parse from Value
 	if val, ok := v.Value.(float64); ok {
 		return fmt.Sprintf(format, val)
 	}
-	
+
 	return fmt.Sprintf("%v", v.Value)
 }
 
@@ -248,12 +247,12 @@ func (v FieldValue) formatDuration() string {
 	if val, ok := v.Value.(time.Duration); ok {
 		return val.String()
 	}
-	
+
 	// Try to parse as int64 (nanoseconds)
 	if val, ok := v.Value.(int64); ok {
 		return time.Duration(val).String()
 	}
-	
+
 	return fmt.Sprintf("%v", v.Value)
 }
 
@@ -266,7 +265,7 @@ func (v FieldValue) formatArray() string {
 		}
 		return "[" + strings.Join(strs, ", ") + "]"
 	}
-	
+
 	// Try reflection for other slice types
 	val := reflect.ValueOf(v.Value)
 	if val.Kind() == reflect.Slice {
@@ -276,7 +275,7 @@ func (v FieldValue) formatArray() string {
 		}
 		return "[" + strings.Join(strs, ", ") + "]"
 	}
-	
+
 	return fmt.Sprintf("%v", v.Value)
 }
 
@@ -285,7 +284,7 @@ func (v FieldValue) Color() string {
 	if v.Field.Color != "" {
 		return v.Field.Color
 	}
-	
+
 	// Check color options for matching values
 	valueStr := v.Formatted()
 	for color, pattern := range v.Field.ColorOptions {
@@ -293,7 +292,7 @@ func (v FieldValue) Color() string {
 			return color
 		}
 	}
-	
+
 	return ""
 }
 
@@ -303,13 +302,13 @@ func (v FieldValue) matchesColorPattern(value string, pattern string) bool {
 	if value == pattern {
 		return true
 	}
-	
+
 	// Handle numeric comparisons
-	if strings.HasPrefix(pattern, ">=") || strings.HasPrefix(pattern, ">") || 
-	   strings.HasPrefix(pattern, "<=") || strings.HasPrefix(pattern, "<") {
+	if strings.HasPrefix(pattern, ">=") || strings.HasPrefix(pattern, ">") ||
+		strings.HasPrefix(pattern, "<=") || strings.HasPrefix(pattern, "<") {
 		return v.matchesNumericPattern(value, pattern)
 	}
-	
+
 	// Handle pattern matching (simple contains for now)
 	return strings.Contains(strings.ToLower(value), strings.ToLower(pattern))
 }
@@ -319,7 +318,7 @@ func (v FieldValue) matchesNumericPattern(value string, pattern string) bool {
 	// Extract operator and threshold
 	var op string
 	var thresholdStr string
-	
+
 	if strings.HasPrefix(pattern, ">=") {
 		op = ">="
 		thresholdStr = strings.TrimSpace(pattern[2:])
@@ -335,13 +334,13 @@ func (v FieldValue) matchesNumericPattern(value string, pattern string) bool {
 	} else {
 		return false
 	}
-	
+
 	// Parse threshold
 	threshold, err := strconv.ParseFloat(thresholdStr, 64)
 	if err != nil {
 		return false
 	}
-	
+
 	// Parse value
 	var numValue float64
 	if v.FloatValue != nil {
@@ -356,7 +355,7 @@ func (v FieldValue) matchesNumericPattern(value string, pattern string) bool {
 		}
 		numValue = parsed
 	}
-	
+
 	// Compare
 	switch op {
 	case ">=":
@@ -368,7 +367,7 @@ func (v FieldValue) matchesNumericPattern(value string, pattern string) bool {
 	case "<":
 		return numValue < threshold
 	}
-	
+
 	return false
 }
 
@@ -398,41 +397,41 @@ func (f PrettyField) Parse(value interface{}) (FieldValue, error) {
 		Field: f,
 		Value: value,
 	}
-	
+
 	if value == nil {
 		return v, nil
 	}
-	
+
 	// Get the actual type for parsing
 	actualType := f.Type
 	if actualType == "" {
 		actualType = InferValueType(value)
 	}
-	
+
 	// Check for type mismatch between schema and actual data
 	inferredType := InferValueType(value)
-	if actualType == "struct" && inferredType == "map" {
+	if actualType == FieldTypeStruct && inferredType == FieldTypeMap {
 		actualType = "map"
 	}
-	
+
 	// Handle nested struct/map fields
-	if actualType == "struct" || actualType == "map" {
+	if actualType == FieldTypeStruct || actualType == FieldTypeMap {
 		// For nested structures, we'll handle them separately
 		// The parser will create nested FieldValues
 		return v, nil
 	}
-	
+
 	// Type conversion based on field type
 	switch actualType {
-	case "string":
+	case FieldTypeString:
 		if str, ok := value.(string); ok {
 			v.StringValue = &str
 		} else {
 			str := fmt.Sprintf("%v", value)
 			v.StringValue = &str
 		}
-		
-	case "int":
+
+	case FieldTypeInt:
 		switch val := value.(type) {
 		case int:
 			i := int64(val)
@@ -447,8 +446,8 @@ func (f PrettyField) Parse(value interface{}) (FieldValue, error) {
 				v.IntValue = &i
 			}
 		}
-		
-	case "float":
+
+	case FieldTypeFloat:
 		switch val := value.(type) {
 		case float64:
 			v.FloatValue = &val
@@ -463,8 +462,8 @@ func (f PrettyField) Parse(value interface{}) (FieldValue, error) {
 				v.FloatValue = &f
 			}
 		}
-		
-	case "boolean":
+
+	case FieldTypeBoolean:
 		switch val := value.(type) {
 		case bool:
 			v.BooleanValue = &val
@@ -473,8 +472,8 @@ func (f PrettyField) Parse(value interface{}) (FieldValue, error) {
 				v.BooleanValue = &b
 			}
 		}
-		
-	case "date":
+
+	case FieldTypeDate:
 		switch val := value.(type) {
 		case time.Time:
 			v.TimeValue = &val
@@ -487,7 +486,7 @@ func (f PrettyField) Parse(value interface{}) (FieldValue, error) {
 				v.TimeValue = &t
 			} else if t, err := time.Parse("2006-01-02", val); err == nil {
 				v.TimeValue = &t
-			} else if t, err := time.Parse("2006-01-02 15:04:05", val); err == nil {
+			} else if t, err := time.Parse(DateTimeFormat, val); err == nil {
 				v.TimeValue = &t
 			}
 		case int:
@@ -505,8 +504,8 @@ func (f PrettyField) Parse(value interface{}) (FieldValue, error) {
 			t := time.Unix(sec, nsec)
 			v.TimeValue = &t
 		}
-		
-	case "array":
+
+	case FieldTypeArray:
 		val := reflect.ValueOf(value)
 		if val.Kind() == reflect.Slice || val.Kind() == reflect.Array {
 			v.ArrayValue = make([]interface{}, val.Len())
@@ -514,14 +513,14 @@ func (f PrettyField) Parse(value interface{}) (FieldValue, error) {
 				v.ArrayValue[i] = val.Index(i).Interface()
 			}
 		}
-		
-	case "map":
+
+	case FieldTypeMap:
 		// For maps, we'll store the raw value and format it specially
 		if mapVal, ok := value.(map[string]interface{}); ok {
 			v.MapValue = mapVal
 		}
 	}
-	
+
 	return v, nil
 }
 
@@ -530,50 +529,50 @@ func InferValueType(value interface{}) string {
 	if value == nil {
 		return "nil"
 	}
-	
+
 	// Use reflection to check for maps and slices
 	val := reflect.ValueOf(value)
-	
+
 	switch val.Kind() {
 	case reflect.Map:
-		return "map"
+		return FieldTypeMap
 	case reflect.Struct:
 		// Check for time.Time
 		if _, ok := value.(time.Time); ok {
-			return "date"
+			return FieldTypeDate
 		}
 		// Check for time.Duration
 		if _, ok := value.(time.Duration); ok {
-			return "duration"
+			return FieldTypeDuration
 		}
-		return "struct"
+		return FieldTypeStruct
 	case reflect.Slice, reflect.Array:
-		return "array"
+		return FieldTypeArray
 	case reflect.String:
-		return "string"
+		return FieldTypeString
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		return "int"
+		return FieldTypeInt
 	case reflect.Float32, reflect.Float64:
-		return "float"
+		return FieldTypeFloat
 	case reflect.Bool:
-		return "boolean"
+		return FieldTypeBoolean
 	default:
 		// Also check concrete types
 		switch value.(type) {
 		case string:
-			return "string"
+			return FieldTypeString
 		case int, int64:
-			return "int"
+			return FieldTypeInt
 		case float64, float32:
-			return "float"
+			return FieldTypeFloat
 		case bool:
-			return "boolean"
+			return FieldTypeBoolean
 		case time.Time:
-			return "date"
+			return FieldTypeDate
 		case time.Duration:
-			return "duration"
+			return FieldTypeDuration
 		case map[string]interface{}:
-			return "map"
+			return FieldTypeMap
 		default:
 			return "unknown"
 		}
@@ -588,41 +587,41 @@ func (f PrettyField) FormatMapValue(mapVal map[string]interface{}) string {
 // formatMapValueWithIndent formats a map with specified indentation as struct-like fields (no braces)
 func (f PrettyField) formatMapValueWithIndent(mapVal map[string]interface{}, indentLevel int) string {
 	if len(mapVal) == 0 {
-		return "(empty)"
+		return EmptyValue
 	}
-	
+
 	// Get sorted keys
 	keys := make([]string, 0, len(mapVal))
 	for k := range mapVal {
 		keys = append(keys, k)
 	}
 	sort.Strings(keys)
-	
+
 	var lines []string
 	indent := strings.Repeat("\t", indentLevel)
-	
+
 	// Find field definitions from schema if available
 	fieldDefs := make(map[string]PrettyField)
 	for _, fieldDef := range f.Fields {
 		fieldDefs[fieldDef.Name] = fieldDef
 	}
-	
+
 	for _, key := range keys {
 		value := mapVal[key]
 		prettyKey := f.prettifyFieldName(key)
-		
+
 		var valueStr string
-		
+
 		// Check if we have a field definition for this key
 		if fieldDef, hasFieldDef := fieldDefs[key]; hasFieldDef {
 			// Format according to field definition
-			if fieldDef.Type == "date" || fieldDef.Format == "date" {
+			if fieldDef.Type == FieldTypeDate || fieldDef.Format == FieldTypeDate {
 				// Handle date formatting with schema
 				switch v := value.(type) {
 				case float64:
 					// Unix timestamp
 					t := time.Unix(int64(v), 0)
-					format := "2006-01-02 15:04:05"
+					format := DateTimeFormat
 					if fieldDef.DateFormat != "" {
 						format = fieldDef.DateFormat
 					} else if f, ok := fieldDef.FormatOptions["format"]; ok {
@@ -631,7 +630,7 @@ func (f PrettyField) formatMapValueWithIndent(mapVal map[string]interface{}, ind
 					valueStr = t.Format(format)
 				case int64:
 					t := time.Unix(v, 0)
-					format := "2006-01-02 15:04:05"
+					format := DateTimeFormat
 					if fieldDef.DateFormat != "" {
 						format = fieldDef.DateFormat
 					} else if f, ok := fieldDef.FormatOptions["format"]; ok {
@@ -670,7 +669,7 @@ func (f PrettyField) formatMapValueWithIndent(mapVal map[string]interface{}, ind
 				valueStr = fmt.Sprintf("%v", value)
 			}
 		}
-		
+
 		// Handle nested formatting - already includes newlines for multi-line values
 		if strings.HasPrefix(valueStr, "\n") {
 			lines = append(lines, fmt.Sprintf("%s%s:%s", indent, prettyKey, valueStr))
@@ -678,7 +677,7 @@ func (f PrettyField) formatMapValueWithIndent(mapVal map[string]interface{}, ind
 			lines = append(lines, fmt.Sprintf("%s%s: %s", indent, prettyKey, valueStr))
 		}
 	}
-	
+
 	return strings.Join(lines, "\n")
 }
 
@@ -695,19 +694,19 @@ func (f PrettyField) prettifyFieldName(name string) string {
 	words := strings.FieldsFunc(name, func(r rune) bool {
 		return r == '_' || r == '-'
 	})
-	
+
 	if len(words) == 0 {
 		// Handle camelCase
 		words = f.splitCamelCase(name)
 	}
-	
+
 	for i, word := range words {
 		if i > 0 {
 			result.WriteString(" ")
 		}
 		result.WriteString(strings.Title(strings.ToLower(word)))
 	}
-	
+
 	return result.String()
 }
 
@@ -715,7 +714,7 @@ func (f PrettyField) prettifyFieldName(name string) string {
 func (f PrettyField) splitCamelCase(s string) []string {
 	var words []string
 	var current strings.Builder
-	
+
 	for i, r := range s {
 		if i > 0 && (r >= 'A' && r <= 'Z') {
 			if current.Len() > 0 {
@@ -725,11 +724,11 @@ func (f PrettyField) splitCamelCase(s string) []string {
 		}
 		current.WriteRune(r)
 	}
-	
+
 	if current.Len() > 0 {
 		words = append(words, current.String())
 	}
-	
+
 	return words
 }
 
@@ -744,11 +743,11 @@ func (f PrettyField) formatMapValueReflectionWithIndent(value interface{}, inden
 	if val.Kind() != reflect.Map {
 		return fmt.Sprintf("%v", value)
 	}
-	
+
 	if val.Len() == 0 {
-		return "(empty)"
+		return EmptyValue
 	}
-	
+
 	// Get sorted keys
 	keys := val.MapKeys()
 	keyStrings := make([]string, len(keys))
@@ -756,22 +755,22 @@ func (f PrettyField) formatMapValueReflectionWithIndent(value interface{}, inden
 		keyStrings[i] = fmt.Sprintf("%v", key.Interface())
 	}
 	sort.Strings(keyStrings)
-	
+
 	var lines []string
 	indent := strings.Repeat("  ", indentLevel)
-	
+
 	for _, keyStr := range keyStrings {
 		keyVal := reflect.ValueOf(keyStr)
 		mapValue := val.MapIndex(keyVal)
-		
+
 		if !mapValue.IsValid() {
 			continue
 		}
-		
+
 		prettyKey := f.prettifyFieldName(keyStr)
 		var valueStr string
 		valueInterface := mapValue.Interface()
-		
+
 		// Handle nested maps recursively (also without braces)
 		if mapValue.Kind() == reflect.Map {
 			if reflect.ValueOf(valueInterface).Len() > 0 {
@@ -782,10 +781,10 @@ func (f PrettyField) formatMapValueReflectionWithIndent(value interface{}, inden
 		} else {
 			valueStr = fmt.Sprintf("%v", valueInterface)
 		}
-		
+
 		lines = append(lines, fmt.Sprintf("%s%s: %s", indent, prettyKey, valueStr))
 	}
-	
+
 	return strings.Join(lines, "\n")
 }
 
@@ -800,7 +799,7 @@ func (v FieldValue) GetNestedFieldKeys() []string {
 	if len(v.NestedFields) == 0 {
 		return nil
 	}
-	
+
 	keys := make([]string, 0, len(v.NestedFields))
 	for k := range v.NestedFields {
 		keys = append(keys, k)
@@ -830,6 +829,61 @@ func (v FieldValue) GetFieldType() string {
 	return v.Field.Type
 }
 
+// ParsePrettyTag parses a pretty tag string into a PrettyField
+func ParsePrettyTag(tag string) PrettyField {
+	field := PrettyField{
+		FormatOptions: make(map[string]string),
+		ColorOptions:  make(map[string]string),
+	}
+
+	if tag == "" {
+		return field
+	}
+
+	parts := strings.Split(tag, ",")
+	for i, part := range parts {
+		part = strings.TrimSpace(part)
+
+		if i == 0 {
+			// First part is the main format
+			field.Format = part
+			continue
+		}
+
+		// Parse key=value pairs
+		if strings.Contains(part, "=") {
+			kv := strings.SplitN(part, "=", 2)
+			key := strings.TrimSpace(kv[0])
+			value := strings.TrimSpace(kv[1])
+
+			switch key {
+			case "sort":
+				field.FormatOptions["sort"] = value
+			case "dir", "direction":
+				field.FormatOptions["dir"] = value
+			case "format":
+				field.FormatOptions["format"] = value
+			case "digits":
+				field.FormatOptions["digits"] = value
+			case ColorGreen, ColorRed, ColorBlue, "yellow", "cyan", "magenta":
+				field.ColorOptions[key] = value
+			default:
+				field.FormatOptions[key] = value
+			}
+		} else {
+			// Simple flags
+			switch part {
+			case SortAsc, SortDesc:
+				field.FormatOptions["dir"] = part
+			default:
+				field.FormatOptions[part] = "true"
+			}
+		}
+	}
+
+	return field
+}
+
 // PrettyData represents parsed data with schema and values
 type PrettyData struct {
 	Schema *PrettyObject
@@ -845,7 +899,7 @@ func (d *PrettyData) GetTableNames() []string {
 	if len(d.Tables) == 0 {
 		return nil
 	}
-	
+
 	names := make([]string, 0, len(d.Tables))
 	for name := range d.Tables {
 		names = append(names, name)
@@ -865,7 +919,7 @@ func (d *PrettyData) GetValueKeys() []string {
 	if len(d.Values) == 0 {
 		return nil
 	}
-	
+
 	keys := make([]string, 0, len(d.Values))
 	for k := range d.Values {
 		keys = append(keys, k)

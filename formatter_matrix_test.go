@@ -14,14 +14,14 @@ import (
 func TestFormatterMatrix(t *testing.T) {
 	// Create test data with nested maps and various date formats
 	testData := map[string]interface{}{
-		"id":            "TEST-001",
-		"name":          "Test Product",
-		"price":         299.99,
-		"active":        true,
-		"created_at":    "2024-01-15T10:30:00Z",     // RFC3339
-		"updated_at":    "1705315800",                // Unix timestamp as string
-		"processed_at":  1705315860,                  // Unix timestamp as int
-		"tags":          []string{"new", "featured"},
+		"id":           "TEST-001",
+		"name":         "Test Product",
+		"price":        299.99,
+		"active":       true,
+		"created_at":   "2024-01-15T10:30:00Z", // RFC3339
+		"updated_at":   "1705315800",           // Unix timestamp as string
+		"processed_at": 1705315860,             // Unix timestamp as int
+		"tags":         []string{"new", "featured"},
 		"metadata": map[string]interface{}{
 			"category": "electronics",
 			"brand":    "TechCorp",
@@ -235,9 +235,9 @@ func TestFormatterMatrix(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Formatter failed: %v", err)
 			}
-			
+
 			tc.validate(t, output)
-			
+
 			// Log output for debugging
 			t.Logf("%s Output:\n%s\n", tc.name, output)
 		})

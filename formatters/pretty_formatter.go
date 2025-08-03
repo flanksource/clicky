@@ -1,8 +1,8 @@
 package formatters
 
 import (
-	"github.com/flanksource/clicky/api"
 	"fmt"
+	"github.com/flanksource/clicky/api"
 	"reflect"
 	"sort"
 	"strings"
@@ -40,7 +40,7 @@ func (f *PrettyFormatter) formatStruct(obj *api.PrettyObject, val reflect.Value)
 
 	// First pass: separate table fields from summary fields
 	for _, field := range obj.Fields {
-		if field.Format == "table" {
+		if field.Format == api.FormatTable {
 			tableFields = append(tableFields, field)
 		} else {
 			summaryFields = append(summaryFields, field)
@@ -237,19 +237,19 @@ func (f *PrettyFormatter) formatValue(value interface{}, field api.PrettyField) 
 
 	// Apply specific styling based on format
 	switch field.Format {
-	case "currency":
+	case api.FormatCurrency:
 		style := lipgloss.NewStyle()
 		if !f.NoColor {
 			style = style.Foreground(f.Theme.Success)
 		}
 		return f.applyStyle(formatted, style)
-	case "date":
+	case api.FormatDate:
 		style := lipgloss.NewStyle()
 		if !f.NoColor {
 			style = style.Foreground(f.Theme.Info)
 		}
 		return f.applyStyle(formatted, style)
-	case "float":
+	case api.FormatFloat:
 		style := lipgloss.NewStyle()
 		if !f.NoColor {
 			style = style.Foreground(f.Theme.Secondary)
@@ -280,7 +280,7 @@ func (f *PrettyFormatter) formatNestedStruct(val reflect.Value, indentLevel int)
 
 		// Skip hidden fields
 		prettyTag := field.Tag.Get("pretty")
-		if strings.Contains(prettyTag, "hide") {
+		if strings.Contains(prettyTag, api.FormatHide) {
 			continue
 		}
 
@@ -416,7 +416,6 @@ func (f *PrettyFormatter) compareValues(a, b interface{}) bool {
 	// Handle different numeric types
 	if valA.Kind() >= reflect.Int && valA.Kind() <= reflect.Float64 &&
 		valB.Kind() >= reflect.Int && valB.Kind() <= reflect.Float64 {
-
 		var floatA, floatB float64
 
 		switch valA.Kind() {
@@ -627,6 +626,27 @@ func (f *PrettyFormatter) applyStyle(text string, style lipgloss.Style) string {
 	return style.Render(text)
 }
 
+// applyFormatStyle applies styling based on format type
+func (f *PrettyFormatter) applyFormatStyle(text string, format string) string {
+	if f.NoColor {
+		return text
+	}
+	
+	var style lipgloss.Style
+	switch format {
+	case api.FormatCurrency:
+		style = lipgloss.NewStyle().Foreground(f.Theme.Success)
+	case api.FormatDate:
+		style = lipgloss.NewStyle().Foreground(f.Theme.Info)
+	case api.FormatFloat:
+		style = lipgloss.NewStyle().Foreground(f.Theme.Secondary)
+	default:
+		return text
+	}
+	
+	return f.applyStyle(text, style)
+}
+
 // stripAnsi removes ANSI escape codes for width calculation
 func (f *PrettyFormatter) stripAnsi(s string) string {
 	// Simple ANSI stripping - in production you might want a more robust solution
@@ -678,7 +698,7 @@ func (f *PrettyFormatter) formatPrettyData(data *api.PrettyData) (string, error)
 
 	// Separate table fields from summary fields
 	for _, field := range data.Schema.Fields {
-		if field.Format == "table" {
+		if field.Format == api.FormatTable {
 			tableFields = append(tableFields, field)
 		} else {
 			summaryFields = append(summaryFields, field)
@@ -770,26 +790,7 @@ func (f *PrettyFormatter) formatFieldValueData(name string, val api.FieldValue) 
 		formatted = f.applyStyle(formatted, style)
 	} else {
 		// Apply format-specific styling
-		switch val.Field.Format {
-		case "currency":
-			style := lipgloss.NewStyle()
-			if !f.NoColor {
-				style = style.Foreground(f.Theme.Success)
-			}
-			formatted = f.applyStyle(formatted, style)
-		case "date":
-			style := lipgloss.NewStyle()
-			if !f.NoColor {
-				style = style.Foreground(f.Theme.Info)
-			}
-			formatted = f.applyStyle(formatted, style)
-		case "float":
-			style := lipgloss.NewStyle()
-			if !f.NoColor {
-				style = style.Foreground(f.Theme.Secondary)
-			}
-			formatted = f.applyStyle(formatted, style)
-		}
+		formatted = f.applyFormatStyle(formatted, val.Field.Format)
 	}
 
 	return fmt.Sprintf("%s: %s",
@@ -855,26 +856,7 @@ func (f *PrettyFormatter) formatTableData(rows []api.PrettyDataRow, field api.Pr
 					formatted = f.applyStyle(formatted, style)
 				} else {
 					// Apply format-specific styling
-					switch tableField.Format {
-					case "currency":
-						style := lipgloss.NewStyle()
-						if !f.NoColor {
-							style = style.Foreground(f.Theme.Success)
-						}
-						formatted = f.applyStyle(formatted, style)
-					case "date":
-						style := lipgloss.NewStyle()
-						if !f.NoColor {
-							style = style.Foreground(f.Theme.Info)
-						}
-						formatted = f.applyStyle(formatted, style)
-					case "float":
-						style := lipgloss.NewStyle()
-						if !f.NoColor {
-							style = style.Foreground(f.Theme.Secondary)
-						}
-						formatted = f.applyStyle(formatted, style)
-					}
+					formatted = f.applyFormatStyle(formatted, tableField.Format)
 				}
 
 				dataRow[i] = formatted
