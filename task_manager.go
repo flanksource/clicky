@@ -40,6 +40,8 @@ type LogEntry struct {
 // Task represents a single task being tracked by the TaskManager
 type Task struct {
 	name       string
+	modelName  string
+	prompt     string
 	status     TaskStatus
 	progress   int
 	maxValue   int
@@ -92,6 +94,20 @@ func WithTimeout(d time.Duration) TaskOption {
 func WithFunc(fn func(*Task) error) TaskOption {
 	return func(t *Task) {
 		t.runFunc = fn
+	}
+}
+
+// WithModel sets the model name for the task
+func WithModel(modelName string) TaskOption {
+	return func(t *Task) {
+		t.modelName = modelName
+	}
+}
+
+// WithPrompt sets the prompt for the task
+func WithPrompt(prompt string) TaskOption {
+	return func(t *Task) {
+		t.prompt = prompt
 	}
 }
 
@@ -261,7 +277,7 @@ func (tm *TaskManager) runTask(task *Task) {
 						Message: err.Error(),
 						Time:    time.Now(),
 					})
-				} else if task.status == StatusRunning {
+				} else {
 					// Only set success if still running (not cancelled/failed)
 					task.status = StatusSuccess
 				}
@@ -485,7 +501,7 @@ func (t *Task) Status() TaskStatus {
 }
 
 func (tm *TaskManager) render() {
-	ticker := time.NewTicker(100 * time.Millisecond)
+	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 
 	for {
@@ -521,6 +537,8 @@ func (tm *TaskManager) buildOutput(tasks []*Task, verbose bool) string {
 	for _, task := range tasks {
 		task.mu.Lock()
 		name := task.name
+		modelName := task.modelName
+		prompt := task.prompt
 		status := task.status
 		progress := task.progress
 		maxValue := task.maxValue
@@ -528,6 +546,9 @@ func (tm *TaskManager) buildOutput(tasks []*Task, verbose bool) string {
 		logs := make([]LogEntry, len(task.logs))
 		copy(logs, task.logs)
 		task.mu.Unlock()
+
+		// Format display name with model and prompt
+		displayName := tm.formatTaskName(name, modelName, prompt)
 
 		// Build log lines for this task
 		var taskLogs []string
@@ -550,22 +571,24 @@ func (tm *TaskManager) buildOutput(tasks []*Task, verbose bool) string {
 
 		switch status {
 		case StatusPending:
-			pending = append(pending, tm.styles.pending.Render(fmt.Sprintf("⏳ %s (pending)", name)))
+			pending = append(pending, tm.styles.pending.Render(fmt.Sprintf("⏳ %s (pending)", displayName)))
 			pending = append(pending, taskLogs...)
 		case StatusSuccess:
-			completed = append(completed, tm.styles.success.Render(fmt.Sprintf("✓ %s (%s)", name, duration)))
+			completed = append(completed, tm.styles.success.Render(fmt.Sprintf("✓ %s (%s)", displayName, duration)))
 			completed = append(completed, taskLogs...)
 		case StatusFailed:
-			completed = append(completed, tm.styles.failed.Render(fmt.Sprintf("✗ %s (%s)", name, duration)))
+			completed = append(completed, tm.styles.failed.Render(fmt.Sprintf("✗ %s (%s)", displayName, duration)))
 			completed = append(completed, taskLogs...)
 		case StatusWarning:
-			completed = append(completed, tm.styles.warning.Render(fmt.Sprintf("⚠ %s (%s)", name, duration)))
+			completed = append(completed, tm.styles.warning.Render(fmt.Sprintf("⚠ %s (%s)", displayName, duration)))
 			completed = append(completed, taskLogs...)
 		case StatusCancelled:
-			completed = append(completed, tm.styles.cancelled.Render(fmt.Sprintf("⊘ %s (%s)", name, duration)))
+			completed = append(completed, tm.styles.cancelled.Render(fmt.Sprintf("⊘ %s (%s)", displayName, duration)))
 			completed = append(completed, taskLogs...)
 		case StatusRunning:
-			bar := tm.renderProgressBar(name, progress, maxValue)
+			// Use width-aware formatting for running tasks to prevent wrapping
+			runningName := tm.formatTaskNameWithWidth(name, modelName, prompt, tm.width)
+			bar := tm.renderProgressBar(runningName, progress, maxValue, duration)
 			running = append(running, bar)
 			running = append(running, taskLogs...)
 		}
@@ -594,24 +617,79 @@ func (tm *TaskManager) buildOutput(tasks []*Task, verbose bool) string {
 	return output.String()
 }
 
-func (tm *TaskManager) renderProgressBar(name string, value, maxValue int) string {
-	if maxValue == 0 {
-		maxValue = 100
-	}
+func (tm *TaskManager) formatTaskName(name, modelName, prompt string) string {
+	return tm.formatTaskNameWithWidth(name, modelName, prompt, 0)
+}
 
+func (tm *TaskManager) formatTaskNameWithWidth(name, modelName, prompt string, maxWidth int) string {
+	var parts []string
+	
+	if modelName != "" {
+		parts = append(parts, modelName)
+	}
+	
+	if name != "" {
+		parts = append(parts, name)
+	}
+	
+	// Calculate available space for prompt if maxWidth is specified
+	currentLen := len(strings.Join(parts, " "))
+	if currentLen > 0 {
+		currentLen += 1 // for space
+	}
+	
+	if prompt != "" {
+		maxPromptLen := 50
+		if maxWidth > 0 {
+			// Reserve space for quotes, spinner/progress bar (35 chars), and duration (12 chars)
+			reservedSpace := 2 + 35 + 12 + 5 // quotes + progress + duration + padding
+			availableForPrompt := maxWidth - currentLen - reservedSpace
+			if availableForPrompt > 10 && availableForPrompt < maxPromptLen {
+				maxPromptLen = availableForPrompt
+			}
+		}
+		
+		truncatedPrompt := prompt
+		if len(prompt) > maxPromptLen {
+			truncatedPrompt = prompt[:maxPromptLen-3] + "..."
+		}
+		parts = append(parts, fmt.Sprintf("\"%s\"", truncatedPrompt))
+	}
+	
+	return strings.Join(parts, " ")
+}
+
+func (tm *TaskManager) renderProgressBar(name string, value, maxValue int, duration string) string {
+	barWidth := 30
+	
+	// If maxValue is 0 or unknown, show infinite spinner
+	if maxValue == 0 {
+		// Create a simple spinner animation
+		spinner := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+		spinnerIndex := (int(time.Now().UnixNano()/1e8) % len(spinner))
+		spinnerChar := spinner[spinnerIndex]
+		
+		// Show spinner with dots animation
+		dots := strings.Repeat("•", (int(time.Now().UnixNano()/1e9)%4)+1) + strings.Repeat(" ", 3-((int(time.Now().UnixNano()/1e9)%4)))
+		bar := spinnerChar + " " + dots + strings.Repeat("░", barWidth-6)
+		
+		return tm.styles.running.Render(fmt.Sprintf("⟳ %s ", name)) +
+			tm.styles.bar.Render(bar) +
+			tm.styles.running.Render(fmt.Sprintf(" (%s)", duration))
+	}
+	
+	// Regular progress bar
 	percentage := float64(value) / float64(maxValue)
 	if percentage > 1 {
 		percentage = 1
 	}
 
-	barWidth := 30
 	filled := int(percentage * float64(barWidth))
-
 	bar := strings.Repeat("█", filled) + strings.Repeat("░", barWidth-filled)
 
-	return tm.styles.running.Render(fmt.Sprintf("⟳ %-20s ", name)) +
+	return tm.styles.running.Render(fmt.Sprintf("⟳ %s ", name)) +
 		tm.styles.bar.Render(bar) +
-		tm.styles.running.Render(fmt.Sprintf(" %3d%%", int(percentage*100)))
+		tm.styles.running.Render(fmt.Sprintf(" %3d%% (%s)", int(percentage*100), duration))
 }
 
 func (t *Task) getDuration() string {
@@ -653,23 +731,26 @@ func (tm *TaskManager) Wait() int {
 		logs := make([]LogEntry, len(task.logs))
 		copy(logs, task.logs)
 
+		// Format display name with model and prompt for final output
+		displayName := tm.formatTaskName(task.name, task.modelName, task.prompt)
+
 		// Print task status
 		switch task.status {
 		case StatusPending:
-			fmt.Println(tm.styles.pending.Render(fmt.Sprintf("⏳ %s (not started)", task.name)))
+			fmt.Println(tm.styles.pending.Render(fmt.Sprintf("⏳ %s (not started)", displayName)))
 		case StatusRunning:
 			// Should not happen in Wait, but handle gracefully
-			fmt.Println(tm.styles.running.Render(fmt.Sprintf("⟳ %s (incomplete)", task.name)))
+			fmt.Println(tm.styles.running.Render(fmt.Sprintf("⟳ %s (incomplete)", displayName)))
 		case StatusSuccess:
-			fmt.Println(tm.styles.success.Render(fmt.Sprintf("✓ %s (%s)", task.name, duration)))
+			fmt.Println(tm.styles.success.Render(fmt.Sprintf("✓ %s (%s)", displayName, duration)))
 		case StatusFailed:
-			fmt.Println(tm.styles.failed.Render(fmt.Sprintf("✗ %s (%s)", task.name, duration)))
+			fmt.Println(tm.styles.failed.Render(fmt.Sprintf("✗ %s (%s)", displayName, duration)))
 			failed++
 		case StatusWarning:
-			fmt.Println(tm.styles.warning.Render(fmt.Sprintf("⚠ %s (%s)", task.name, duration)))
+			fmt.Println(tm.styles.warning.Render(fmt.Sprintf("⚠ %s (%s)", displayName, duration)))
 			warning++
 		case StatusCancelled:
-			fmt.Println(tm.styles.cancelled.Render(fmt.Sprintf("⊘ %s (%s)", task.name, duration)))
+			fmt.Println(tm.styles.cancelled.Render(fmt.Sprintf("⊘ %s (%s)", displayName, duration)))
 			cancelled++
 		}
 
