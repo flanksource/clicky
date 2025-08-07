@@ -16,8 +16,10 @@ import (
 type TaskStatus int
 
 const (
+	// StatusPending indicates the task is waiting to start
+	StatusPending TaskStatus = iota
 	// StatusRunning indicates the task is currently running
-	StatusRunning TaskStatus = iota
+	StatusRunning
 	// StatusSuccess indicates the task completed successfully
 	StatusSuccess
 	// StatusFailed indicates the task failed
@@ -48,26 +50,31 @@ type Task struct {
 	cancel     context.CancelFunc
 	ctx        context.Context
 	timeout    time.Duration
+	runFunc    func(*Task) error
+	err        error
 	mu         sync.Mutex
 }
 
 // TaskManager manages and displays multiple tasks with progress bars
 type TaskManager struct {
-	tasks      []*Task
-	mu         sync.RWMutex
-	wg         sync.WaitGroup
-	stopRender chan bool
-	width      int
-	verbose    bool
-	styles     struct {
-		success lipgloss.Style
-		failed  lipgloss.Style
-		warning lipgloss.Style
-		running lipgloss.Style
-		bar     lipgloss.Style
-		info    lipgloss.Style
-		error   lipgloss.Style
+	tasks         []*Task
+	mu            sync.RWMutex
+	wg            sync.WaitGroup
+	stopRender    chan bool
+	width         int
+	verbose       bool
+	maxConcurrent int
+	semaphore     chan struct{}
+	styles        struct {
+		success   lipgloss.Style
+		failed    lipgloss.Style
+		warning   lipgloss.Style
+		running   lipgloss.Style
+		bar       lipgloss.Style
+		info      lipgloss.Style
+		error     lipgloss.Style
 		cancelled lipgloss.Style
+		pending   lipgloss.Style
 	}
 }
 
@@ -81,8 +88,20 @@ func WithTimeout(d time.Duration) TaskOption {
 	}
 }
 
+// WithFunc sets the function to run for the task
+func WithFunc(fn func(*Task) error) TaskOption {
+	return func(t *Task) {
+		t.runFunc = fn
+	}
+}
+
 // NewTaskManager creates a new TaskManager instance
 func NewTaskManager() *TaskManager {
+	return NewTaskManagerWithConcurrency(0) // 0 means unlimited
+}
+
+// NewTaskManagerWithConcurrency creates a new TaskManager with concurrency limit
+func NewTaskManagerWithConcurrency(maxConcurrent int) *TaskManager {
 	width, _, err := term.GetSize(int(os.Stdout.Fd()))
 	if err != nil {
 		width = 80
@@ -92,10 +111,15 @@ func NewTaskManager() *TaskManager {
 	}
 
 	tm := &TaskManager{
-		tasks:      make([]*Task, 0),
-		stopRender: make(chan bool, 1),
-		width:      width,
-		verbose:    os.Getenv("VERBOSE") != "" || os.Getenv("DEBUG") != "",
+		tasks:         make([]*Task, 0),
+		stopRender:    make(chan bool, 1),
+		width:         width,
+		verbose:       os.Getenv("VERBOSE") != "" || os.Getenv("DEBUG") != "",
+		maxConcurrent: maxConcurrent,
+	}
+
+	if maxConcurrent > 0 {
+		tm.semaphore = make(chan struct{}, maxConcurrent)
 	}
 
 	tm.styles.success = lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
@@ -106,6 +130,7 @@ func NewTaskManager() *TaskManager {
 	tm.styles.info = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 	tm.styles.error = lipgloss.NewStyle().Foreground(lipgloss.Color("9"))
 	tm.styles.cancelled = lipgloss.NewStyle().Foreground(lipgloss.Color("13"))
+	tm.styles.pending = lipgloss.NewStyle().Foreground(lipgloss.Color("7"))
 
 	go tm.render()
 	return tm
@@ -118,6 +143,33 @@ func (tm *TaskManager) SetVerbose(verbose bool) {
 	tm.verbose = verbose
 }
 
+// SetMaxConcurrent sets the maximum number of concurrent tasks
+func (tm *TaskManager) SetMaxConcurrent(max int) {
+	tm.mu.Lock()
+	defer tm.mu.Unlock()
+	
+	if tm.maxConcurrent == max {
+		return
+	}
+	
+	tm.maxConcurrent = max
+	if max > 0 {
+		// Create new semaphore with new size
+		newSem := make(chan struct{}, max)
+		// Transfer existing permits if any
+		if tm.semaphore != nil {
+			close(tm.semaphore)
+		}
+		tm.semaphore = newSem
+	} else {
+		// Unlimited concurrency
+		if tm.semaphore != nil {
+			close(tm.semaphore)
+			tm.semaphore = nil
+		}
+	}
+}
+
 // Start creates and starts tracking a new task with optional timeout
 func (tm *TaskManager) Start(name string, opts ...TaskOption) *Task {
 	tm.mu.Lock()
@@ -127,7 +179,7 @@ func (tm *TaskManager) Start(name string, opts ...TaskOption) *Task {
 	
 	task := &Task{
 		name:      name,
-		status:    StatusRunning,
+		status:    StatusPending,
 		progress:  0,
 		maxValue:  100,
 		startTime: time.Now(),
@@ -143,35 +195,114 @@ func (tm *TaskManager) Start(name string, opts ...TaskOption) *Task {
 
 	// Set up timeout if specified
 	if task.timeout > 0 {
+		timeoutCtx, timeoutCancel := context.WithTimeout(ctx, task.timeout)
+		task.ctx = timeoutCtx
+		oldCancel := task.cancel
+		task.cancel = func() {
+			timeoutCancel()
+			oldCancel()
+		}
+	}
+
+	tm.tasks = append(tm.tasks, task)
+	tm.wg.Add(1)
+
+	// Start the task execution
+	go tm.runTask(task)
+
+	return task
+}
+
+// runTask executes a task respecting concurrency limits
+func (tm *TaskManager) runTask(task *Task) {
+	defer tm.wg.Done()
+
+	// Acquire semaphore if concurrency is limited
+	if tm.semaphore != nil {
+		select {
+		case tm.semaphore <- struct{}{}:
+			defer func() { <-tm.semaphore }()
+		case <-task.ctx.Done():
+			task.mu.Lock()
+			if task.status == StatusPending {
+				task.status = StatusCancelled
+				task.endTime = time.Now()
+			}
+			task.mu.Unlock()
+			return
+		}
+	}
+
+	// Mark as running
+	task.mu.Lock()
+	if task.status == StatusPending {
+		task.status = StatusRunning
+		task.startTime = time.Now()
+	}
+	task.mu.Unlock()
+
+	// Run the task function if provided
+	if task.runFunc != nil {
+		// Monitor context for cancellation/timeout
+		done := make(chan error, 1)
 		go func() {
-			timer := time.NewTimer(task.timeout)
-			defer timer.Stop()
-			
-			select {
-			case <-timer.C:
-				task.mu.Lock()
-				if task.status == StatusRunning {
+			done <- task.runFunc(task)
+		}()
+
+		select {
+		case err := <-done:
+			task.mu.Lock()
+			if task.status == StatusRunning {
+				if err != nil {
+					task.err = err
 					task.status = StatusFailed
-					task.endTime = time.Now()
+					task.logs = append(task.logs, LogEntry{
+						Level:   "error",
+						Message: err.Error(),
+						Time:    time.Now(),
+					})
+				} else if task.status == StatusRunning {
+					// Only set success if still running (not cancelled/failed)
+					task.status = StatusSuccess
+				}
+				task.endTime = time.Now()
+			}
+			task.mu.Unlock()
+			
+		case <-task.ctx.Done():
+			task.mu.Lock()
+			if task.status == StatusRunning {
+				if task.ctx.Err() == context.DeadlineExceeded {
+					task.status = StatusFailed
 					task.logs = append(task.logs, LogEntry{
 						Level:   "error",
 						Message: fmt.Sprintf("Task timed out after %v", task.timeout),
 						Time:    time.Now(),
 					})
-					task.mu.Unlock()
-					task.manager.wg.Done()
 				} else {
-					task.mu.Unlock()
+					task.status = StatusCancelled
 				}
-			case <-ctx.Done():
-				return
+				task.endTime = time.Now()
 			}
-		}()
+			task.mu.Unlock()
+		}
 	}
+}
 
-	tm.tasks = append(tm.tasks, task)
-	tm.wg.Add(1)
-	return task
+// Run starts all tasks and waits for completion
+func (tm *TaskManager) Run() error {
+	tm.Wait()
+	
+	// Check if any tasks failed
+	tm.mu.RLock()
+	defer tm.mu.RUnlock()
+	
+	for _, task := range tm.tasks {
+		if task.err != nil {
+			return fmt.Errorf("task %s failed: %w", task.name, task.err)
+		}
+	}
+	return nil
 }
 
 // Context returns the task's context for cancellation
@@ -182,14 +313,14 @@ func (t *Task) Context() context.Context {
 // Cancel cancels the task
 func (t *Task) Cancel() {
 	t.mu.Lock()
-	if t.status == StatusRunning {
+	if t.status == StatusPending || t.status == StatusRunning {
 		t.status = StatusCancelled
 		t.endTime = time.Now()
 		if t.cancel != nil {
 			t.cancel()
 		}
 		t.mu.Unlock()
-		t.manager.wg.Done()
+		// Don't call wg.Done() here - let runTask handle it
 	} else {
 		t.mu.Unlock()
 	}
@@ -261,48 +392,62 @@ func (t *Task) SetProgress(value, max int) {
 // Success marks the task as successfully completed
 func (t *Task) Success() {
 	t.mu.Lock()
+	defer t.mu.Unlock()
+	
 	if t.status == StatusRunning {
 		t.status = StatusSuccess
 		t.endTime = time.Now()
 		if t.cancel != nil {
 			t.cancel()
 		}
-		t.mu.Unlock()
-		t.manager.wg.Done()
-	} else {
-		t.mu.Unlock()
 	}
 }
 
 // Failed marks the task as failed
 func (t *Task) Failed() {
 	t.mu.Lock()
+	defer t.mu.Unlock()
+	
 	if t.status == StatusRunning {
 		t.status = StatusFailed
 		t.endTime = time.Now()
 		if t.cancel != nil {
 			t.cancel()
 		}
-		t.mu.Unlock()
-		t.manager.wg.Done()
-	} else {
-		t.mu.Unlock()
+	}
+}
+
+// FailedWithError marks the task as failed with an error
+func (t *Task) FailedWithError(err error) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	
+	if t.status == StatusRunning {
+		t.status = StatusFailed
+		t.err = err
+		t.endTime = time.Now()
+		t.logs = append(t.logs, LogEntry{
+			Level:   "error",
+			Message: err.Error(),
+			Time:    time.Now(),
+		})
+		if t.cancel != nil {
+			t.cancel()
+		}
 	}
 }
 
 // Warning marks the task as completed with warnings
 func (t *Task) Warning() {
 	t.mu.Lock()
+	defer t.mu.Unlock()
+	
 	if t.status == StatusRunning {
 		t.status = StatusWarning
 		t.endTime = time.Now()
 		if t.cancel != nil {
 			t.cancel()
 		}
-		t.mu.Unlock()
-		t.manager.wg.Done()
-	} else {
-		t.mu.Unlock()
 	}
 }
 
@@ -310,12 +455,12 @@ func (t *Task) Warning() {
 func (t *Task) Fatal(err error) {
 	t.mu.Lock()
 	t.status = StatusFailed
+	t.err = err
 	t.endTime = time.Now()
 	if t.cancel != nil {
 		t.cancel()
 	}
 	t.mu.Unlock()
-	t.manager.wg.Done()
 
 	t.manager.mu.Lock()
 	t.manager.stopRender <- true
@@ -323,6 +468,20 @@ func (t *Task) Fatal(err error) {
 
 	fmt.Fprintf(os.Stderr, "\n✗ Fatal: %s: %v\n", t.name, err)
 	os.Exit(1)
+}
+
+// Error returns the task's error if any
+func (t *Task) Error() error {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.err
+}
+
+// Status returns the current task status
+func (t *Task) Status() TaskStatus {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.status
 }
 
 func (tm *TaskManager) render() {
@@ -355,8 +514,9 @@ func (tm *TaskManager) render() {
 }
 
 func (tm *TaskManager) buildOutput(tasks []*Task, verbose bool) string {
-	var completed []string
+	var pending []string
 	var running []string
+	var completed []string
 
 	for _, task := range tasks {
 		task.mu.Lock()
@@ -389,6 +549,9 @@ func (tm *TaskManager) buildOutput(tasks []*Task, verbose bool) string {
 		}
 
 		switch status {
+		case StatusPending:
+			pending = append(pending, tm.styles.pending.Render(fmt.Sprintf("⏳ %s (pending)", name)))
+			pending = append(pending, taskLogs...)
 		case StatusSuccess:
 			completed = append(completed, tm.styles.success.Render(fmt.Sprintf("✓ %s (%s)", name, duration)))
 			completed = append(completed, taskLogs...)
@@ -409,11 +572,21 @@ func (tm *TaskManager) buildOutput(tasks []*Task, verbose bool) string {
 	}
 
 	var output strings.Builder
+	
+	// Show completed tasks first
 	for _, line := range completed {
 		output.WriteString(line)
 		output.WriteString("\n")
 	}
+	
+	// Then running tasks
 	for _, line := range running {
+		output.WriteString(line)
+		output.WriteString("\n")
+	}
+	
+	// Finally pending tasks
+	for _, line := range pending {
 		output.WriteString(line)
 		output.WriteString("\n")
 	}
@@ -482,6 +655,8 @@ func (tm *TaskManager) Wait() int {
 
 		// Print task status
 		switch task.status {
+		case StatusPending:
+			fmt.Println(tm.styles.pending.Render(fmt.Sprintf("⏳ %s (not started)", task.name)))
 		case StatusRunning:
 			// Should not happen in Wait, but handle gracefully
 			fmt.Println(tm.styles.running.Render(fmt.Sprintf("⟳ %s (incomplete)", task.name)))
