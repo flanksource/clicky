@@ -6,8 +6,11 @@ import (
 	"math"
 	"math/rand"
 	"os"
+	"os/signal"
+	"reflect"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
@@ -31,6 +34,28 @@ const (
 	// StatusCancelled indicates the task was cancelled
 	StatusCancelled
 )
+
+// Waitable represents something that can be waited on (Task or TaskGroup)
+type Waitable interface {
+	Name() string
+	Status() TaskStatus
+	WaitFor() *WaitResult
+	Context() context.Context
+	Cancel()
+	Duration() time.Duration
+	IsGroup() bool
+}
+
+// WaitResult contains unified result information
+type WaitResult struct {
+	Status       TaskStatus
+	Duration     time.Duration
+	Error        error
+	TaskCount    int // Number of individual tasks (1 for Task, N for TaskGroup)
+	SuccessCount int // Number of successful tasks
+	FailureCount int // Number of failed tasks
+	WarningCount int // Number of tasks with warnings
+}
 
 // LogEntry represents a log message from a task
 type LogEntry struct {
@@ -61,6 +86,15 @@ func DefaultRetryConfig() RetryConfig {
 	}
 }
 
+// TaskFunc is a generic task function that returns a typed result
+type TaskFunc[T any] func(*Task) (T, error)
+
+// TaskResult holds a typed result and error
+type TaskResult[T any] struct {
+	Result T
+	Error  error
+}
+
 // Task represents a single task being tracked by the TaskManager
 type Task struct {
 	name        string
@@ -81,11 +115,17 @@ type Task struct {
 	mu          sync.Mutex
 	retryConfig RetryConfig
 	retryCount  int
+	parent      *TaskGroup // Reference to parent group (nil if ungrouped)
+	
+	// Generic result storage
+	result      interface{}
+	resultType  reflect.Type
 }
 
 // TaskManager manages and displays multiple tasks with progress bars
 type TaskManager struct {
 	tasks         []*Task
+	groups        []*TaskGroup
 	mu            sync.RWMutex
 	wg            sync.WaitGroup
 	stopRender    chan bool
@@ -95,6 +135,7 @@ type TaskManager struct {
 	semaphore     chan struct{}
 	retryConfig   RetryConfig
 	isInteractive bool
+	renderer      *lipgloss.Renderer
 	styles        struct {
 		success   lipgloss.Style
 		failed    lipgloss.Style
@@ -106,6 +147,27 @@ type TaskManager struct {
 		cancelled lipgloss.Style
 		pending   lipgloss.Style
 	}
+	
+	// Signal management
+	signalChan       chan os.Signal
+	signalRegistered bool
+	gracefulTimeout  time.Duration
+	onInterrupt      func() // optional cleanup callback
+	signalMu         sync.Mutex
+	shutdownOnce     sync.Once
+}
+
+// TaskGroup represents a group of tasks that can be managed collectively
+type TaskGroup struct {
+	name      string
+	items     []Waitable // Can contain Tasks or nested TaskGroups
+	status    TaskStatus
+	startTime time.Time
+	endTime   time.Time
+	manager   *TaskManager
+	ctx       context.Context
+	cancel    context.CancelFunc
+	mu        sync.RWMutex
 }
 
 // TaskOption configures task creation
@@ -164,31 +226,41 @@ func NewTaskManagerWithConcurrency(maxConcurrent int) *TaskManager {
 
 	// Check if stderr is a terminal (for interactive mode)
 	isInteractive := term.IsTerminal(int(os.Stderr.Fd()))
-	
+
+	// Create a renderer that outputs to stderr for proper color detection
+	renderer := lipgloss.NewRenderer(os.Stderr)
+
 	tm := &TaskManager{
-		tasks:         make([]*Task, 0),
-		stopRender:    make(chan bool, 1),
-		width:         width,
-		verbose:       os.Getenv("VERBOSE") != "" || os.Getenv("DEBUG") != "",
-		maxConcurrent: maxConcurrent,
-		retryConfig:   DefaultRetryConfig(),
-		isInteractive: isInteractive,
+		tasks:           make([]*Task, 0),
+		groups:          make([]*TaskGroup, 0),
+		stopRender:      make(chan bool, 1),
+		width:           width,
+		verbose:         os.Getenv("VERBOSE") != "" || os.Getenv("DEBUG") != "",
+		maxConcurrent:   maxConcurrent,
+		retryConfig:     DefaultRetryConfig(),
+		isInteractive:   isInteractive,
+		renderer:        renderer,
+		gracefulTimeout: 10 * time.Second, // Default 10 second graceful shutdown
 	}
 
 	if maxConcurrent > 0 {
 		tm.semaphore = make(chan struct{}, maxConcurrent)
 	}
 
-	tm.styles.success = lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
-	tm.styles.failed = lipgloss.NewStyle().Foreground(lipgloss.Color("9"))
-	tm.styles.warning = lipgloss.NewStyle().Foreground(lipgloss.Color("11"))
-	tm.styles.running = lipgloss.NewStyle().Foreground(lipgloss.Color("14"))
-	tm.styles.bar = lipgloss.NewStyle().Foreground(lipgloss.Color("12"))
-	tm.styles.info = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
-	tm.styles.error = lipgloss.NewStyle().Foreground(lipgloss.Color("9"))
-	tm.styles.cancelled = lipgloss.NewStyle().Foreground(lipgloss.Color("13"))
-	tm.styles.pending = lipgloss.NewStyle().Foreground(lipgloss.Color("7"))
+	// Use the stderr renderer for creating styles
+	tm.styles.success = renderer.NewStyle().Foreground(lipgloss.Color("10"))
+	tm.styles.failed = renderer.NewStyle().Foreground(lipgloss.Color("9"))
+	tm.styles.warning = renderer.NewStyle().Foreground(lipgloss.Color("11"))
+	tm.styles.running = renderer.NewStyle().Foreground(lipgloss.Color("14"))
+	tm.styles.bar = renderer.NewStyle().Foreground(lipgloss.Color("12"))
+	tm.styles.info = renderer.NewStyle().Foreground(lipgloss.Color("8"))
+	tm.styles.error = renderer.NewStyle().Foreground(lipgloss.Color("9"))
+	tm.styles.cancelled = renderer.NewStyle().Foreground(lipgloss.Color("13"))
+	tm.styles.pending = renderer.NewStyle().Foreground(lipgloss.Color("7"))
 
+	// Register signal handling by default
+	tm.registerSignalHandling()
+	
 	// Only start interactive rendering if stderr is a terminal
 	if tm.isInteractive {
 		go tm.render()
@@ -237,6 +309,34 @@ func (tm *TaskManager) SetRetryConfig(config RetryConfig) {
 	tm.retryConfig = config
 }
 
+// SetGracefulTimeout sets the timeout for graceful shutdown
+func (tm *TaskManager) SetGracefulTimeout(timeout time.Duration) {
+	tm.signalMu.Lock()
+	defer tm.signalMu.Unlock()
+	tm.gracefulTimeout = timeout
+}
+
+// SetInterruptHandler sets a custom callback to be called on interrupt
+// This is useful for cleanup operations that need to happen before task cancellation
+func (tm *TaskManager) SetInterruptHandler(fn func()) {
+	tm.signalMu.Lock()
+	defer tm.signalMu.Unlock()
+	tm.onInterrupt = fn
+}
+
+// DisableSignalHandling disables automatic signal handling
+// Call this if you want to handle signals manually in your application
+func (tm *TaskManager) DisableSignalHandling() {
+	tm.signalMu.Lock()
+	defer tm.signalMu.Unlock()
+	
+	if tm.signalRegistered && tm.signalChan != nil {
+		signal.Stop(tm.signalChan)
+		close(tm.signalChan)
+		tm.signalRegistered = false
+	}
+}
+
 // Start creates and starts tracking a new task with optional timeout
 func (tm *TaskManager) Start(name string, opts ...TaskOption) *Task {
 	tm.mu.Lock()
@@ -282,6 +382,94 @@ func (tm *TaskManager) Start(name string, opts ...TaskOption) *Task {
 	return task
 }
 
+// StartWithResult creates and starts tracking a new task with typed result handling
+func (tm *TaskManager) StartWithResult(name string, taskFunc func(*Task) (interface{}, error), opts ...TaskOption) *Task {
+	tm.mu.Lock()
+	defer tm.mu.Unlock()
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	task := &Task{
+		name:        name,
+		status:      StatusPending,
+		progress:    0,
+		maxValue:    100,
+		startTime:   time.Now(),
+		manager:     tm,
+		logs:        make([]LogEntry, 0),
+		cancel:      cancel,
+		ctx:         ctx,
+		retryConfig: tm.retryConfig,
+		retryCount:  0,
+	}
+
+	// Wrap the result function in a regular func(*Task) error
+	task.runFunc = func(t *Task) error {
+		result, err := taskFunc(t)
+		if err != nil {
+			t.err = err
+			return err
+		}
+		// Store the result
+		t.mu.Lock()
+		t.result = result
+		if result != nil {
+			t.resultType = reflect.TypeOf(result)
+		}
+		t.mu.Unlock()
+		return nil
+	}
+
+	for _, opt := range opts {
+		opt(task)
+	}
+
+	// Set up timeout if specified
+	if task.timeout > 0 {
+		ctx, cancel = context.WithTimeout(ctx, task.timeout)
+		task.ctx = ctx
+		task.cancel = cancel
+	}
+
+	tm.tasks = append(tm.tasks, task)
+	tm.wg.Add(1)
+
+	// Start the task execution
+	go tm.runTask(task)
+
+	return task
+}
+
+// StartGroup creates and starts tracking a new task group
+func (tm *TaskManager) StartGroup(name string) *TaskGroup {
+	tm.mu.Lock()
+	defer tm.mu.Unlock()
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	group := &TaskGroup{
+		name:      name,
+		items:     make([]Waitable, 0),
+		status:    StatusPending,
+		startTime: time.Now(),
+		manager:   tm,
+		ctx:       ctx,
+		cancel:    cancel,
+	}
+
+	// Add to groups list for tracking
+	tm.groups = append(tm.groups, group)
+
+	return group
+}
+
+// StartTaskInGroup creates and starts a task within an existing group
+func (tm *TaskManager) StartTaskInGroup(group *TaskGroup, name string, opts ...TaskOption) *Task {
+	task := tm.Start(name, opts...)
+	group.Add(task)
+	return task
+}
+
 // runTask executes a task respecting concurrency limits
 func (tm *TaskManager) runTask(task *Task) {
 	defer tm.wg.Done()
@@ -307,6 +495,11 @@ func (tm *TaskManager) runTask(task *Task) {
 	if task.status == StatusPending {
 		task.status = StatusRunning
 		task.startTime = time.Now()
+		// Print start message in non-interactive mode
+		if !tm.isInteractive {
+			displayName := tm.formatTaskName(task.name, task.modelName, task.prompt)
+			fmt.Fprintln(os.Stderr, tm.styles.running.Render(fmt.Sprintf("⟳ Starting %s", displayName)))
+		}
 	}
 	task.mu.Unlock()
 
@@ -479,15 +672,191 @@ func (t *Task) Cancel() {
 	}
 }
 
-// CancelAll cancels all running tasks
+// CancelAll cancels all running tasks and groups
 func (tm *TaskManager) CancelAll() {
 	tm.mu.RLock()
 	tasks := make([]*Task, len(tm.tasks))
 	copy(tasks, tm.tasks)
+	groups := make([]*TaskGroup, len(tm.groups))
+	copy(groups, tm.groups)
 	tm.mu.RUnlock()
 
+	// Cancel all tasks
 	for _, task := range tasks {
 		task.Cancel()
+	}
+	
+	// Cancel all groups
+	for _, group := range groups {
+		group.Cancel()
+	}
+}
+
+// ClearTasks removes all completed tasks from the task list
+// This is useful for long-running processes that need to reset the task list
+// Note: This does NOT cancel running tasks - use CancelAll() for that
+func (tm *TaskManager) ClearTasks() {
+	tm.mu.Lock()
+	defer tm.mu.Unlock()
+	
+	// Only keep running or pending tasks
+	var activeTasks []*Task
+	for _, task := range tm.tasks {
+		task.mu.Lock()
+		status := task.status
+		task.mu.Unlock()
+		
+		if status == StatusPending || status == StatusRunning {
+			activeTasks = append(activeTasks, task)
+		}
+	}
+	
+	tm.tasks = activeTasks
+}
+
+// registerSignalHandling sets up signal handling for graceful shutdown
+func (tm *TaskManager) registerSignalHandling() {
+	tm.signalMu.Lock()
+	defer tm.signalMu.Unlock()
+	
+	if tm.signalRegistered {
+		return // Already registered
+	}
+	
+	tm.signalChan = make(chan os.Signal, 2) // Buffer for 2 signals (graceful + hard)
+	signal.Notify(tm.signalChan, os.Interrupt, syscall.SIGTERM)
+	tm.signalRegistered = true
+	
+	// Start signal handler goroutine
+	go tm.handleSignals()
+}
+
+// handleSignals processes incoming signals for graceful and hard shutdown
+func (tm *TaskManager) handleSignals() {
+	firstSignal := true
+	
+	for sig := range tm.signalChan {
+		if firstSignal {
+			// First signal: initiate graceful shutdown
+			firstSignal = false
+			go tm.gracefulShutdown(sig)
+			
+			// Set up a timer for the second signal (hard exit)
+			go func() {
+				select {
+				case <-time.After(tm.gracefulTimeout):
+					// Timeout reached, proceed with hard exit anyway
+					tm.hardExit("timeout")
+				case <-tm.signalChan:
+					// Second signal received, immediate hard exit
+					tm.hardExit("forced")
+				}
+			}()
+		} else {
+			// Additional signals after first: immediate hard exit
+			tm.hardExit("multiple signals")
+			return
+		}
+	}
+}
+
+// gracefulShutdown initiates graceful shutdown process
+func (tm *TaskManager) gracefulShutdown(sig os.Signal) {
+	tm.shutdownOnce.Do(func() {
+		fmt.Fprintf(os.Stderr, "\n🛑 Received %v - initiating graceful shutdown...\n", sig)
+		fmt.Fprintf(os.Stderr, "   Press Ctrl+C again to force immediate exit\n\n")
+		
+		// Call user-defined interrupt handler if provided
+		if tm.onInterrupt != nil {
+			tm.onInterrupt()
+		}
+		
+		// Cancel all running tasks
+		tm.CancelAll()
+		
+		// Wait for tasks to complete with timeout
+		done := make(chan bool, 1)
+		go func() {
+			tm.wg.Wait()
+			done <- true
+		}()
+		
+		select {
+		case <-done:
+			// All tasks completed gracefully
+			fmt.Fprintf(os.Stderr, "✅ All tasks completed gracefully\n")
+			tm.displayFinalSummary()
+			os.Exit(0)
+			
+		case <-time.After(tm.gracefulTimeout):
+			// Timeout reached
+			fmt.Fprintf(os.Stderr, "⏰ Graceful shutdown timeout reached\n")
+			tm.displayFinalSummary()
+			os.Exit(1)
+		}
+	})
+}
+
+// hardExit performs immediate forced exit
+func (tm *TaskManager) hardExit(reason string) {
+	fmt.Fprintf(os.Stderr, "\n💥 Force exit (%s) - terminating immediately\n", reason)
+	
+	// Cancel all tasks immediately (best effort)
+	tm.CancelAll()
+	
+	// Brief summary without waiting
+	tm.displayBriefSummary()
+	
+	os.Exit(130) // Standard exit code for interrupted process
+}
+
+// displayFinalSummary shows complete task summary during graceful shutdown
+func (tm *TaskManager) displayFinalSummary() {
+	tm.mu.RLock()
+	tasks := tm.tasks
+	tm.mu.RUnlock()
+	
+	if len(tasks) == 0 {
+		return
+	}
+	
+	fmt.Fprintf(os.Stderr, "\n=== Final Task Summary ===\n")
+	
+	var completed, failed, cancelled int
+	for _, task := range tasks {
+		task.mu.Lock()
+		status := task.status
+		displayName := tm.formatTaskName(task.name, task.modelName, task.prompt)
+		duration := task.getDuration()
+		task.mu.Unlock()
+		
+		switch status {
+		case StatusSuccess:
+			fmt.Fprintln(os.Stderr, tm.styles.success.Render(fmt.Sprintf("✓ %s (%s)", displayName, duration)))
+			completed++
+		case StatusFailed:
+			fmt.Fprintln(os.Stderr, tm.styles.failed.Render(fmt.Sprintf("✗ %s (%s)", displayName, duration)))
+			failed++
+		case StatusCancelled:
+			fmt.Fprintln(os.Stderr, tm.styles.cancelled.Render(fmt.Sprintf("⊘ %s (%s)", displayName, duration)))
+			cancelled++
+		case StatusRunning, StatusPending:
+			fmt.Fprintln(os.Stderr, tm.styles.cancelled.Render(fmt.Sprintf("⊘ %s (interrupted)", displayName)))
+			cancelled++
+		}
+	}
+	
+	fmt.Fprintf(os.Stderr, "\n📊 Summary: %d completed, %d failed, %d cancelled\n", completed, failed, cancelled)
+}
+
+// displayBriefSummary shows minimal summary during hard exit
+func (tm *TaskManager) displayBriefSummary() {
+	tm.mu.RLock()
+	taskCount := len(tm.tasks)
+	tm.mu.RUnlock()
+	
+	if taskCount > 0 {
+		fmt.Fprintf(os.Stderr, "📊 Interrupted: %d tasks terminated\n", taskCount)
 	}
 }
 
@@ -550,8 +919,16 @@ func (t *Task) Success() {
 	if t.status == StatusRunning {
 		t.status = StatusSuccess
 		t.endTime = time.Now()
+		// Calculate duration while we have the lock
+		duration := t.getDuration()
+		displayName := t.manager.formatTaskName(t.name, t.modelName, t.prompt)
+
 		if t.cancel != nil {
 			t.cancel()
+		}
+		// Print completion in non-interactive mode
+		if !t.manager.isInteractive {
+			fmt.Fprintln(os.Stderr, t.manager.styles.success.Render(fmt.Sprintf("✓ %s (%s)", displayName, duration)))
 		}
 	}
 }
@@ -564,8 +941,16 @@ func (t *Task) Failed() {
 	if t.status == StatusRunning {
 		t.status = StatusFailed
 		t.endTime = time.Now()
+		// Calculate duration while we have the lock
+		duration := t.getDuration()
+		displayName := t.manager.formatTaskName(t.name, t.modelName, t.prompt)
+
 		if t.cancel != nil {
 			t.cancel()
+		}
+		// Print failure in non-interactive mode
+		if !t.manager.isInteractive {
+			fmt.Fprintln(os.Stderr, t.manager.styles.failed.Render(fmt.Sprintf("✗ %s (%s)", displayName, duration)))
 		}
 	}
 }
@@ -579,6 +964,10 @@ func (t *Task) FailedWithError(err error) {
 		t.status = StatusFailed
 		t.err = err
 		t.endTime = time.Now()
+		// Calculate duration while we have the lock
+		duration := t.getDuration()
+		displayName := t.manager.formatTaskName(t.name, t.modelName, t.prompt)
+
 		t.logs = append(t.logs, LogEntry{
 			Level:   "error",
 			Message: err.Error(),
@@ -586,6 +975,10 @@ func (t *Task) FailedWithError(err error) {
 		})
 		if t.cancel != nil {
 			t.cancel()
+		}
+		// Print failure with error in non-interactive mode
+		if !t.manager.isInteractive {
+			fmt.Fprintln(os.Stderr, t.manager.styles.failed.Render(fmt.Sprintf("✗ %s (%s): %v", displayName, duration, err)))
 		}
 	}
 }
@@ -598,8 +991,16 @@ func (t *Task) Warning() {
 	if t.status == StatusRunning {
 		t.status = StatusWarning
 		t.endTime = time.Now()
+		// Calculate duration while we have the lock
+		duration := t.getDuration()
+		displayName := t.manager.formatTaskName(t.name, t.modelName, t.prompt)
+
 		if t.cancel != nil {
 			t.cancel()
+		}
+		// Print warning in non-interactive mode
+		if !t.manager.isInteractive {
+			fmt.Fprintln(os.Stderr, t.manager.styles.warning.Render(fmt.Sprintf("⚠ %s (%s)", displayName, duration)))
 		}
 	}
 }
@@ -637,6 +1038,331 @@ func (t *Task) Status() TaskStatus {
 	return t.status
 }
 
+// Waitable interface implementation for Task
+
+// Name returns the task name
+func (t *Task) Name() string {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.name
+}
+
+// WaitFor waits for this specific task to complete and returns the result
+func (t *Task) WaitFor() *WaitResult {
+	// Wait for task completion
+	for t.Status() == StatusPending || t.Status() == StatusRunning {
+		select {
+		case <-t.ctx.Done():
+			// Task was cancelled
+			break
+		case <-time.After(10 * time.Millisecond):
+			// Continue polling
+		}
+	}
+	
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	
+	result := &WaitResult{
+		Status:    t.status,
+		Duration:  t.Duration(),
+		Error:     t.err,
+		TaskCount: 1, // Single task
+	}
+	
+	// Count based on status
+	switch t.status {
+	case StatusSuccess:
+		result.SuccessCount = 1
+	case StatusFailed:
+		result.FailureCount = 1
+	case StatusWarning:
+		result.WarningCount = 1
+	}
+	
+	return result
+}
+
+// GetResult returns the stored result and error
+func (t *Task) GetResult() (interface{}, error) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.result, t.err
+}
+
+// GetTypedResult retrieves the result with type assertion
+func (t *Task) GetTypedResult(target interface{}) error {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	
+	if t.err != nil {
+		return t.err
+	}
+	
+	if t.result == nil {
+		return nil
+	}
+	
+	// Use reflection to set the target value
+	targetValue := reflect.ValueOf(target)
+	if targetValue.Kind() != reflect.Ptr {
+		return fmt.Errorf("target must be a pointer")
+	}
+	
+	resultValue := reflect.ValueOf(t.result)
+	targetElement := targetValue.Elem()
+	
+	if !resultValue.Type().AssignableTo(targetElement.Type()) {
+		return fmt.Errorf("result type %T cannot be assigned to target type %T", t.result, target)
+	}
+	
+	targetElement.Set(resultValue)
+	return nil
+}
+
+// Duration returns the task duration
+func (t *Task) Duration() time.Duration {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	
+	if t.status == StatusPending {
+		return 0
+	}
+	
+	endTime := t.endTime
+	if t.status == StatusRunning {
+		endTime = time.Now()
+	}
+	
+	return endTime.Sub(t.startTime)
+}
+
+// IsGroup returns false for Task
+func (t *Task) IsGroup() bool {
+	return false
+}
+
+// TaskGroup methods
+
+// Add adds a Waitable item (Task or TaskGroup) to this group
+func (g *TaskGroup) Add(item Waitable) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	g.items = append(g.items, item)
+	
+	// Set parent reference if it's a Task
+	if task, ok := item.(*Task); ok {
+		task.parent = g
+	}
+	
+	// Update start time if this is the first item or it started earlier
+	if task, ok := item.(*Task); ok {
+		if g.startTime.IsZero() || task.startTime.Before(g.startTime) {
+			g.startTime = task.startTime
+		}
+	}
+}
+
+// AddWithResult creates a new task with result callback and adds it to the group  
+func (g *TaskGroup) AddWithResult(name string, taskFunc func(*Task) (interface{}, error), opts ...TaskOption) *Task {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	
+	// Create the task using the group's manager
+	task := g.manager.StartWithResult(name, taskFunc, opts...)
+	
+	// Add to the group's items
+	g.items = append(g.items, task)
+	
+	// Set parent reference
+	task.parent = g
+	
+	// Update start time if this is the first item or it started earlier
+	if g.startTime.IsZero() || task.startTime.Before(g.startTime) {
+		g.startTime = task.startTime
+	}
+	
+	return task
+}
+
+// GetResults waits for all tasks in the group and returns typed results
+func (g *TaskGroup) GetResults() map[*Task]interface{} {
+	g.mu.RLock()
+	items := make([]Waitable, len(g.items))
+	copy(items, g.items)
+	g.mu.RUnlock()
+	
+	results := make(map[*Task]interface{})
+	for _, item := range items {
+		if task, ok := item.(*Task); ok {
+			// Wait for the task to complete
+			task.WaitFor()
+			results[task] = task.result
+		}
+	}
+	
+	return results
+}
+
+// Waitable interface implementation for TaskGroup
+
+// Name returns the group name
+func (g *TaskGroup) Name() string {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+	return g.name
+}
+
+// Status returns the aggregate status of all items in the group
+func (g *TaskGroup) Status() TaskStatus {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+	return g.calculateStatus()
+}
+
+// calculateStatus determines group status based on child statuses
+func (g *TaskGroup) calculateStatus() TaskStatus {
+	if len(g.items) == 0 {
+		return StatusPending
+	}
+	
+	hasRunning := false
+	hasWarning := false
+	hasFailed := false
+	allCompleted := true
+	
+	for _, item := range g.items {
+		status := item.Status()
+		switch status {
+		case StatusRunning:
+			hasRunning = true
+			allCompleted = false
+		case StatusPending:
+			allCompleted = false
+		case StatusFailed:
+			hasFailed = true
+		case StatusWarning:
+			hasWarning = true
+		case StatusCancelled:
+			hasFailed = true
+		}
+	}
+	
+	if hasRunning {
+		return StatusRunning
+	}
+	if !allCompleted {
+		return StatusPending
+	}
+	if hasFailed {
+		return StatusFailed
+	}
+	if hasWarning {
+		return StatusWarning
+	}
+	return StatusSuccess
+}
+
+// WaitFor waits for all child items to complete and returns aggregate results
+func (g *TaskGroup) WaitFor() *WaitResult {
+	result := &WaitResult{}
+	
+	// Wait for all child items
+	g.mu.RLock()
+	items := make([]Waitable, len(g.items))
+	copy(items, g.items)
+	g.mu.RUnlock()
+	
+	for _, item := range items {
+		childResult := item.WaitFor()
+		result.TaskCount += childResult.TaskCount
+		result.SuccessCount += childResult.SuccessCount
+		result.FailureCount += childResult.FailureCount
+		result.WarningCount += childResult.WarningCount
+		
+		// Keep the first error encountered
+		if result.Error == nil && childResult.Error != nil {
+			result.Error = childResult.Error
+		}
+	}
+	
+	result.Status = g.Status()
+	result.Duration = g.Duration()
+	
+	return result
+}
+
+// Context returns the group's context for cancellation
+func (g *TaskGroup) Context() context.Context {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+	return g.ctx
+}
+
+// Cancel cancels all items in the group
+func (g *TaskGroup) Cancel() {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+	
+	if g.cancel != nil {
+		g.cancel()
+	}
+	
+	// Cancel all child items
+	for _, item := range g.items {
+		item.Cancel()
+	}
+}
+
+// Duration returns the total duration from first start to last completion
+func (g *TaskGroup) Duration() time.Duration {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+	
+	if g.startTime.IsZero() {
+		return 0
+	}
+	
+	// Find the latest end time among all items
+	var latestEnd time.Time
+	allCompleted := true
+	
+	for _, item := range g.items {
+		status := item.Status()
+		if status == StatusPending || status == StatusRunning {
+			allCompleted = false
+			break
+		}
+		
+		itemDuration := item.Duration()
+		if itemDuration > 0 {
+			// Calculate item end time
+			if task, ok := item.(*Task); ok {
+				task.mu.Lock()
+				if !task.endTime.IsZero() && task.endTime.After(latestEnd) {
+					latestEnd = task.endTime
+				}
+				task.mu.Unlock()
+			}
+		}
+	}
+	
+	if !allCompleted {
+		return time.Since(g.startTime)
+	}
+	
+	if latestEnd.IsZero() {
+		return time.Since(g.startTime)
+	}
+	
+	return latestEnd.Sub(g.startTime)
+}
+
+// IsGroup returns true for TaskGroup
+func (g *TaskGroup) IsGroup() bool {
+	return true
+}
+
 func (tm *TaskManager) render() {
 	ticker := time.NewTicker(100 * time.Millisecond)
 	defer ticker.Stop()
@@ -649,19 +1375,25 @@ func (tm *TaskManager) render() {
 			tm.mu.RLock()
 			tasks := make([]*Task, len(tm.tasks))
 			copy(tasks, tm.tasks)
+			groups := make([]*TaskGroup, len(tm.groups))
+			copy(groups, tm.groups)
 			verbose := tm.verbose
+			isInteractive := tm.isInteractive
 			tm.mu.RUnlock()
 
 			if len(tasks) == 0 {
 				continue
 			}
 
-			output := tm.buildOutput(tasks, verbose)
-			lines := strings.Count(output, "\n")
+			// Only use ANSI escape codes if we're in interactive mode
+			if isInteractive {
+				output := tm.buildOutput(tasks, verbose)
+				lines := strings.Count(output, "\n")
 
-			fmt.Fprint(os.Stderr, "\033[H\033[J")
-			fmt.Fprint(os.Stderr, output)
-			fmt.Fprintf(os.Stderr, "\033[%dA", lines)
+				fmt.Fprint(os.Stderr, "\033[H\033[J")
+				fmt.Fprint(os.Stderr, output)
+				fmt.Fprintf(os.Stderr, "\033[%dA", lines)
+			}
 		}
 	}
 }
@@ -734,9 +1466,7 @@ func (tm *TaskManager) buildOutput(tasks []*Task, verbose bool) string {
 			runningName := tm.formatTaskNameWithWidth(name, modelName, prompt, tm.width)
 
 			// Add retry info if task has been retried
-			task.mu.Lock()
 			retryCount := task.retryCount
-			task.mu.Unlock()
 
 			if retryCount > 0 {
 				runningName = fmt.Sprintf("%s (retry %d/%d)", runningName, retryCount, task.retryConfig.MaxRetries)
@@ -877,6 +1607,7 @@ func (tm *TaskManager) renderProgressBar(name string, value, maxValue int, durat
 }
 
 func (t *Task) getDuration() string {
+	// Note: This should be called with mutex already locked
 	var end time.Time
 	if t.endTime.IsZero() {
 		end = time.Now()
@@ -891,6 +1622,31 @@ func (t *Task) getDuration() string {
 	return fmt.Sprintf("%.1fs", duration.Seconds())
 }
 
+// WaitSilent waits for all tasks to complete without displaying results
+// Returns the exit code (0 for success, non-zero for failure)
+func (tm *TaskManager) WaitSilent() int {
+	tm.wg.Wait()
+	tm.stopRender <- true
+
+	tm.mu.RLock()
+	tasks := tm.tasks
+	tm.mu.RUnlock()
+
+	// Calculate exit code based on task status
+	for _, task := range tasks {
+		task.mu.Lock()
+		status := task.status
+		task.mu.Unlock()
+		
+		switch status {
+		case StatusFailed, StatusCancelled:
+			return 1
+		}
+	}
+	
+	return 0
+}
+
 // Wait waits for all tasks to complete and returns the appropriate exit code
 func (tm *TaskManager) Wait() int {
 	tm.wg.Wait()
@@ -899,9 +1655,13 @@ func (tm *TaskManager) Wait() int {
 	tm.mu.RLock()
 	tasks := tm.tasks
 	verbose := tm.verbose
+	isInteractive := tm.isInteractive
 	tm.mu.RUnlock()
 
-	fmt.Fprint(os.Stderr, "\033[H\033[J")
+	// Only clear screen if in interactive mode
+	if isInteractive {
+		fmt.Fprint(os.Stderr, "\033[H\033[J")
+	}
 
 	var failed, warning, cancelled int
 	var totalDuration time.Duration
