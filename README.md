@@ -1,6 +1,6 @@
 # Clicky Pretty Formatter
 
-A sophisticated struct formatter that uses reflection and struct tags to create beautiful, styled output with lipgloss.
+A sophisticated struct formatter that uses reflection and struct tags to create beautiful, styled output with lipgloss. Now with integrated MCP (Model Context Protocol) support and TaskManager for concurrent task execution.
 
 ## Features
 
@@ -21,6 +21,18 @@ A sophisticated struct formatter that uses reflection and struct tags to create 
 - Handle trailing commas gracefully
 - Support quoted JSON strings
 - Fallback to string representation for invalid JSON
+
+### 🤖 MCP (Model Context Protocol) Integration
+- Expose CLI commands as MCP tools for AI assistants
+- Integrated with TaskManager for visual progress tracking
+- Configurable tool exposure and security settings
+- Support for Claude Desktop, Cursor, and other MCP clients
+
+### 📊 Task Manager
+- Concurrent task execution with visual progress bars
+- Retry logic with exponential backoff
+- Timeout support and cancellation
+- Beautiful Lipgloss-styled output
 
 ## Quick Start
 
@@ -133,6 +145,136 @@ fm.SetTheme(customTheme)
 ```go
 // Lenient JSON parsing
 data, err := ParseJSON([]byte(`{"name": "test", /* comment */ "value": 42,}`))
+```
+
+## MCP (Model Context Protocol) Integration
+
+Clicky includes built-in MCP support, allowing you to expose your CLI commands as tools for AI assistants.
+
+### Adding MCP to Your CLI
+
+```go
+package main
+
+import (
+    "github.com/flanksource/clicky/mcp"
+    "github.com/spf13/cobra"
+)
+
+func main() {
+    rootCmd := &cobra.Command{
+        Use:   "myapp",
+        Short: "My CLI application",
+    }
+    
+    // Add your application commands
+    rootCmd.AddCommand(myCommand1())
+    rootCmd.AddCommand(myCommand2())
+    
+    // Add MCP server functionality
+    rootCmd.AddCommand(mcp.NewCommand())
+    
+    rootCmd.Execute()
+}
+```
+
+### Running as MCP Server
+
+```bash
+# Start MCP server with default configuration
+myapp mcp serve
+
+# Auto-expose all commands
+myapp mcp serve --auto-expose
+
+# View configuration
+myapp mcp config
+```
+
+### Integration with AI Assistants
+
+Configure Claude Desktop (`claude_desktop_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "myapp": {
+      "command": "/path/to/myapp",
+      "args": ["mcp", "serve"]
+    }
+  }
+}
+```
+
+### MCP with TaskManager
+
+When MCP tools are executed, they automatically use Clicky's TaskManager for:
+- Visual progress tracking with progress bars
+- Concurrent execution control
+- Retry logic with exponential backoff
+- Timeout protection
+- Beautiful styled output
+
+## Task Manager
+
+Clicky includes a powerful TaskManager for concurrent task execution with visual feedback.
+
+### Basic Usage
+
+```go
+package main
+
+import (
+    "github.com/flanksource/clicky"
+)
+
+func main() {
+    tm := clicky.NewTaskManager()
+    
+    // Start a task with progress tracking
+    task := tm.Start("Processing data",
+        clicky.WithTimeout(30 * time.Second),
+        clicky.WithFunc(func(t *clicky.Task) error {
+            t.SetProgress(0, 100)
+            
+            for i := 0; i <= 100; i++ {
+                // Simulate work
+                time.Sleep(100 * time.Millisecond)
+                t.SetProgress(i, 100)
+                
+                if i % 20 == 0 {
+                    t.Infof("Processed %d%%", i)
+                }
+            }
+            
+            t.Success()
+            return nil
+        }),
+    )
+    
+    // Wait for all tasks to complete
+    tm.Wait()
+}
+```
+
+### Advanced Features
+
+```go
+// Configure retry behavior
+tm.SetRetryConfig(clicky.RetryConfig{
+    MaxRetries:      3,
+    BaseDelay:       1 * time.Second,
+    MaxDelay:        30 * time.Second,
+    BackoffFactor:   2.0,
+    JitterFactor:    0.1,
+    RetryableErrors: []string{"timeout", "temporary"},
+})
+
+// Set concurrency limit
+tm.SetMaxConcurrent(5)
+
+// Enable verbose logging
+tm.SetVerbose(true)
 ```
 
 ### Themes

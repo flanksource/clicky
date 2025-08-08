@@ -63,24 +63,24 @@ func DefaultRetryConfig() RetryConfig {
 
 // Task represents a single task being tracked by the TaskManager
 type Task struct {
-	name         string
-	modelName    string
-	prompt       string
-	status       TaskStatus
-	progress     int
-	maxValue     int
-	startTime    time.Time
-	endTime      time.Time
-	manager      *TaskManager
-	logs         []LogEntry
-	cancel       context.CancelFunc
-	ctx          context.Context
-	timeout      time.Duration
-	runFunc      func(*Task) error
-	err          error
-	mu           sync.Mutex
-	retryConfig  RetryConfig
-	retryCount   int
+	name        string
+	modelName   string
+	prompt      string
+	status      TaskStatus
+	progress    int
+	maxValue    int
+	startTime   time.Time
+	endTime     time.Time
+	manager     *TaskManager
+	logs        []LogEntry
+	cancel      context.CancelFunc
+	ctx         context.Context
+	timeout     time.Duration
+	runFunc     func(*Task) error
+	err         error
+	mu          sync.Mutex
+	retryConfig RetryConfig
+	retryCount  int
 }
 
 // TaskManager manages and displays multiple tasks with progress bars
@@ -94,6 +94,7 @@ type TaskManager struct {
 	maxConcurrent int
 	semaphore     chan struct{}
 	retryConfig   RetryConfig
+	isInteractive bool
 	styles        struct {
 		success   lipgloss.Style
 		failed    lipgloss.Style
@@ -152,7 +153,8 @@ func NewTaskManager() *TaskManager {
 
 // NewTaskManagerWithConcurrency creates a new TaskManager with concurrency limit
 func NewTaskManagerWithConcurrency(maxConcurrent int) *TaskManager {
-	width, _, err := term.GetSize(int(os.Stdout.Fd()))
+	// Check stderr for terminal size since we output there
+	width, _, err := term.GetSize(int(os.Stderr.Fd()))
 	if err != nil {
 		width = 80
 	}
@@ -160,6 +162,9 @@ func NewTaskManagerWithConcurrency(maxConcurrent int) *TaskManager {
 		width = 80
 	}
 
+	// Check if stderr is a terminal (for interactive mode)
+	isInteractive := term.IsTerminal(int(os.Stderr.Fd()))
+	
 	tm := &TaskManager{
 		tasks:         make([]*Task, 0),
 		stopRender:    make(chan bool, 1),
@@ -167,6 +172,7 @@ func NewTaskManagerWithConcurrency(maxConcurrent int) *TaskManager {
 		verbose:       os.Getenv("VERBOSE") != "" || os.Getenv("DEBUG") != "",
 		maxConcurrent: maxConcurrent,
 		retryConfig:   DefaultRetryConfig(),
+		isInteractive: isInteractive,
 	}
 
 	if maxConcurrent > 0 {
@@ -183,7 +189,10 @@ func NewTaskManagerWithConcurrency(maxConcurrent int) *TaskManager {
 	tm.styles.cancelled = lipgloss.NewStyle().Foreground(lipgloss.Color("13"))
 	tm.styles.pending = lipgloss.NewStyle().Foreground(lipgloss.Color("7"))
 
-	go tm.render()
+	// Only start interactive rendering if stderr is a terminal
+	if tm.isInteractive {
+		go tm.render()
+	}
 	return tm
 }
 
@@ -198,11 +207,11 @@ func (tm *TaskManager) SetVerbose(verbose bool) {
 func (tm *TaskManager) SetMaxConcurrent(max int) {
 	tm.mu.Lock()
 	defer tm.mu.Unlock()
-	
+
 	if tm.maxConcurrent == max {
 		return
 	}
-	
+
 	tm.maxConcurrent = max
 	if max > 0 {
 		// Create new semaphore with new size
@@ -234,7 +243,7 @@ func (tm *TaskManager) Start(name string, opts ...TaskOption) *Task {
 	defer tm.mu.Unlock()
 
 	ctx, cancel := context.WithCancel(context.Background())
-	
+
 	task := &Task{
 		name:        name,
 		status:      StatusPending,
@@ -345,10 +354,10 @@ func (tm *TaskManager) runTaskWithRetry(task *Task) {
 		if err != nil {
 			// Check if error is retryable
 			shouldRetry := tm.shouldRetryError(err, task.retryConfig)
-			
+
 			if shouldRetry && task.retryCount < task.retryConfig.MaxRetries {
 				task.retryCount++
-				
+
 				// Log retry attempt
 				task.logs = append(task.logs, LogEntry{
 					Level:   "warning",
@@ -359,7 +368,7 @@ func (tm *TaskManager) runTaskWithRetry(task *Task) {
 
 				// Calculate delay with exponential backoff and jitter
 				delay := tm.calculateBackoffDelay(task.retryCount, task.retryConfig)
-				
+
 				// Wait for delay or cancellation
 				select {
 				case <-time.After(delay):
@@ -401,7 +410,7 @@ func (tm *TaskManager) shouldRetryError(err error, config RetryConfig) bool {
 	if err == nil {
 		return false
 	}
-	
+
 	errMsg := strings.ToLower(err.Error())
 	for _, pattern := range config.RetryableErrors {
 		if strings.Contains(errMsg, strings.ToLower(pattern)) {
@@ -415,32 +424,32 @@ func (tm *TaskManager) shouldRetryError(err error, config RetryConfig) bool {
 func (tm *TaskManager) calculateBackoffDelay(retryCount int, config RetryConfig) time.Duration {
 	// Calculate exponential backoff
 	delay := float64(config.BaseDelay) * math.Pow(config.BackoffFactor, float64(retryCount-1))
-	
+
 	// Apply maximum delay cap
 	if delay > float64(config.MaxDelay) {
 		delay = float64(config.MaxDelay)
 	}
-	
+
 	// Add jitter to prevent thundering herd
 	jitter := delay * config.JitterFactor * (rand.Float64() - 0.5) * 2
 	finalDelay := delay + jitter
-	
+
 	// Ensure delay is never negative
 	if finalDelay < 0 {
 		finalDelay = float64(config.BaseDelay)
 	}
-	
+
 	return time.Duration(finalDelay)
 }
 
 // Run starts all tasks and waits for completion
 func (tm *TaskManager) Run() error {
 	tm.Wait()
-	
+
 	// Check if any tasks failed
 	tm.mu.RLock()
 	defer tm.mu.RUnlock()
-	
+
 	for _, task := range tm.tasks {
 		if task.err != nil {
 			return fmt.Errorf("task %s failed: %w", task.name, task.err)
@@ -486,7 +495,7 @@ func (tm *TaskManager) CancelAll() {
 func (t *Task) Infof(format string, args ...interface{}) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	
+
 	t.logs = append(t.logs, LogEntry{
 		Level:   "info",
 		Message: fmt.Sprintf(format, args...),
@@ -498,7 +507,7 @@ func (t *Task) Infof(format string, args ...interface{}) {
 func (t *Task) Errorf(format string, args ...interface{}) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	
+
 	t.logs = append(t.logs, LogEntry{
 		Level:   "error",
 		Message: fmt.Sprintf(format, args...),
@@ -510,7 +519,7 @@ func (t *Task) Errorf(format string, args ...interface{}) {
 func (t *Task) Warnf(format string, args ...interface{}) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	
+
 	t.logs = append(t.logs, LogEntry{
 		Level:   "warning",
 		Message: fmt.Sprintf(format, args...),
@@ -537,7 +546,7 @@ func (t *Task) SetProgress(value, max int) {
 func (t *Task) Success() {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	
+
 	if t.status == StatusRunning {
 		t.status = StatusSuccess
 		t.endTime = time.Now()
@@ -551,7 +560,7 @@ func (t *Task) Success() {
 func (t *Task) Failed() {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	
+
 	if t.status == StatusRunning {
 		t.status = StatusFailed
 		t.endTime = time.Now()
@@ -565,7 +574,7 @@ func (t *Task) Failed() {
 func (t *Task) FailedWithError(err error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	
+
 	if t.status == StatusRunning {
 		t.status = StatusFailed
 		t.err = err
@@ -585,7 +594,7 @@ func (t *Task) FailedWithError(err error) {
 func (t *Task) Warning() {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	
+
 	if t.status == StatusRunning {
 		t.status = StatusWarning
 		t.endTime = time.Now()
@@ -650,9 +659,9 @@ func (tm *TaskManager) render() {
 			output := tm.buildOutput(tasks, verbose)
 			lines := strings.Count(output, "\n")
 
-			fmt.Print("\033[H\033[J")
-			fmt.Print(output)
-			fmt.Printf("\033[%dA", lines)
+			fmt.Fprint(os.Stderr, "\033[H\033[J")
+			fmt.Fprint(os.Stderr, output)
+			fmt.Fprintf(os.Stderr, "\033[%dA", lines)
 		}
 	}
 }
@@ -687,7 +696,7 @@ func (tm *TaskManager) buildOutput(tasks []*Task, verbose bool) string {
 			if log.Level == "info" && !verbose {
 				continue // Skip info logs if not in verbose mode
 			}
-			
+
 			var logLine string
 			switch log.Level {
 			case "info":
@@ -723,16 +732,16 @@ func (tm *TaskManager) buildOutput(tasks []*Task, verbose bool) string {
 			runningCount++
 			// Use width-aware formatting for running tasks to prevent wrapping
 			runningName := tm.formatTaskNameWithWidth(name, modelName, prompt, tm.width)
-			
+
 			// Add retry info if task has been retried
 			task.mu.Lock()
 			retryCount := task.retryCount
 			task.mu.Unlock()
-			
+
 			if retryCount > 0 {
 				runningName = fmt.Sprintf("%s (retry %d/%d)", runningName, retryCount, task.retryConfig.MaxRetries)
 			}
-			
+
 			bar := tm.renderProgressBar(runningName, progress, maxValue, duration)
 			running = append(running, bar)
 			running = append(running, taskLogs...)
@@ -740,29 +749,29 @@ func (tm *TaskManager) buildOutput(tasks []*Task, verbose bool) string {
 	}
 
 	var output strings.Builder
-	
+
 	// Show completed tasks first
 	for _, line := range completed {
 		output.WriteString(line)
 		output.WriteString("\n")
 	}
-	
+
 	// Then running tasks
 	for _, line := range running {
 		output.WriteString(line)
 		output.WriteString("\n")
 	}
-	
+
 	// Finally pending tasks - group them if more than 3
 	pendingCount := len(pendingTasks)
 	if pendingCount > 3 {
 		// Show a single meta task for all pending tasks
 		processedCount := completedCount + runningCount
-		metaTask := fmt.Sprintf("⏳ Processing %d of %d tasks (%d pending)", 
+		metaTask := fmt.Sprintf("⏳ Processing %d of %d tasks (%d pending)",
 			processedCount, totalTasks, pendingCount)
 		output.WriteString(tm.styles.pending.Render(metaTask))
 		output.WriteString("\n")
-		
+
 		// Show first 2 pending tasks as a preview
 		for i := 0; i < 2 && i < pendingCount; i++ {
 			task := pendingTasks[i]
@@ -772,7 +781,7 @@ func (tm *TaskManager) buildOutput(tasks []*Task, verbose bool) string {
 			output.WriteString(tm.styles.info.Render(fmt.Sprintf("  • %s", displayName)))
 			output.WriteString("\n")
 		}
-		
+
 		// Show ellipsis if there are more
 		if pendingCount > 2 {
 			output.WriteString(tm.styles.info.Render(fmt.Sprintf("  • ... and %d more", pendingCount-2)))
@@ -798,21 +807,21 @@ func (tm *TaskManager) formatTaskName(name, modelName, prompt string) string {
 
 func (tm *TaskManager) formatTaskNameWithWidth(name, modelName, prompt string, maxWidth int) string {
 	var parts []string
-	
+
 	if modelName != "" {
 		parts = append(parts, modelName)
 	}
-	
+
 	if name != "" {
 		parts = append(parts, name)
 	}
-	
+
 	// Calculate available space for prompt if maxWidth is specified
 	currentLen := len(strings.Join(parts, " "))
 	if currentLen > 0 {
 		currentLen += 1 // for space
 	}
-	
+
 	if prompt != "" {
 		maxPromptLen := 50
 		if maxWidth > 0 {
@@ -823,36 +832,36 @@ func (tm *TaskManager) formatTaskNameWithWidth(name, modelName, prompt string, m
 				maxPromptLen = availableForPrompt
 			}
 		}
-		
+
 		truncatedPrompt := prompt
 		if len(prompt) > maxPromptLen {
 			truncatedPrompt = prompt[:maxPromptLen-3] + "..."
 		}
 		parts = append(parts, fmt.Sprintf("\"%s\"", truncatedPrompt))
 	}
-	
+
 	return strings.Join(parts, " ")
 }
 
 func (tm *TaskManager) renderProgressBar(name string, value, maxValue int, duration string) string {
 	barWidth := 30
-	
+
 	// If maxValue is 0 or unknown, show infinite spinner
 	if maxValue == 0 {
 		// Create a simple spinner animation
 		spinner := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 		spinnerIndex := (int(time.Now().UnixNano()/1e8) % len(spinner))
 		spinnerChar := spinner[spinnerIndex]
-		
+
 		// Show spinner with dots animation
-		dots := strings.Repeat("•", (int(time.Now().UnixNano()/1e9)%4)+1) + strings.Repeat(" ", 3-((int(time.Now().UnixNano()/1e9)%4)))
+		dots := strings.Repeat("•", (int(time.Now().UnixNano()/1e9)%4)+1) + strings.Repeat(" ", 3-(int(time.Now().UnixNano()/1e9)%4))
 		bar := spinnerChar + " " + dots + strings.Repeat("░", barWidth-6)
-		
+
 		return tm.styles.running.Render(fmt.Sprintf("⟳ %s ", name)) +
 			tm.styles.bar.Render(bar) +
 			tm.styles.running.Render(fmt.Sprintf(" (%s)", duration))
 	}
-	
+
 	// Regular progress bar
 	percentage := float64(value) / float64(maxValue)
 	if percentage > 1 {
@@ -892,7 +901,7 @@ func (tm *TaskManager) Wait() int {
 	verbose := tm.verbose
 	tm.mu.RUnlock()
 
-	fmt.Print("\033[H\033[J")
+	fmt.Fprint(os.Stderr, "\033[H\033[J")
 
 	var failed, warning, cancelled int
 	var totalDuration time.Duration
@@ -912,20 +921,20 @@ func (tm *TaskManager) Wait() int {
 		// Print task status
 		switch task.status {
 		case StatusPending:
-			fmt.Println(tm.styles.pending.Render(fmt.Sprintf("⏳ %s (not started)", displayName)))
+			fmt.Fprintln(os.Stderr, tm.styles.pending.Render(fmt.Sprintf("⏳ %s (not started)", displayName)))
 		case StatusRunning:
 			// Should not happen in Wait, but handle gracefully
-			fmt.Println(tm.styles.running.Render(fmt.Sprintf("⟳ %s (incomplete)", displayName)))
+			fmt.Fprintln(os.Stderr, tm.styles.running.Render(fmt.Sprintf("⟳ %s (incomplete)", displayName)))
 		case StatusSuccess:
-			fmt.Println(tm.styles.success.Render(fmt.Sprintf("✓ %s (%s)", displayName, duration)))
+			fmt.Fprintln(os.Stderr, tm.styles.success.Render(fmt.Sprintf("✓ %s (%s)", displayName, duration)))
 		case StatusFailed:
-			fmt.Println(tm.styles.failed.Render(fmt.Sprintf("✗ %s (%s)", displayName, duration)))
+			fmt.Fprintln(os.Stderr, tm.styles.failed.Render(fmt.Sprintf("✗ %s (%s)", displayName, duration)))
 			failed++
 		case StatusWarning:
-			fmt.Println(tm.styles.warning.Render(fmt.Sprintf("⚠ %s (%s)", displayName, duration)))
+			fmt.Fprintln(os.Stderr, tm.styles.warning.Render(fmt.Sprintf("⚠ %s (%s)", displayName, duration)))
 			warning++
 		case StatusCancelled:
-			fmt.Println(tm.styles.cancelled.Render(fmt.Sprintf("⊘ %s (%s)", displayName, duration)))
+			fmt.Fprintln(os.Stderr, tm.styles.cancelled.Render(fmt.Sprintf("⊘ %s (%s)", displayName, duration)))
 			cancelled++
 		}
 
@@ -934,33 +943,33 @@ func (tm *TaskManager) Wait() int {
 			if log.Level == "info" && !verbose {
 				continue
 			}
-			
+
 			switch log.Level {
 			case "info":
-				fmt.Println(tm.styles.info.Render(fmt.Sprintf("  ℹ %s", log.Message)))
+				fmt.Fprintln(os.Stderr, tm.styles.info.Render(fmt.Sprintf("  ℹ %s", log.Message)))
 			case "error":
-				fmt.Println(tm.styles.error.Render(fmt.Sprintf("  ✗ %s", log.Message)))
+				fmt.Fprintln(os.Stderr, tm.styles.error.Render(fmt.Sprintf("  ✗ %s", log.Message)))
 			case "warning":
-				fmt.Println(tm.styles.warning.Render(fmt.Sprintf("  ⚠ %s", log.Message)))
+				fmt.Fprintln(os.Stderr, tm.styles.warning.Render(fmt.Sprintf("  ⚠ %s", log.Message)))
 			}
 		}
-		
+
 		task.mu.Unlock()
 	}
 
-	fmt.Printf("\n")
+	fmt.Fprintf(os.Stderr, "\n")
 	switch {
 	case failed > 0:
-		fmt.Println(tm.styles.failed.Render(fmt.Sprintf("Total: %.1fs (with %d failures)", totalDuration.Seconds(), failed)))
+		fmt.Fprintln(os.Stderr, tm.styles.failed.Render(fmt.Sprintf("Total: %.1fs (with %d failures)", totalDuration.Seconds(), failed)))
 		return 1
 	case cancelled > 0:
-		fmt.Println(tm.styles.cancelled.Render(fmt.Sprintf("Total: %.1fs (with %d cancelled)", totalDuration.Seconds(), cancelled)))
+		fmt.Fprintln(os.Stderr, tm.styles.cancelled.Render(fmt.Sprintf("Total: %.1fs (with %d cancelled)", totalDuration.Seconds(), cancelled)))
 		return 1
 	case warning > 0:
-		fmt.Println(tm.styles.warning.Render(fmt.Sprintf("Total: %.1fs (with %d warnings)", totalDuration.Seconds(), warning)))
+		fmt.Fprintln(os.Stderr, tm.styles.warning.Render(fmt.Sprintf("Total: %.1fs (with %d warnings)", totalDuration.Seconds(), warning)))
 		return 0
 	default:
-		fmt.Println(tm.styles.success.Render(fmt.Sprintf("Total: %.1fs", totalDuration.Seconds())))
+		fmt.Fprintln(os.Stderr, tm.styles.success.Render(fmt.Sprintf("Total: %.1fs", totalDuration.Seconds())))
 		return 0
 	}
 }
