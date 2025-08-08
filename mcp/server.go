@@ -16,20 +16,31 @@ import (
 
 // MCPServer implements the MCP protocol server using TaskManager for execution
 type MCPServer struct {
-	config      *Config
-	registry    *ToolRegistry
-	rootCmd     *cobra.Command
-	taskManager *clicky.TaskManager
-	verbose     bool
+	config         *Config
+	registry       *ToolRegistry
+	promptRegistry *PromptRegistry
+	rootCmd        *cobra.Command
+	taskManager    *clicky.TaskManager
+	verbose        bool
 }
 
 // NewMCPServer creates a new MCP server
 func NewMCPServer(config *Config, rootCmd *cobra.Command) *MCPServer {
+	promptRegistry := NewPromptRegistry(config)
+	promptRegistry.LoadDefaults()
+	
+	// Try to load custom prompts
+	promptsPath := GetPromptsPath()
+	if _, err := os.Stat(promptsPath); err == nil {
+		promptRegistry.LoadFromFile(promptsPath)
+	}
+	
 	return &MCPServer{
-		config:   config,
-		registry: NewToolRegistry(config),
-		rootCmd:  rootCmd,
-		verbose:  os.Getenv("VERBOSE") != "" || os.Getenv("DEBUG") != "",
+		config:         config,
+		registry:       NewToolRegistry(config),
+		promptRegistry: promptRegistry,
+		rootCmd:        rootCmd,
+		verbose:        os.Getenv("VERBOSE") != "" || os.Getenv("DEBUG") != "",
 	}
 }
 
@@ -161,6 +172,10 @@ func (s *MCPServer) handleJSONRPCRequest(ctx context.Context, requestJSON string
 		return s.handleToolsList(req)
 	case "tools/call":
 		return s.handleToolsCall(ctx, req)
+	case "prompts/list":
+		return s.handlePromptsList(req)
+	case "prompts/get":
+		return s.handlePromptsGet(req)
 	default:
 		return &JSONRPCResponse{
 			JSONRPC: "2.0",
@@ -177,6 +192,9 @@ func (s *MCPServer) handleJSONRPCRequest(ctx context.Context, requestJSON string
 func (s *MCPServer) handleInitialize(req JSONRPCRequest) (*JSONRPCResponse, error) {
 	capabilities := map[string]interface{}{
 		"tools": map[string]interface{}{
+			"listChanged": false,
+		},
+		"prompts": map[string]interface{}{
 			"listChanged": false,
 		},
 	}
@@ -514,4 +532,146 @@ func (s *MCPServer) applyArgsToCommand(cmd *cobra.Command, args map[string]inter
 	}
 	
 	return nil
+}
+
+// handlePromptsList handles the MCP prompts/list request
+func (s *MCPServer) handlePromptsList(req JSONRPCRequest) (*JSONRPCResponse, error) {
+	prompts := s.promptRegistry.List()
+	
+	// Add a special prompt that helps with tool discovery
+	prompts = append(prompts, &Prompt{
+		Name:        "discover-tools",
+		Description: "Discover how to use available tools",
+		Template: `Please analyze the available tools and show me:
+1. What each tool does
+2. The appropriate arguments for each tool
+3. Common use cases and examples
+4. How to combine tools for complex tasks
+
+Focus on the most useful tools for common operations.`,
+		Tags: []string{"discovery", "tools", "help"},
+	})
+	
+	response := &ListPromptsResponse{
+		Prompts: make([]Prompt, len(prompts)),
+	}
+	
+	for i, p := range prompts {
+		response.Prompts[i] = *p
+	}
+	
+	return &JSONRPCResponse{
+		JSONRPC: "2.0",
+		ID:      req.ID,
+		Result:  response,
+	}, nil
+}
+
+// PromptsGetParams represents the parameters for a prompts/get request
+type PromptsGetParams struct {
+	Name      string            `json:"name"`
+	Arguments map[string]string `json:"arguments,omitempty"`
+}
+
+// handlePromptsGet handles the MCP prompts/get request
+func (s *MCPServer) handlePromptsGet(req JSONRPCRequest) (*JSONRPCResponse, error) {
+	var params PromptsGetParams
+	paramsJSON, err := json.Marshal(req.Params)
+	if err != nil {
+		return &JSONRPCResponse{
+			JSONRPC: "2.0",
+			ID:      req.ID,
+			Error: &JSONRPCError{
+				Code:    -32602,
+				Message: "Invalid params",
+			},
+		}, nil
+	}
+	
+	if err := json.Unmarshal(paramsJSON, &params); err != nil {
+		return &JSONRPCResponse{
+			JSONRPC: "2.0",
+			ID:      req.ID,
+			Error: &JSONRPCError{
+				Code:    -32602,
+				Message: "Invalid params",
+			},
+		}, nil
+	}
+	
+	// Handle special discover-tools prompt
+	if params.Name == "discover-tools" {
+		tools := s.registry.GetTools()
+		
+		// Build a comprehensive prompt about available tools
+		var toolDescriptions []string
+		for name, tool := range tools {
+			desc := fmt.Sprintf("**%s**: %s", name, tool.Description)
+			
+			// Add parameter information
+			if len(tool.InputSchema.Properties) > 0 {
+				desc += "\n  Parameters:"
+				for param, prop := range tool.InputSchema.Properties {
+					required := ""
+					for _, req := range tool.InputSchema.Required {
+						if req == param {
+							required = " (required)"
+							break
+						}
+					}
+					desc += fmt.Sprintf("\n    - %s: %s%s", param, prop.Description, required)
+				}
+			}
+			
+			toolDescriptions = append(toolDescriptions, desc)
+		}
+		
+		content := fmt.Sprintf(`Here are the available tools you can use:
+
+%s
+
+To use a tool, call it with the appropriate arguments. For example:
+- Use the 'help' tool to get general help
+- Use specific tools with their required parameters
+
+What would you like to do with these tools?`, strings.Join(toolDescriptions, "\n\n"))
+		
+		response := &GetPromptResponse{
+			Description: "Discover available tools and their usage",
+			Messages: []PromptMessage{
+				{
+					Role:    "user",
+					Content: content,
+				},
+			},
+		}
+		
+		return &JSONRPCResponse{
+			JSONRPC: "2.0",
+			ID:      req.ID,
+			Result:  response,
+		}, nil
+	}
+	
+	// Get the regular prompt
+	prompt, exists := s.promptRegistry.Get(params.Name)
+	if !exists {
+		return &JSONRPCResponse{
+			JSONRPC: "2.0",
+			ID:      req.ID,
+			Error: &JSONRPCError{
+				Code:    -32602,
+				Message: fmt.Sprintf("Prompt not found: %s", params.Name),
+			},
+		}, nil
+	}
+	
+	// Apply arguments and get response
+	response := prompt.ToMCPResponse(params.Arguments)
+	
+	return &JSONRPCResponse{
+		JSONRPC: "2.0",
+		ID:      req.ID,
+		Result:  response,
+	}, nil
 }

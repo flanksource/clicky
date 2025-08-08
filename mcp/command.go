@@ -39,6 +39,7 @@ The MCP command group provides functionality to:
 	// Add subcommands
 	mcpCmd.AddCommand(newServeCommand(opts))
 	mcpCmd.AddCommand(newConfigCommand(opts))
+	mcpCmd.AddCommand(newPromptCommand(opts))
 	
 	// Global MCP flags
 	mcpCmd.PersistentFlags().StringVar(&opts.ConfigPath, "config", "", "Path to MCP configuration file")
@@ -276,4 +277,295 @@ func boolToStatus(b bool, enabledColor, disabledColor lipgloss.Color) string {
 		return lipgloss.NewStyle().Foreground(enabledColor).Render("enabled")
 	}
 	return lipgloss.NewStyle().Foreground(disabledColor).Render("disabled")
+}
+
+// newPromptCommand creates the prompt subcommand
+func newPromptCommand(opts *CommandOptions) *cobra.Command {
+	var listTags bool
+	var byTag string
+	var showExample bool
+	var savePath string
+	
+	cmd := &cobra.Command{
+		Use:   "prompt [name]",
+		Short: "Manage and test MCP prompts",
+		Long: `Manage MCP prompts that help AI assistants understand how to use your CLI tools.
+
+Prompts provide pre-configured templates that guide AI assistants in:
+- Discovering available tools and their usage
+- Understanding appropriate arguments for each tool
+- Learning common workflows and best practices
+- Combining tools for complex tasks
+
+Examples:
+  app mcp prompt                       # List all available prompts
+  app mcp prompt discover-tools        # Show the tool discovery prompt
+  app mcp prompt --list-tags           # List all prompt tags
+  app mcp prompt --tag workflow        # List prompts tagged as 'workflow'
+  app mcp prompt --save custom.json    # Save prompts to file`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			// Load configuration
+			configPath := opts.ConfigPath
+			if configPath == "" {
+				configPath = GetConfigPath()
+			}
+			
+			config, err := LoadConfig(configPath)
+			if err != nil {
+				return fmt.Errorf("failed to load configuration: %w", err)
+			}
+			
+			// Get root command
+			rootCmd := cmd
+			for rootCmd.Parent() != nil {
+				rootCmd = rootCmd.Parent()
+			}
+			
+			// Create prompt registry
+			promptRegistry := NewPromptRegistry(config)
+			promptRegistry.LoadDefaults()
+			
+			// Try to load custom prompts
+			promptsPath := GetPromptsPath()
+			if _, err := os.Stat(promptsPath); err == nil {
+				promptRegistry.LoadFromFile(promptsPath)
+			}
+			
+			// Handle save option
+			if savePath != "" {
+				if err := promptRegistry.SaveToFile(savePath); err != nil {
+					return fmt.Errorf("failed to save prompts: %w", err)
+				}
+				fmt.Printf("Prompts saved to %s\n", savePath)
+				return nil
+			}
+			
+			// Handle list tags
+			if listTags {
+				tags := make(map[string]int)
+				for _, p := range promptRegistry.List() {
+					for _, tag := range p.Tags {
+						tags[tag]++
+					}
+				}
+				
+				fmt.Println("Available prompt tags:")
+				for tag, count := range tags {
+					fmt.Printf("  • %s (%d prompts)\n", tag, count)
+				}
+				return nil
+			}
+			
+			// Handle filter by tag
+			var prompts []*Prompt
+			if byTag != "" {
+				prompts = promptRegistry.ListByTag(byTag)
+				if len(prompts) == 0 {
+					return fmt.Errorf("no prompts found with tag: %s", byTag)
+				}
+			} else if len(args) == 0 {
+				// List all prompts
+				prompts = promptRegistry.List()
+				
+				// Add special discover-tools prompt
+				prompts = append(prompts, &Prompt{
+					Name:        "discover-tools",
+					Description: "Discover how to use available tools (shows all tools with their arguments)",
+					Tags:        []string{"discovery", "tools", "help"},
+				})
+			}
+			
+			// Handle specific prompt
+			if len(args) > 0 {
+				promptName := args[0]
+				
+				// Handle special discover-tools prompt
+				if promptName == "discover-tools" {
+					// Create tool registry to get available tools
+					toolRegistry := NewToolRegistry(config)
+					toolRegistry.RegisterCommandTree(rootCmd)
+					tools := toolRegistry.GetTools()
+					
+					fmt.Println(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("14")).
+						Render("Tool Discovery Prompt"))
+					fmt.Println()
+					fmt.Println("This prompt helps AI assistants understand all available tools.")
+					fmt.Println()
+					fmt.Println(lipgloss.NewStyle().Foreground(lipgloss.Color("12")).
+						Render("Available Tools:"))
+					fmt.Println()
+					
+					for name, tool := range tools {
+						fmt.Printf("  %s\n", lipgloss.NewStyle().Bold(true).Render(name))
+						fmt.Printf("    %s\n", tool.Description)
+						
+						if len(tool.InputSchema.Properties) > 0 {
+							fmt.Println("    Parameters:")
+							for param, prop := range tool.InputSchema.Properties {
+								required := ""
+								for _, req := range tool.InputSchema.Required {
+									if req == param {
+										required = " (required)"
+										break
+									}
+								}
+								fmt.Printf("      • %s: %s%s\n", param, prop.Description, required)
+								if prop.Default != nil {
+									fmt.Printf("        Default: %v\n", prop.Default)
+								}
+							}
+						}
+						fmt.Println()
+					}
+					
+					if showExample {
+						fmt.Println(lipgloss.NewStyle().Foreground(lipgloss.Color("12")).
+							Render("Example Usage:"))
+						fmt.Println()
+						fmt.Println("When an AI assistant uses this prompt, it will receive detailed")
+						fmt.Println("information about all available tools, their parameters, and how")
+						fmt.Println("to use them effectively.")
+					}
+					
+					return nil
+				}
+				
+				// Get regular prompt
+				prompt, exists := promptRegistry.Get(promptName)
+				if !exists {
+					return fmt.Errorf("prompt not found: %s", promptName)
+				}
+				
+				// Display prompt details
+				fmt.Println(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("14")).
+					Render(prompt.Name))
+				fmt.Printf("Description: %s\n", prompt.Description)
+				
+				if len(prompt.Tags) > 0 {
+					fmt.Printf("Tags: %s\n", strings.Join(prompt.Tags, ", "))
+				}
+				
+				if len(prompt.Arguments) > 0 {
+					fmt.Println("\nArguments:")
+					for _, arg := range prompt.Arguments {
+						req := ""
+						if arg.Required {
+							req = " (required)"
+						}
+						fmt.Printf("  • %s: %s%s\n", arg.Name, arg.Description, req)
+						if arg.Default != "" {
+							fmt.Printf("    Default: %s\n", arg.Default)
+						}
+					}
+				}
+				
+				fmt.Println("\nTemplate:")
+				fmt.Println(prompt.Template)
+				
+				if len(prompt.Examples) > 0 && showExample {
+					fmt.Println("\nExamples:")
+					for _, ex := range prompt.Examples {
+						fmt.Printf("  %s\n", ex)
+					}
+				}
+				
+				return nil
+			}
+			
+			// List prompts
+			fmt.Println(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("14")).
+				Render("Available MCP Prompts"))
+			fmt.Println()
+			
+			// Group by tags
+			byTagMap := make(map[string][]*Prompt)
+			untagged := []*Prompt{}
+			
+			for _, p := range prompts {
+				if len(p.Tags) == 0 {
+					untagged = append(untagged, p)
+				} else {
+					for _, tag := range p.Tags {
+						byTagMap[tag] = append(byTagMap[tag], p)
+					}
+				}
+			}
+			
+			// Display by category
+			displayedPrompts := make(map[string]bool)
+			
+			// Show discovery prompts first
+			if discoveryPrompts, ok := byTagMap["discovery"]; ok {
+				fmt.Println(lipgloss.NewStyle().Foreground(lipgloss.Color("12")).Render("Discovery:"))
+				for _, p := range discoveryPrompts {
+					if !displayedPrompts[p.Name] {
+						fmt.Printf("  • %s - %s\n", 
+							lipgloss.NewStyle().Bold(true).Render(p.Name),
+							p.Description)
+						displayedPrompts[p.Name] = true
+					}
+				}
+				fmt.Println()
+			}
+			
+			// Show task prompts
+			if taskPrompts, ok := byTagMap["task"]; ok {
+				fmt.Println(lipgloss.NewStyle().Foreground(lipgloss.Color("12")).Render("Tasks:"))
+				for _, p := range taskPrompts {
+					if !displayedPrompts[p.Name] {
+						fmt.Printf("  • %s - %s\n",
+							lipgloss.NewStyle().Bold(true).Render(p.Name),
+							p.Description)
+						displayedPrompts[p.Name] = true
+					}
+				}
+				fmt.Println()
+			}
+			
+			// Show other categories
+			for tag, tagPrompts := range byTagMap {
+				if tag == "discovery" || tag == "task" {
+					continue
+				}
+				
+				fmt.Printf("%s:\n", lipgloss.NewStyle().Foreground(lipgloss.Color("12")).
+					Render(strings.Title(tag)))
+				for _, p := range tagPrompts {
+					if !displayedPrompts[p.Name] {
+						fmt.Printf("  • %s - %s\n",
+							lipgloss.NewStyle().Bold(true).Render(p.Name),
+							p.Description)
+						displayedPrompts[p.Name] = true
+					}
+				}
+				fmt.Println()
+			}
+			
+			// Show untagged
+			if len(untagged) > 0 {
+				fmt.Println(lipgloss.NewStyle().Foreground(lipgloss.Color("12")).Render("Other:"))
+				for _, p := range untagged {
+					if !displayedPrompts[p.Name] {
+						fmt.Printf("  • %s - %s\n",
+							lipgloss.NewStyle().Bold(true).Render(p.Name),
+							p.Description)
+					}
+				}
+				fmt.Println()
+			}
+			
+			fmt.Println(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).
+				Render("Use 'mcp prompt <name>' to see details about a specific prompt"))
+			
+			return nil
+		},
+	}
+	
+	// Add flags
+	cmd.Flags().BoolVar(&listTags, "list-tags", false, "List all available tags")
+	cmd.Flags().StringVar(&byTag, "tag", "", "Filter prompts by tag")
+	cmd.Flags().BoolVar(&showExample, "examples", false, "Show examples for prompts")
+	cmd.Flags().StringVar(&savePath, "save", "", "Save prompts to JSON file")
+	
+	return cmd
 }
