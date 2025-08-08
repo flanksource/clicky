@@ -3,6 +3,8 @@ package clicky
 import (
 	"context"
 	"fmt"
+	"math"
+	"math/rand"
 	"os"
 	"strings"
 	"sync"
@@ -37,24 +39,48 @@ type LogEntry struct {
 	Time    time.Time
 }
 
+// RetryConfig holds configuration for task retry behavior
+type RetryConfig struct {
+	MaxRetries      int
+	BaseDelay       time.Duration
+	MaxDelay        time.Duration
+	BackoffFactor   float64
+	JitterFactor    float64
+	RetryableErrors []string // Error message patterns that should trigger retries
+}
+
+// DefaultRetryConfig returns sensible default retry configuration
+func DefaultRetryConfig() RetryConfig {
+	return RetryConfig{
+		MaxRetries:      3,
+		BaseDelay:       1 * time.Second,
+		MaxDelay:        30 * time.Second,
+		BackoffFactor:   2.0,
+		JitterFactor:    0.1,
+		RetryableErrors: []string{"timeout", "connection", "temporary", "rate limit", "429"},
+	}
+}
+
 // Task represents a single task being tracked by the TaskManager
 type Task struct {
-	name       string
-	modelName  string
-	prompt     string
-	status     TaskStatus
-	progress   int
-	maxValue   int
-	startTime  time.Time
-	endTime    time.Time
-	manager    *TaskManager
-	logs       []LogEntry
-	cancel     context.CancelFunc
-	ctx        context.Context
-	timeout    time.Duration
-	runFunc    func(*Task) error
-	err        error
-	mu         sync.Mutex
+	name         string
+	modelName    string
+	prompt       string
+	status       TaskStatus
+	progress     int
+	maxValue     int
+	startTime    time.Time
+	endTime      time.Time
+	manager      *TaskManager
+	logs         []LogEntry
+	cancel       context.CancelFunc
+	ctx          context.Context
+	timeout      time.Duration
+	runFunc      func(*Task) error
+	err          error
+	mu           sync.Mutex
+	retryConfig  RetryConfig
+	retryCount   int
 }
 
 // TaskManager manages and displays multiple tasks with progress bars
@@ -67,6 +93,7 @@ type TaskManager struct {
 	verbose       bool
 	maxConcurrent int
 	semaphore     chan struct{}
+	retryConfig   RetryConfig
 	styles        struct {
 		success   lipgloss.Style
 		failed    lipgloss.Style
@@ -111,6 +138,13 @@ func WithPrompt(prompt string) TaskOption {
 	}
 }
 
+// WithRetryConfig sets custom retry configuration for the task
+func WithRetryConfig(config RetryConfig) TaskOption {
+	return func(t *Task) {
+		t.retryConfig = config
+	}
+}
+
 // NewTaskManager creates a new TaskManager instance
 func NewTaskManager() *TaskManager {
 	return NewTaskManagerWithConcurrency(0) // 0 means unlimited
@@ -132,6 +166,7 @@ func NewTaskManagerWithConcurrency(maxConcurrent int) *TaskManager {
 		width:         width,
 		verbose:       os.Getenv("VERBOSE") != "" || os.Getenv("DEBUG") != "",
 		maxConcurrent: maxConcurrent,
+		retryConfig:   DefaultRetryConfig(),
 	}
 
 	if maxConcurrent > 0 {
@@ -186,6 +221,13 @@ func (tm *TaskManager) SetMaxConcurrent(max int) {
 	}
 }
 
+// SetRetryConfig sets the default retry configuration for new tasks
+func (tm *TaskManager) SetRetryConfig(config RetryConfig) {
+	tm.mu.Lock()
+	defer tm.mu.Unlock()
+	tm.retryConfig = config
+}
+
 // Start creates and starts tracking a new task with optional timeout
 func (tm *TaskManager) Start(name string, opts ...TaskOption) *Task {
 	tm.mu.Lock()
@@ -194,15 +236,17 @@ func (tm *TaskManager) Start(name string, opts ...TaskOption) *Task {
 	ctx, cancel := context.WithCancel(context.Background())
 	
 	task := &Task{
-		name:      name,
-		status:    StatusPending,
-		progress:  0,
-		maxValue:  100,
-		startTime: time.Now(),
-		manager:   tm,
-		logs:      make([]LogEntry, 0),
-		cancel:    cancel,
-		ctx:       ctx,
+		name:        name,
+		status:      StatusPending,
+		progress:    0,
+		maxValue:    100,
+		startTime:   time.Now(),
+		manager:     tm,
+		logs:        make([]LogEntry, 0),
+		cancel:      cancel,
+		ctx:         ctx,
+		retryConfig: tm.retryConfig,
+		retryCount:  0,
 	}
 
 	for _, opt := range opts {
@@ -257,52 +301,136 @@ func (tm *TaskManager) runTask(task *Task) {
 	}
 	task.mu.Unlock()
 
-	// Run the task function if provided
+	// Run the task function if provided with retry logic
 	if task.runFunc != nil {
+		tm.runTaskWithRetry(task)
+	}
+}
+
+// runTaskWithRetry executes a task with retry logic using exponential backoff and jitter
+func (tm *TaskManager) runTaskWithRetry(task *Task) {
+	for {
 		// Monitor context for cancellation/timeout
 		done := make(chan error, 1)
 		go func() {
 			done <- task.runFunc(task)
 		}()
 
+		var err error
 		select {
-		case err := <-done:
-			task.mu.Lock()
-			if task.status == StatusRunning {
-				if err != nil {
-					task.err = err
-					task.status = StatusFailed
-					task.logs = append(task.logs, LogEntry{
-						Level:   "error",
-						Message: err.Error(),
-						Time:    time.Now(),
-					})
-				} else {
-					// Only set success if still running (not cancelled/failed)
-					task.status = StatusSuccess
-				}
-				task.endTime = time.Now()
-			}
-			task.mu.Unlock()
-			
+		case err = <-done:
+			// Task completed (either successfully or with error)
 		case <-task.ctx.Done():
+			// Task was cancelled or timed out
 			task.mu.Lock()
 			if task.status == StatusRunning {
 				if task.ctx.Err() == context.DeadlineExceeded {
-					task.status = StatusFailed
-					task.logs = append(task.logs, LogEntry{
-						Level:   "error",
-						Message: fmt.Sprintf("Task timed out after %v", task.timeout),
-						Time:    time.Now(),
-					})
+					err = fmt.Errorf("task timed out after %v", task.timeout)
 				} else {
 					task.status = StatusCancelled
+					task.endTime = time.Now()
+					task.mu.Unlock()
+					return
 				}
-				task.endTime = time.Now()
 			}
 			task.mu.Unlock()
 		}
+
+		task.mu.Lock()
+		if task.status != StatusRunning {
+			task.mu.Unlock()
+			return
+		}
+
+		if err != nil {
+			// Check if error is retryable
+			shouldRetry := tm.shouldRetryError(err, task.retryConfig)
+			
+			if shouldRetry && task.retryCount < task.retryConfig.MaxRetries {
+				task.retryCount++
+				
+				// Log retry attempt
+				task.logs = append(task.logs, LogEntry{
+					Level:   "warning",
+					Message: fmt.Sprintf("Attempt %d failed, retrying: %v", task.retryCount, err),
+					Time:    time.Now(),
+				})
+				task.mu.Unlock()
+
+				// Calculate delay with exponential backoff and jitter
+				delay := tm.calculateBackoffDelay(task.retryCount, task.retryConfig)
+				
+				// Wait for delay or cancellation
+				select {
+				case <-time.After(delay):
+					// Continue to retry
+					continue
+				case <-task.ctx.Done():
+					// Task was cancelled during backoff
+					task.mu.Lock()
+					task.status = StatusCancelled
+					task.endTime = time.Now()
+					task.mu.Unlock()
+					return
+				}
+			} else {
+				// No more retries or error is not retryable
+				task.err = err
+				task.status = StatusFailed
+				task.endTime = time.Now()
+				task.logs = append(task.logs, LogEntry{
+					Level:   "error",
+					Message: err.Error(),
+					Time:    time.Now(),
+				})
+				task.mu.Unlock()
+				return
+			}
+		} else {
+			// Task succeeded
+			task.status = StatusSuccess
+			task.endTime = time.Now()
+			task.mu.Unlock()
+			return
+		}
 	}
+}
+
+// shouldRetryError checks if an error should trigger a retry
+func (tm *TaskManager) shouldRetryError(err error, config RetryConfig) bool {
+	if err == nil {
+		return false
+	}
+	
+	errMsg := strings.ToLower(err.Error())
+	for _, pattern := range config.RetryableErrors {
+		if strings.Contains(errMsg, strings.ToLower(pattern)) {
+			return true
+		}
+	}
+	return false
+}
+
+// calculateBackoffDelay calculates the delay for the next retry with exponential backoff and jitter
+func (tm *TaskManager) calculateBackoffDelay(retryCount int, config RetryConfig) time.Duration {
+	// Calculate exponential backoff
+	delay := float64(config.BaseDelay) * math.Pow(config.BackoffFactor, float64(retryCount-1))
+	
+	// Apply maximum delay cap
+	if delay > float64(config.MaxDelay) {
+		delay = float64(config.MaxDelay)
+	}
+	
+	// Add jitter to prevent thundering herd
+	jitter := delay * config.JitterFactor * (rand.Float64() - 0.5) * 2
+	finalDelay := delay + jitter
+	
+	// Ensure delay is never negative
+	if finalDelay < 0 {
+		finalDelay = float64(config.BaseDelay)
+	}
+	
+	return time.Duration(finalDelay)
 }
 
 // Run starts all tasks and waits for completion
@@ -501,7 +629,7 @@ func (t *Task) Status() TaskStatus {
 }
 
 func (tm *TaskManager) render() {
-	ticker := time.NewTicker(1 * time.Second)
+	ticker := time.NewTicker(100 * time.Millisecond)
 	defer ticker.Stop()
 
 	for {
@@ -530,9 +658,12 @@ func (tm *TaskManager) render() {
 }
 
 func (tm *TaskManager) buildOutput(tasks []*Task, verbose bool) string {
-	var pending []string
+	var pendingTasks []*Task
 	var running []string
 	var completed []string
+	totalTasks := len(tasks)
+	completedCount := 0
+	runningCount := 0
 
 	for _, task := range tasks {
 		task.mu.Lock()
@@ -571,23 +702,37 @@ func (tm *TaskManager) buildOutput(tasks []*Task, verbose bool) string {
 
 		switch status {
 		case StatusPending:
-			pending = append(pending, tm.styles.pending.Render(fmt.Sprintf("⏳ %s (pending)", displayName)))
-			pending = append(pending, taskLogs...)
+			pendingTasks = append(pendingTasks, task)
 		case StatusSuccess:
+			completedCount++
 			completed = append(completed, tm.styles.success.Render(fmt.Sprintf("✓ %s (%s)", displayName, duration)))
 			completed = append(completed, taskLogs...)
 		case StatusFailed:
+			completedCount++
 			completed = append(completed, tm.styles.failed.Render(fmt.Sprintf("✗ %s (%s)", displayName, duration)))
 			completed = append(completed, taskLogs...)
 		case StatusWarning:
+			completedCount++
 			completed = append(completed, tm.styles.warning.Render(fmt.Sprintf("⚠ %s (%s)", displayName, duration)))
 			completed = append(completed, taskLogs...)
 		case StatusCancelled:
+			completedCount++
 			completed = append(completed, tm.styles.cancelled.Render(fmt.Sprintf("⊘ %s (%s)", displayName, duration)))
 			completed = append(completed, taskLogs...)
 		case StatusRunning:
+			runningCount++
 			// Use width-aware formatting for running tasks to prevent wrapping
 			runningName := tm.formatTaskNameWithWidth(name, modelName, prompt, tm.width)
+			
+			// Add retry info if task has been retried
+			task.mu.Lock()
+			retryCount := task.retryCount
+			task.mu.Unlock()
+			
+			if retryCount > 0 {
+				runningName = fmt.Sprintf("%s (retry %d/%d)", runningName, retryCount, task.retryConfig.MaxRetries)
+			}
+			
 			bar := tm.renderProgressBar(runningName, progress, maxValue, duration)
 			running = append(running, bar)
 			running = append(running, taskLogs...)
@@ -608,10 +753,40 @@ func (tm *TaskManager) buildOutput(tasks []*Task, verbose bool) string {
 		output.WriteString("\n")
 	}
 	
-	// Finally pending tasks
-	for _, line := range pending {
-		output.WriteString(line)
+	// Finally pending tasks - group them if more than 3
+	pendingCount := len(pendingTasks)
+	if pendingCount > 3 {
+		// Show a single meta task for all pending tasks
+		processedCount := completedCount + runningCount
+		metaTask := fmt.Sprintf("⏳ Processing %d of %d tasks (%d pending)", 
+			processedCount, totalTasks, pendingCount)
+		output.WriteString(tm.styles.pending.Render(metaTask))
 		output.WriteString("\n")
+		
+		// Show first 2 pending tasks as a preview
+		for i := 0; i < 2 && i < pendingCount; i++ {
+			task := pendingTasks[i]
+			task.mu.Lock()
+			displayName := tm.formatTaskName(task.name, task.modelName, task.prompt)
+			task.mu.Unlock()
+			output.WriteString(tm.styles.info.Render(fmt.Sprintf("  • %s", displayName)))
+			output.WriteString("\n")
+		}
+		
+		// Show ellipsis if there are more
+		if pendingCount > 2 {
+			output.WriteString(tm.styles.info.Render(fmt.Sprintf("  • ... and %d more", pendingCount-2)))
+			output.WriteString("\n")
+		}
+	} else {
+		// Show all pending tasks individually when 3 or fewer
+		for _, task := range pendingTasks {
+			task.mu.Lock()
+			displayName := tm.formatTaskName(task.name, task.modelName, task.prompt)
+			task.mu.Unlock()
+			output.WriteString(tm.styles.pending.Render(fmt.Sprintf("⏳ %s (pending)", displayName)))
+			output.WriteString("\n")
+		}
 	}
 
 	return output.String()

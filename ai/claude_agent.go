@@ -4,17 +4,20 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
 
 	"github.com/flanksource/clicky"
+	"github.com/flanksource/clicky/ai/cache"
 )
 
 // ClaudeAgent implements the Agent interface for Claude
 type ClaudeAgent struct {
 	config      AgentConfig
 	taskManager *clicky.TaskManager
+	cache       *cache.Cache
 }
 
 // NewClaudeAgent creates a new Claude agent
@@ -28,10 +31,32 @@ func NewClaudeAgent(config AgentConfig) (*ClaudeAgent, error) {
 		tm.SetVerbose(true)
 	}
 	
-	return &ClaudeAgent{
+	agent := &ClaudeAgent{
 		config:      config,
 		taskManager: tm,
-	}, nil
+	}
+	
+	// Initialize cache if not disabled
+	if !config.NoCache {
+		cacheConfig := cache.Config{
+			TTL:     config.CacheTTL,
+			NoCache: config.NoCache,
+			DBPath:  config.CacheDBPath,
+			Debug:   config.Debug,
+		}
+		
+		c, err := cache.New(cacheConfig)
+		if err != nil {
+			// Log error but continue without cache
+			if config.Debug {
+				fmt.Fprintf(os.Stderr, "Warning: Failed to initialize AI cache: %v\n", err)
+			}
+		} else {
+			agent.cache = c
+		}
+	}
+	
+	return agent, nil
 }
 
 // GetType returns the agent type
@@ -218,8 +243,42 @@ func (ca *ClaudeAgent) ExecuteBatch(ctx context.Context, requests []PromptReques
 	return results, nil
 }
 
-// executeClaude executes the Claude CLI command
+// executeClaude executes the Claude CLI command with caching
 func (ca *ClaudeAgent) executeClaude(ctx context.Context, request PromptRequest, task *clicky.Task) (*PromptResponse, error) {
+	// Add context to prompt if provided
+	prompt := request.Prompt
+	if len(request.Context) > 0 {
+		var contextParts []string
+		for key, value := range request.Context {
+			contextParts = append(contextParts, fmt.Sprintf("%s: %s", key, value))
+		}
+		prompt = fmt.Sprintf("Context:\n%s\n\n%s", strings.Join(contextParts, "\n"), prompt)
+	}
+	
+	// Check cache first
+	if ca.cache != nil {
+		entry, err := ca.cache.Get(prompt, ca.config.Model, ca.config.Temperature, ca.config.MaxTokens)
+		if err == nil && entry != nil && entry.Error == "" {
+			// Cache hit
+			if task != nil {
+				task.Infof("Cache hit for prompt (saved $%.6f)", entry.CostUSD)
+			}
+			return &PromptResponse{
+				Result:           entry.Response,
+				TokensUsed:       entry.TokensTotal,
+				TokensInput:      entry.TokensInput,
+				TokensOutput:     entry.TokensOutput,
+				TokensCacheRead:  entry.TokensCacheRead,
+				TokensCacheWrite: entry.TokensCacheWrite,
+				CostUSD:          0, // No cost for cached response
+				DurationMs:       0, // No time for cached response
+				CacheHit:         true,
+				Model:            ca.config.Model,
+			}, nil
+		}
+	}
+	
+	// Build Claude CLI arguments
 	args := []string{"-p"}
 	
 	if ca.config.Model != "" {
@@ -230,16 +289,6 @@ func (ca *ClaudeAgent) executeClaude(ctx context.Context, request PromptRequest,
 	
 	if ca.config.StrictMCPConfig {
 		args = append(args, "--strict-mcp-config")
-	}
-	
-	// Add context as system message if provided
-	prompt := request.Prompt
-	if len(request.Context) > 0 {
-		var contextParts []string
-		for key, value := range request.Context {
-			contextParts = append(contextParts, fmt.Sprintf("%s: %s", key, value))
-		}
-		prompt = fmt.Sprintf("Context:\n%s\n\n%s", strings.Join(contextParts, "\n"), prompt)
 	}
 	
 	args = append(args, prompt)
@@ -253,36 +302,92 @@ func (ca *ClaudeAgent) executeClaude(ctx context.Context, request PromptRequest,
 	output, err := cmd.CombinedOutput()
 	duration := time.Since(startTime)
 	
+	// Prepare cache entry
+	cacheEntry := &cache.Entry{
+		Model:       ca.config.Model,
+		Prompt:      prompt,
+		Temperature: ca.config.Temperature,
+		MaxTokens:   ca.config.MaxTokens,
+		DurationMS:  int64(duration.Milliseconds()),
+		ProjectName: ca.config.ProjectName,
+		TaskName:    request.Name,
+		SessionID:   ca.config.SessionID,
+		CreatedAt:   time.Now(),
+	}
+	
 	if err != nil {
+		errMsg := fmt.Sprintf("claude CLI failed: %v", err)
 		if ctx.Err() != nil {
-			return nil, fmt.Errorf("claude CLI cancelled: %w", ctx.Err())
+			errMsg = fmt.Sprintf("claude CLI cancelled: %v", ctx.Err())
 		}
-		return nil, fmt.Errorf("claude CLI failed: %w\nOutput: %s", err, string(output))
+		
+		// Cache the error
+		cacheEntry.Error = errMsg
+		if ca.cache != nil {
+			ca.cache.Set(cacheEntry)
+		}
+		
+		return nil, fmt.Errorf("%s\nOutput: %s", errMsg, string(output))
 	}
 	
 	// Try to parse JSON response
 	var claudeResp ClaudeResponse
 	if err := json.Unmarshal(output, &claudeResp); err != nil {
 		// Fallback to plain text response
-		return &PromptResponse{
+		response := &PromptResponse{
 			Result:     string(output),
 			TokensUsed: 0,
 			CostUSD:    0,
 			DurationMs: int(duration.Milliseconds()),
 			Model:      ca.config.Model,
-		}, nil
+		}
+		
+		// Cache the response
+		cacheEntry.Response = response.Result
+		if ca.cache != nil {
+			ca.cache.Set(cacheEntry)
+		}
+		
+		return response, nil
 	}
 	
 	if claudeResp.IsError {
-		return nil, fmt.Errorf("claude returned error: %s", claudeResp.Result)
+		errMsg := fmt.Sprintf("claude returned error: %s", claudeResp.Result)
+		cacheEntry.Error = errMsg
+		if ca.cache != nil {
+			ca.cache.Set(cacheEntry)
+		}
+		return nil, fmt.Errorf(errMsg)
 	}
 	
+	// Build response with detailed token information
 	response := &PromptResponse{
-		Result:     claudeResp.Result,
-		TokensUsed: claudeResp.GetTotalTokens(),
-		CostUSD:    claudeResp.TotalCostUSD,
-		DurationMs: claudeResp.DurationMs,
-		Model:      ca.config.Model,
+		Result:           claudeResp.Result,
+		TokensUsed:       claudeResp.GetTotalTokens(),
+		TokensInput:      claudeResp.Usage.InputTokens,
+		TokensOutput:     claudeResp.Usage.OutputTokens,
+		TokensCacheRead:  claudeResp.Usage.CacheReadInputTokens,
+		TokensCacheWrite: claudeResp.Usage.CacheCreationInputTokens,
+		CostUSD:          claudeResp.TotalCostUSD,
+		DurationMs:       claudeResp.DurationMs,
+		Model:            ca.config.Model,
+		CacheHit:         false,
+	}
+	
+	// Update cache entry with successful response
+	cacheEntry.Response = response.Result
+	cacheEntry.TokensInput = response.TokensInput
+	cacheEntry.TokensOutput = response.TokensOutput
+	cacheEntry.TokensCacheRead = response.TokensCacheRead
+	cacheEntry.TokensCacheWrite = response.TokensCacheWrite
+	cacheEntry.TokensTotal = response.TokensUsed
+	cacheEntry.CostUSD = response.CostUSD
+	
+	// Save to cache
+	if ca.cache != nil {
+		if err := ca.cache.Set(cacheEntry); err != nil && ca.config.Debug {
+			fmt.Fprintf(os.Stderr, "Warning: Failed to cache response: %v\n", err)
+		}
 	}
 	
 	if task != nil && ca.config.Debug {
@@ -300,5 +405,11 @@ func (ca *ClaudeAgent) executeClaude(ctx context.Context, request PromptRequest,
 // Close cleans up resources
 func (ca *ClaudeAgent) Close() error {
 	ca.taskManager.CancelAll()
+	
+	// Close cache if initialized
+	if ca.cache != nil {
+		return ca.cache.Close()
+	}
+	
 	return nil
 }

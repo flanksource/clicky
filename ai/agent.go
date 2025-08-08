@@ -5,8 +5,10 @@ import (
 	"flag"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/flanksource/clicky"
+	"github.com/flanksource/clicky/ai/cache"
 )
 
 // AgentType represents the type of AI agent
@@ -30,14 +32,21 @@ type Model struct {
 
 // AgentConfig holds configuration for AI agents
 type AgentConfig struct {
-	Type            AgentType `json:"type"`
-	Model           string    `json:"model"`
-	MaxTokens       int       `json:"max_tokens"`
-	MaxConcurrent   int       `json:"max_concurrent"`
-	Debug           bool      `json:"debug"`
-	Verbose         bool      `json:"verbose"`
-	StrictMCPConfig bool      `json:"strict_mcp_config"`
-	Temperature     float64   `json:"temperature,omitempty"`
+	Type            AgentType     `json:"type"`
+	Model           string        `json:"model"`
+	MaxTokens       int           `json:"max_tokens"`
+	MaxConcurrent   int           `json:"max_concurrent"`
+	Debug           bool          `json:"debug"`
+	Verbose         bool          `json:"verbose"`
+	StrictMCPConfig bool          `json:"strict_mcp_config"`
+	Temperature     float64       `json:"temperature,omitempty"`
+	
+	// Cache configuration
+	CacheTTL        time.Duration `json:"cache_ttl,omitempty"`
+	NoCache         bool          `json:"no_cache,omitempty"`
+	CacheDBPath     string        `json:"cache_db_path,omitempty"`
+	ProjectName     string        `json:"project_name,omitempty"`
+	SessionID       string        `json:"session_id,omitempty"`
 }
 
 // PromptRequest represents a request to process a prompt
@@ -49,13 +58,17 @@ type PromptRequest struct {
 
 // PromptResponse represents the response from processing a prompt
 type PromptResponse struct {
-	Result       string  `json:"result"`
-	TokensUsed   int     `json:"tokens_used"`
-	CostUSD      float64 `json:"cost_usd"`
-	DurationMs   int     `json:"duration_ms"`
-	CacheHit     bool    `json:"cache_hit,omitempty"`
-	Model        string  `json:"model,omitempty"`
-	Error        string  `json:"error,omitempty"`
+	Result           string  `json:"result"`
+	TokensUsed       int     `json:"tokens_used"`
+	TokensInput      int     `json:"tokens_input,omitempty"`
+	TokensOutput     int     `json:"tokens_output,omitempty"`
+	TokensCacheRead  int     `json:"tokens_cache_read,omitempty"`
+	TokensCacheWrite int     `json:"tokens_cache_write,omitempty"`
+	CostUSD          float64 `json:"cost_usd"`
+	DurationMs       int     `json:"duration_ms"`
+	CacheHit         bool    `json:"cache_hit,omitempty"`
+	Model            string  `json:"model,omitempty"`
+	Error            string  `json:"error,omitempty"`
 }
 
 // Agent interface defines the contract for AI agents
@@ -86,14 +99,37 @@ type Agent interface {
 type AgentManager struct {
 	agents map[AgentType]Agent
 	config AgentConfig
+	cache  *cache.Cache
 }
 
 // NewAgentManager creates a new agent manager
 func NewAgentManager(config AgentConfig) *AgentManager {
-	return &AgentManager{
+	am := &AgentManager{
 		agents: make(map[AgentType]Agent),
 		config: config,
 	}
+	
+	// Initialize cache if not disabled
+	if !config.NoCache {
+		cacheConfig := cache.Config{
+			TTL:     config.CacheTTL,
+			NoCache: config.NoCache,
+			DBPath:  config.CacheDBPath,
+			Debug:   config.Debug,
+		}
+		
+		c, err := cache.New(cacheConfig)
+		if err != nil {
+			// Log error but continue without cache
+			if config.Debug {
+				fmt.Printf("Warning: Failed to initialize AI cache: %v\n", err)
+			}
+		} else {
+			am.cache = c
+		}
+	}
+	
+	return am
 }
 
 // GetAgent returns an agent of the specified type, creating it if needed
@@ -151,12 +187,25 @@ func (am *AgentManager) ListAllModels(ctx context.Context) (map[AgentType][]Mode
 	return results, nil
 }
 
-// Close closes all agents
+// GetCache returns the cache instance
+func (am *AgentManager) GetCache() *cache.Cache {
+	return am.cache
+}
+
+// Close closes all agents and the cache
 func (am *AgentManager) Close() error {
 	var errs []string
 	
+	// Close all agents
 	for _, agent := range am.agents {
 		if err := agent.Close(); err != nil {
+			errs = append(errs, err.Error())
+		}
+	}
+	
+	// Close cache
+	if am.cache != nil {
+		if err := am.cache.Close(); err != nil {
 			errs = append(errs, err.Error())
 		}
 	}
@@ -178,6 +227,8 @@ func DefaultConfig() AgentConfig {
 		Debug:         false,
 		Verbose:       false,
 		Temperature:   0.2,
+		CacheTTL:      24 * time.Hour, // Default 24 hour TTL
+		NoCache:       false,
 	}
 }
 
@@ -192,6 +243,12 @@ func BindFlags(flags *flag.FlagSet, config *AgentConfig) {
 	flags.IntVar(&config.MaxConcurrent, "ai-max-concurrent", config.MaxConcurrent, "Maximum concurrent AI requests")
 	flags.Float64Var(&config.Temperature, "ai-temperature", config.Temperature, "AI temperature (0.0-2.0)")
 	flags.BoolVar(&config.StrictMCPConfig, "ai-strict-mcp", config.StrictMCPConfig, "Use strict MCP configuration (Claude only)")
+	
+	// Cache configuration flags
+	flags.DurationVar(&config.CacheTTL, "ai-cache-ttl", config.CacheTTL, "AI cache TTL (e.g., 24h, 7d)")
+	flags.BoolVar(&config.NoCache, "ai-no-cache", config.NoCache, "Disable AI response caching")
+	flags.StringVar(&config.CacheDBPath, "ai-cache-db", config.CacheDBPath, "Path to AI cache database (default: ~/.cache/clicky-ai.db)")
+	flags.StringVar(&config.ProjectName, "ai-project", config.ProjectName, "Project name for cache grouping")
 	
 	// Add convenience flags (these will be handled by the calling code)
 	flags.Bool("aider", false, "Use Aider agent (shorthand for --agent=aider)")
