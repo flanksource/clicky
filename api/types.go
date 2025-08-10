@@ -9,6 +9,9 @@ import (
 	"time"
 )
 
+// RenderFunc is a custom rendering function type
+type RenderFunc func(value interface{}, field PrettyField, theme Theme) string
+
 // PrettyField represents field formatting configuration
 type PrettyField struct {
 	Name          string            `json:"name" yaml:"name"`
@@ -26,6 +29,11 @@ type PrettyField struct {
 	Fields []PrettyField `json:"fields,omitempty" yaml:"fields,omitempty"`
 	// For table formatting
 	TableOptions PrettyTable `json:"table_options,omitempty" yaml:"table_options,omitempty"`
+	// For tree formatting
+	TreeOptions  *TreeOptions `json:"tree_options,omitempty" yaml:"tree_options,omitempty"`
+	// For custom rendering
+	RenderFunc   RenderFunc `json:"-" yaml:"-"`
+	CompactItems bool       `json:"compact_items,omitempty" yaml:"compact_items,omitempty"`
 }
 
 // PrettyTable represents table configuration
@@ -833,6 +841,14 @@ func (v FieldValue) GetFieldType() string {
 	return v.Field.Type
 }
 
+// RenderFuncRegistry stores named custom render functions
+var RenderFuncRegistry = map[string]RenderFunc{}
+
+// RegisterRenderFunc registers a custom render function
+func RegisterRenderFunc(name string, fn RenderFunc) {
+	RenderFuncRegistry[name] = fn
+}
+
 // ParsePrettyTag parses a pretty tag string into a PrettyField
 func ParsePrettyTag(tag string) PrettyField {
 	field := PrettyField{
@@ -851,6 +867,10 @@ func ParsePrettyTag(tag string) PrettyField {
 		if i == 0 {
 			// First part is the main format
 			field.Format = part
+			// Initialize tree options if format is tree
+			if part == "tree" {
+				field.TreeOptions = DefaultTreeOptions()
+			}
 			continue
 		}
 
@@ -877,6 +897,25 @@ func ParsePrettyTag(tag string) PrettyField {
 				field.TableOptions.HeaderStyle = value
 			case "row_style":
 				field.TableOptions.RowStyle = value
+			case "indent":
+				if field.TreeOptions == nil {
+					field.TreeOptions = DefaultTreeOptions()
+				}
+				if size, err := strconv.Atoi(value); err == nil {
+					field.TreeOptions.IndentSize = size
+				}
+			case "render":
+				// Look up custom render function
+				if fn, exists := RenderFuncRegistry[value]; exists {
+					field.RenderFunc = fn
+				}
+			case "max_depth":
+				if field.TreeOptions == nil {
+					field.TreeOptions = DefaultTreeOptions()
+				}
+				if depth, err := strconv.Atoi(value); err == nil {
+					field.TreeOptions.MaxDepth = depth
+				}
 			case ColorGreen, ColorRed, ColorBlue, "yellow", "cyan", "magenta":
 				field.ColorOptions[key] = value
 			default:
@@ -887,6 +926,23 @@ func ParsePrettyTag(tag string) PrettyField {
 			switch part {
 			case SortAsc, SortDesc:
 				field.FormatOptions["dir"] = part
+			case "compact":
+				field.CompactItems = true
+			case "no_icons":
+				if field.TreeOptions == nil {
+					field.TreeOptions = DefaultTreeOptions()
+				}
+				field.TreeOptions.ShowIcons = false
+			case "ascii":
+				if field.TreeOptions == nil {
+					field.TreeOptions = ASCIITreeOptions()
+				} else {
+					field.TreeOptions.UseUnicode = false
+					field.TreeOptions.BranchPrefix = "+-- "
+					field.TreeOptions.LastPrefix = "`-- "
+					field.TreeOptions.IndentPrefix = "    "
+					field.TreeOptions.ContinuePrefix = "|   "
+				}
 			default:
 				field.FormatOptions[part] = "true"
 			}

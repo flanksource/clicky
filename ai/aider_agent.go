@@ -12,8 +12,7 @@ import (
 
 // AiderAgent implements the Agent interface for Aider
 type AiderAgent struct {
-	config      AgentConfig
-	taskManager *clicky.TaskManager
+	config AgentConfig
 }
 
 // AiderResponse represents the response from Aider
@@ -34,14 +33,14 @@ func NewAiderAgent(config AgentConfig) (*AiderAgent, error) {
 		return nil, fmt.Errorf("aider not found in PATH: %w", err)
 	}
 	
-	tm := clicky.NewTaskManagerWithConcurrency(config.MaxConcurrent)
+	// Configure global task manager settings
+	clicky.SetGlobalMaxConcurrency(config.MaxConcurrent)
 	if config.Debug || config.Verbose {
-		tm.SetVerbose(true)
+		clicky.SetGlobalVerbose(true)
 	}
 	
 	return &AiderAgent{
-		config:      config,
-		taskManager: tm,
+		config: config,
 	}, nil
 }
 
@@ -55,10 +54,6 @@ func (aa *AiderAgent) GetConfig() AgentConfig {
 	return aa.config
 }
 
-// GetTaskManager returns the underlying task manager
-func (aa *AiderAgent) GetTaskManager() *clicky.TaskManager {
-	return aa.taskManager
-}
 
 // ListModels returns available Aider models
 func (aa *AiderAgent) ListModels(ctx context.Context) ([]Model, error) {
@@ -80,7 +75,7 @@ func (aa *AiderAgent) ExecutePrompt(ctx context.Context, request PromptRequest) 
 	var response *PromptResponse
 	var err error
 	
-	task := aa.taskManager.Start(request.Name,
+	task := clicky.StartGlobalTask(request.Name,
 		clicky.WithTimeout(10*time.Minute), // Aider might need more time
 		clicky.WithModel(aa.config.Model),
 		clicky.WithPrompt(request.Prompt),
@@ -127,11 +122,14 @@ func (aa *AiderAgent) ExecuteBatch(ctx context.Context, requests []PromptRequest
 		err      error
 	}, len(requests))
 	
+	// Store tasks to wait for them properly
+	var tasks []*clicky.Task
+	
 	// Create tasks for all requests
 	for _, request := range requests {
 		req := request // Capture for closure
 		
-		aa.taskManager.Start(req.Name,
+		task := clicky.StartGlobalTask(req.Name,
 			clicky.WithTimeout(10*time.Minute),
 			clicky.WithModel(aa.config.Model),
 			clicky.WithPrompt(req.Prompt),
@@ -142,7 +140,9 @@ func (aa *AiderAgent) ExecuteBatch(ctx context.Context, requests []PromptRequest
 				
 				response, err := aa.executeAider(t.Context(), req, t)
 				
-				resultsChan <- struct {
+				// Always send result to channel, even if there's an error
+				select {
+				case resultsChan <- struct {
 					name     string
 					response *PromptResponse
 					err      error
@@ -150,37 +150,56 @@ func (aa *AiderAgent) ExecuteBatch(ctx context.Context, requests []PromptRequest
 					name:     req.Name,
 					response: response,
 					err:      err,
+				}:
+				case <-t.Context().Done():
+					return t.Context().Err()
 				}
 				
 				if err != nil {
-					t.Errorf("Failed: %v", err)
-					return err
+					// Log error but don't fail the task - let it complete as a warning
+					t.Warnf("Failed: %v", err)
+					return nil // Return nil so task shows as completed with warning
 				}
 				
 				t.Infof("Completed")
 				return nil
 			}))
+		
+		tasks = append(tasks, task)
 	}
 	
-	// Collect results
+	// Wait for all tasks to complete and collect results concurrently
 	go func() {
-		for i := 0; i < len(requests); i++ {
-			select {
-			case result := <-resultsChan:
-				if result.err == nil {
-					results[result.name] = result.response
+		for _, task := range tasks {
+			for task.Status() == clicky.StatusPending || task.Status() == clicky.StatusRunning {
+				select {
+				case <-ctx.Done():
+					return
+				case <-time.After(10 * time.Millisecond):
+					// Continue polling
 				}
-			case <-ctx.Done():
-				aa.taskManager.CancelAll()
-				return
 			}
 		}
+		close(resultsChan) // Close channel when all tasks complete
 	}()
 	
-	// Wait for all tasks to complete
-	exitCode := aa.taskManager.Wait()
-	if exitCode != 0 {
-		return results, fmt.Errorf("some tasks failed (exit code %d)", exitCode)
+	// Collect results from channel
+	for result := range resultsChan {
+		if result.err == nil {
+			results[result.name] = result.response
+		} else {
+			// Include failed responses with error information
+			results[result.name] = &PromptResponse{
+				Error: result.err.Error(),
+				Model: aa.config.Model,
+			}
+		}
+	}
+	
+	// Check for context cancellation
+	if ctx.Err() != nil {
+		clicky.CancelAllGlobalTasks()
+		return results, ctx.Err()
 	}
 	
 	return results, nil
@@ -242,7 +261,7 @@ func (aa *AiderAgent) executeAider(ctx context.Context, request PromptRequest, t
 
 // Close cleans up resources
 func (aa *AiderAgent) Close() error {
-	aa.taskManager.CancelAll()
+	clicky.CancelAllGlobalTasks()
 	return nil
 }
 

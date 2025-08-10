@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/flanksource/clicky"
 	"github.com/flanksource/clicky/ai/cache"
 )
 
@@ -47,6 +46,7 @@ type AgentConfig struct {
 	CacheDBPath     string        `json:"cache_db_path,omitempty"`
 	ProjectName     string        `json:"project_name,omitempty"`
 	SessionID       string        `json:"session_id,omitempty"`
+	
 }
 
 // PromptRequest represents a request to process a prompt
@@ -87,9 +87,6 @@ type Agent interface {
 	
 	// ExecuteBatch processes multiple prompts
 	ExecuteBatch(ctx context.Context, requests []PromptRequest) (map[string]*PromptResponse, error)
-	
-	// GetTaskManager returns the underlying task manager for progress tracking
-	GetTaskManager() *clicky.TaskManager
 	
 	// Close cleans up resources
 	Close() error

@@ -15,9 +15,8 @@ import (
 
 // ClaudeAgent implements the Agent interface for Claude
 type ClaudeAgent struct {
-	config      AgentConfig
-	taskManager *clicky.TaskManager
-	cache       *cache.Cache
+	config AgentConfig
+	cache  *cache.Cache
 }
 
 // NewClaudeAgent creates a new Claude agent
@@ -26,14 +25,14 @@ func NewClaudeAgent(config AgentConfig) (*ClaudeAgent, error) {
 		return nil, fmt.Errorf("invalid config: %w", err)
 	}
 	
-	tm := clicky.NewTaskManagerWithConcurrency(config.MaxConcurrent)
+	// Configure global task manager settings
+	clicky.SetGlobalMaxConcurrency(config.MaxConcurrent)
 	if config.Debug || config.Verbose {
-		tm.SetVerbose(true)
+		clicky.SetGlobalVerbose(true)
 	}
 	
 	agent := &ClaudeAgent{
-		config:      config,
-		taskManager: tm,
+		config: config,
 	}
 	
 	// Initialize cache if not disabled
@@ -69,10 +68,6 @@ func (ca *ClaudeAgent) GetConfig() AgentConfig {
 	return ca.config
 }
 
-// GetTaskManager returns the underlying task manager
-func (ca *ClaudeAgent) GetTaskManager() *clicky.TaskManager {
-	return ca.taskManager
-}
 
 // ListModels returns available Claude models
 func (ca *ClaudeAgent) ListModels(ctx context.Context) ([]Model, error) {
@@ -137,7 +132,7 @@ func (ca *ClaudeAgent) ExecutePrompt(ctx context.Context, request PromptRequest)
 	var response *PromptResponse
 	var err error
 	
-	task := ca.taskManager.Start(request.Name,
+	task := clicky.StartGlobalTask(request.Name,
 		clicky.WithTimeout(5*time.Minute),
 		clicky.WithModel(ca.config.Model),
 		clicky.WithPrompt(request.Prompt),
@@ -184,11 +179,14 @@ func (ca *ClaudeAgent) ExecuteBatch(ctx context.Context, requests []PromptReques
 		err      error
 	}, len(requests))
 	
+	// Store tasks to wait for them properly  
+	var tasks []*clicky.Task
+	
 	// Create tasks for all requests
 	for _, request := range requests {
 		req := request // Capture for closure
 		
-		ca.taskManager.Start(req.Name,
+		task := clicky.StartGlobalTask(req.Name,
 			clicky.WithTimeout(5*time.Minute),
 			clicky.WithModel(ca.config.Model),
 			clicky.WithPrompt(req.Prompt),
@@ -199,7 +197,9 @@ func (ca *ClaudeAgent) ExecuteBatch(ctx context.Context, requests []PromptReques
 				
 				response, err := ca.executeClaude(t.Context(), req, t)
 				
-				resultsChan <- struct {
+				// Always send result to channel, even if there's an error
+				select {
+				case resultsChan <- struct {
 					name     string
 					response *PromptResponse
 					err      error
@@ -207,37 +207,56 @@ func (ca *ClaudeAgent) ExecuteBatch(ctx context.Context, requests []PromptReques
 					name:     req.Name,
 					response: response,
 					err:      err,
+				}:
+				case <-t.Context().Done():
+					return t.Context().Err()
 				}
 				
 				if err != nil {
-					t.Errorf("Failed: %v", err)
-					return err
+					// Log error but don't fail the task - let it complete as a warning
+					t.Warnf("Failed: %v", err)
+					return nil // Return nil so task shows as completed with warning
 				}
 				
 				t.Infof("Completed (%d tokens)", response.TokensUsed)
 				return nil
 			}))
+		
+		tasks = append(tasks, task)
 	}
 	
-	// Collect results
+	// Wait for all tasks to complete and collect results concurrently
 	go func() {
-		for i := 0; i < len(requests); i++ {
-			select {
-			case result := <-resultsChan:
-				if result.err == nil {
-					results[result.name] = result.response
+		for _, task := range tasks {
+			for task.Status() == clicky.StatusPending || task.Status() == clicky.StatusRunning {
+				select {
+				case <-ctx.Done():
+					return
+				case <-time.After(10 * time.Millisecond):
+					// Continue polling
 				}
-			case <-ctx.Done():
-				ca.taskManager.CancelAll()
-				return
 			}
 		}
+		close(resultsChan) // Close channel when all tasks complete
 	}()
 	
-	// Wait for all tasks to complete
-	exitCode := ca.taskManager.Wait()
-	if exitCode != 0 {
-		return results, fmt.Errorf("some tasks failed (exit code %d)", exitCode)
+	// Collect results from channel
+	for result := range resultsChan {
+		if result.err == nil {
+			results[result.name] = result.response
+		} else {
+			// Include failed responses with error information
+			results[result.name] = &PromptResponse{
+				Error: result.err.Error(),
+				Model: ca.config.Model,
+			}
+		}
+	}
+	
+	// Check for context cancellation
+	if ctx.Err() != nil {
+		clicky.CancelAllGlobalTasks()
+		return results, ctx.Err()
 	}
 	
 	return results, nil
@@ -404,7 +423,8 @@ func (ca *ClaudeAgent) executeClaude(ctx context.Context, request PromptRequest,
 
 // Close cleans up resources
 func (ca *ClaudeAgent) Close() error {
-	ca.taskManager.CancelAll()
+	// Cancel any tasks this agent started
+	clicky.CancelAllGlobalTasks()
 	
 	// Close cache if initialized
 	if ca.cache != nil {
