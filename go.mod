@@ -4,9 +4,10 @@ go 1.23.4
 
 require (
 	github.com/charmbracelet/lipgloss v0.13.1
+	github.com/flanksource/commons v1.41.0
 	github.com/go-rod/rod v0.116.2
 	github.com/jung-kurt/gofpdf/v2 v2.17.3
-	github.com/mattn/go-sqlite3 v1.14.30
+	github.com/mattn/go-sqlite3 v1.14.31
 	github.com/spf13/cobra v1.9.1
 	github.com/spf13/pflag v1.0.7
 	golang.org/x/term v0.34.0
@@ -20,7 +21,6 @@ require (
 	github.com/charmbracelet/x/ansi v0.3.2 // indirect
 	github.com/emirpasic/gods/v2 v2.0.0-alpha // indirect
 	github.com/fatih/color v1.16.0 // indirect
-	github.com/flanksource/commons v1.41.0 // indirect
 	github.com/fsnotify/fsnotify v1.8.0 // indirect
 	github.com/goccy/go-yaml v1.16.0 // indirect
 	github.com/henvic/httpretty v0.1.4 // indirect
@@ -54,6 +54,5 @@ require (
 	golang.org/x/sys v0.35.0 // indirect
 	golang.org/x/text v0.23.0 // indirect
 	google.golang.org/protobuf v1.34.2 // indirect
-	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c // indirect
 	sigs.k8s.io/yaml v1.4.0 // indirect
 )
