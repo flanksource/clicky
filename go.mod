@@ -3,7 +3,8 @@ module github.com/flanksource/clicky
 go 1.23.4
 
 require (
-	github.com/charmbracelet/lipgloss v0.13.1
+	github.com/charmbracelet/lipgloss v1.1.0
+	github.com/flanksource/commons v1.41.0
 	github.com/go-rod/rod v0.116.2
 	github.com/jung-kurt/gofpdf/v2 v2.17.3
 	github.com/mattn/go-sqlite3 v1.14.30
@@ -17,10 +18,12 @@ require (
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
-	github.com/charmbracelet/x/ansi v0.3.2 // indirect
+	github.com/charmbracelet/colorprofile v0.2.3-0.20250311203215-f60798e515dc // indirect
+	github.com/charmbracelet/x/ansi v0.8.0 // indirect
+	github.com/charmbracelet/x/cellbuf v0.0.13-0.20250311204145-2c3ea96c31dd // indirect
+	github.com/charmbracelet/x/term v0.2.1 // indirect
 	github.com/emirpasic/gods/v2 v2.0.0-alpha // indirect
 	github.com/fatih/color v1.16.0 // indirect
-	github.com/flanksource/commons v1.41.0 // indirect
 	github.com/fsnotify/fsnotify v1.8.0 // indirect
 	github.com/goccy/go-yaml v1.16.0 // indirect
 	github.com/henvic/httpretty v0.1.4 // indirect
@@ -32,7 +35,8 @@ require (
 	github.com/lucasb-eyer/go-colorful v1.2.0 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
-	github.com/muesli/termenv v0.15.3-0.20240618155329-98d742f6907a // indirect
+	github.com/mattn/go-runewidth v0.0.16 // indirect
+	github.com/muesli/termenv v0.16.0 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/oklog/ulid/v2 v2.1.0 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
@@ -44,6 +48,7 @@ require (
 	github.com/rogpeppe/go-internal v1.13.1 // indirect
 	github.com/samber/lo v1.49.1 // indirect
 	github.com/samber/oops v1.17.0 // indirect
+	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
 	github.com/ysmood/fetchup v0.2.3 // indirect
 	github.com/ysmood/goob v0.4.0 // indirect
 	github.com/ysmood/got v0.40.0 // indirect
@@ -54,6 +59,5 @@ require (
 	golang.org/x/sys v0.35.0 // indirect
 	golang.org/x/text v0.23.0 // indirect
 	google.golang.org/protobuf v1.34.2 // indirect
-	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c // indirect
 	sigs.k8s.io/yaml v1.4.0 // indirect
 )
