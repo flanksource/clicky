@@ -11,6 +11,7 @@ import (
 
 	"github.com/flanksource/clicky"
 	"github.com/flanksource/clicky/ai/cache"
+	flanksourceContext "github.com/flanksource/commons/context"
 )
 
 // ClaudeAgent implements the Agent interface for Claude
@@ -136,7 +137,7 @@ func (ca *ClaudeAgent) ExecutePrompt(ctx context.Context, request PromptRequest)
 		clicky.WithTimeout(5*time.Minute),
 		clicky.WithModel(ca.config.Model),
 		clicky.WithPrompt(request.Prompt),
-		clicky.WithFunc(func(t *clicky.Task) error {
+		clicky.WithFunc(func(ctx flanksourceContext.Context, t *clicky.Task) error {
 			t.Infof("Starting Claude request")
 			// Start with unknown progress (infinite spinner)
 			t.SetProgress(0, 0)
@@ -190,7 +191,7 @@ func (ca *ClaudeAgent) ExecuteBatch(ctx context.Context, requests []PromptReques
 			clicky.WithTimeout(5*time.Minute),
 			clicky.WithModel(ca.config.Model),
 			clicky.WithPrompt(req.Prompt),
-			clicky.WithFunc(func(t *clicky.Task) error {
+			clicky.WithFunc(func(ctx flanksourceContext.Context, t *clicky.Task) error {
 				t.Infof("Processing request")
 				// Start with unknown progress (infinite spinner)
 				t.SetProgress(0, 0)

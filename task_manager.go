@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
+	flanksourceContext "github.com/flanksource/commons/context"
 	"golang.org/x/term"
 )
 
@@ -87,7 +88,7 @@ func DefaultRetryConfig() RetryConfig {
 }
 
 // TaskFunc is a generic task function that returns a typed result
-type TaskFunc[T any] func(*Task) (T, error)
+type TaskFunc[T any] func(flanksourceContext.Context, *Task) (T, error)
 
 // TaskResult holds a typed result and error
 type TaskResult[T any] struct {
@@ -97,25 +98,26 @@ type TaskResult[T any] struct {
 
 // Task represents a single task being tracked by the TaskManager
 type Task struct {
-	name        string
-	modelName   string
-	prompt      string
-	status      TaskStatus
-	progress    int
-	maxValue    int
-	startTime   time.Time
-	endTime     time.Time
-	manager     *TaskManager
-	logs        []LogEntry
-	cancel      context.CancelFunc
-	ctx         context.Context
-	timeout     time.Duration
-	runFunc     func(*Task) error
-	err         error
-	mu          sync.Mutex
-	retryConfig RetryConfig
-	retryCount  int
-	parent      *TaskGroup // Reference to parent group (nil if ungrouped)
+	name           string
+	modelName      string
+	prompt         string
+	status         TaskStatus
+	progress       int
+	maxValue       int
+	startTime      time.Time
+	endTime        time.Time
+	manager        *TaskManager
+	logs           []LogEntry
+	cancel         context.CancelFunc
+	ctx            context.Context
+	flanksourceCtx flanksourceContext.Context
+	timeout        time.Duration
+	runFunc        func(flanksourceContext.Context, *Task) error
+	err            error
+	mu             sync.Mutex
+	retryConfig    RetryConfig
+	retryCount     int
+	parent         *TaskGroup // Reference to parent group (nil if ungrouped)
 	
 	// Generic result storage
 	result      interface{}
@@ -181,7 +183,7 @@ func WithTimeout(d time.Duration) TaskOption {
 }
 
 // WithFunc sets the function to run for the task
-func WithFunc(fn func(*Task) error) TaskOption {
+func WithFunc(fn func(flanksourceContext.Context, *Task) error) TaskOption {
 	return func(t *Task) {
 		t.runFunc = fn
 	}
@@ -343,19 +345,21 @@ func (tm *TaskManager) Start(name string, opts ...TaskOption) *Task {
 	defer tm.mu.Unlock()
 
 	ctx, cancel := context.WithCancel(context.Background())
+	flanksourceCtx := flanksourceContext.NewContext(ctx)
 
 	task := &Task{
-		name:        name,
-		status:      StatusPending,
-		progress:    0,
-		maxValue:    100,
-		startTime:   time.Now(),
-		manager:     tm,
-		logs:        make([]LogEntry, 0),
-		cancel:      cancel,
-		ctx:         ctx,
-		retryConfig: tm.retryConfig,
-		retryCount:  0,
+		name:           name,
+		status:         StatusPending,
+		progress:       0,
+		maxValue:       100,
+		startTime:      time.Now(),
+		manager:        tm,
+		logs:           make([]LogEntry, 0),
+		cancel:         cancel,
+		ctx:            ctx,
+		flanksourceCtx: flanksourceCtx,
+		retryConfig:    tm.retryConfig,
+		retryCount:     0,
 	}
 
 	for _, opt := range opts {
@@ -366,6 +370,8 @@ func (tm *TaskManager) Start(name string, opts ...TaskOption) *Task {
 	if task.timeout > 0 {
 		timeoutCtx, timeoutCancel := context.WithTimeout(ctx, task.timeout)
 		task.ctx = timeoutCtx
+		// Also update flanksource context with the new base context
+		task.flanksourceCtx = flanksourceContext.NewContext(timeoutCtx)
 		oldCancel := task.cancel
 		task.cancel = func() {
 			timeoutCancel()
@@ -383,29 +389,31 @@ func (tm *TaskManager) Start(name string, opts ...TaskOption) *Task {
 }
 
 // StartWithResult creates and starts tracking a new task with typed result handling
-func (tm *TaskManager) StartWithResult(name string, taskFunc func(*Task) (interface{}, error), opts ...TaskOption) *Task {
+func (tm *TaskManager) StartWithResult(name string, taskFunc func(flanksourceContext.Context, *Task) (interface{}, error), opts ...TaskOption) *Task {
 	tm.mu.Lock()
 	defer tm.mu.Unlock()
 
 	ctx, cancel := context.WithCancel(context.Background())
+	flanksourceCtx := flanksourceContext.NewContext(ctx)
 
 	task := &Task{
-		name:        name,
-		status:      StatusPending,
-		progress:    0,
-		maxValue:    100,
-		startTime:   time.Now(),
-		manager:     tm,
-		logs:        make([]LogEntry, 0),
-		cancel:      cancel,
-		ctx:         ctx,
-		retryConfig: tm.retryConfig,
-		retryCount:  0,
+		name:           name,
+		status:         StatusPending,
+		progress:       0,
+		maxValue:       100,
+		startTime:      time.Now(),
+		manager:        tm,
+		logs:           make([]LogEntry, 0),
+		cancel:         cancel,
+		ctx:            ctx,
+		flanksourceCtx: flanksourceCtx,
+		retryConfig:    tm.retryConfig,
+		retryCount:     0,
 	}
 
-	// Wrap the result function in a regular func(*Task) error
-	task.runFunc = func(t *Task) error {
-		result, err := taskFunc(t)
+	// Wrap the result function in a regular func(flanksourceContext.Context, *Task) error
+	task.runFunc = func(ctx flanksourceContext.Context, t *Task) error {
+		result, err := taskFunc(ctx, t)
 		if err != nil {
 			t.err = err
 			return err
@@ -429,6 +437,8 @@ func (tm *TaskManager) StartWithResult(name string, taskFunc func(*Task) (interf
 		ctx, cancel = context.WithTimeout(ctx, task.timeout)
 		task.ctx = ctx
 		task.cancel = cancel
+		// Also update flanksource context with the new base context
+		task.flanksourceCtx = flanksourceContext.NewContext(ctx)
 	}
 
 	tm.tasks = append(tm.tasks, task)
@@ -515,7 +525,7 @@ func (tm *TaskManager) runTaskWithRetry(task *Task) {
 		// Monitor context for cancellation/timeout
 		done := make(chan error, 1)
 		go func() {
-			done <- task.runFunc(task)
+			done <- task.runFunc(task.flanksourceCtx, task)
 		}()
 
 		var err error
@@ -654,6 +664,11 @@ func (tm *TaskManager) Run() error {
 // Context returns the task's context for cancellation
 func (t *Task) Context() context.Context {
 	return t.ctx
+}
+
+// FlanksourceContext returns the task's flanksource context for logging
+func (t *Task) FlanksourceContext() flanksourceContext.Context {
+	return t.flanksourceCtx
 }
 
 // Cancel cancels the task
@@ -865,11 +880,17 @@ func (t *Task) Infof(format string, args ...interface{}) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
+	message := fmt.Sprintf(format, args...)
 	t.logs = append(t.logs, LogEntry{
 		Level:   "info",
-		Message: fmt.Sprintf(format, args...),
+		Message: message,
 		Time:    time.Now(),
 	})
+	
+	// Also log through flanksource context if available
+	if t.flanksourceCtx.Logger != nil {
+		t.flanksourceCtx.Infof(format, args...)
+	}
 }
 
 // Errorf logs an error message
@@ -877,11 +898,17 @@ func (t *Task) Errorf(format string, args ...interface{}) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
+	message := fmt.Sprintf(format, args...)
 	t.logs = append(t.logs, LogEntry{
 		Level:   "error",
-		Message: fmt.Sprintf(format, args...),
+		Message: message,
 		Time:    time.Now(),
 	})
+	
+	// Also log through flanksource context if available
+	if t.flanksourceCtx.Logger != nil {
+		t.flanksourceCtx.Errorf(format, args...)
+	}
 }
 
 // Warnf logs a warning message
@@ -889,11 +916,17 @@ func (t *Task) Warnf(format string, args ...interface{}) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
+	message := fmt.Sprintf(format, args...)
 	t.logs = append(t.logs, LogEntry{
 		Level:   "warning",
-		Message: fmt.Sprintf(format, args...),
+		Message: message,
 		Time:    time.Now(),
 	})
+	
+	// Also log through flanksource context if available
+	if t.flanksourceCtx.Logger != nil {
+		t.flanksourceCtx.Warnf(format, args...)
+	}
 }
 
 // SetStatus updates the task's display name/status message
@@ -1164,7 +1197,7 @@ func (g *TaskGroup) Add(item Waitable) {
 }
 
 // AddWithResult creates a new task with result callback and adds it to the group  
-func (g *TaskGroup) AddWithResult(name string, taskFunc func(*Task) (interface{}, error), opts ...TaskOption) *Task {
+func (g *TaskGroup) AddWithResult(name string, taskFunc func(flanksourceContext.Context, *Task) (interface{}, error), opts ...TaskOption) *Task {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	

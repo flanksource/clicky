@@ -5,6 +5,8 @@ import (
 	"os"
 	"sync"
 	"time"
+	
+	flanksourceContext "github.com/flanksource/commons/context"
 )
 
 var (
@@ -142,7 +144,7 @@ func StartGlobalPhase(phaseName string) *Task {
 	// Start new phase task
 	currentPhaseTask = globalTaskManager.Start(
 		phaseName,
-		WithFunc(func(t *Task) error {
+		WithFunc(func(ctx flanksourceContext.Context, t *Task) error {
 			t.Infof("Starting %s phase", phaseName)
 			// Set progress as indeterminate (spinner)
 			t.SetProgress(0, 0)
@@ -192,7 +194,7 @@ func StartGlobalTaskInGroup(group *TaskGroup, name string, opts ...TaskOption) *
 }
 
 // StartGlobalTaskWithResult creates a task with result handling using the global TaskManager
-func StartGlobalTaskWithResult(name string, taskFunc func(*Task) (interface{}, error), opts ...TaskOption) *Task {
+func StartGlobalTaskWithResult(name string, taskFunc func(flanksourceContext.Context, *Task) (interface{}, error), opts ...TaskOption) *Task {
 	initGlobalTaskManager()
 	return globalTaskManager.StartWithResult(name, taskFunc, opts...)
 }
@@ -200,9 +202,9 @@ func StartGlobalTaskWithResult(name string, taskFunc func(*Task) (interface{}, e
 // Helper functions for common result patterns
 
 // StartGlobalTaskReturning is a helper that creates a typed wrapper for cleaner syntax
-func StartGlobalTaskReturning[T any](name string, taskFunc func(*Task) (T, error), opts ...TaskOption) *Task {
-	return StartGlobalTaskWithResult(name, func(t *Task) (interface{}, error) {
-		result, err := taskFunc(t)
+func StartGlobalTaskReturning[T any](name string, taskFunc func(flanksourceContext.Context, *Task) (T, error), opts ...TaskOption) *Task {
+	return StartGlobalTaskWithResult(name, func(ctx flanksourceContext.Context, t *Task) (interface{}, error) {
+		result, err := taskFunc(ctx, t)
 		return result, err
 	}, opts...)
 }

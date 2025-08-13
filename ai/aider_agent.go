@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/flanksource/clicky"
+	flanksourceContext "github.com/flanksource/commons/context"
 )
 
 // AiderAgent implements the Agent interface for Aider
@@ -79,7 +80,7 @@ func (aa *AiderAgent) ExecutePrompt(ctx context.Context, request PromptRequest) 
 		clicky.WithTimeout(10*time.Minute), // Aider might need more time
 		clicky.WithModel(aa.config.Model),
 		clicky.WithPrompt(request.Prompt),
-		clicky.WithFunc(func(t *clicky.Task) error {
+		clicky.WithFunc(func(ctx flanksourceContext.Context, t *clicky.Task) error {
 			t.Infof("Starting Aider request")
 			// Start with unknown progress (infinite spinner)
 			t.SetProgress(0, 0)
@@ -133,7 +134,7 @@ func (aa *AiderAgent) ExecuteBatch(ctx context.Context, requests []PromptRequest
 			clicky.WithTimeout(10*time.Minute),
 			clicky.WithModel(aa.config.Model),
 			clicky.WithPrompt(req.Prompt),
-			clicky.WithFunc(func(t *clicky.Task) error {
+			clicky.WithFunc(func(ctx flanksourceContext.Context, t *clicky.Task) error {
 				t.Infof("Processing request")
 				// Start with unknown progress (infinite spinner)
 				t.SetProgress(0, 0)
