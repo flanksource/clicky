@@ -2,11 +2,14 @@ package clicky
 
 import (
 	"encoding/json"
+	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
+	"github.com/spf13/pflag"
 	"gopkg.in/yaml.v3"
 	
 	"github.com/flanksource/clicky/api"
@@ -25,6 +28,22 @@ type FormatOptions struct {
 	NoColor bool
 	Output  string
 	Verbose bool
+}
+
+// BindFlags adds formatting flags to the provided flag set
+func BindFlags(flags *flag.FlagSet, options *FormatOptions) {
+	flags.StringVar(&options.Format, "format", "pretty", "Output format: pretty, json, yaml, csv, html, pdf, markdown")
+	flags.StringVar(&options.Output, "output", "", "Output file pattern (optional, uses stdout if not specified)")
+	flags.BoolVar(&options.NoColor, "no-color", false, "Disable colored output")
+	flags.BoolVar(&options.Verbose, "verbose", false, "Enable verbose output")
+}
+
+// BindPFlags adds formatting flags to the provided pflag set (for cobra)
+func BindPFlags(flags *pflag.FlagSet, options *FormatOptions) {
+	flags.StringVar(&options.Format, "format", "pretty", "Output format: pretty, json, yaml, csv, html, pdf, markdown")
+	flags.StringVar(&options.Output, "output", "", "Output file pattern (optional, uses stdout if not specified)")
+	flags.BoolVar(&options.NoColor, "no-color", false, "Disable colored output")
+	flags.BoolVar(&options.Verbose, "verbose", false, "Enable verbose output")
 }
 
 // NewSchemaFormatter creates a new schema formatter with the given schema file
@@ -156,8 +175,7 @@ func (sf *SchemaFormatter) formatWithPrettyData(data *api.PrettyData, format str
 	case "pdf":
 		return sf.formatPDFWithPrettyData(data)
 	case "markdown":
-		formatter := formatters.NewMarkdownFormatter()
-		return formatter.Format(data.Values)
+		return sf.formatMarkdownWithPrettyData(data)
 	case "pretty":
 		fallthrough
 	default:
@@ -296,6 +314,120 @@ func (sf *SchemaFormatter) formatHTMLWithPrettyData(data *api.PrettyData) (strin
 func (sf *SchemaFormatter) formatPDFWithPrettyData(data *api.PrettyData) (string, error) {
 	pdfFormatter := formatters.NewPDFFormatter()
 	return pdfFormatter.Format(data)
+}
+
+// formatMarkdownWithPrettyData formats PrettyData as Markdown using Text.Markdown()
+func (sf *SchemaFormatter) formatMarkdownWithPrettyData(data *api.PrettyData) (string, error) {
+	var result strings.Builder
+	
+	// Format summary fields
+	if len(data.Values) > 0 {
+		result.WriteString("## Summary\n\n")
+		
+		// Sort field names for consistent output
+		var fieldNames []string
+		for name := range data.Values {
+			fieldNames = append(fieldNames, name)
+		}
+		sort.Strings(fieldNames)
+		
+		for _, name := range fieldNames {
+			fieldValue := data.Values[name]
+			
+			// Create label text
+			label := sf.prettifyFieldName(name)
+			result.WriteString(fmt.Sprintf("**%s**: ", label))
+			
+			// Create styled text for the value
+			text := api.Text{
+				Content: fieldValue.Formatted(),
+				Style:   fieldValue.Field.Style,
+			}
+			
+			// Handle nested fields
+			if fieldValue.HasNestedFields() {
+				result.WriteString("\n")
+				for _, nestedKey := range fieldValue.GetNestedFieldKeys() {
+					nestedField, _ := fieldValue.GetNestedField(nestedKey)
+					nestedLabel := sf.prettifyFieldName(nestedKey)
+					nestedText := api.Text{
+						Content: nestedField.Formatted(),
+						Style:   nestedField.Field.Style,
+					}
+					result.WriteString(fmt.Sprintf("  - **%s**: %s\n", nestedLabel, nestedText.Markdown()))
+				}
+			} else {
+				result.WriteString(text.Markdown())
+				result.WriteString("\n")
+			}
+			result.WriteString("\n")
+		}
+	}
+	
+	// Format tables
+	if len(data.Tables) > 0 {
+		for tableName, rows := range data.Tables {
+			if len(rows) == 0 {
+				continue
+			}
+			
+			result.WriteString(fmt.Sprintf("\n## %s\n\n", sf.prettifyFieldName(tableName)))
+			
+			// Get field names from first row
+			var headers []string
+			firstRow := rows[0]
+			for fieldName := range firstRow {
+				headers = append(headers, fieldName)
+			}
+			sort.Strings(headers)
+			
+			// Write header row
+			result.WriteString("| ")
+			for _, header := range headers {
+				result.WriteString(sf.prettifyFieldName(header))
+				result.WriteString(" | ")
+			}
+			result.WriteString("\n")
+			
+			// Write separator row
+			result.WriteString("|")
+			for range headers {
+				result.WriteString(" --- |")
+			}
+			result.WriteString("\n")
+			
+			// Write data rows
+			for _, row := range rows {
+				result.WriteString("| ")
+				for _, header := range headers {
+					fieldValue := row[header]
+					text := api.Text{
+						Content: fieldValue.Formatted(),
+						Style:   fieldValue.Field.Style,
+					}
+					// Escape pipe characters in markdown table cells
+					cellContent := strings.ReplaceAll(text.Markdown(), "|", "\\|")
+					result.WriteString(cellContent)
+					result.WriteString(" | ")
+				}
+				result.WriteString("\n")
+			}
+		}
+	}
+	
+	return result.String(), nil
+}
+
+// prettifyFieldName converts field names to human-readable format
+func (sf *SchemaFormatter) prettifyFieldName(name string) string {
+	// Convert snake_case to Title Case
+	parts := strings.Split(name, "_")
+	for i, part := range parts {
+		if len(part) > 0 {
+			parts[i] = strings.ToUpper(part[:1]) + part[1:]
+		}
+	}
+	return strings.Join(parts, " ")
 }
 
 

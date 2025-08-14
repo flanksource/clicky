@@ -2,6 +2,7 @@ package formatters
 
 import (
 	"fmt"
+
 	"github.com/flanksource/clicky/api"
 )
 
@@ -120,7 +121,11 @@ func (f *FormatManager) Pdf(data interface{}, filename string) error {
 
 func (f *FormatManager) ParseSchema(data interface{}) (*api.PrettyObject, error) {
 	// This is a no-op for the FormatManager
-	return nil, nil
+	d, err := f.ToPrettyData(data)
+	if err != nil {
+		return nil, err
+	}
+	return d.Schema, nil
 }
 
 var DEFAULT_MANAGER api.FormatManager = NewFormatManager()

@@ -3,6 +3,8 @@ package tailwind
 import (
 	"fmt"
 	"strings"
+	
+	"github.com/muesli/termenv"
 )
 
 // ParseTailwindColor parses a Tailwind color class and returns the hex color value
@@ -308,4 +310,60 @@ func ApplyStyle(text string, styleStr string) (string, Style) {
 	}
 
 	return text, parsedStyle
+}
+
+// ClassToFgColor converts a Tailwind class to a termenv foreground color
+func ClassToFgColor(class string) termenv.Color {
+	// Parse the tailwind color to get hex value
+	hexColor, err := ParseTailwindColor(class)
+	if err != nil {
+		// Return default color for invalid classes
+		return termenv.ANSIColor(termenv.ANSIRed)
+	}
+	
+	// Handle special colors
+	switch hexColor {
+	case "transparent":
+		return nil
+	case "currentColor":
+		return termenv.ANSIColor(termenv.ANSIBrightWhite)
+	case "":
+		return termenv.ANSIColor(termenv.ANSIRed) // Fallback
+	}
+	
+	// Convert hex to termenv color
+	if strings.HasPrefix(hexColor, "#") {
+		return termenv.RGBColor(hexColor)
+	}
+	
+	// Fallback to red for any invalid color
+	return termenv.ANSIColor(termenv.ANSIRed)
+}
+
+// ClassToBgColor converts a Tailwind class to a termenv background color
+func ClassToBgColor(class string) termenv.Color {
+	// Parse the tailwind color to get hex value
+	hexColor, err := ParseTailwindColor(class)
+	if err != nil {
+		// Return default color for invalid classes
+		return termenv.ANSIColor(termenv.ANSIWhite)
+	}
+	
+	// Handle special colors
+	switch hexColor {
+	case "transparent":
+		return nil
+	case "currentColor":
+		return termenv.ANSIColor(termenv.ANSIBrightBlack)
+	case "":
+		return termenv.ANSIColor(termenv.ANSIWhite) // Fallback
+	}
+	
+	// Convert hex to termenv color
+	if strings.HasPrefix(hexColor, "#") {
+		return termenv.RGBColor(hexColor)
+	}
+	
+	// Fallback to white background for any invalid color
+	return termenv.ANSIColor(termenv.ANSIWhite)
 }
