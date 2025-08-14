@@ -30,7 +30,7 @@ type PrettyField struct {
 	// For table formatting
 	TableOptions PrettyTable `json:"table_options,omitempty" yaml:"table_options,omitempty"`
 	// For tree formatting
-	TreeOptions  *TreeOptions `json:"tree_options,omitempty" yaml:"tree_options,omitempty"`
+	TreeOptions *TreeOptions `json:"tree_options,omitempty" yaml:"tree_options,omitempty"`
 	// For custom rendering
 	RenderFunc   RenderFunc `json:"-" yaml:"-"`
 	CompactItems bool       `json:"compact_items,omitempty" yaml:"compact_items,omitempty"`
@@ -693,12 +693,6 @@ func (f PrettyField) formatMapValueWithIndent(mapVal map[string]interface{}, ind
 	return strings.Join(lines, "\n")
 }
 
-// formatMapValueInline is no longer used - maps are always formatted as struct-like fields
-func (f PrettyField) formatMapValueInline(mapVal map[string]interface{}) string {
-	// Always use struct-like formatting, no inline formatting
-	return f.formatMapValueWithIndent(mapVal, 0)
-}
-
 // prettifyFieldName converts field names to readable format (for map keys)
 func (f PrettyField) prettifyFieldName(name string) string {
 	// Convert snake_case and camelCase to Title Case
@@ -798,12 +792,6 @@ func (f PrettyField) formatMapValueReflectionWithIndent(value interface{}, inden
 	}
 
 	return strings.Join(lines, "\n")
-}
-
-// formatMapValueReflectionInline is no longer used - maps are always formatted as struct-like fields
-func (f PrettyField) formatMapValueReflectionInline(value interface{}) string {
-	// Always use struct-like formatting, no inline formatting
-	return f.formatMapValueReflectionWithIndent(value, 0)
 }
 
 // GetNestedFieldKeys returns sorted keys for nested fields
@@ -1004,6 +992,7 @@ func (d *PrettyData) GetValue(key string) (FieldValue, bool) {
 
 // FormatManager provides formatting capabilities
 type FormatManager interface {
+	ToPrettyData(data interface{}) (*PrettyData, error)
 	Pretty(data interface{}) (string, error)
 	JSON(data interface{}) (string, error)
 	YAML(data interface{}) (string, error)

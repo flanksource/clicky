@@ -24,13 +24,49 @@ func NewPrettyFormatter() *PrettyFormatter {
 	}
 }
 
-// Format formats PrettyData into styled output
-func (f *PrettyFormatter) Format(data *api.PrettyData) (string, error) {
-	if data == nil || data.Schema == nil {
+// Format formats data into styled output, accepting any interface{}
+func (f *PrettyFormatter) Format(data interface{}) (string, error) {
+	// Convert to PrettyData
+	prettyData, err := f.ToPrettyData(data)
+	if err != nil {
+		return "", fmt.Errorf("failed to convert to PrettyData: %w", err)
+	}
+	
+	if prettyData == nil || prettyData.Schema == nil {
 		return "", nil
 	}
 
-	return f.formatPrettyData(data)
+	return f.formatPrettyData(prettyData)
+}
+
+// ToPrettyData converts various input types to PrettyData
+func (f *PrettyFormatter) ToPrettyData(data interface{}) (*api.PrettyData, error) {
+	return ToPrettyData(data)
+}
+
+// parseStructSchema creates a PrettyObject schema from struct tags
+func (f *PrettyFormatter) parseStructSchema(val reflect.Value) (*api.PrettyObject, error) {
+	return ParseStructSchema(val)
+}
+
+// parsePrettyTag parses a pretty tag string into a PrettyField
+func (f *PrettyFormatter) parsePrettyTag(fieldName string, tag string) api.PrettyField {
+	return ParsePrettyTag(fieldName, tag)
+}
+
+// getTableFields extracts fields from a struct for table formatting
+func (f *PrettyFormatter) getTableFields(val reflect.Value) ([]api.PrettyField, error) {
+	return GetTableFields(val)
+}
+
+// getFieldValueCaseInsensitive tries to find a field by name with different casing
+func (f *PrettyFormatter) getFieldValueCaseInsensitive(val reflect.Value, name string) reflect.Value {
+	return GetFieldValueCaseInsensitive(val, name)
+}
+
+// structToRow converts a struct to a PrettyDataRow
+func (f *PrettyFormatter) structToRow(val reflect.Value) (api.PrettyDataRow, error) {
+	return StructToRow(val)
 }
 
 // formatStruct formats a struct using the PrettyObject definition
@@ -125,72 +161,17 @@ func (f *PrettyFormatter) formatFieldForSummary(name string, val reflect.Value, 
 
 // prettifyFieldName converts field names to readable format
 func (f *PrettyFormatter) prettifyFieldName(name string) string {
-	// Convert snake_case and camelCase to Title Case
-	var result strings.Builder
-	words := strings.FieldsFunc(name, func(r rune) bool {
-		return r == '_' || r == '-'
-	})
-
-	if len(words) == 0 {
-		// Handle camelCase
-		words = f.splitCamelCase(name)
-	}
-
-	for i, word := range words {
-		if i > 0 {
-			result.WriteString(" ")
-		}
-		result.WriteString(strings.Title(strings.ToLower(word)))
-	}
-
-	return result.String()
+	return PrettifyFieldName(name)
 }
 
 // splitCamelCase splits camelCase strings into words
 func (f *PrettyFormatter) splitCamelCase(s string) []string {
-	var words []string
-	var current strings.Builder
-
-	for i, r := range s {
-		if i > 0 && (r >= 'A' && r <= 'Z') {
-			if current.Len() > 0 {
-				words = append(words, current.String())
-				current.Reset()
-			}
-		}
-		current.WriteRune(r)
-	}
-
-	if current.Len() > 0 {
-		words = append(words, current.String())
-	}
-
-	return words
+	return SplitCamelCase(s)
 }
 
 // getFieldValue gets a field value by name from a struct
 func (f *PrettyFormatter) getFieldValue(val reflect.Value, fieldName string) reflect.Value {
-	typ := val.Type()
-
-	for i := 0; i < val.NumField(); i++ {
-		field := typ.Field(i)
-
-		// Check field name
-		if field.Name == fieldName {
-			return val.Field(i)
-		}
-
-		// Check json tag
-		jsonTag := field.Tag.Get("json")
-		if jsonTag != "" && jsonTag != "-" {
-			if parts := strings.Split(jsonTag, ","); parts[0] == fieldName {
-				return val.Field(i)
-			}
-		}
-	}
-
-	// Return zero value if not found
-	return reflect.Value{}
+	return GetFieldValue(val, fieldName)
 }
 
 // formatField formats a single field

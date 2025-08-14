@@ -126,60 +126,10 @@ func (f *MarkdownFormatter) formatStructAsDefinitionList(val reflect.Value) stri
 
 // getStructHeaders extracts field names
 func (f *MarkdownFormatter) getStructHeaders(val reflect.Value) []string {
-	typ := val.Type()
-	var headers []string
-
-	for i := 0; i < val.NumField(); i++ {
-		field := typ.Field(i)
-		fieldVal := val.Field(i)
-
-		if !fieldVal.CanInterface() {
-			continue
-		}
-
-		// Skip hidden fields
-		prettyTag := field.Tag.Get("pretty")
-		if prettyTag == "hide" {
-			continue
-		}
-
-		// Get field name
-		fieldName := field.Name
-		jsonTag := field.Tag.Get("json")
-		if jsonTag != "" && jsonTag != "-" {
-			if parts := strings.Split(jsonTag, ","); parts[0] != "" {
-				fieldName = parts[0]
-			}
-		}
-
-		headers = append(headers, fieldName)
-	}
-
-	return headers
+	return GetStructHeaders(val)
 }
 
 // getStructRow extracts field values
 func (f *MarkdownFormatter) getStructRow(val reflect.Value) []string {
-	typ := val.Type()
-	var row []string
-
-	for i := 0; i < val.NumField(); i++ {
-		field := typ.Field(i)
-		fieldVal := val.Field(i)
-
-		if !fieldVal.CanInterface() {
-			continue
-		}
-
-		// Skip hidden fields
-		prettyTag := field.Tag.Get("pretty")
-		if prettyTag == "hide" {
-			continue
-		}
-
-		value := fmt.Sprintf("%v", fieldVal.Interface())
-		row = append(row, value)
-	}
-
-	return row
+	return GetStructRow(val)
 }

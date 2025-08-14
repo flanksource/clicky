@@ -2,10 +2,11 @@ package formatters
 
 import (
 	"fmt"
-	"github.com/flanksource/clicky/api"
-	"github.com/flanksource/clicky/api/tailwind"
 	"html"
 	"strings"
+
+	"github.com/flanksource/clicky/api"
+	"github.com/flanksource/clicky/api/tailwind"
 )
 
 // HTMLFormatter handles HTML formatting
@@ -18,6 +19,11 @@ func NewHTMLFormatter() *HTMLFormatter {
 	return &HTMLFormatter{
 		IncludeCSS: true,
 	}
+}
+
+// ToPrettyData converts various input types to PrettyData
+func (f *HTMLFormatter) ToPrettyData(data interface{}) (*api.PrettyData, error) {
+	return ToPrettyData(data)
 }
 
 // getCSS returns Tailwind CSS CDN and custom styling
@@ -36,7 +42,16 @@ func (f *HTMLFormatter) getCSS() string {
 }
 
 // Format formats PrettyData into HTML output
-func (f *HTMLFormatter) Format(data *api.PrettyData) (string, error) {
+func (f *HTMLFormatter) Format(in interface{}) (string, error) {
+	// Convert to PrettyData
+	data, err := f.ToPrettyData(in)
+	if err != nil {
+		return "", fmt.Errorf("failed to convert to PrettyData: %w", err)
+	}
+
+	if data == nil || data.Schema == nil {
+		return "", nil
+	}
 	if data == nil || data.Schema == nil {
 		return "", nil
 	}
@@ -125,7 +140,7 @@ func (f *HTMLFormatter) applyTailwindStyleToHTML(text string, styleStr string) s
 
 	// Apply text transformations and get style
 	transformedText, _ := tailwind.ApplyStyle(text, styleStr)
-	
+
 	// Escape the transformed text and wrap with style classes
 	escapedText := html.EscapeString(transformedText)
 	return fmt.Sprintf("<span class=\"%s\">%s</span>", styleStr, escapedText)
@@ -157,47 +172,12 @@ func (f *HTMLFormatter) getColorClass(color string) string {
 
 // prettifyFieldName converts field names to readable format
 func (f *HTMLFormatter) prettifyFieldName(name string) string {
-	// Convert snake_case and camelCase to Title Case
-	var result strings.Builder
-	words := strings.FieldsFunc(name, func(r rune) bool {
-		return r == '_' || r == '-'
-	})
-
-	if len(words) == 0 {
-		// Handle camelCase
-		words = f.splitCamelCase(name)
-	}
-
-	for i, word := range words {
-		if i > 0 {
-			result.WriteString(" ")
-		}
-		result.WriteString(strings.Title(strings.ToLower(word)))
-	}
-
-	return result.String()
+	return PrettifyFieldName(name)
 }
 
 // splitCamelCase splits camelCase strings into words
 func (f *HTMLFormatter) splitCamelCase(s string) []string {
-	var words []string
-	var current strings.Builder
-
-	for i, r := range s {
-		if i > 0 && (r >= 'A' && r <= 'Z') {
-			if current.Len() > 0 {
-				words = append(words, current.String())
-				current.Reset()
-			}
-		}
-		current.WriteRune(r)
-	}
-
-	if current.Len() > 0 {
-		words = append(words, current.String())
-	}
-
-	return words
+	return SplitCamelCase(s)
 }
 
 // formatFieldValueHTML formats a FieldValue for HTML output (legacy function)
