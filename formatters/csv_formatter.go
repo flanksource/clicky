@@ -3,9 +3,10 @@ package formatters
 import (
 	"encoding/csv"
 	"fmt"
-	"reflect"
 	"sort"
 	"strings"
+	
+	"github.com/flanksource/clicky/api"
 )
 
 // CSVFormatter handles CSV formatting
@@ -22,33 +23,29 @@ func NewCSVFormatter() *CSVFormatter {
 
 // Format formats data as CSV
 func (f *CSVFormatter) Format(data interface{}) (string, error) {
-	val := reflect.ValueOf(data)
-	if val.Kind() == reflect.Ptr {
-		val = val.Elem()
+	// Check if data implements Pretty interface first
+	if pretty, ok := data.(api.Pretty); ok {
+		text := pretty.Pretty()
+		return text.String(), nil // Use plain text for CSV
 	}
 
-	// Handle slice/array of structs or maps
-	if val.Kind() == reflect.Slice || val.Kind() == reflect.Array {
-		return f.formatSlice(val)
+	// Convert to PrettyData (handles both structs and slices)
+	prettyData, err := ToPrettyData(data)
+	if err != nil {
+		return "", fmt.Errorf("failed to convert to PrettyData: %w", err)
+	}
+	
+	if prettyData == nil || prettyData.Schema == nil {
+		return "", nil
 	}
 
-	// Handle single struct
-	if val.Kind() == reflect.Struct {
-		return f.formatStruct(val)
-	}
-
-	// Handle single map
-	if val.Kind() == reflect.Map {
-		return f.formatMap(val)
-	}
-
-	// Fallback for other types
-	return fmt.Sprintf("%v", data), nil
+	return f.FormatPrettyData(prettyData)
 }
 
-// formatSlice formats a slice of structs as CSV
-func (f *CSVFormatter) formatSlice(val reflect.Value) (string, error) {
-	if val.Len() == 0 {
+
+// FormatPrettyData formats PrettyData as CSV, flattening all fields
+func (f *CSVFormatter) FormatPrettyData(data *api.PrettyData) (string, error) {
+	if data == nil || data.Schema == nil {
 		return "", nil
 	}
 
@@ -56,143 +53,159 @@ func (f *CSVFormatter) formatSlice(val reflect.Value) (string, error) {
 	writer := csv.NewWriter(&output)
 	writer.Comma = f.Separator
 
-	// Get the first item to determine headers
-	firstItem := val.Index(0)
-	if firstItem.Kind() == reflect.Ptr {
-		firstItem = firstItem.Elem()
-	}
-
-	// Handle interface{} values by getting the underlying value
-	if firstItem.Kind() == reflect.Interface && !firstItem.IsNil() {
-		firstItem = firstItem.Elem()
-	}
-
-	if firstItem.Kind() != reflect.Struct && firstItem.Kind() != reflect.Map {
-		return "", fmt.Errorf("CSV formatting requires slice of structs or maps, got %v", firstItem.Kind())
-	}
-
-	// Write headers
-	headers := f.getStructHeaders(firstItem)
-	if err := writer.Write(headers); err != nil {
-		return "", err
-	}
-
-	// Write data rows
-	for i := 0; i < val.Len(); i++ {
-		item := val.Index(i)
-		if item.Kind() == reflect.Ptr {
-			item = item.Elem()
-		}
-
-		// Handle interface{} values by getting the underlying value
-		if item.Kind() == reflect.Interface && !item.IsNil() {
-			item = item.Elem()
-		}
-
-		row := f.getStructRow(item)
-		if err := writer.Write(row); err != nil {
-			return "", err
-		}
-	}
-
-	writer.Flush()
-	if err := writer.Error(); err != nil {
-		return "", err
-	}
-
-	return output.String(), nil
-}
-
-// formatStruct formats a single struct as CSV
-func (f *CSVFormatter) formatStruct(val reflect.Value) (string, error) {
-	return f.formatSingleRow(f.getStructHeaders(val), f.getStructRow(val))
-}
-
-// formatMap formats a single map as CSV
-func (f *CSVFormatter) formatMap(val reflect.Value) (string, error) {
-	return f.formatSingleRow(f.getMapHeaders(val), f.getMapRow(val))
-}
-
-// formatSingleRow formats headers and a single data row as CSV
-func (f *CSVFormatter) formatSingleRow(headers []string, row []string) (string, error) {
-	var output strings.Builder
-	writer := csv.NewWriter(&output)
-	writer.Comma = f.Separator
-
-	// Write headers
-	if err := writer.Write(headers); err != nil {
-		return "", err
-	}
-
-	// Write data row
-	if err := writer.Write(row); err != nil {
-		return "", err
-	}
-
-	writer.Flush()
-	if err := writer.Error(); err != nil {
-		return "", err
-	}
-
-	return output.String(), nil
-}
-
-// getStructHeaders extracts field names as CSV headers from structs or maps
-func (f *CSVFormatter) getStructHeaders(val reflect.Value) []string {
-	if val.Kind() == reflect.Map {
-		return f.getMapHeaders(val)
-	}
-
-	return GetStructHeaders(val)
-}
-
-// getMapHeaders extracts keys as CSV headers from maps (sorted for consistency)
-func (f *CSVFormatter) getMapHeaders(val reflect.Value) []string {
-	if val.Kind() != reflect.Map {
-		return nil
-	}
-
-	var headers []string
-	for _, key := range val.MapKeys() {
-		if key.Kind() == reflect.String {
-			headers = append(headers, key.String())
-		}
-	}
-
-	// Sort headers for consistent output
-	sort.Strings(headers)
-	return headers
-}
-
-// getStructRow extracts field values as CSV row from structs or maps
-func (f *CSVFormatter) getStructRow(val reflect.Value) []string {
-	if val.Kind() == reflect.Map {
-		return f.getMapRow(val)
-	}
-
-	return GetStructRow(val)
-}
-
-// getMapRow extracts values as CSV row from maps (using the same key order as headers)
-func (f *CSVFormatter) getMapRow(val reflect.Value) []string {
-	if val.Kind() != reflect.Map {
-		return nil
-	}
-
-	headers := f.getMapHeaders(val)
-	row := make([]string, len(headers))
-
-	for i, header := range headers {
-		mapVal := val.MapIndex(reflect.ValueOf(header))
-		if mapVal.IsValid() {
-			if mapVal.Kind() == reflect.Interface && !mapVal.IsNil() {
-				mapVal = mapVal.Elem()
-			}
-			row[i] = fmt.Sprintf("%v", mapVal.Interface())
+	// Check if this is primarily table data (from a slice)
+	// If there's exactly one table field and no regular fields, format as table
+	var tableField *api.PrettyField
+	var treeField *api.PrettyField
+	var nonTableFields []api.PrettyField
+	
+	for _, field := range data.Schema.Fields {
+		if field.Format == api.FormatTable {
+			tableField = &field
+		} else if field.Format == api.FormatTree {
+			treeField = &field
 		} else {
-			row[i] = ""
+			nonTableFields = append(nonTableFields, field)
 		}
 	}
 
-	return row
+	// If we have tree data as the primary field, flatten it to CSV
+	if treeField != nil && len(nonTableFields) == 0 && tableField == nil {
+		if fieldValue, exists := data.Values[treeField.Name]; exists {
+			// Check if the value implements TreeNode interface
+			if treeNode, ok := fieldValue.Value.(api.TreeNode); ok {
+				// Flatten tree to CSV rows
+				rows := f.flattenTree(treeNode, 0)
+				
+				// Write headers
+				headers := []string{"Level", "Name", "Details"}
+				if err := writer.Write(headers); err != nil {
+					return "", err
+				}
+				
+				// Write rows
+				for _, row := range rows {
+					if err := writer.Write(row); err != nil {
+						return "", err
+					}
+				}
+			} else {
+				// Fall back to regular formatting if not a tree
+				headers := []string{treeField.Name}
+				values := []string{fieldValue.Plain()}
+				if err := writer.Write(headers); err != nil {
+					return "", err
+				}
+				if err := writer.Write(values); err != nil {
+					return "", err
+				}
+			}
+		}
+	} else if tableField != nil && len(nonTableFields) == 0 {
+		// If we have table data and it's the primary data, format it as CSV rows
+		if tableData, exists := data.Tables[tableField.Name]; exists && len(tableData) > 0 {
+			// Get headers from the first row
+			var headers []string
+			for key := range tableData[0] {
+				headers = append(headers, key)
+			}
+			
+			// Sort headers for consistent output
+			sort.Strings(headers)
+			
+			// Write headers
+			if err := writer.Write(headers); err != nil {
+				return "", err
+			}
+			
+			// Write data rows
+			for _, row := range tableData {
+				var values []string
+				for _, header := range headers {
+					if fieldValue, exists := row[header]; exists {
+						values = append(values, fieldValue.Plain())
+					} else {
+						values = append(values, "")
+					}
+				}
+				if err := writer.Write(values); err != nil {
+					return "", err
+				}
+			}
+		}
+	} else {
+		// Format as single row with headers (original behavior for structs)
+		var headers []string
+		var values []string
+
+		// Process regular fields (non-table, non-tree)
+		for _, field := range data.Schema.Fields {
+			if field.Format == api.FormatTable || field.Format == api.FormatTree {
+				continue
+			}
+			
+			if fieldValue, exists := data.Values[field.Name]; exists {
+				headers = append(headers, field.Name)
+				values = append(values, fieldValue.Plain())
+			}
+		}
+
+		// Write headers and values if we have any
+		if len(headers) > 0 {
+			if err := writer.Write(headers); err != nil {
+				return "", err
+			}
+			
+			if err := writer.Write(values); err != nil {
+				return "", err
+			}
+		}
+	}
+
+	writer.Flush()
+	if err := writer.Error(); err != nil {
+		return "", err
+	}
+
+	return output.String(), nil
+}
+
+// flattenTree recursively flattens a tree node into CSV rows
+func (f *CSVFormatter) flattenTree(node api.TreeNode, depth int) [][]string {
+	if node == nil {
+		return nil
+	}
+	
+	var rows [][]string
+	
+	// Format current node
+	var nodeContent string
+	if prettyNode, ok := node.(api.Pretty); ok {
+		// Use Pretty() method for rich formatting, but get plain text for CSV
+		text := prettyNode.Pretty()
+		nodeContent = text.String()
+	} else {
+		// Fallback to GetLabel()
+		nodeContent = node.GetLabel()
+	}
+	
+	// Create indentation based on depth
+	indent := strings.Repeat("  ", depth)
+	
+	// Add current node as a row
+	row := []string{
+		fmt.Sprintf("%d", depth),           // Level
+		fmt.Sprintf("%s%s", indent, nodeContent), // Name with indentation
+		"",                                  // Details (could be extended)
+	}
+	rows = append(rows, row)
+	
+	// Process children recursively
+	children := node.GetChildren()
+	for _, child := range children {
+		childRows := f.flattenTree(child, depth+1)
+		rows = append(rows, childRows...)
+	}
+	
+	return rows
 }

@@ -16,6 +16,7 @@ const (
 // Format constants
 const (
 	FormatTable    = "table"
+	FormatTree     = "tree"
 	FormatCurrency = "currency"
 	FormatHide     = "hide"
 	FormatList     = "list"

@@ -2,12 +2,16 @@ package formatters
 
 import (
 	"fmt"
-	"reflect"
+	"sort"
 	"strings"
+	
+	"github.com/flanksource/clicky/api"
 )
 
 // MarkdownFormatter handles Markdown formatting
-type MarkdownFormatter struct{}
+type MarkdownFormatter struct{
+	NoColor bool
+}
 
 // NewMarkdownFormatter creates a new Markdown formatter
 func NewMarkdownFormatter() *MarkdownFormatter {
@@ -16,120 +20,202 @@ func NewMarkdownFormatter() *MarkdownFormatter {
 
 // Format formats data as Markdown
 func (f *MarkdownFormatter) Format(data interface{}) (string, error) {
-	val := reflect.ValueOf(data)
-	if val.Kind() == reflect.Ptr {
-		val = val.Elem()
+	// Check if data implements Pretty interface first
+	if pretty, ok := data.(api.Pretty); ok {
+		text := pretty.Pretty()
+		return text.Markdown(), nil
 	}
 
-	// Handle slice/array of structs as table
-	if val.Kind() == reflect.Slice || val.Kind() == reflect.Array {
-		return f.formatSliceAsTable(val)
+	// Convert to PrettyData
+	prettyData, err := ToPrettyData(data)
+	if err != nil {
+		return "", fmt.Errorf("failed to convert to PrettyData: %w", err)
+	}
+	
+	if prettyData == nil || prettyData.Schema == nil {
+		return "", nil
 	}
 
-	// Handle single struct
-	if val.Kind() == reflect.Struct {
-		return f.formatStructAsDefinitionList(val), nil
-	}
-
-	// Fallback for other types
-	return fmt.Sprintf("```\n%v\n```", data), nil
+	return f.FormatPrettyData(prettyData)
 }
 
-// formatSliceAsTable formats a slice of structs as Markdown table
-func (f *MarkdownFormatter) formatSliceAsTable(val reflect.Value) (string, error) {
-	if val.Len() == 0 {
-		return "*No data*", nil
-	}
+// FormatPrettyData formats PrettyData as Markdown
+func (f *MarkdownFormatter) FormatPrettyData(data *api.PrettyData) (string, error) {
+	var sections []string
+	var summaryFields []api.PrettyField
+	var tableFields []api.PrettyField
+	var treeFields []api.PrettyField
 
-	// Get the first item to determine headers
-	firstItem := val.Index(0)
-	if firstItem.Kind() == reflect.Ptr {
-		firstItem = firstItem.Elem()
-	}
-
-	if firstItem.Kind() != reflect.Struct {
-		return "", fmt.Errorf("Markdown table formatting requires slice of structs")
-	}
-
-	var result strings.Builder
-
-	// Write headers
-	headers := f.getStructHeaders(firstItem)
-	result.WriteString("| ")
-	result.WriteString(strings.Join(headers, " | "))
-	result.WriteString(" |\n")
-
-	// Write separator
-	result.WriteString("|")
-	for range headers {
-		result.WriteString(" --- |")
-	}
-	result.WriteString("\n")
-
-	// Write data rows
-	for i := 0; i < val.Len(); i++ {
-		item := val.Index(i)
-		if item.Kind() == reflect.Ptr {
-			item = item.Elem()
+	// Separate special format fields from summary fields
+	for _, field := range data.Schema.Fields {
+		if field.Format == api.FormatTable {
+			tableFields = append(tableFields, field)
+		} else if field.Format == api.FormatTree {
+			treeFields = append(treeFields, field)
+		} else {
+			summaryFields = append(summaryFields, field)
 		}
-
-		row := f.getStructRow(item)
-		result.WriteString("| ")
-
-		// Escape pipe characters in cell content
-		escapedRow := make([]string, len(row))
-		for j, cell := range row {
-			escapedRow[j] = strings.ReplaceAll(cell, "|", "\\|")
-		}
-
-		result.WriteString(strings.Join(escapedRow, " | "))
-		result.WriteString(" |\n")
 	}
 
-	return result.String(), nil
+	// Format summary fields as definition list
+	if len(summaryFields) > 0 {
+		summaryOutput := f.formatSummaryFieldsData(summaryFields, data.Values)
+		if summaryOutput != "" {
+			sections = append(sections, summaryOutput)
+		}
+	}
+
+	// Format tables
+	for _, field := range tableFields {
+		tableData, exists := data.Tables[field.Name]
+		if exists && len(tableData) > 0 {
+			tableOutput, err := f.formatTableData(tableData, field)
+			if err != nil {
+				return "", err
+			}
+			sections = append(sections, tableOutput)
+		}
+	}
+
+	// Format tree fields
+	for _, field := range treeFields {
+		if fieldValue, exists := data.Values[field.Name]; exists {
+			treeOutput := f.formatTreeData(field, fieldValue)
+			if treeOutput != "" {
+				sections = append(sections, treeOutput)
+			}
+		}
+	}
+
+	return strings.Join(sections, "\n\n"), nil
 }
 
-// formatStructAsDefinitionList formats a struct as Markdown definition list
-func (f *MarkdownFormatter) formatStructAsDefinitionList(val reflect.Value) string {
+// formatSummaryFieldsData formats summary fields as Markdown definition list
+func (f *MarkdownFormatter) formatSummaryFieldsData(fields []api.PrettyField, values map[string]api.FieldValue) string {
 	var result strings.Builder
 
-	typ := val.Type()
-	for i := 0; i < val.NumField(); i++ {
-		field := typ.Field(i)
-		fieldVal := val.Field(i)
-
-		if !fieldVal.CanInterface() {
-			continue
-		}
-
-		// Skip hidden fields
-		prettyTag := field.Tag.Get("pretty")
-		if prettyTag == "hide" {
+	for _, field := range fields {
+		fieldValue, exists := values[field.Name]
+		if !exists {
 			continue
 		}
 
 		// Get field name
 		fieldName := field.Name
-		jsonTag := field.Tag.Get("json")
-		if jsonTag != "" && jsonTag != "-" {
-			if parts := strings.Split(jsonTag, ","); parts[0] != "" {
-				fieldName = parts[0]
-			}
+		if field.Label != "" {
+			fieldName = field.Label
 		}
 
-		value := fmt.Sprintf("%v", fieldVal.Interface())
+		// Use FieldValue.Markdown() method for formatted output
+		value := fieldValue.Markdown()
 		result.WriteString(fmt.Sprintf("**%s**: %s\n\n", fieldName, value))
 	}
 
 	return result.String()
 }
 
-// getStructHeaders extracts field names
-func (f *MarkdownFormatter) getStructHeaders(val reflect.Value) []string {
-	return GetStructHeaders(val)
+// formatTableData formats table data as Markdown table
+func (f *MarkdownFormatter) formatTableData(tableData []api.PrettyDataRow, field api.PrettyField) (string, error) {
+	if len(tableData) == 0 {
+		return "*No data*", nil
+	}
+
+	// Get field headers from the first row
+	var headers []string
+	for key := range tableData[0] {
+		headers = append(headers, key)
+	}
+	sort.Strings(headers) // Consistent ordering
+
+	var result strings.Builder
+
+	// Write table header
+	result.WriteString("| ")
+	for _, header := range headers {
+		result.WriteString(fmt.Sprintf("%s | ", header))
+	}
+	result.WriteString("\n")
+
+	// Write separator
+	result.WriteString("| ")
+	for range headers {
+		result.WriteString("--- | ")
+	}
+	result.WriteString("\n")
+
+	// Write data rows
+	for _, row := range tableData {
+		result.WriteString("| ")
+		for _, header := range headers {
+			fieldValue, exists := row[header]
+			var cellContent string
+			if exists {
+				// Use FieldValue.Markdown() for formatted output
+				cellContent = fieldValue.Markdown()
+				// Escape pipe characters in cell content
+				cellContent = strings.ReplaceAll(cellContent, "|", "\\|")
+			}
+			result.WriteString(fmt.Sprintf("%s | ", cellContent))
+		}
+		result.WriteString("\n")
+	}
+
+	return result.String(), nil
 }
 
-// getStructRow extracts field values
-func (f *MarkdownFormatter) getStructRow(val reflect.Value) []string {
-	return GetStructRow(val)
+// formatTreeData formats tree data as a Markdown tree structure
+func (f *MarkdownFormatter) formatTreeData(field api.PrettyField, fieldValue api.FieldValue) string {
+	// Check if the value implements TreeNode interface
+	if treeNode, ok := fieldValue.Value.(api.TreeNode); ok {
+		// Format the tree using TreeNode methods
+		return f.formatTreeNode(treeNode, 0)
+	}
+	
+	// Fallback to regular markdown formatting of the value
+	fieldName := field.Name
+	if field.Label != "" {
+		fieldName = field.Label
+	}
+	
+	return fmt.Sprintf("**%s**: %s", fieldName, fieldValue.Markdown())
+}
+
+// formatTreeNode recursively formats a tree node as Markdown
+func (f *MarkdownFormatter) formatTreeNode(node api.TreeNode, depth int) string {
+	if node == nil {
+		return ""
+	}
+	
+	var result strings.Builder
+	
+	// Create indentation based on depth
+	indent := strings.Repeat("  ", depth)
+	
+	// Format current node - check if it implements Pretty interface
+	var nodeContent string
+	if prettyNode, ok := node.(api.Pretty); ok {
+		// Use Pretty() method for rich formatting
+		text := prettyNode.Pretty()
+		nodeContent = text.Markdown()
+	} else {
+		// Fallback to GetLabel()
+		nodeContent = node.GetLabel()
+	}
+	
+	if depth == 0 {
+		// Root node - use bold
+		result.WriteString(fmt.Sprintf("**%s**\n", nodeContent))
+	} else {
+		// Child nodes - use bullet points with indentation
+		result.WriteString(fmt.Sprintf("%s- %s\n", indent, nodeContent))
+	}
+	
+	// Format children recursively
+	children := node.GetChildren()
+	for _, child := range children {
+		childOutput := f.formatTreeNode(child, depth+1)
+		result.WriteString(childOutput)
+	}
+	
+	return result.String()
 }

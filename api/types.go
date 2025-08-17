@@ -7,10 +7,12 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	
-	"github.com/flanksource/clicky/api/tailwind"
-	"github.com/muesli/termenv"
 )
+
+// Pretty interface allows objects to provide rich formatting
+type Pretty interface {
+	Pretty() Text
+}
 
 // RenderFunc is a custom rendering function type
 type RenderFunc func(value interface{}, field PrettyField, theme Theme) string
@@ -67,57 +69,61 @@ type FieldValue struct {
 	ArrayValue   []interface{}
 	MapValue     map[string]interface{}
 	NestedFields map[string]FieldValue
+	Text         *Text
 }
 
 // Formatted returns the formatted string representation of the value
 func (v FieldValue) Formatted() string {
-	// Handle nested fields specially - format as struct-like fields (no braces)
-	if len(v.NestedFields) > 0 {
-		return v.formatNestedFields()
+	// Use Text object if available
+	if v.Text != nil {
+		return v.Text.String()
 	}
 
-	// Use specific format based on field type and format
-	switch v.Field.Format {
-	case "currency":
-		return v.formatCurrency()
-	case FieldTypeDate:
-		return v.formatDate()
-	case FieldTypeFloat:
-		return v.formatFloat()
-	case FieldTypeDuration:
-		return v.formatDuration()
-	default:
-		// Default formatting based on type
-		switch v.Field.Type {
-		case FieldTypeString:
-			if v.StringValue != nil {
-				return *v.StringValue
-			}
-		case FieldTypeInt:
-			if v.IntValue != nil {
-				return fmt.Sprintf("%d", *v.IntValue)
-			}
-		case FieldTypeFloat:
-			if v.FloatValue != nil {
-				return fmt.Sprintf("%f", *v.FloatValue)
-			}
-		case FieldTypeBoolean:
-			if v.BooleanValue != nil {
-				return fmt.Sprintf("%t", *v.BooleanValue)
-			}
-		case FieldTypeDate:
-			return v.formatDate()
-		case FieldTypeDuration:
-			return v.formatDuration()
-		case FieldTypeArray:
-			return v.formatArray()
-		case FieldTypeMap:
-			// Use the reflection-based map formatter with pretty field names
-			return v.Field.formatMapValueReflection(v.Value)
-		}
+	// Fallback for legacy cases
+	return fmt.Sprintf("%v", v.Value)
+}
+
+// Pretty returns the Text object for rich formatting
+func (v FieldValue) Pretty() Text {
+	if v.Text != nil {
+		return *v.Text
 	}
 
-	// Fallback to string representation
+	// Fallback - create basic Text object
+	return Text{
+		Content: fmt.Sprintf("%v", v.Value),
+	}
+}
+
+// Plain returns plain text without styling
+func (v FieldValue) Plain() string {
+	if v.Text != nil {
+		return v.Text.String()
+	}
+	return fmt.Sprintf("%v", v.Value)
+}
+
+// ANSI returns ANSI-formatted text for terminal output
+func (v FieldValue) ANSI() string {
+	if v.Text != nil {
+		return v.Text.ANSI()
+	}
+	return fmt.Sprintf("%v", v.Value)
+}
+
+// HTML returns HTML-formatted text
+func (v FieldValue) HTML() string {
+	if v.Text != nil {
+		return v.Text.HTML()
+	}
+	return fmt.Sprintf("%v", v.Value)
+}
+
+// Markdown returns Markdown-formatted text
+func (v FieldValue) Markdown() string {
+	if v.Text != nil {
+		return v.Text.Markdown()
+	}
 	return fmt.Sprintf("%v", v.Value)
 }
 
@@ -536,7 +542,107 @@ func (f PrettyField) Parse(value interface{}) (FieldValue, error) {
 		}
 	}
 
+	// Create Text object with appropriate formatting and styling
+	v.Text = v.createText()
+
 	return v, nil
+}
+
+// createText creates a Text object with appropriate formatting and styling
+func (v FieldValue) createText() *Text {
+	// Handle null values
+	if v.Value == nil {
+		return &Text{
+			Content: "null",
+			Style:   "text-gray-400", // Muted color for null values
+		}
+	}
+
+	// Handle nested fields specially
+	if len(v.NestedFields) > 0 {
+		content := v.formatNestedFields()
+		return &Text{
+			Content: content,
+		}
+	}
+
+	var content string
+	var style string
+
+	// Format based on field format
+	switch v.Field.Format {
+	case "currency":
+		content = v.formatCurrency()
+		style = "text-green-600 font-medium" // Green for currency
+	case FieldTypeDate:
+		content = v.formatDate()
+		style = "text-blue-600" // Blue for dates
+	case FieldTypeFloat:
+		content = v.formatFloat()
+		style = "text-purple-600" // Purple for numbers
+	case FieldTypeDuration:
+		content = v.formatDuration()
+		style = "text-orange-600" // Orange for durations
+	case FieldTypeArray:
+		content = v.formatArray()
+	default:
+		// Default formatting based on type
+		switch v.Field.Type {
+		case FieldTypeString:
+			if v.StringValue != nil {
+				content = *v.StringValue
+			} else {
+				content = fmt.Sprintf("%v", v.Value)
+			}
+		case FieldTypeInt:
+			if v.IntValue != nil {
+				content = fmt.Sprintf("%d", *v.IntValue)
+			} else {
+				content = fmt.Sprintf("%v", v.Value)
+			}
+		case FieldTypeFloat:
+			if v.FloatValue != nil {
+				content = fmt.Sprintf("%.6g", *v.FloatValue)
+			} else {
+				content = fmt.Sprintf("%v", v.Value)
+			}
+		case FieldTypeBoolean:
+			if v.BooleanValue != nil {
+				content = fmt.Sprintf("%v", *v.BooleanValue)
+			} else {
+				content = fmt.Sprintf("%v", v.Value)
+			}
+		case FieldTypeDate:
+			content = v.formatDate()
+			style = "text-blue-600"
+		case FieldTypeArray:
+			content = v.formatArray()
+		case FieldTypeMap:
+			if v.MapValue != nil {
+				pairs := make([]string, 0, len(v.MapValue))
+				for k, val := range v.MapValue {
+					pairs = append(pairs, fmt.Sprintf("%s: %v", k, val))
+				}
+				content = "{" + strings.Join(pairs, ", ") + "}"
+			} else {
+				content = fmt.Sprintf("%v", v.Value)
+			}
+		default:
+			content = fmt.Sprintf("%v", v.Value)
+		}
+	}
+
+	// Apply custom style from field if specified
+	if v.Field.Style != "" {
+		style = v.Field.Style
+	} else if v.Field.Color != "" {
+		style = v.Field.Color
+	}
+
+	return &Text{
+		Content: content,
+		Style:   style,
+	}
 }
 
 // InferValueType infers the type from a value
@@ -827,6 +933,10 @@ func (v FieldValue) IsTableField() bool {
 	return v.Field.Format == "table"
 }
 
+func (v FieldValue) IsTreeField() bool {
+	return v.Field.Format == "tree"
+}
+
 // GetFieldType returns the type of the field
 func (v FieldValue) GetFieldType() string {
 	return v.Field.Type
@@ -948,6 +1058,13 @@ type PrettyData struct {
 	Schema *PrettyObject
 	Values map[string]FieldValue
 	Tables map[string][]PrettyDataRow
+	Trees  map[string]PrettyTree
+	// Original stores the original data interface for JSON/YAML marshalling
+	Original interface{}
+}
+type PrettyTree struct {
+	Value    FieldValue
+	Children []PrettyTree
 }
 
 // PrettyDataRow represents a single row in a table
@@ -1003,315 +1120,3 @@ type FormatManager interface {
 	Markdown(data interface{}) (string, error)
 	HTML(data interface{}) (string, error)
 }
-
-type Text struct {
-	Content  string
-	Class    Class
-	Style    string
-	Children []Text
-}
-
-func (t Text) String() string {
-	content := t.Content
-	for _, child := range t.Children {
-		content += child.String()
-	}
-
-	if t.Style == "" {
-		return content
-	}
-
-	// Apply text transforms only (no styling for plain text)
-	transformedText, _ := ApplyTailwindStyle(content, t.Style)
-	return transformedText
-}
-
-func (t Text) ANSI() string {
-	if t.Style == "" {
-		// No style, just return content with children
-		result := t.Content
-		for _, child := range t.Children {
-			result += child.ANSI()
-		}
-		return result
-	}
-
-	// Apply tailwind styles using ANSI escape codes
-	content := t.Content
-	for _, child := range t.Children {
-		content += child.ANSI()
-	}
-
-	// Parse tailwind style and convert to ANSI
-	transformedText, style := ApplyTailwindStyle(content, t.Style)
-	return formatANSI(transformedText, style)
-}
-
-func (t Text) Markdown() string {
-	content := t.Content
-	for _, child := range t.Children {
-		content += child.Markdown()
-	}
-
-	if t.Style == "" {
-		return content
-	}
-
-	// Apply text transforms
-	transformedText, style := ApplyTailwindStyle(content, t.Style)
-	
-	// Convert tailwind styles to markdown with HTML fallback for colors
-	result := transformedText
-	hasColors := style.Foreground != "" || style.Background != ""
-	
-	// If we have colors, use HTML span with inline CSS for better markdown renderer support
-	if hasColors {
-		var styles []string
-		
-		if style.Foreground != "" {
-			styles = append(styles, fmt.Sprintf("color: %s", style.Foreground))
-		}
-		if style.Background != "" {
-			styles = append(styles, fmt.Sprintf("background-color: %s", style.Background))
-		}
-		if style.Faint {
-			styles = append(styles, "opacity: 0.6")
-		}
-		
-		styleAttr := fmt.Sprintf("style=\"%s\"", strings.Join(styles, "; "))
-		result = fmt.Sprintf("<span %s>%s</span>", styleAttr, result)
-	}
-	
-	// Apply markdown formatting for text decorations
-	if style.Bold {
-		if hasColors {
-			// Bold inside the span
-			result = strings.Replace(result, transformedText, "**"+transformedText+"**", 1)
-		} else {
-			result = "**" + result + "**"
-		}
-	}
-	if style.Italic {
-		if hasColors {
-			// Italic inside the span  
-			contentToReplace := transformedText
-			if style.Bold {
-				contentToReplace = "**" + transformedText + "**"
-			}
-			result = strings.Replace(result, contentToReplace, "*"+contentToReplace+"*", 1)
-		} else {
-			result = "*" + result + "*"
-		}
-	}
-	if style.Strikethrough {
-		if hasColors {
-			// Find the text to strikethrough (may be wrapped in bold/italic)
-			contentToReplace := transformedText
-			if style.Bold && style.Italic {
-				contentToReplace = "*" + "**" + transformedText + "**" + "*"
-			} else if style.Bold {
-				contentToReplace = "**" + transformedText + "**"
-			} else if style.Italic {
-				contentToReplace = "*" + transformedText + "*"
-			}
-			result = strings.Replace(result, contentToReplace, "~~"+contentToReplace+"~~", 1)
-		} else {
-			result = "~~" + result + "~~"
-		}
-	}
-	
-	// Note: Underline isn't supported in standard markdown, but will be handled by HTML span
-	
-	return result
-}
-
-func (t Text) HTML() string {
-	content := t.Content
-	for _, child := range t.Children {
-		content += child.HTML()
-	}
-
-	if t.Style == "" {
-		return content
-	}
-
-	// Apply text transforms and get style
-	transformedText, style := ApplyTailwindStyle(content, t.Style)
-	return formatHTML(transformedText, style, t.Style)
-}
-
-// ApplyTailwindStyle applies tailwind styles to text - wrapper around tailwind.ApplyStyle
-func ApplyTailwindStyle(text string, styleStr string) (string, TailwindStyle) {
-	// Import the tailwind package functions
-	transformedText, twStyle := tailwind.ApplyStyle(text, styleStr)
-	
-	// Convert to our TailwindStyle struct
-	style := TailwindStyle{
-		Foreground:    twStyle.Foreground,
-		Background:    twStyle.Background,
-		Bold:          twStyle.Bold,
-		Faint:         twStyle.Faint,
-		Italic:        twStyle.Italic,
-		Underline:     twStyle.Underline,
-		Strikethrough: twStyle.Strikethrough,
-		TextTransform: twStyle.TextTransform,
-	}
-	
-	return transformedText, style
-}
-
-// TailwindStyle represents parsed tailwind styles
-type TailwindStyle struct {
-	Foreground    string
-	Background    string
-	Bold          bool
-	Faint         bool
-	Italic        bool
-	Underline     bool
-	Strikethrough bool
-	TextTransform string
-}
-
-// formatANSI formats text with ANSI escape codes
-func formatANSI(text string, style TailwindStyle) string {
-	if text == "" {
-		return ""
-	}
-
-	// Force termenv to use ANSI mode for consistent output in tests
-	output := termenv.NewOutput(termenv.DefaultOutput().Writer(), termenv.WithProfile(termenv.ANSI))
-	termStyle := output.String(text)
-	
-	// Apply text decorations
-	if style.Bold {
-		termStyle = termStyle.Bold()
-	}
-	if style.Faint {
-		termStyle = termStyle.Faint()
-	}
-	if style.Italic {
-		termStyle = termStyle.Italic()
-	}
-	if style.Underline {
-		termStyle = termStyle.Underline()
-	}
-	
-	// Apply foreground color using termenv
-	if style.Foreground != "" {
-		if color := hexToTermenvColor(style.Foreground); color != nil {
-			termStyle = termStyle.Foreground(color)
-		}
-	}
-	
-	// Apply background color using termenv
-	if style.Background != "" {
-		if color := hexToTermenvColor(style.Background); color != nil {
-			termStyle = termStyle.Background(color)
-		}
-	}
-	
-	// Handle strikethrough manually since termenv doesn't support it
-	result := termStyle.String()
-	if style.Strikethrough {
-		// Remove any existing reset codes and add strikethrough
-		if strings.HasSuffix(result, "\x1b[0m") {
-			result = strings.TrimSuffix(result, "\x1b[0m")
-			result = "\x1b[9m" + result + "\x1b[0m"
-		} else {
-			result = "\x1b[9m" + result + "\x1b[29m"
-		}
-	}
-	
-	return result
-}
-
-// hexToTermenvColor converts hex color to termenv Color
-func hexToTermenvColor(hex string) termenv.Color {
-	if hex == "" {
-		return nil
-	}
-	
-	// Handle special colors
-	switch hex {
-	case "transparent":
-		return nil
-	case "currentColor":
-		return termenv.ANSIColor(termenv.ANSIBrightWhite)
-	}
-	
-	// Convert hex to termenv color
-	if strings.HasPrefix(hex, "#") {
-		return termenv.RGBColor(hex)
-	}
-	
-	return nil
-}
-
-// formatHTML formats text with HTML tags and styles
-func formatHTML(text string, style TailwindStyle, originalStyle string) string {
-	if text == "" {
-		return ""
-	}
-
-	result := text
-	var tags []string
-	var styles []string
-	var classes []string
-	
-	// Apply semantic HTML tags first
-	if style.Bold {
-		tags = append(tags, "strong")
-	}
-	if style.Italic {
-		tags = append(tags, "em")
-	}
-	if style.Underline {
-		tags = append([]string{"u"}, tags...) // Underline goes innermost
-	}
-	if style.Strikethrough {
-		tags = append(tags, "s")
-	}
-	
-	// Apply CSS styles for fallback compatibility
-	if style.Foreground != "" {
-		styles = append(styles, fmt.Sprintf("color: %s", style.Foreground))
-	}
-	if style.Background != "" {
-		styles = append(styles, fmt.Sprintf("background-color: %s", style.Background))
-	}
-	if style.Faint {
-		styles = append(styles, "opacity: 0.6")
-	}
-	
-	// Include original Tailwind classes if provided
-	if originalStyle != "" {
-		// Split and clean up classes
-		tailwindClasses := strings.Fields(originalStyle)
-		classes = append(classes, tailwindClasses...)
-	}
-	
-	// Wrap in semantic tags
-	for _, tag := range tags {
-		result = fmt.Sprintf("<%s>%s</%s>", tag, result, tag)
-	}
-	
-	// Add wrapper span with both classes and inline styles for maximum compatibility
-	if len(styles) > 0 || len(classes) > 0 {
-		var attributes []string
-		
-		// Add Tailwind classes if any
-		if len(classes) > 0 {
-			attributes = append(attributes, fmt.Sprintf("class=\"%s\"", strings.Join(classes, " ")))
-		}
-		
-		// Add inline CSS as fallback
-		if len(styles) > 0 {
-			attributes = append(attributes, fmt.Sprintf("style=\"%s\"", strings.Join(styles, "; ")))
-		}
-		
-		result = fmt.Sprintf("<span %s>%s</span>", strings.Join(attributes, " "), result)
-	}
-	
-	return result
-}
-

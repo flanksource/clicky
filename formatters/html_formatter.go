@@ -43,6 +43,24 @@ func (f *HTMLFormatter) getCSS() string {
 
 // Format formats PrettyData into HTML output
 func (f *HTMLFormatter) Format(in interface{}) (string, error) {
+	// Check if input implements Pretty interface first
+	if pretty, ok := in.(api.Pretty); ok {
+		text := pretty.Pretty()
+		htmlContent := text.HTML()
+		
+		if f.IncludeCSS {
+			var result strings.Builder
+			result.WriteString(f.getCSS())
+			result.WriteString("        <div class=\"bg-white rounded-lg shadow p-6\">\n")
+			result.WriteString("            ")
+			result.WriteString(htmlContent)
+			result.WriteString("\n        </div>\n")
+			result.WriteString("    </div>\n</body>\n</html>")
+			return result.String(), nil
+		}
+		return htmlContent, nil
+	}
+
 	// Convert to PrettyData
 	data, err := f.ToPrettyData(in)
 	if err != nil {
@@ -70,10 +88,10 @@ func (f *HTMLFormatter) Format(in interface{}) (string, error) {
 	result.WriteString("            <div class=\"px-6 py-4\">\n")
 	result.WriteString("                <dl class=\"grid grid-cols-1 md:grid-cols-2 gap-4\">\n")
 
-	// Process summary fields (non-table, non-hidden)
+	// Process summary fields (non-table, non-tree, non-hidden)
 	for _, field := range data.Schema.Fields {
-		// Skip table fields
-		if field.Format == api.FormatTable {
+		// Skip table and tree fields (they get special handling)
+		if field.Format == api.FormatTable || field.Format == api.FormatTree {
 			continue
 		}
 
@@ -120,6 +138,25 @@ func (f *HTMLFormatter) Format(in interface{}) (string, error) {
 				// Format as table with Tailwind styling
 				tableHTML := f.formatTableDataHTML(tableData, field)
 				result.WriteString(tableHTML)
+				result.WriteString("        </div>\n")
+			}
+		} else if field.Format == api.FormatTree {
+			// Handle tree format
+			fieldValue, exists := data.GetValue(field.Name)
+			if exists {
+				// Add section title
+				result.WriteString(fmt.Sprintf("        <div class=\"bg-white rounded-lg shadow\">\n"))
+				result.WriteString(fmt.Sprintf("            <div class=\"px-6 py-4 border-b border-gray-200\">\n"))
+				result.WriteString(fmt.Sprintf("                <h2 class=\"text-xl font-semibold text-gray-900\">%s</h2>\n",
+					f.prettifyFieldName(field.Name)))
+				result.WriteString("            </div>\n")
+				result.WriteString("            <div class=\"px-6 py-4\">\n")
+
+				// Format as tree with HTML styling
+				treeHTML := f.formatTreeFieldHTML(fieldValue, field)
+				result.WriteString(treeHTML)
+				
+				result.WriteString("            </div>\n")
 				result.WriteString("        </div>\n")
 			}
 		}
@@ -188,6 +225,14 @@ func (f *HTMLFormatter) formatFieldValueHTML(fieldValue api.FieldValue) string {
 
 // formatFieldValueHTMLWithStyle formats a FieldValue with field styling for HTML output
 func (f *HTMLFormatter) formatFieldValueHTMLWithStyle(fieldValue api.FieldValue, field api.PrettyField) string {
+	// Check if value implements Pretty interface first
+	if fieldValue.Value != nil {
+		if pretty, ok := fieldValue.Value.(api.Pretty); ok {
+			text := pretty.Pretty()
+			return text.HTML()
+		}
+	}
+
 	// Handle nested fields by formatting them as HTML
 	if fieldValue.HasNestedFields() {
 		return f.formatNestedFieldValue(fieldValue)
@@ -298,5 +343,105 @@ func (f *HTMLFormatter) formatTableDataHTML(rows []api.PrettyDataRow, field api.
 	result.WriteString("                </table>\n")
 	result.WriteString("            </div>\n")
 
+	return result.String()
+}
+
+// formatTreeFieldHTML formats a tree field for HTML output
+func (f *HTMLFormatter) formatTreeFieldHTML(fieldValue api.FieldValue, field api.PrettyField) string {
+	// Convert value to tree node
+	var node api.TreeNode
+	if fieldValue.Value != nil {
+		if treeNode, ok := fieldValue.Value.(api.TreeNode); ok {
+			node = treeNode
+		} else {
+			node = ConvertToTreeNode(fieldValue.Value)
+		}
+	}
+	
+	if node == nil {
+		return "<p class=\"text-gray-500\">No tree data available</p>"
+	}
+	
+	// Format tree using HTML elements
+	return f.formatTreeNodeHTML(node, 0)
+}
+
+// formatTreeNodeHTML recursively formats a tree node as HTML
+func (f *HTMLFormatter) formatTreeNodeHTML(node api.TreeNode, depth int) string {
+	if node == nil {
+		return ""
+	}
+	
+	var result strings.Builder
+	
+	// Format current node
+	var nodeContent string
+	if prettyNode, ok := node.(api.Pretty); ok {
+		// Use Pretty() method for rich HTML formatting
+		text := prettyNode.Pretty()
+		nodeContent = text.HTML()
+	} else {
+		// Fallback to GetLabel() with HTML escaping
+		label := node.GetLabel()
+		// Add icon if present
+		if icon := node.GetIcon(); icon != "" {
+			nodeContent = html.EscapeString(icon) + " " + html.EscapeString(label)
+		} else {
+			nodeContent = html.EscapeString(label)
+		}
+		// Apply style if present
+		if style := node.GetStyle(); style != "" {
+			nodeContent = fmt.Sprintf(`<span class="%s">%s</span>`, style, nodeContent)
+		}
+	}
+	
+	// Get children
+	children := node.GetChildren()
+	
+	if depth == 0 {
+		// Root node - start the tree
+		result.WriteString(`<div class="tree-view">`)
+		result.WriteString(`<div class="tree-node font-semibold text-lg mb-2">`)
+		result.WriteString(nodeContent)
+		result.WriteString(`</div>`)
+		
+		if len(children) > 0 {
+			result.WriteString(`<ul class="ml-4 space-y-1">`)
+			for _, child := range children {
+				childHTML := f.formatTreeNodeHTML(child, depth+1)
+				result.WriteString(childHTML)
+			}
+			result.WriteString(`</ul>`)
+		}
+		
+		result.WriteString(`</div>`)
+	} else {
+		// Child node
+		result.WriteString(`<li class="flex items-start">`)
+		result.WriteString(`<span class="text-gray-400 mr-2">`)
+		if len(children) > 0 {
+			result.WriteString(`▸`) // or use a different tree connector symbol
+		} else {
+			result.WriteString(`•`) // leaf node indicator
+		}
+		result.WriteString(`</span>`)
+		result.WriteString(`<div class="flex-1">`)
+		result.WriteString(`<div class="tree-node">`)
+		result.WriteString(nodeContent)
+		result.WriteString(`</div>`)
+		
+		if len(children) > 0 {
+			result.WriteString(`<ul class="ml-4 mt-1 space-y-1">`)
+			for _, child := range children {
+				childHTML := f.formatTreeNodeHTML(child, depth+1)
+				result.WriteString(childHTML)
+			}
+			result.WriteString(`</ul>`)
+		}
+		
+		result.WriteString(`</div>`)
+		result.WriteString(`</li>`)
+	}
+	
 	return result.String()
 }

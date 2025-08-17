@@ -53,3 +53,7 @@ coverage.html
 .env
 .env.local
 test.*
+hack/
+out.*
+clicky-*
+test-*

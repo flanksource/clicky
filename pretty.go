@@ -19,10 +19,17 @@ type PrettyParser struct {
 	NoColor bool
 }
 
-// NewPrettyParser creates a new parser with default theme
+// NewPrettyParser creates a new parser with adaptive theme
 func NewPrettyParser() *PrettyParser {
 	return &PrettyParser{
-		Theme: api.DefaultTheme(),
+		Theme: api.AutoTheme(),
+	}
+}
+
+// NewPrettyParserWithTheme creates a new parser with a specific theme
+func NewPrettyParserWithTheme(theme api.Theme) *PrettyParser {
+	return &PrettyParser{
+		Theme: theme,
 	}
 }
 
@@ -85,6 +92,15 @@ func (p *PrettyParser) parseStruct(val reflect.Value) (string, error) {
 				fields = append(fields, tableOutput)
 				continue
 			}
+		}
+
+		// Handle tree formatting
+		if prettyField.Format == "tree" {
+			treeOutput := p.formatAsTree(fieldVal, prettyField)
+			if treeOutput != "" {
+				fields = append(fields, treeOutput)
+			}
+			continue
 		}
 
 		formatted := p.formatField(fieldName, fieldVal, prettyField)
@@ -325,6 +341,47 @@ func (p *PrettyParser) matchesNumericCondition(val reflect.Value, condition stri
 
 // formatDefault formats a value using default formatting
 func (p *PrettyParser) formatDefault(val reflect.Value) string {
+	// Handle slices with pointer elements
+	if val.Kind() == reflect.Slice {
+		result := make([]interface{}, val.Len())
+		for i := 0; i < val.Len(); i++ {
+			elem := val.Index(i)
+			if elem.Kind() == reflect.Ptr {
+				if elem.IsNil() {
+					result[i] = nil
+				} else {
+					result[i] = elem.Elem().Interface()
+				}
+			} else {
+				result[i] = elem.Interface()
+			}
+		}
+		return fmt.Sprintf("%v", result)
+	}
+	
+	// Handle maps with pointer values
+	if val.Kind() == reflect.Map {
+		result := make(map[string]interface{})
+		iter := val.MapRange()
+		for iter.Next() {
+			k := iter.Key()
+			v := iter.Value()
+			
+			keyStr := fmt.Sprintf("%v", k.Interface())
+			
+			if v.Kind() == reflect.Ptr {
+				if v.IsNil() {
+					result[keyStr] = nil
+				} else {
+					result[keyStr] = v.Elem().Interface()
+				}
+			} else {
+				result[keyStr] = v.Interface()
+			}
+		}
+		return fmt.Sprintf("%v", result)
+	}
+	
 	return fmt.Sprintf("%v", val.Interface())
 }
 
@@ -684,10 +741,10 @@ func stripAnsi(s string) string {
 func (p *PrettyParser) formatAsTree(val reflect.Value, field api.PrettyField) string {
 	// Create tree formatter
 	formatter := formatters.NewTreeFormatter(p.Theme, p.NoColor, field.TreeOptions)
-	
+
 	// Convert value to tree node
 	var node api.TreeNode
-	
+
 	// Check if value already implements TreeNode
 	if val.CanInterface() {
 		if treeNode, ok := val.Interface().(api.TreeNode); ok {
@@ -697,11 +754,11 @@ func (p *PrettyParser) formatAsTree(val reflect.Value, field api.PrettyField) st
 			node = formatters.ConvertToTreeNode(val.Interface())
 		}
 	}
-	
+
 	if node == nil {
 		return p.formatDefault(val)
 	}
-	
+
 	// Format the tree
 	return formatter.FormatTreeFromRoot(node)
 }

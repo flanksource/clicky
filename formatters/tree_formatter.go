@@ -50,18 +50,31 @@ func (f *TreeFormatter) FormatTree(node api.TreeNode, depth int, prefix string, 
 		}
 	}
 
-	// Add icon if enabled
-	if f.Options.ShowIcons && node.GetIcon() != "" {
-		result.WriteString(node.GetIcon())
-		result.WriteString(" ")
-	}
+	// Check if node implements PrettyNode for custom formatting
+	if prettyNode, ok := node.(api.PrettyNode); ok {
+		// Use custom Pretty() formatting
+		prettyText := prettyNode.Pretty()
+		// Convert Text to string with appropriate formatting
+		if f.NoColor {
+			result.WriteString(prettyText.String())
+		} else {
+			result.WriteString(prettyText.ANSI())
+		}
+	} else {
+		// Default formatting with icon and label
+		// Add icon if enabled
+		if f.Options.ShowIcons && node.GetIcon() != "" {
+			result.WriteString(node.GetIcon())
+			result.WriteString(" ")
+		}
 
-	// Format and style the label
-	label := node.GetLabel()
-	if styleStr := node.GetStyle(); styleStr != "" && !f.NoColor {
-		label = f.applyTailwindStyle(label, styleStr)
+		// Format and style the label
+		label := node.GetLabel()
+		if styleStr := node.GetStyle(); styleStr != "" && !f.NoColor {
+			label = f.applyTailwindStyle(label, styleStr)
+		}
+		result.WriteString(label)
 	}
-	result.WriteString(label)
 
 	// Handle compact list node specially
 	if compactNode, ok := node.(*api.CompactListNode); ok && f.Options.Compact {
@@ -83,7 +96,7 @@ func (f *TreeFormatter) FormatTree(node api.TreeNode, depth int, prefix string, 
 	children := node.GetChildren()
 	for i, child := range children {
 		isLastChild := i == len(children)-1
-		
+
 		// Build the prefix for child nodes
 		var childPrefix string
 		if depth > 0 {
@@ -94,7 +107,7 @@ func (f *TreeFormatter) FormatTree(node api.TreeNode, depth int, prefix string, 
 				childPrefix += f.Options.ContinuePrefix
 			}
 		}
-		
+
 		childOutput := f.FormatTree(child, depth+1, childPrefix, isLastChild)
 		result.WriteString(childOutput)
 	}
@@ -127,7 +140,7 @@ func (f *TreeFormatter) FormatTreeFromRoot(root api.TreeNode) string {
 // applyTailwindStyle applies Tailwind-style classes to text
 func (f *TreeFormatter) applyTailwindStyle(text string, styleStr string) string {
 	style := lipgloss.NewStyle()
-	
+
 	// Parse style string (simplified version - would need full implementation)
 	styles := strings.Fields(styleStr)
 	for _, s := range styles {
@@ -148,7 +161,7 @@ func (f *TreeFormatter) applyTailwindStyle(text string, styleStr string) string 
 			style = style.Underline(true)
 		}
 	}
-	
+
 	return style.Render(text)
 }
 
@@ -191,7 +204,7 @@ func (f *TreeFormatter) WrapCompactList(items []string, maxWidth int, indent str
 	for _, item := range items {
 		itemLen := len(item)
 		separatorLen := 2 // ", "
-		
+
 		// Check if adding this item would exceed max width
 		if currentWidth > len(indent) && currentWidth+separatorLen+itemLen > maxWidth {
 			// Start a new line

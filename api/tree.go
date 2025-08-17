@@ -9,6 +9,11 @@ type TreeNode interface {
 	IsLeaf() bool
 }
 
+// PrettyNode interface for nodes that can format themselves with rich text
+type PrettyNode interface {
+	Pretty() Text
+}
+
 // TreeOptions configures how trees are rendered
 type TreeOptions struct {
 	ShowIcons      bool            `json:"show_icons,omitempty" yaml:"show_icons,omitempty"`

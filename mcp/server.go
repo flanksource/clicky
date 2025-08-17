@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/flanksource/clicky"
+	flanksourceContext "github.com/flanksource/commons/context"
 	"github.com/spf13/cobra"
 )
 
@@ -28,13 +29,13 @@ type MCPServer struct {
 func NewMCPServer(config *Config, rootCmd *cobra.Command) *MCPServer {
 	promptRegistry := NewPromptRegistry(config)
 	promptRegistry.LoadDefaults()
-	
+
 	// Try to load custom prompts
 	promptsPath := GetPromptsPath()
 	if _, err := os.Stat(promptsPath); err == nil {
 		promptRegistry.LoadFromFile(promptsPath)
 	}
-	
+
 	return &MCPServer{
 		config:         config,
 		registry:       NewToolRegistry(config),
@@ -54,7 +55,7 @@ func (s *MCPServer) Start(ctx context.Context) error {
 	// Create a new TaskManager for this session
 	s.taskManager = clicky.NewTaskManagerWithConcurrency(5) // Limit concurrent tool executions
 	s.taskManager.SetVerbose(s.verbose)
-	
+
 	// Configure retry for tool executions
 	s.taskManager.SetRetryConfig(clicky.RetryConfig{
 		MaxRetries:      2,
@@ -64,7 +65,7 @@ func (s *MCPServer) Start(ctx context.Context) error {
 		JitterFactor:    0.1,
 		RetryableErrors: []string{"timeout", "temporary"},
 	})
-	
+
 	switch s.config.Transport.Type {
 	case "stdio":
 		return s.startStdioServer(ctx)
@@ -78,7 +79,7 @@ func (s *MCPServer) Start(ctx context.Context) error {
 // startStdioServer starts the server using stdio transport
 func (s *MCPServer) startStdioServer(ctx context.Context) error {
 	scanner := bufio.NewScanner(os.Stdin)
-	
+
 	// Handle shutdown gracefully
 	go func() {
 		<-ctx.Done()
@@ -86,7 +87,7 @@ func (s *MCPServer) startStdioServer(ctx context.Context) error {
 			s.taskManager.CancelAll()
 		}
 	}()
-	
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -98,25 +99,25 @@ func (s *MCPServer) startStdioServer(ctx context.Context) error {
 				}
 				return nil // EOF
 			}
-			
+
 			line := scanner.Text()
 			if line == "" {
 				continue
 			}
-			
+
 			response, err := s.handleJSONRPCRequest(ctx, line)
 			if err != nil {
 				log.Printf("Error handling request: %v", err)
 				continue
 			}
-			
+
 			if response != nil {
 				responseJSON, err := json.Marshal(response)
 				if err != nil {
 					log.Printf("Error marshaling response: %v", err)
 					continue
 				}
-				
+
 				fmt.Println(string(responseJSON))
 			}
 		}
@@ -139,9 +140,9 @@ type JSONRPCRequest struct {
 
 // JSONRPCResponse represents an MCP JSON-RPC response
 type JSONRPCResponse struct {
-	JSONRPC string      `json:"jsonrpc"`
-	ID      interface{} `json:"id,omitempty"`
-	Result  interface{} `json:"result,omitempty"`
+	JSONRPC string        `json:"jsonrpc"`
+	ID      interface{}   `json:"id,omitempty"`
+	Result  interface{}   `json:"result,omitempty"`
 	Error   *JSONRPCError `json:"error,omitempty"`
 }
 
@@ -164,7 +165,7 @@ func (s *MCPServer) handleJSONRPCRequest(ctx context.Context, requestJSON string
 			},
 		}, nil
 	}
-	
+
 	switch req.Method {
 	case "initialize":
 		return s.handleInitialize(req)
@@ -198,18 +199,18 @@ func (s *MCPServer) handleInitialize(req JSONRPCRequest) (*JSONRPCResponse, erro
 			"listChanged": false,
 		},
 	}
-	
+
 	serverInfo := map[string]interface{}{
 		"name":    s.config.Name,
 		"version": s.config.Version,
 	}
-	
+
 	result := map[string]interface{}{
 		"protocolVersion": "2024-11-05",
 		"capabilities":    capabilities,
 		"serverInfo":      serverInfo,
 	}
-	
+
 	return &JSONRPCResponse{
 		JSONRPC: "2.0",
 		ID:      req.ID,
@@ -220,7 +221,7 @@ func (s *MCPServer) handleInitialize(req JSONRPCRequest) (*JSONRPCResponse, erro
 // handleToolsList handles the MCP tools/list request
 func (s *MCPServer) handleToolsList(req JSONRPCRequest) (*JSONRPCResponse, error) {
 	response := s.registry.ToListResponse()
-	
+
 	return &JSONRPCResponse{
 		JSONRPC: "2.0",
 		ID:      req.ID,
@@ -260,7 +261,7 @@ func (s *MCPServer) handleToolsCall(ctx context.Context, req JSONRPCRequest) (*J
 			},
 		}, nil
 	}
-	
+
 	if err := json.Unmarshal(paramsJSON, &params); err != nil {
 		return &JSONRPCResponse{
 			JSONRPC: "2.0",
@@ -271,7 +272,7 @@ func (s *MCPServer) handleToolsCall(ctx context.Context, req JSONRPCRequest) (*J
 			},
 		}, nil
 	}
-	
+
 	// Get the tool
 	tool, exists := s.registry.GetTool(params.Name)
 	if !exists {
@@ -284,7 +285,7 @@ func (s *MCPServer) handleToolsCall(ctx context.Context, req JSONRPCRequest) (*J
 			},
 		}, nil
 	}
-	
+
 	// Execute the tool using TaskManager
 	result, err := s.executeToolWithTaskManager(ctx, tool, params.Arguments)
 	if err != nil {
@@ -302,7 +303,7 @@ func (s *MCPServer) handleToolsCall(ctx context.Context, req JSONRPCRequest) (*J
 			},
 		}, nil
 	}
-	
+
 	return &JSONRPCResponse{
 		JSONRPC: "2.0",
 		ID:      req.ID,
@@ -326,48 +327,48 @@ func (s *MCPServer) executeToolWithTaskManager(ctx context.Context, tool *ToolDe
 			}, nil
 		}
 	}
-	
+
 	// Prepare timeout
 	timeout := time.Duration(s.config.Security.TimeoutSeconds) * time.Second
 	if timeout == 0 {
 		timeout = 30 * time.Second
 	}
-	
+
 	// Capture output
 	var output strings.Builder
 	var errorOutput strings.Builder
-	
+
 	// Create a task for the tool execution
 	task := s.taskManager.Start(
 		fmt.Sprintf("MCP: %s", tool.Name),
 		clicky.WithTimeout(timeout),
-		clicky.WithFunc(func(t *clicky.Task) error {
+		clicky.WithFunc(func(ctx flanksourceContext.Context, t *clicky.Task) error {
 			// Set up command arguments
 			if tool.Command == nil {
 				return fmt.Errorf("tool command not available")
 			}
-			
+
 			// Apply arguments to command flags
 			if err := s.applyArgsToCommand(tool.Command, args); err != nil {
 				t.Errorf("Failed to apply arguments: %v", err)
 				return err
 			}
-			
+
 			// Capture output by redirecting stdout and stderr
 			oldStdout := os.Stdout
 			oldStderr := os.Stderr
-			
+
 			// Create pipes
 			rOut, wOut, _ := os.Pipe()
 			rErr, wErr, _ := os.Pipe()
-			
+
 			os.Stdout = wOut
 			os.Stderr = wErr
-			
+
 			// Capture output in goroutines
 			outDone := make(chan struct{})
 			errDone := make(chan struct{})
-			
+
 			go func() {
 				defer close(outDone)
 				buf := make([]byte, 1024)
@@ -382,7 +383,7 @@ func (s *MCPServer) executeToolWithTaskManager(ctx context.Context, tool *ToolDe
 					}
 				}
 			}()
-			
+
 			go func() {
 				defer close(errDone)
 				buf := make([]byte, 1024)
@@ -397,10 +398,10 @@ func (s *MCPServer) executeToolWithTaskManager(ctx context.Context, tool *ToolDe
 					}
 				}
 			}()
-			
+
 			// Execute the command
-			t.SetStatus(fmt.Sprintf("Executing: %s", tool.Name))
-			
+			t.SetName(fmt.Sprintf("Executing: %s", tool.Name))
+
 			var cmdErr error
 			if tool.Command.RunE != nil {
 				cmdErr = tool.Command.RunE(tool.Command, []string{})
@@ -409,40 +410,40 @@ func (s *MCPServer) executeToolWithTaskManager(ctx context.Context, tool *ToolDe
 			} else {
 				cmdErr = fmt.Errorf("command has no Run function")
 			}
-			
+
 			// Restore stdout/stderr
 			wOut.Close()
 			wErr.Close()
 			os.Stdout = oldStdout
 			os.Stderr = oldStderr
-			
+
 			// Wait for output capture to complete
 			<-outDone
 			<-errDone
-			
+
 			if cmdErr != nil {
 				t.FailedWithError(cmdErr)
 				return cmdErr
 			}
-			
+
 			t.Success()
 			return nil
 		}),
 	)
-	
+
 	// Wait for task completion
 	<-task.Context().Done()
-	
+
 	// Build result
 	content := []ContentBlock{}
-	
+
 	if output.Len() > 0 {
 		content = append(content, ContentBlock{
 			Type: "text",
 			Text: output.String(),
 		})
 	}
-	
+
 	isError := false
 	if task.Error() != nil || errorOutput.Len() > 0 {
 		isError = true
@@ -450,7 +451,7 @@ func (s *MCPServer) executeToolWithTaskManager(ctx context.Context, tool *ToolDe
 		if task.Error() != nil && errorText == "" {
 			errorText = task.Error().Error()
 		}
-		
+
 		if errorText != "" {
 			content = append(content, ContentBlock{
 				Type: "text",
@@ -458,7 +459,7 @@ func (s *MCPServer) executeToolWithTaskManager(ctx context.Context, tool *ToolDe
 			})
 		}
 	}
-	
+
 	// Audit logging
 	if s.config.Security.AuditLog {
 		status := "success"
@@ -467,7 +468,7 @@ func (s *MCPServer) executeToolWithTaskManager(ctx context.Context, tool *ToolDe
 		}
 		log.Printf("MCP tool executed: %s with args: %v (%s)", tool.Name, args, status)
 	}
-	
+
 	return &ToolCallResult{
 		Content: content,
 		IsError: isError,
@@ -487,7 +488,7 @@ func (s *MCPServer) confirmToolExecution(toolName string, args map[string]interf
 func (s *MCPServer) applyArgsToCommand(cmd *cobra.Command, args map[string]interface{}) error {
 	// Reset command flags to defaults
 	cmd.ResetFlags()
-	
+
 	// Apply each argument
 	for key, value := range args {
 		if key == "args" {
@@ -501,7 +502,7 @@ func (s *MCPServer) applyArgsToCommand(cmd *cobra.Command, args map[string]inter
 			}
 			continue
 		}
-		
+
 		// Find the flag
 		flag := cmd.Flags().Lookup(key)
 		if flag == nil {
@@ -511,7 +512,7 @@ func (s *MCPServer) applyArgsToCommand(cmd *cobra.Command, args map[string]inter
 				return fmt.Errorf("unknown flag: %s", key)
 			}
 		}
-		
+
 		// Set the flag value
 		switch v := value.(type) {
 		case bool:
@@ -530,14 +531,14 @@ func (s *MCPServer) applyArgsToCommand(cmd *cobra.Command, args map[string]inter
 			}
 		}
 	}
-	
+
 	return nil
 }
 
 // handlePromptsList handles the MCP prompts/list request
 func (s *MCPServer) handlePromptsList(req JSONRPCRequest) (*JSONRPCResponse, error) {
 	prompts := s.promptRegistry.List()
-	
+
 	// Add a special prompt that helps with tool discovery
 	prompts = append(prompts, &Prompt{
 		Name:        "discover-tools",
@@ -551,15 +552,15 @@ func (s *MCPServer) handlePromptsList(req JSONRPCRequest) (*JSONRPCResponse, err
 Focus on the most useful tools for common operations.`,
 		Tags: []string{"discovery", "tools", "help"},
 	})
-	
+
 	response := &ListPromptsResponse{
 		Prompts: make([]Prompt, len(prompts)),
 	}
-	
+
 	for i, p := range prompts {
 		response.Prompts[i] = *p
 	}
-	
+
 	return &JSONRPCResponse{
 		JSONRPC: "2.0",
 		ID:      req.ID,
@@ -587,7 +588,7 @@ func (s *MCPServer) handlePromptsGet(req JSONRPCRequest) (*JSONRPCResponse, erro
 			},
 		}, nil
 	}
-	
+
 	if err := json.Unmarshal(paramsJSON, &params); err != nil {
 		return &JSONRPCResponse{
 			JSONRPC: "2.0",
@@ -598,16 +599,16 @@ func (s *MCPServer) handlePromptsGet(req JSONRPCRequest) (*JSONRPCResponse, erro
 			},
 		}, nil
 	}
-	
+
 	// Handle special discover-tools prompt
 	if params.Name == "discover-tools" {
 		tools := s.registry.GetTools()
-		
+
 		// Build a comprehensive prompt about available tools
 		var toolDescriptions []string
 		for name, tool := range tools {
 			desc := fmt.Sprintf("**%s**: %s", name, tool.Description)
-			
+
 			// Add parameter information
 			if len(tool.InputSchema.Properties) > 0 {
 				desc += "\n  Parameters:"
@@ -622,10 +623,10 @@ func (s *MCPServer) handlePromptsGet(req JSONRPCRequest) (*JSONRPCResponse, erro
 					desc += fmt.Sprintf("\n    - %s: %s%s", param, prop.Description, required)
 				}
 			}
-			
+
 			toolDescriptions = append(toolDescriptions, desc)
 		}
-		
+
 		content := fmt.Sprintf(`Here are the available tools you can use:
 
 %s
@@ -635,7 +636,7 @@ To use a tool, call it with the appropriate arguments. For example:
 - Use specific tools with their required parameters
 
 What would you like to do with these tools?`, strings.Join(toolDescriptions, "\n\n"))
-		
+
 		response := &GetPromptResponse{
 			Description: "Discover available tools and their usage",
 			Messages: []PromptMessage{
@@ -645,14 +646,14 @@ What would you like to do with these tools?`, strings.Join(toolDescriptions, "\n
 				},
 			},
 		}
-		
+
 		return &JSONRPCResponse{
 			JSONRPC: "2.0",
 			ID:      req.ID,
 			Result:  response,
 		}, nil
 	}
-	
+
 	// Get the regular prompt
 	prompt, exists := s.promptRegistry.Get(params.Name)
 	if !exists {
@@ -665,10 +666,10 @@ What would you like to do with these tools?`, strings.Join(toolDescriptions, "\n
 			},
 		}, nil
 	}
-	
+
 	// Apply arguments and get response
 	response := prompt.ToMCPResponse(params.Arguments)
-	
+
 	return &JSONRPCResponse{
 		JSONRPC: "2.0",
 		ID:      req.ID,

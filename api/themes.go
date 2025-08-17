@@ -1,6 +1,12 @@
 package api
 
-import "github.com/charmbracelet/lipgloss"
+import (
+	"os"
+	
+	"github.com/charmbracelet/lipgloss"
+	"github.com/muesli/termenv"
+	"golang.org/x/term"
+)
 
 type Color struct {
 	Hex     string
@@ -76,4 +82,37 @@ func LightTheme() Theme {
 		Info:      lipgloss.Color("#1976D2"), // Dark Blue
 		Muted:     lipgloss.Color("#757575"), // Dark Gray
 	}
+}
+
+// NoTTYTheme returns a theme for non-terminal output (no colors)
+func NoTTYTheme() Theme {
+	noColor := lipgloss.Color("")
+	return Theme{
+		Primary:   noColor,
+		Secondary: noColor,
+		Success:   noColor,
+		Warning:   noColor,
+		Error:     noColor,
+		Info:      noColor,
+		Muted:     noColor,
+	}
+}
+
+// AutoTheme automatically selects a theme based on the terminal environment
+func AutoTheme() Theme {
+	// Check if output is a terminal
+	if !isTerminal() {
+		return NoTTYTheme()
+	}
+	
+	// Detect terminal background and choose appropriate theme
+	if termenv.HasDarkBackground() {
+		return DarkTheme()
+	}
+	return LightTheme()
+}
+
+// isTerminal checks if stdout is a terminal
+func isTerminal() bool {
+	return term.IsTerminal(int(os.Stdout.Fd()))
 }

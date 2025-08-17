@@ -1,11 +1,11 @@
 package clicky
 
 import (
-	"fmt"
 	"os"
 	"sync"
 	"time"
-	
+
+	"github.com/flanksource/clicky/task"
 	flanksourceContext "github.com/flanksource/commons/context"
 )
 
@@ -13,23 +13,45 @@ var (
 	globalTaskManager *TaskManager
 	taskManagerOnce   sync.Once
 	initialized       = false
-	
+
 	// Phase tracking
-	currentPhaseTask  *Task
-	phaseMutex        sync.Mutex
+	currentPhaseTask *Task
+	phaseMutex       sync.Mutex
 )
 
 // initGlobalTaskManager initializes the global TaskManager with default settings
 func initGlobalTaskManager() {
 	taskManagerOnce.Do(func() {
 		globalTaskManager = NewTaskManagerWithConcurrency(10)
-		// Register signal handling for graceful shutdown
-		globalTaskManager.registerSignalHandling()
+		// Signal handling is registered automatically in NewManagerWithConcurrency
 		initialized = true
 	})
 }
 
+// UseGlobalTaskManager configures the global task manager with options
+func UseGlobalTaskManager(opts task.ManagerOptions) {
+	if !initialized {
+		initGlobalTaskManager()
+	}
+	task.Global = globalTaskManager
+	globalTaskManager.SetMaxConcurrent(opts.MaxConcurrent)
+	globalTaskManager.SetGracefulTimeout(opts.GracefulTimeout)
+	globalTaskManager.SetRetryConfig(RetryConfig{
+		MaxRetries:      opts.MaxRetries,
+		BaseDelay:       opts.RetryDelay,
+		BackoffFactor:   2.0,
+		JitterFactor:    0.1,
+		RetryableErrors: []string{"timeout", "connection", "temporary", "rate limit", "429"},
+		MaxDelay:        opts.RetryDelay * 3,
+	})
+}
+
+func StartTask[T any](name string, taskFunc task.TaskFunc[T], opts ...TaskOption) task.TypedTask[T] {
+	return task.StartTask(name, taskFunc, opts...)
+}
+
 // StartGlobalTask starts a new task using the global TaskManager
+// Deprecated: Use StartTask instead.
 func StartGlobalTask(name string, opts ...TaskOption) *Task {
 	initGlobalTaskManager()
 	return globalTaskManager.Start(name, opts...)
@@ -132,15 +154,15 @@ func ExitWithGlobalTaskSummary() {
 func StartGlobalPhase(phaseName string) *Task {
 	phaseMutex.Lock()
 	defer phaseMutex.Unlock()
-	
+
 	initGlobalTaskManager()
-	
+
 	// Complete the previous phase if it exists
 	if currentPhaseTask != nil {
 		currentPhaseTask.Success()
 		currentPhaseTask = nil
 	}
-	
+
 	// Start new phase task
 	currentPhaseTask = globalTaskManager.Start(
 		phaseName,
@@ -148,7 +170,7 @@ func StartGlobalPhase(phaseName string) *Task {
 			t.Infof("Starting %s phase", phaseName)
 			// Set progress as indeterminate (spinner)
 			t.SetProgress(0, 0)
-			
+
 			// This task will run until CompleteGlobalPhase is called
 			select {
 			case <-t.Context().Done():
@@ -156,7 +178,7 @@ func StartGlobalPhase(phaseName string) *Task {
 			}
 		}),
 	)
-	
+
 	return currentPhaseTask
 }
 
@@ -164,7 +186,7 @@ func StartGlobalPhase(phaseName string) *Task {
 func UpdateGlobalPhaseProgress(message string) {
 	phaseMutex.Lock()
 	defer phaseMutex.Unlock()
-	
+
 	if currentPhaseTask != nil {
 		currentPhaseTask.Infof("%s", message)
 	}
@@ -174,53 +196,9 @@ func UpdateGlobalPhaseProgress(message string) {
 func CompleteGlobalPhase() {
 	phaseMutex.Lock()
 	defer phaseMutex.Unlock()
-	
+
 	if currentPhaseTask != nil {
 		currentPhaseTask.Success()
 		currentPhaseTask = nil
 	}
-}
-
-// StartGlobalGroup creates a new task group using the global TaskManager
-func StartGlobalGroup(name string) *TaskGroup {
-	initGlobalTaskManager()
-	return globalTaskManager.StartGroup(name)
-}
-
-// StartGlobalTaskInGroup creates a task within an existing group using the global TaskManager
-func StartGlobalTaskInGroup(group *TaskGroup, name string, opts ...TaskOption) *Task {
-	initGlobalTaskManager()
-	return globalTaskManager.StartTaskInGroup(group, name, opts...)
-}
-
-// StartGlobalTaskWithResult creates a task with result handling using the global TaskManager
-func StartGlobalTaskWithResult(name string, taskFunc func(flanksourceContext.Context, *Task) (interface{}, error), opts ...TaskOption) *Task {
-	initGlobalTaskManager()
-	return globalTaskManager.StartWithResult(name, taskFunc, opts...)
-}
-
-// Helper functions for common result patterns
-
-// StartGlobalTaskReturning is a helper that creates a typed wrapper for cleaner syntax
-func StartGlobalTaskReturning[T any](name string, taskFunc func(flanksourceContext.Context, *Task) (T, error), opts ...TaskOption) *Task {
-	return StartGlobalTaskWithResult(name, func(ctx flanksourceContext.Context, t *Task) (interface{}, error) {
-		result, err := taskFunc(ctx, t)
-		return result, err
-	}, opts...)
-}
-
-// GetTaskResult is a helper to get typed results from a task
-func GetTaskResult[T any](task *Task) (T, error) {
-	result, err := task.GetResult()
-	var zero T
-	if err != nil {
-		return zero, err
-	}
-	if result == nil {
-		return zero, nil
-	}
-	if typedResult, ok := result.(T); ok {
-		return typedResult, nil
-	}
-	return zero, fmt.Errorf("result type mismatch: expected %T, got %T", zero, result)
 }

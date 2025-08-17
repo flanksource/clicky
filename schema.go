@@ -2,48 +2,22 @@ package clicky
 
 import (
 	"encoding/json"
-	"flag"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
 
-	"github.com/spf13/pflag"
 	"gopkg.in/yaml.v3"
-	
+
 	"github.com/flanksource/clicky/api"
 	"github.com/flanksource/clicky/formatters"
 )
 
 // SchemaFormatter handles schema-based formatting operations
 type SchemaFormatter struct {
-	Schema        *api.PrettyObject
-	Parser        *StructParser
-}
-
-// FormatOptions contains options for formatting operations
-type FormatOptions struct {
-	Format  string
-	NoColor bool
-	Output  string
-	Verbose bool
-}
-
-// BindFlags adds formatting flags to the provided flag set
-func BindFlags(flags *flag.FlagSet, options *FormatOptions) {
-	flags.StringVar(&options.Format, "format", "pretty", "Output format: pretty, json, yaml, csv, html, pdf, markdown")
-	flags.StringVar(&options.Output, "output", "", "Output file pattern (optional, uses stdout if not specified)")
-	flags.BoolVar(&options.NoColor, "no-color", false, "Disable colored output")
-	flags.BoolVar(&options.Verbose, "verbose", false, "Enable verbose output")
-}
-
-// BindPFlags adds formatting flags to the provided pflag set (for cobra)
-func BindPFlags(flags *pflag.FlagSet, options *FormatOptions) {
-	flags.StringVar(&options.Format, "format", "pretty", "Output format: pretty, json, yaml, csv, html, pdf, markdown")
-	flags.StringVar(&options.Output, "output", "", "Output file pattern (optional, uses stdout if not specified)")
-	flags.BoolVar(&options.NoColor, "no-color", false, "Disable colored output")
-	flags.BoolVar(&options.Verbose, "verbose", false, "Enable verbose output")
+	Schema *api.PrettyObject
+	Parser *StructParser
 }
 
 // NewSchemaFormatter creates a new schema formatter with the given schema file
@@ -55,8 +29,8 @@ func NewSchemaFormatter(schemaFile string) (*SchemaFormatter, error) {
 	}
 
 	return &SchemaFormatter{
-		Schema:        schema,
-		Parser:        parser,
+		Schema: schema,
+		Parser: parser,
 	}, nil
 }
 
@@ -66,7 +40,7 @@ func LoadSchemaFromYAML(schemaFile string) (*SchemaFormatter, error) {
 }
 
 // FormatFile formats a single data file using the schema
-func (sf *SchemaFormatter) FormatFile(dataFile string, options FormatOptions) (string, error) {
+func (sf *SchemaFormatter) FormatFile(dataFile string, options formatters.FormatOptions) (string, error) {
 	// Load and parse data
 	data, err := sf.loadDataFile(dataFile)
 	if err != nil {
@@ -79,14 +53,24 @@ func (sf *SchemaFormatter) FormatFile(dataFile string, options FormatOptions) (s
 		return "", fmt.Errorf("failed to parse data with schema: %w", err)
 	}
 
-	// NoColor option is handled by individual formatters
-
 	// Format output
-	return sf.formatWithPrettyData(prettyData, options.Format)
+	return sf.formatWithPrettyData(prettyData, options)
 }
 
 // FormatFiles formats multiple data files using the schema
-func (sf *SchemaFormatter) FormatFiles(dataFiles []string, options FormatOptions) error {
+func (sf *SchemaFormatter) FormatFiles(dataFiles []string, options formatters.FormatOptions) error {
+	// Dump schema to stderr if requested
+	if options.DumpSchema {
+		schemaYAML, err := yaml.Marshal(sf.Schema)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error marshaling schema: %v\n", err)
+		} else {
+			fmt.Fprintln(os.Stderr, "=== Schema Dump ===")
+			fmt.Fprintln(os.Stderr, string(schemaYAML))
+			fmt.Fprintln(os.Stderr, "==================")
+		}
+	}
+
 	for _, dataFile := range dataFiles {
 
 		result, err := sf.FormatFile(dataFile, options)
@@ -160,10 +144,9 @@ func (sf *SchemaFormatter) convertMapToStruct(data map[string]interface{}) inter
 	return data
 }
 
-
 // formatWithPrettyData formats PrettyData using the specified format
-func (sf *SchemaFormatter) formatWithPrettyData(data *api.PrettyData, format string) (string, error) {
-	switch strings.ToLower(format) {
+func (sf *SchemaFormatter) formatWithPrettyData(data *api.PrettyData, options formatters.FormatOptions) (string, error) {
+	switch strings.ToLower(options.Format) {
 	case "json":
 		return sf.formatJSONWithPrettyData(data)
 	case "yaml":
@@ -175,17 +158,18 @@ func (sf *SchemaFormatter) formatWithPrettyData(data *api.PrettyData, format str
 	case "pdf":
 		return sf.formatPDFWithPrettyData(data)
 	case "markdown":
-		return sf.formatMarkdownWithPrettyData(data)
+		return sf.formatMarkdownWithPrettyData(data, options.NoColor)
 	case "pretty":
 		fallthrough
 	default:
-		return sf.formatPrettyWithPrettyData(data)
+		return sf.formatPrettyWithPrettyData(data, options.NoColor)
 	}
 }
 
 // formatPrettyWithPrettyData formats PrettyData using pretty formatter
-func (sf *SchemaFormatter) formatPrettyWithPrettyData(data *api.PrettyData) (string, error) {
+func (sf *SchemaFormatter) formatPrettyWithPrettyData(data *api.PrettyData, noColor bool) (string, error) {
 	prettyFormatter := formatters.NewPrettyFormatter()
+	prettyFormatter.NoColor = noColor
 	return prettyFormatter.Format(data)
 }
 
@@ -317,33 +301,33 @@ func (sf *SchemaFormatter) formatPDFWithPrettyData(data *api.PrettyData) (string
 }
 
 // formatMarkdownWithPrettyData formats PrettyData as Markdown using Text.Markdown()
-func (sf *SchemaFormatter) formatMarkdownWithPrettyData(data *api.PrettyData) (string, error) {
+func (sf *SchemaFormatter) formatMarkdownWithPrettyData(data *api.PrettyData, noColor bool) (string, error) {
 	var result strings.Builder
-	
+
 	// Format summary fields
 	if len(data.Values) > 0 {
 		result.WriteString("## Summary\n\n")
-		
+
 		// Sort field names for consistent output
 		var fieldNames []string
 		for name := range data.Values {
 			fieldNames = append(fieldNames, name)
 		}
 		sort.Strings(fieldNames)
-		
+
 		for _, name := range fieldNames {
 			fieldValue := data.Values[name]
-			
+
 			// Create label text
 			label := sf.prettifyFieldName(name)
 			result.WriteString(fmt.Sprintf("**%s**: ", label))
-			
+
 			// Create styled text for the value
 			text := api.Text{
 				Content: fieldValue.Formatted(),
 				Style:   fieldValue.Field.Style,
 			}
-			
+
 			// Handle nested fields
 			if fieldValue.HasNestedFields() {
 				result.WriteString("\n")
@@ -354,25 +338,33 @@ func (sf *SchemaFormatter) formatMarkdownWithPrettyData(data *api.PrettyData) (s
 						Content: nestedField.Formatted(),
 						Style:   nestedField.Field.Style,
 					}
-					result.WriteString(fmt.Sprintf("  - **%s**: %s\n", nestedLabel, nestedText.Markdown()))
+					if noColor {
+						result.WriteString(fmt.Sprintf("  - **%s**: %s\n", nestedLabel, nestedText.String()))
+					} else {
+						result.WriteString(fmt.Sprintf("  - **%s**: %s\n", nestedLabel, nestedText.Markdown()))
+					}
 				}
 			} else {
-				result.WriteString(text.Markdown())
+				if noColor {
+					result.WriteString(text.String())
+				} else {
+					result.WriteString(text.Markdown())
+				}
 				result.WriteString("\n")
 			}
 			result.WriteString("\n")
 		}
 	}
-	
+
 	// Format tables
 	if len(data.Tables) > 0 {
 		for tableName, rows := range data.Tables {
 			if len(rows) == 0 {
 				continue
 			}
-			
+
 			result.WriteString(fmt.Sprintf("\n## %s\n\n", sf.prettifyFieldName(tableName)))
-			
+
 			// Get field names from first row
 			var headers []string
 			firstRow := rows[0]
@@ -380,7 +372,7 @@ func (sf *SchemaFormatter) formatMarkdownWithPrettyData(data *api.PrettyData) (s
 				headers = append(headers, fieldName)
 			}
 			sort.Strings(headers)
-			
+
 			// Write header row
 			result.WriteString("| ")
 			for _, header := range headers {
@@ -388,14 +380,14 @@ func (sf *SchemaFormatter) formatMarkdownWithPrettyData(data *api.PrettyData) (s
 				result.WriteString(" | ")
 			}
 			result.WriteString("\n")
-			
+
 			// Write separator row
 			result.WriteString("|")
 			for range headers {
 				result.WriteString(" --- |")
 			}
 			result.WriteString("\n")
-			
+
 			// Write data rows
 			for _, row := range rows {
 				result.WriteString("| ")
@@ -406,7 +398,12 @@ func (sf *SchemaFormatter) formatMarkdownWithPrettyData(data *api.PrettyData) (s
 						Style:   fieldValue.Field.Style,
 					}
 					// Escape pipe characters in markdown table cells
-					cellContent := strings.ReplaceAll(text.Markdown(), "|", "\\|")
+					var cellContent string
+					if noColor {
+						cellContent = strings.ReplaceAll(text.String(), "|", "\\|")
+					} else {
+						cellContent = strings.ReplaceAll(text.Markdown(), "|", "\\|")
+					}
 					result.WriteString(cellContent)
 					result.WriteString(" | ")
 				}
@@ -414,7 +411,7 @@ func (sf *SchemaFormatter) formatMarkdownWithPrettyData(data *api.PrettyData) (s
 			}
 		}
 	}
-	
+
 	return result.String(), nil
 }
 
@@ -429,7 +426,6 @@ func (sf *SchemaFormatter) prettifyFieldName(name string) string {
 	}
 	return strings.Join(parts, " ")
 }
-
 
 // generateOutputFilename generates output filename based on pattern
 func (sf *SchemaFormatter) generateOutputFilename(outputPattern, dataFile, format string) string {
