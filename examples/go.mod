@@ -4,7 +4,9 @@ go 1.23.4
 
 require (
 	github.com/flanksource/clicky v0.0.0-20250813170955-5d09bb0e45d6
+	github.com/flanksource/commons v1.41.0
 	github.com/spf13/cobra v1.9.1
+	github.com/spf13/pflag v1.0.7
 )
 
 require (
@@ -15,8 +17,8 @@ require (
 	github.com/charmbracelet/x/ansi v0.3.2 // indirect
 	github.com/emirpasic/gods/v2 v2.0.0-alpha // indirect
 	github.com/fatih/color v1.16.0 // indirect
-	github.com/flanksource/commons v1.41.0 // indirect
 	github.com/fsnotify/fsnotify v1.8.0 // indirect
+	github.com/go-pdf/fpdf v0.9.0 // indirect
 	github.com/go-rod/rod v0.116.2 // indirect
 	github.com/goccy/go-yaml v1.16.0 // indirect
 	github.com/henvic/httpretty v0.1.4 // indirect
@@ -41,7 +43,6 @@ require (
 	github.com/rogpeppe/go-internal v1.13.1 // indirect
 	github.com/samber/lo v1.49.1 // indirect
 	github.com/samber/oops v1.17.0 // indirect
-	github.com/spf13/pflag v1.0.7 // indirect
 	github.com/ysmood/fetchup v0.2.3 // indirect
 	github.com/ysmood/goob v0.4.0 // indirect
 	github.com/ysmood/got v0.40.0 // indirect

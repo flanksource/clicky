@@ -26,6 +26,7 @@ require (
 	github.com/emirpasic/gods/v2 v2.0.0-alpha // indirect
 	github.com/fatih/color v1.16.0 // indirect
 	github.com/fsnotify/fsnotify v1.8.0 // indirect
+	github.com/go-pdf/fpdf v0.9.0 // indirect
 	github.com/goccy/go-yaml v1.16.0 // indirect
 	github.com/henvic/httpretty v0.1.4 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect

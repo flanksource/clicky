@@ -1,6 +1,7 @@
 package api
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -230,3 +231,380 @@ func BenchmarkTailwindStyles(b *testing.B) {
 }
 
 // Remove all old test functions - they've been replaced with TestTailwindStyles
+
+func TestResolveStyles(t *testing.T) {
+	tests := []struct {
+		name     string
+		styles   []string
+		expected Class
+	}{
+		{
+			name:   "single text color",
+			styles: []string{"text-red-500"},
+			expected: Class{
+				Foreground: &Color{Hex: "#ef4444"},
+				Font:       &Font{},
+			},
+		},
+		{
+			name:   "single background color",
+			styles: []string{"bg-blue-500"},
+			expected: Class{
+				Background: &Color{Hex: "#3b82f6"},
+				Font:       &Font{},
+			},
+		},
+		{
+			name:   "both colors",
+			styles: []string{"text-white bg-black"},
+			expected: Class{
+				Foreground: &Color{Hex: "#ffffff"},
+				Background: &Color{Hex: "#000000"},
+				Font:       &Font{},
+			},
+		},
+		{
+			name:   "font properties",
+			styles: []string{"font-bold italic underline line-through"},
+			expected: Class{
+				Font: &Font{
+					Bold:          true,
+					Italic:        true,
+					Underline:     true,
+					Strikethrough: true,
+				},
+			},
+		},
+		{
+			name:   "font size",
+			styles: []string{"text-lg"},
+			expected: Class{
+				Font: &Font{
+					Size: 1.125, // 18px
+				},
+			},
+		},
+		{
+			name:   "multiple font sizes (last wins)",
+			styles: []string{"text-sm", "text-xl"},
+			expected: Class{
+				Font: &Font{
+					Size: 1.25, // 20px
+				},
+			},
+		},
+		{
+			name:   "padding all sides",
+			styles: []string{"p-4"},
+			expected: Class{
+				Font: &Font{},
+				Padding: &Padding{
+					Top:    1,
+					Right:  1,
+					Bottom: 1,
+					Left:   1,
+				},
+			},
+		},
+		{
+			name:   "padding horizontal",
+			styles: []string{"px-8"},
+			expected: Class{
+				Font: &Font{},
+				Padding: &Padding{
+					Right: 2,
+					Left:  2,
+				},
+			},
+		},
+		{
+			name:   "padding vertical",
+			styles: []string{"py-2"},
+			expected: Class{
+				Font: &Font{},
+				Padding: &Padding{
+					Top:    0.5,
+					Bottom: 0.5,
+				},
+			},
+		},
+		{
+			name:   "individual padding sides",
+			styles: []string{"pt-1 pr-2 pb-3 pl-4"},
+			expected: Class{
+				Font: &Font{},
+				Padding: &Padding{
+					Top:    0.25,
+					Right:  0.5,
+					Bottom: 0.75,
+					Left:   1,
+				},
+			},
+		},
+		{
+			name:   "padding override",
+			styles: []string{"p-4 px-2"},
+			expected: Class{
+				Font: &Font{},
+				Padding: &Padding{
+					Top:    1,
+					Right:  0.5, // overridden by px-2
+					Bottom: 1,
+					Left:   0.5, // overridden by px-2
+				},
+			},
+		},
+		{
+			name:   "complex combination",
+			styles: []string{"text-green-600 bg-yellow-100 font-bold text-xl p-4 px-6"},
+			expected: Class{
+				Foreground: &Color{Hex: "#16a34a"},
+				Background: &Color{Hex: "#fef9c3"},
+				Font: &Font{
+					Bold: true,
+					Size: 1.25, // 20px
+				},
+				Padding: &Padding{
+					Top:    1,
+					Right:  1.5, // overridden by px-6
+					Bottom: 1,
+					Left:   1.5, // overridden by px-6
+				},
+			},
+		},
+		{
+			name:   "opacity classes",
+			styles: []string{"opacity-50"},
+			expected: Class{
+				Font: &Font{
+					Faint: true,
+				},
+			},
+		},
+		{
+			name:   "multiple style strings",
+			styles: []string{"text-red-500 font-bold", "bg-blue-500 italic", "p-4"},
+			expected: Class{
+				Foreground: &Color{Hex: "#ef4444"},
+				Background: &Color{Hex: "#3b82f6"},
+				Font: &Font{
+					Bold:   true,
+					Italic: true,
+				},
+				Padding: &Padding{
+					Top:    1,
+					Right:  1,
+					Bottom: 1,
+					Left:   1,
+				},
+			},
+		},
+		{
+			name:   "resetting font properties",
+			styles: []string{"font-bold italic", "font-normal not-italic"},
+			expected: Class{
+				Font: &Font{
+					Bold:   false,
+					Italic: false,
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := ResolveStyles(tt.styles...)
+			
+			// Check foreground color
+			if tt.expected.Foreground != nil {
+				if result.Foreground == nil {
+					t.Errorf("Expected foreground color %v, got nil", tt.expected.Foreground)
+				} else if result.Foreground.Hex != tt.expected.Foreground.Hex {
+					t.Errorf("Expected foreground hex %s, got %s", tt.expected.Foreground.Hex, result.Foreground.Hex)
+				}
+			} else if result.Foreground != nil {
+				t.Errorf("Expected nil foreground, got %v", result.Foreground)
+			}
+			
+			// Check background color
+			if tt.expected.Background != nil {
+				if result.Background == nil {
+					t.Errorf("Expected background color %v, got nil", tt.expected.Background)
+				} else if result.Background.Hex != tt.expected.Background.Hex {
+					t.Errorf("Expected background hex %s, got %s", tt.expected.Background.Hex, result.Background.Hex)
+				}
+			} else if result.Background != nil {
+				t.Errorf("Expected nil background, got %v", result.Background)
+			}
+			
+			// Check font properties
+			if tt.expected.Font != nil && result.Font != nil {
+				if result.Font.Bold != tt.expected.Font.Bold {
+					t.Errorf("Expected bold %v, got %v", tt.expected.Font.Bold, result.Font.Bold)
+				}
+				if result.Font.Italic != tt.expected.Font.Italic {
+					t.Errorf("Expected italic %v, got %v", tt.expected.Font.Italic, result.Font.Italic)
+				}
+				if result.Font.Underline != tt.expected.Font.Underline {
+					t.Errorf("Expected underline %v, got %v", tt.expected.Font.Underline, result.Font.Underline)
+				}
+				if result.Font.Strikethrough != tt.expected.Font.Strikethrough {
+					t.Errorf("Expected strikethrough %v, got %v", tt.expected.Font.Strikethrough, result.Font.Strikethrough)
+				}
+				if result.Font.Faint != tt.expected.Font.Faint {
+					t.Errorf("Expected faint %v, got %v", tt.expected.Font.Faint, result.Font.Faint)
+				}
+				if result.Font.Size != tt.expected.Font.Size {
+					t.Errorf("Expected size %v, got %v", tt.expected.Font.Size, result.Font.Size)
+				}
+			}
+			
+			// Check padding
+			if tt.expected.Padding != nil {
+				if result.Padding == nil {
+					t.Errorf("Expected padding %v, got nil", tt.expected.Padding)
+				} else {
+					if result.Padding.Top != tt.expected.Padding.Top {
+						t.Errorf("Expected padding top %v, got %v", tt.expected.Padding.Top, result.Padding.Top)
+					}
+					if result.Padding.Right != tt.expected.Padding.Right {
+						t.Errorf("Expected padding right %v, got %v", tt.expected.Padding.Right, result.Padding.Right)
+					}
+					if result.Padding.Bottom != tt.expected.Padding.Bottom {
+						t.Errorf("Expected padding bottom %v, got %v", tt.expected.Padding.Bottom, result.Padding.Bottom)
+					}
+					if result.Padding.Left != tt.expected.Padding.Left {
+						t.Errorf("Expected padding left %v, got %v", tt.expected.Padding.Left, result.Padding.Left)
+					}
+				}
+			} else if result.Padding != nil {
+				t.Errorf("Expected nil padding, got %v", result.Padding)
+			}
+		})
+	}
+}
+
+func TestTextWithClass(t *testing.T) {
+	tests := []struct {
+		name     string
+		text     Text
+		contains []string // strings that should be in the output
+	}{
+		{
+			name: "text with Class colors ANSI",
+			text: Text{
+				Content: "Hello",
+				Class: Class{
+					Foreground: &Color{Hex: "#ff0000"},
+					Font:       &Font{Bold: true},
+				},
+			},
+			contains: []string{"Hello", "\x1b[1"}, // Bold ANSI code (partial match since it's combined with color)
+		},
+		{
+			name: "text with Class bold markdown",
+			text: Text{
+				Content: "Hello",
+				Class: Class{
+					Font: &Font{Bold: true},
+				},
+			},
+			contains: []string{"**Hello**"},
+		},
+		{
+			name: "text with Class italic markdown",
+			text: Text{
+				Content: "Hello",
+				Class: Class{
+					Font: &Font{Italic: true},
+				},
+			},
+			contains: []string{"*Hello*"},
+		},
+		{
+			name: "text with Class HTML",
+			text: Text{
+				Content: "Hello",
+				Class: Class{
+					Foreground: &Color{Hex: "#ff0000"},
+					Font:       &Font{Bold: true},
+				},
+			},
+			contains: []string{"<strong>", "Hello", "</strong>", "color: #ff0000"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name+" ANSI", func(t *testing.T) {
+			result := tt.text.ANSI()
+			if strings.Contains(tt.name, "ANSI") {
+				for _, expected := range tt.contains {
+					if !strings.Contains(result, expected) {
+						t.Errorf("Expected ANSI output to contain %q, got %q", expected, result)
+					}
+				}
+			}
+		})
+
+		t.Run(tt.name+" Markdown", func(t *testing.T) {
+			result := tt.text.Markdown()
+			if strings.Contains(tt.name, "markdown") {
+				for _, expected := range tt.contains {
+					if !strings.Contains(result, expected) {
+						t.Errorf("Expected Markdown output to contain %q, got %q", expected, result)
+					}
+				}
+			}
+		})
+
+		t.Run(tt.name+" HTML", func(t *testing.T) {
+			result := tt.text.HTML()
+			if strings.Contains(tt.name, "HTML") {
+				for _, expected := range tt.contains {
+					if !strings.Contains(result, expected) {
+						t.Errorf("Expected HTML output to contain %q, got %q", expected, result)
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestClassPrecedence(t *testing.T) {
+	// Test that Class takes precedence over Style string
+	text := Text{
+		Content: "Hello",
+		Class: Class{
+			Foreground: &Color{Hex: "#ff0000"},
+			Font:       &Font{Bold: true},
+		},
+		Style: "text-blue-500 italic", // This should be ignored
+	}
+
+	// In ANSI output, should use Class (red + bold) not Style (blue + italic)
+	ansi := text.ANSI()
+	if !strings.Contains(ansi, "\x1b[1") { // Bold from Class (partial match since combined with color)
+		t.Error("Expected ANSI to contain bold escape code")
+	}
+	if strings.Contains(ansi, "\x1b[3") { // Should NOT have italic from Style
+		t.Error("Expected ANSI to not contain italic escape code")
+	}
+
+	// In Markdown output, should use Class
+	markdown := text.Markdown()
+	if !strings.Contains(markdown, "**Hello**") { // Bold from Class
+		t.Error("Expected Markdown to contain bold markers")
+	}
+	// Check that it's not italic - but be careful since **Hello** contains *Hello*
+	// The output should be <span style="color: #ff0000">**Hello**</span>
+	// If it were italic, it would be ***Hello*** or *Hello*
+	if strings.Contains(markdown, "***Hello***") || (strings.Contains(markdown, "*Hello*") && !strings.Contains(markdown, "**Hello**")) {
+		t.Error("Expected Markdown to not contain italic markers")
+	}
+	if !strings.Contains(markdown, "color: #ff0000") { // Red from Class
+		t.Error("Expected Markdown to contain red color")
+	}
+	if strings.Contains(markdown, "color: #3b82") { // Not blue from Style
+		t.Error("Expected Markdown to not contain blue color")
+	}
+}

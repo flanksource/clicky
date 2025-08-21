@@ -72,17 +72,32 @@ func (t Text) String() string {
 		content += child.String()
 	}
 
-	if t.Style == "" {
+	// Check if we have any style to apply
+	if t.Class != (Class{}) {
+		// Class doesn't have text transform, so just return content
 		return content
+	} else if t.Style != "" {
+		// Apply text transforms only (no styling for plain text)
+		transformedText, _ := ApplyTailwindStyle(content, t.Style)
+		return transformedText
 	}
 
-	// Apply text transforms only (no styling for plain text)
-	transformedText, _ := ApplyTailwindStyle(content, t.Style)
-	return transformedText
+	return content
 }
 
 func (t Text) ANSI() string {
-	if t.Style == "" {
+	// Get the effective style (Class takes precedence over Style string)
+	var style TailwindStyle
+	var transformedText string
+
+	if t.Class != (Class{}) {
+		// Use Class if available
+		transformedText = t.Content
+		style = classToTailwindStyle(t.Class)
+	} else if t.Style != "" {
+		// Fall back to Style string
+		transformedText, style = ApplyTailwindStyle(t.Content, t.Style)
+	} else {
 		// No style, just return content with children
 		result := t.Content
 		for _, child := range t.Children {
@@ -92,14 +107,12 @@ func (t Text) ANSI() string {
 	}
 
 	// Apply tailwind styles using ANSI escape codes
-	content := t.Content
+	content := transformedText
 	for _, child := range t.Children {
 		content += child.ANSI()
 	}
 
-	// Parse tailwind style and convert to ANSI
-	transformedText, style := ApplyTailwindStyle(content, t.Style)
-	return formatANSI(transformedText, style)
+	return formatANSI(content, style)
 }
 
 func (t Text) Markdown() string {
@@ -108,12 +121,21 @@ func (t Text) Markdown() string {
 		content += child.Markdown()
 	}
 
-	if t.Style == "" {
+	// Get the effective style (Class takes precedence over Style string)
+	var style TailwindStyle
+	var transformedText string
+
+	if t.Class != (Class{}) {
+		// Use Class if available
+		transformedText = content
+		style = classToTailwindStyle(t.Class)
+	} else if t.Style != "" {
+		// Fall back to Style string
+		transformedText, style = ApplyTailwindStyle(content, t.Style)
+	} else {
+		// No style
 		return content
 	}
-
-	// Apply text transforms
-	transformedText, style := ApplyTailwindStyle(content, t.Style)
 
 	// Convert tailwind styles to markdown with HTML fallback for colors
 	result := transformedText
@@ -186,13 +208,134 @@ func (t Text) HTML() string {
 		content += child.HTML()
 	}
 
-	if t.Style == "" {
+	// Get the effective style (Class takes precedence over Style string)
+	var style TailwindStyle
+	var transformedText string
+	var originalStyle string
+
+	if t.Class != (Class{}) {
+		// Use Class if available
+		transformedText = content
+		style = classToTailwindStyle(t.Class)
+		// Could convert Class back to style string if needed
+		originalStyle = ""
+	} else if t.Style != "" {
+		// Fall back to Style string
+		transformedText, style = ApplyTailwindStyle(content, t.Style)
+		originalStyle = t.Style
+	} else {
+		// No style
 		return content
 	}
 
-	// Apply text transforms and get style
-	transformedText, style := ApplyTailwindStyle(content, t.Style)
-	return formatHTML(transformedText, style, t.Style)
+	return formatHTML(transformedText, style, originalStyle)
+}
+
+func ResolveStyles(styles ...string) Class {
+	var resolved Class
+
+	// Process each style string
+	for _, styleStr := range styles {
+		if styleStr == "" {
+			continue
+		}
+
+		// Split into individual classes
+		classes := strings.Fields(styleStr)
+
+		for _, class := range classes {
+			// Parse colors
+			if strings.HasPrefix(class, "text-") && !tailwind.IsTextUtilityClass(class) {
+				color := tailwind.Color(class)
+				if color != "" {
+					resolved.Foreground = &Color{Hex: color}
+				}
+			} else if strings.HasPrefix(class, "bg-") {
+				color := tailwind.Color(class)
+				if color != "" {
+					resolved.Background = &Color{Hex: color}
+				}
+			}
+
+			// Parse font properties
+			parsedStyle := tailwind.ParseStyle(class)
+
+			// Initialize Font if needed
+			if resolved.Font == nil {
+				resolved.Font = &Font{}
+			}
+
+			// Apply font weight
+			if class == "bold" || class == "font-bold" || class == "font-semibold" || class == "font-medium" {
+				resolved.Font.Bold = true
+			} else if class == "font-normal" {
+				resolved.Font.Bold = false
+			}
+
+			// Apply font style
+			if class == "italic" || class == "font-italic" {
+				resolved.Font.Italic = true
+			} else if class == "not-italic" {
+				resolved.Font.Italic = false
+			}
+
+			// Apply text decoration
+			if class == "underline" {
+				resolved.Font.Underline = true
+			} else if class == "no-underline" {
+				resolved.Font.Underline = false
+			}
+
+			if class == "line-through" || class == "strikethrough" {
+				resolved.Font.Strikethrough = true
+			}
+
+			// Apply faint/opacity
+			if class == "font-light" || class == "font-thin" || class == "font-extralight" ||
+				class == "opacity-50" || class == "opacity-75" || class == "opacity-25" {
+				resolved.Font.Faint = true
+			} else if class == "opacity-100" {
+				resolved.Font.Faint = false
+			}
+
+			// Parse font size
+			if fontSize := tailwind.ParseFontSize(class); fontSize > 0 {
+				resolved.Font.Size = fontSize
+			}
+
+			// Parse padding
+			top, right, bottom, left := tailwind.ParsePadding(class)
+			if top != nil || right != nil || bottom != nil || left != nil {
+				if resolved.Padding == nil {
+					resolved.Padding = &Padding{}
+				}
+
+				// Apply non-nil values
+				if top != nil {
+					resolved.Padding.Top = *top
+				}
+				if right != nil {
+					resolved.Padding.Right = *right
+				}
+				if bottom != nil {
+					resolved.Padding.Bottom = *bottom
+				}
+				if left != nil {
+					resolved.Padding.Left = *left
+				}
+			}
+
+			// Apply colors from parsed style (as fallback)
+			if parsedStyle.Foreground != "" && resolved.Foreground == nil {
+				resolved.Foreground = &Color{Hex: parsedStyle.Foreground}
+			}
+			if parsedStyle.Background != "" && resolved.Background == nil {
+				resolved.Background = &Color{Hex: parsedStyle.Background}
+			}
+		}
+	}
+
+	return resolved
 }
 
 // ApplyTailwindStyle applies tailwind styles to text - wrapper around tailwind.ApplyStyle
@@ -215,10 +358,35 @@ func ApplyTailwindStyle(text string, styleStr string) (string, TailwindStyle) {
 	return transformedText, style
 }
 
+// classToTailwindStyle converts a Class to TailwindStyle for rendering
+func classToTailwindStyle(class Class) TailwindStyle {
+	style := TailwindStyle{}
+
+	// Apply colors
+	if class.Foreground != nil {
+		style.Foreground = class.Foreground.Hex
+	}
+	if class.Background != nil {
+		style.Background = class.Background.Hex
+	}
+
+	// Apply font properties
+	if class.Font != nil {
+		style.Bold = class.Font.Bold
+		style.Faint = class.Font.Faint
+		style.Italic = class.Font.Italic
+		style.Underline = class.Font.Underline
+		style.Strikethrough = class.Font.Strikethrough
+	}
+
+	return style
+}
+
 // TailwindStyle represents parsed tailwind styles
 type TailwindStyle struct {
 	Foreground    string
 	Background    string
+	Font          Font
 	Bold          bool
 	Faint         bool
 	Italic        bool
