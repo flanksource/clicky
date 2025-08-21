@@ -2,6 +2,8 @@ package formatters
 
 import (
 	"fmt"
+	"net/url"
+	"path/filepath"
 	"sort"
 	"strings"
 	
@@ -106,12 +108,106 @@ func (f *MarkdownFormatter) formatSummaryFieldsData(fields []api.PrettyField, va
 			fieldName = field.Label
 		}
 
+		// Check if this is an image field
+		if f.isImageField(fieldValue, field) {
+			imageMarkdown := f.formatImageMarkdown(fieldValue, field)
+			if imageMarkdown != "" {
+				result.WriteString(fmt.Sprintf("**%s**: %s\n\n", fieldName, imageMarkdown))
+				continue
+			}
+		}
+
 		// Use FieldValue.Markdown() method for formatted output
 		value := fieldValue.Markdown()
 		result.WriteString(fmt.Sprintf("**%s**: %s\n\n", fieldName, value))
 	}
 
 	return result.String()
+}
+
+// isImageField checks if a field value represents an image
+func (f *MarkdownFormatter) isImageField(fieldValue api.FieldValue, field api.PrettyField) bool {
+	// Check if field has image format hint
+	if field.Format == "image" {
+		return true
+	}
+
+	// Check if the value is a string that looks like an image URL or path
+	if strValue, ok := fieldValue.Value.(string); ok {
+		return f.isImageURL(strValue)
+	}
+
+	return false
+}
+
+// isImageURL checks if a string represents an image URL or path
+func (f *MarkdownFormatter) isImageURL(s string) bool {
+	if s == "" {
+		return false
+	}
+
+	// Check for data URLs (base64 encoded images)
+	if strings.HasPrefix(s, "data:image/") {
+		return true
+	}
+
+	// Check for common image file extensions
+	lower := strings.ToLower(s)
+	imageExtensions := []string{".png", ".jpg", ".jpeg", ".gif", ".bmp", ".svg", ".webp", ".ico", ".tiff", ".tif"}
+	
+	// For URLs, extract the path
+	if strings.HasPrefix(lower, "http://") || strings.HasPrefix(lower, "https://") {
+		if u, err := url.Parse(s); err == nil {
+			path := strings.ToLower(u.Path)
+			for _, ext := range imageExtensions {
+				if strings.HasSuffix(path, ext) {
+					return true
+				}
+			}
+			// Check if the URL contains image-related keywords
+			if strings.Contains(path, "/image/") || strings.Contains(path, "/img/") ||
+				strings.Contains(path, "/photo/") || strings.Contains(path, "/pic/") ||
+				strings.Contains(path, "/avatar/") || strings.Contains(path, "/icon/") ||
+				strings.Contains(path, "/logo/") || strings.Contains(path, "/thumb/") ||
+				strings.Contains(path, "/screenshot/") {
+				return true
+			}
+		}
+	} else {
+		// For file paths, check extension
+		ext := strings.ToLower(filepath.Ext(s))
+		for _, imgExt := range imageExtensions {
+			if ext == imgExt {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+// formatImageMarkdown formats an image field value as Markdown image syntax
+func (f *MarkdownFormatter) formatImageMarkdown(fieldValue api.FieldValue, field api.PrettyField) string {
+	strValue, ok := fieldValue.Value.(string)
+	if !ok || strValue == "" {
+		return ""
+	}
+
+	// Get alt text from field label or name
+	altText := field.Label
+	if altText == "" {
+		altText = field.Name
+	}
+
+	// Handle data URLs (truncate for display)
+	if strings.HasPrefix(strValue, "data:image/") {
+		// For data URLs, we can't really display them inline in markdown
+		// but we can indicate it's an embedded image
+		return "[Embedded Image]"
+	}
+
+	// Return standard Markdown image syntax
+	return fmt.Sprintf("![%s](%s)", altText, strValue)
 }
 
 // formatTableData formats table data as Markdown table
@@ -150,8 +246,18 @@ func (f *MarkdownFormatter) formatTableData(tableData []api.PrettyDataRow, field
 			fieldValue, exists := row[header]
 			var cellContent string
 			if exists {
-				// Use FieldValue.Markdown() for formatted output
-				cellContent = fieldValue.Markdown()
+				// Check if this is an image field
+				if f.isImageField(fieldValue, api.PrettyField{Name: header}) {
+					imageMarkdown := f.formatImageMarkdown(fieldValue, api.PrettyField{Name: header})
+					if imageMarkdown != "" {
+						cellContent = imageMarkdown
+					} else {
+						cellContent = fieldValue.Markdown()
+					}
+				} else {
+					// Use FieldValue.Markdown() for formatted output
+					cellContent = fieldValue.Markdown()
+				}
 				// Escape pipe characters in cell content
 				cellContent = strings.ReplaceAll(cellContent, "|", "\\|")
 			}

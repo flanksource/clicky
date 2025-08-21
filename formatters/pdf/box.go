@@ -4,6 +4,9 @@ import (
 	"strings"
 	
 	"github.com/flanksource/clicky/api"
+	"github.com/johnfercher/maroto/v2/pkg/components/col"
+	"github.com/johnfercher/maroto/v2/pkg/components/row"
+	"github.com/johnfercher/maroto/v2/pkg/components/text"
 )
 
 type VerticalPosition string
@@ -84,220 +87,63 @@ type Box struct {
 	api.Rectangle
 	Borders *api.Borders
 	Labels  []Label
-	Line    []Line
+	Lines   []Line
 }
 
-func (b Box) GetWidth() float64 {
-	return float64(b.Rectangle.Width)
-}
-
-func (b Box) GetHeight() float64 {
-	return float64(b.Rectangle.Height)
-}
-
-func (b Box) Draw(builder *Builder, opts ...DrawOptions) error {
-	// Parse options
-	options := &drawOptions{}
-	for _, opt := range opts {
-		opt(options)
+// Draw implements the Widget interface
+func (b Box) Draw(builder *Builder) error {
+	// Calculate box dimensions in mm
+	height := float64(b.Rectangle.Height)
+	
+	// If height is 0, use default value
+	if height == 0 {
+		height = 20 // Default box height
 	}
 
-	// Save current state
-	savedPos := builder.GetCurrentPosition()
-	savedState := builder.GetStyleConverter().SaveCurrentState()
-
-	// Apply position if specified
-	if options.Position != (api.Position{}) {
-		builder.MoveTo(options.Position)
-	}
-
-	pos := builder.GetCurrentPosition()
-	pdf := builder.GetPDF()
-	style := builder.GetStyleConverter()
-
-	// Get box dimensions
-	width := b.GetWidth()
-	height := b.GetHeight()
-
-	// Override with options if provided
-	if options.Size != (api.Rectangle{}) {
-		width = float64(options.Size.Width)
-		height = float64(options.Size.Height)
-	}
-
-	boxX := float64(pos.X)
-	boxY := float64(pos.Y)
-
-	// Draw the main rectangle
-	if b.Borders != nil {
-		style.DrawBorders(boxX, boxY, width, height, b.Borders)
-	} else {
-		// Draw simple border
-		pdf.SetDrawColor(0, 0, 0) // Black border
-		pdf.Rect(boxX, boxY, width, height, "D")
-	}
-
-	// Draw labels
-	for _, label := range b.Labels {
-		b.drawLabel(builder, label, boxX, boxY, width, height)
-	}
-
-	// Draw lines
-	for _, line := range b.Line {
-		b.drawLine(builder, line, boxX, boxY, width, height)
-	}
-
-	// Update builder position to below the box
-	builder.MoveTo(api.Position{X: pos.X, Y: pos.Y + int(height)})
-
-	// Restore state
-	builder.MoveTo(savedPos)
-	style.RestoreState(savedState)
-
-	return nil
-}
-
-// drawLabel draws a label at the specified position relative to the box
-func (b Box) drawLabel(builder *Builder, label Label, boxX, boxY, boxWidth, boxHeight float64) {
-	pdf := builder.GetPDF()
-	style := builder.GetStyleConverter()
-
-	// Save current state
-	savedState := style.SaveCurrentState()
-
-	// Apply label styling
-	if label.Class != (api.Class{}) {
-		style.ApplyClassToPDF(label.Class)
-	} else if label.Style != "" {
-		style.ParseTailwindToPDF(label.Style)
-	}
-
-	// Calculate text dimensions
-	textWidth := style.GetTextWidth(label.Content)
-	textHeight := style.GetTextHeight()
-
-	// Calculate position based on LabelPosition
-	var textX, textY float64
-
-	// Horizontal positioning
-	switch label.Position.Horizontal {
-	case HorizontalLeft:
-		textX = boxX
-	case HorizontalRight:
-		textX = boxX + boxWidth - textWidth
-	default: // HorizontalCenter
-		textX = boxX + (boxWidth-textWidth)/2
-	}
-
-	// Vertical positioning
-	switch label.Position.Vertical {
-	case VerticalTop:
-		if label.Position.Inside == InsideBottom { // outside top
-			textY = boxY - textHeight - 2
-		} else { // inside top
-			textY = boxY + 2
+	// Add labels to the box
+	if len(b.Labels) > 0 {
+		for _, label := range b.Labels {
+			textProps := builder.style.ConvertToTextProps(label.Class)
+			textComponent := text.New(label.Content, *textProps)
+			
+			// Create columns based on horizontal alignment
+			switch label.Position.Horizontal {
+			case HorizontalLeft:
+				builder.maroto.AddRow(6,
+					col.New(4).Add(textComponent),
+					col.New(8)) // Empty space
+			case HorizontalRight:
+				builder.maroto.AddRow(6,
+					col.New(8), // Empty space
+					col.New(4).Add(textComponent))
+			default: // Center
+				builder.maroto.AddRow(6,
+					col.New(3), // Empty space
+					col.New(6).Add(textComponent),
+					col.New(3)) // Empty space
+			}
 		}
-	case VerticalBottom:
-		if label.Position.Inside == InsideBottom { // outside bottom
-			textY = boxY + boxHeight + 2
-		} else { // inside bottom
-			textY = boxY + boxHeight - textHeight - 2
-		}
-	default: // VerticalCenter
-		textY = boxY + (boxHeight-textHeight)/2
 	}
-
-	// Apply absolute positioning offset if specified
-	if label.Absolute != nil {
-		textX += float64(label.Absolute.X)
-		textY += float64(label.Absolute.Y)
-	}
-
-	// Draw the label text
-	pdf.SetXY(textX, textY)
-	pdf.Cell(textWidth, textHeight, label.Content)
-
-	// Restore state
-	style.RestoreState(savedState)
-}
-
-// drawLine draws a line relative to the box
-func (b Box) drawLine(builder *Builder, line Line, boxX, boxY, boxWidth, boxHeight float64) {
-	pdf := builder.GetPDF()
-	style := builder.GetStyleConverter()
-
-	// Save current state
-	savedState := style.SaveCurrentState()
-
-	// Apply line color and width
-	if line.Color.Hex != "" {
-		r, g, b := style.hexToRGB(line.Color.Hex)
-		pdf.SetDrawColor(r, g, b)
-	}
-	if line.Width > 0 {
-		pdf.SetLineWidth(line.Width)
-	}
-
-	// Calculate line positions - for now, draw a simple line from top-left to bottom-right
-	// In a more sophisticated implementation, you would parse Position to determine exact coordinates
-	startX, startY := boxX, boxY
-	endX, endY := boxX+boxWidth, boxY+boxHeight
-
-	// Apply position adjustments if specified
-	if line.Absolute != nil {
-		startX += float64(line.Absolute.X)
-		startY += float64(line.Absolute.Y)
-	}
-
-	// Draw the line
-	pdf.Line(startX, startY, endX, endY)
-
-	// Draw line labels
-	for _, label := range line.Labels {
-		// Position label at midpoint of line
-		midX := (startX + endX) / 2
-		midY := (startY + endY) / 2
+	
+	// Add an empty row to represent the box (since Maroto doesn't have direct box drawing)
+	// This will just add spacing
+	builder.maroto.AddRows(row.New(height))
+	
+	// Add lines if specified
+	for range b.Lines {
+		// Add a simple horizontal line representation
+		builder.maroto.AddRows(row.New(1))
 		
-		b.drawLabelAtPosition(builder, label, midX, midY)
+		// Add line labels if any
+		for _, ln := range b.Lines {
+			for _, label := range ln.Labels {
+				textProps := builder.style.ConvertToTextProps(label.Class)
+				textComponent := text.New(label.Content, *textProps)
+				textCol := col.New(12).Add(textComponent)
+				builder.maroto.AddRow(6, textCol)
+			}
+		}
 	}
-
-	// Restore state
-	style.RestoreState(savedState)
-}
-
-// drawLabelAtPosition draws a label at a specific coordinate
-func (b Box) drawLabelAtPosition(builder *Builder, label Label, x, y float64) {
-	style := builder.GetStyleConverter()
-	pdf := builder.GetPDF()
-
-	// Save state
-	savedState := style.SaveCurrentState()
-
-	// Apply styling
-	if label.Class != (api.Class{}) {
-		style.ApplyClassToPDF(label.Class)
-	} else if label.Style != "" {
-		style.ParseTailwindToPDF(label.Style)
-	}
-
-	// Calculate text dimensions and adjust position
-	textWidth := style.GetTextWidth(label.Content)
-	textHeight := style.GetTextHeight()
-
-	// Center text at the specified position
-	textX := x - textWidth/2
-	textY := y - textHeight/2
-
-	// Apply absolute offset if specified
-	if label.Absolute != nil {
-		textX += float64(label.Absolute.X)
-		textY += float64(label.Absolute.Y)
-	}
-
-	// Draw text
-	pdf.SetXY(textX, textY)
-	pdf.Cell(textWidth, textHeight, label.Content)
-
-	// Restore state
-	style.RestoreState(savedState)
+	
+	return nil
 }

@@ -6,7 +6,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	
+
 	"github.com/muesli/termenv"
 )
 
@@ -75,7 +75,7 @@ func ParseTailwindColor(colorClass string) (string, error) {
 
 	// Handle multi-word color names (shouldn't happen with standard Tailwind)
 	hexColor := colorName
-	
+
 	// Apply adaptive color mapping for better visibility
 	isDark := isBackgroundDark()
 	return adaptColorForBackground(hexColor, isDark), nil
@@ -212,17 +212,17 @@ func ParseRawTailwindColor(colorClass string) (string, error) {
 // This mirrors the key fields from lipgloss.Style without importing lipgloss
 type Style struct {
 	// Text styling
-	Foreground string // Text color
-	Background string // Background color
-	Bold       bool   // Bold text
-	Faint      bool   // Faint text
-	Italic     bool   // Italic text
-	Underline  bool   // Underlined text
-	Strikethrough bool // Strikethrough text
-	
+	Foreground    string // Text color
+	Background    string // Background color
+	Bold          bool   // Bold text
+	Faint         bool   // Faint text
+	Italic        bool   // Italic text
+	Underline     bool   // Underlined text
+	Strikethrough bool   // Strikethrough text
+
 	// Layout
 	MaxWidth int // Maximum width
-	
+
 	// Text transformation (not in lipgloss, but handled separately)
 	TextTransform string
 }
@@ -323,8 +323,8 @@ func ParseStyle(styleStr string) Style {
 	return style
 }
 
-// isTextUtilityClass checks if a text- prefixed class is a utility rather than a color
-func isTextUtilityClass(class string) bool {
+// IsTextUtilityClass checks if a text- prefixed class is a utility rather than a color
+func IsTextUtilityClass(class string) bool {
 	utilities := []string{
 		"text-left", "text-center", "text-right", "text-justify",
 		"text-xs", "text-sm", "text-base", "text-lg", "text-xl",
@@ -341,6 +341,10 @@ func isTextUtilityClass(class string) bool {
 	return false
 }
 
+// isTextUtilityClass is a private wrapper for backwards compatibility
+func isTextUtilityClass(class string) bool {
+	return IsTextUtilityClass(class)
+}
 
 // TransformText applies text transformation based on the transform type
 func TransformText(text string, transform string) string {
@@ -388,7 +392,7 @@ func ClassToFgColor(class string) termenv.Color {
 		// Return default color for invalid classes
 		return termenv.ANSIColor(termenv.ANSIRed)
 	}
-	
+
 	// Handle special colors
 	switch hexColor {
 	case "transparent":
@@ -398,12 +402,12 @@ func ClassToFgColor(class string) termenv.Color {
 	case "":
 		return termenv.ANSIColor(termenv.ANSIRed) // Fallback
 	}
-	
+
 	// Convert hex to termenv color
 	if strings.HasPrefix(hexColor, "#") {
 		return termenv.RGBColor(hexColor)
 	}
-	
+
 	// Fallback to red for any invalid color
 	return termenv.ANSIColor(termenv.ANSIRed)
 }
@@ -416,7 +420,7 @@ func ClassToBgColor(class string) termenv.Color {
 		// Return default color for invalid classes
 		return termenv.ANSIColor(termenv.ANSIWhite)
 	}
-	
+
 	// Handle special colors
 	switch hexColor {
 	case "transparent":
@@ -426,12 +430,12 @@ func ClassToBgColor(class string) termenv.Color {
 	case "":
 		return termenv.ANSIColor(termenv.ANSIWhite) // Fallback
 	}
-	
+
 	// Convert hex to termenv color
 	if strings.HasPrefix(hexColor, "#") {
 		return termenv.RGBColor(hexColor)
 	}
-	
+
 	// Fallback to white background for any invalid color
 	return termenv.ANSIColor(termenv.ANSIWhite)
 }
@@ -454,12 +458,12 @@ func isBackgroundDark() bool {
 	// Compute background detection
 	backgroundCacheLock.Lock()
 	defer backgroundCacheLock.Unlock()
-	
+
 	// Double-check after acquiring write lock
 	if backgroundCache != nil {
 		return *backgroundCache
 	}
-	
+
 	isDark := termenv.HasDarkBackground()
 	backgroundCache = &isDark
 	return isDark
@@ -469,11 +473,11 @@ func isBackgroundDark() bool {
 func hexToRGB(hex string) (r, g, b int, err error) {
 	// Remove # if present
 	hex = strings.TrimPrefix(hex, "#")
-	
+
 	if len(hex) != 6 {
 		return 0, 0, 0, fmt.Errorf("invalid hex color: %s", hex)
 	}
-	
+
 	// Parse each component
 	rVal, err := strconv.ParseUint(hex[0:2], 16, 8)
 	if err != nil {
@@ -487,7 +491,7 @@ func hexToRGB(hex string) (r, g, b int, err error) {
 	if err != nil {
 		return 0, 0, 0, err
 	}
-	
+
 	return int(rVal), int(gVal), int(bVal), nil
 }
 
@@ -497,7 +501,7 @@ func rgbToHex(r, g, b int) string {
 	r = int(math.Max(0, math.Min(255, float64(r))))
 	g = int(math.Max(0, math.Min(255, float64(g))))
 	b = int(math.Max(0, math.Min(255, float64(b))))
-	
+
 	return fmt.Sprintf("#%02x%02x%02x", r, g, b)
 }
 
@@ -507,12 +511,12 @@ func calculateLuminance(r, g, b int) float64 {
 	rNorm := float64(r) / 255.0
 	gNorm := float64(g) / 255.0
 	bNorm := float64(b) / 255.0
-	
+
 	// Apply gamma correction
 	rLin := linearizeColorComponent(rNorm)
 	gLin := linearizeColorComponent(gNorm)
 	bLin := linearizeColorComponent(bNorm)
-	
+
 	// Calculate luminance using WCAG coefficients
 	return 0.2126*rLin + 0.7152*gLin + 0.0722*bLin
 }
@@ -531,30 +535,30 @@ func rgbToHSL(r, g, b int) (h, s, l float64) {
 	rNorm := float64(r) / 255.0
 	gNorm := float64(g) / 255.0
 	bNorm := float64(b) / 255.0
-	
+
 	max := math.Max(rNorm, math.Max(gNorm, bNorm))
 	min := math.Min(rNorm, math.Min(gNorm, bNorm))
-	
+
 	// Lightness
 	l = (max + min) / 2
-	
+
 	if max == min {
 		// Achromatic (gray)
 		h, s = 0, 0
 	} else {
 		d := max - min
-		
+
 		// Saturation
 		if l > 0.5 {
 			s = d / (2 - max - min)
 		} else {
 			s = d / (max + min)
 		}
-		
+
 		// Hue
 		switch max {
 		case rNorm:
-			h = (gNorm-bNorm)/d
+			h = (gNorm - bNorm) / d
 			if gNorm < bNorm {
 				h += 6
 			}
@@ -565,14 +569,14 @@ func rgbToHSL(r, g, b int) (h, s, l float64) {
 		}
 		h /= 6
 	}
-	
+
 	return h, s, l
 }
 
 // hslToRGB converts HSL values to RGB
 func hslToRGB(h, s, l float64) (r, g, b int) {
 	var rNorm, gNorm, bNorm float64
-	
+
 	if s == 0 {
 		// Achromatic
 		rNorm, gNorm, bNorm = l, l, l
@@ -584,17 +588,17 @@ func hslToRGB(h, s, l float64) (r, g, b int) {
 			q = l + s - l*s
 		}
 		p := 2*l - q
-		
+
 		rNorm = hueToRGB(p, q, h+1.0/3.0)
 		gNorm = hueToRGB(p, q, h)
 		bNorm = hueToRGB(p, q, h-1.0/3.0)
 	}
-	
+
 	// Convert to 0-255 range
 	r = int(math.Round(rNorm * 255))
 	g = int(math.Round(gNorm * 255))
 	b = int(math.Round(bNorm * 255))
-	
+
 	return r, g, b
 }
 
@@ -632,37 +636,37 @@ func adaptColorForBackground(hexColor string, isDark bool) string {
 	if hexColor == "" || hexColor == "transparent" || hexColor == "currentColor" {
 		return hexColor
 	}
-	
+
 	// Parse RGB values
 	r, g, b, err := hexToRGB(hexColor)
 	if err != nil {
 		return hexColor // Return original on parse error
 	}
-	
+
 	// Calculate luminance
 	luminance := calculateLuminance(r, g, b)
-	
+
 	// Don't adapt if color already has good visibility
 	const minLuminanceThreshold = 0.15 // Very dark colors need adaptation
 	const maxLuminanceThreshold = 0.85 // Very light colors need adaptation
-	
+
 	if isDark {
 		// Dark background: make dark colors lighter
 		if luminance < minLuminanceThreshold {
 			// Convert to HSL for better control
 			h, s, l := rgbToHSL(r, g, b)
-			
+
 			// Boost lightness using formula: L' = L + (target - L) * factor
 			targetLightness := 0.75 // Target for good visibility on dark background
 			factor := 0.8           // How much to move toward target
 			newL := l + (targetLightness-l)*factor
-			
+
 			// Ensure minimum lightness
 			newL = math.Max(0.6, newL)
-			
+
 			// Slightly reduce saturation to prevent over-brightness
 			newS := s * 0.9
-			
+
 			// Convert back to RGB
 			r, g, b = hslToRGB(h, newS, newL)
 			return rgbToHex(r, g, b)
@@ -671,23 +675,23 @@ func adaptColorForBackground(hexColor string, isDark bool) string {
 		// Light background: make light colors darker
 		if luminance > maxLuminanceThreshold {
 			h, s, l := rgbToHSL(r, g, b)
-			
+
 			// Reduce lightness for visibility on light background
 			targetLightness := 0.25 // Target for good visibility on light background
 			factor := 0.8
 			newL := l + (targetLightness-l)*factor
-			
+
 			// Ensure maximum lightness
 			newL = math.Min(0.4, newL)
-			
+
 			// Slightly increase saturation for better distinction
 			newS := math.Min(1.0, s*1.1)
-			
+
 			r, g, b = hslToRGB(h, newS, newL)
 			return rgbToHex(r, g, b)
 		}
 	}
-	
+
 	// No adaptation needed
 	return hexColor
 }

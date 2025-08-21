@@ -12,49 +12,16 @@ import (
 	"github.com/go-rod/rod/lib/proto"
 )
 
-// PDFFormatter handles PDF formatting using HTML-to-PDF conversion
-type PDFFormatter struct {
-	// UseRod determines whether to use Rod/Chromium (true) or fall back to legacy gofpdf (false)
-	UseRod bool
-	// LegacyFormatter is the fallback formatter
-	LegacyFormatter *PDFLegacyFormatter
-}
+// PDFFormatter handles PDF formatting using HTML-to-PDF conversion via Rod/Chromium
+type PDFFormatter struct{}
 
 // NewPDFFormatter creates a new PDF formatter
 func NewPDFFormatter() *PDFFormatter {
-	return &PDFFormatter{
-		UseRod:          true, // Default to using Rod/Chromium
-		LegacyFormatter: NewPDFLegacyFormatter(),
-	}
+	return &PDFFormatter{}
 }
 
-// NewPDFFormatterLegacy creates a new PDF formatter that uses the legacy gofpdf approach
-func NewPDFFormatterLegacy() *PDFFormatter {
-	return &PDFFormatter{
-		UseRod:          false,
-		LegacyFormatter: NewPDFLegacyFormatter(),
-	}
-}
-
-// Format formats PrettyData as PDF
+// Format formats PrettyData as PDF using Rod/Chromium
 func (f *PDFFormatter) Format(data *api.PrettyData) (string, error) {
-	if !f.UseRod {
-		// Fall back to legacy formatter
-		return f.LegacyFormatter.Format(data)
-	}
-
-	// Try to use Rod/Chromium for PDF generation
-	pdfContent, err := f.formatHTMLToPDFWithRod(data)
-	if err != nil {
-		// Fall back to legacy formatter on error
-		return f.LegacyFormatter.Format(data)
-	}
-
-	return pdfContent, nil
-}
-
-// formatHTMLToPDFWithRod formats PrettyData as PDF using Rod/Chromium
-func (f *PDFFormatter) formatHTMLToPDFWithRod(data *api.PrettyData) (string, error) {
 	// Generate HTML using the HTML formatter
 	htmlFormatter := NewHTMLFormatter()
 	htmlContent, err := htmlFormatter.Format(data)

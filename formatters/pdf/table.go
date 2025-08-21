@@ -4,8 +4,12 @@ import (
 	"fmt"
 
 	"github.com/flanksource/clicky/api"
+	"github.com/johnfercher/maroto/v2/pkg/components/col"
+	"github.com/johnfercher/maroto/v2/pkg/components/row"
+	"github.com/johnfercher/maroto/v2/pkg/components/text"
 )
 
+// Table widget for rendering tables in PDF
 type Table struct {
 	Headers     []string    `json:"headers,omitempty"`
 	Rows        [][]any     `json:"rows,omitempty"`
@@ -14,170 +18,163 @@ type Table struct {
 	CellPadding api.Padding `json:"cell_padding,omitempty"`
 }
 
-func (t Table) GetWidth() float64 {
-	// Calculate total table width based on content
-	if len(t.Headers) == 0 && len(t.Rows) == 0 {
-		return 0
-	}
-
-	// Use available page width (A4 width minus margins)
-	pageWidth := 210.0 // A4 width in mm
-	margins := 20.0    // Total left+right margins
-	return pageWidth - margins
-}
-
-func (t Table) GetHeight() float64 {
-	// Calculate total table height
-	if len(t.Headers) == 0 && len(t.Rows) == 0 {
-		return 0
-	}
-
-	rowHeight := 8.0 // Default row height in mm
-	totalRows := len(t.Rows)
-	if len(t.Headers) > 0 {
-		totalRows++ // Add header row
-	}
-
-	// Add padding
-	paddingHeight := 0.0
-	if t.CellPadding.Top > 0 || t.CellPadding.Bottom > 0 {
-		paddingHeight = (t.CellPadding.Top + t.CellPadding.Bottom) * 4.2333 // Convert rem to mm
-	}
-
-	return float64(totalRows)*(rowHeight+paddingHeight)
-}
-
-func (t Table) Draw(b *Builder, opts ...DrawOptions) error {
+// Draw implements the Widget interface
+func (t Table) Draw(b *Builder) error {
 	if len(t.Headers) == 0 && len(t.Rows) == 0 {
 		return nil // Nothing to draw
 	}
 
-	// Parse options
-	options := &drawOptions{}
-	for _, opt := range opts {
-		opt(options)
-	}
-
-	// Save current state
-	savedState := b.GetStyleConverter().SaveCurrentState()
-
-	// Apply position if specified
-	if options.Position != (api.Position{}) {
-		b.MoveTo(options.Position)
-	}
-
-	// Calculate table dimensions
-	tableWidth := t.GetWidth()
+	// Determine number of columns
 	numColumns := len(t.Headers)
 	if numColumns == 0 && len(t.Rows) > 0 {
 		numColumns = len(t.Rows[0])
 	}
 
-	columnWidth := tableWidth / float64(numColumns)
-	rowHeight := 8.0 // mm
+	if numColumns == 0 {
+		return nil
+	}
 
-	// Get current position
-	startPos := b.GetCurrentPosition()
-	currentX := float64(startPos.X)
-	currentY := float64(startPos.Y)
+	// Calculate column width (12-column grid divided by number of columns)
+	colWidth := 12 / numColumns
+	if colWidth < 1 {
+		colWidth = 1 // Minimum column width
+	}
 
-	pdf := b.GetPDF()
-	style := b.GetStyleConverter()
+	// Calculate row height
+	baseHeight := 8.0 // Default row height in mm
+	if t.CellPadding.Top > 0 || t.CellPadding.Bottom > 0 {
+		baseHeight += (t.CellPadding.Top + t.CellPadding.Bottom) * 4
+	}
 
 	// Draw headers if present
 	if len(t.Headers) > 0 {
-		// Apply header styling
-		if t.HeaderStyle != (api.Class{}) {
-			style.ApplyClassToPDF(t.HeaderStyle)
-		}
-
-		// Draw header cells
-		for i, header := range t.Headers {
-			cellX := currentX + float64(i)*columnWidth
-			
-			// Draw cell border
-			pdf.Rect(cellX, currentY, columnWidth, rowHeight, "D")
-			
-			// Draw background if specified
-			if t.HeaderStyle.Background != nil {
-				pdf.Rect(cellX, currentY, columnWidth, rowHeight, "F")
+		// Convert header style
+		headerTextProps := b.style.ConvertToTextProps(t.HeaderStyle)
+		
+		// Create header row based on number of columns
+		switch numColumns {
+		case 1:
+			headerText := text.New(t.Headers[0], *headerTextProps)
+			b.maroto.AddRow(baseHeight, col.New(12).Add(headerText))
+		case 2:
+			h1 := text.New(t.Headers[0], *headerTextProps)
+			h2 := ""
+			if len(t.Headers) > 1 {
+				h2 = t.Headers[1]
 			}
-
-			// Position text within cell
-			textX := cellX + 2 // Small left padding
-			textY := currentY + rowHeight/2 + style.GetTextHeight()/2 // Center vertically
-			pdf.SetXY(textX, textY)
-			
-			// Write header text
-			pdf.Cell(columnWidth-4, style.GetTextHeight(), header)
+			h2Text := text.New(h2, *headerTextProps)
+			b.maroto.AddRow(baseHeight, 
+				col.New(6).Add(h1),
+				col.New(6).Add(h2Text))
+		case 3:
+			h1 := text.New(t.Headers[0], *headerTextProps)
+			h2 := ""
+			h3 := ""
+			if len(t.Headers) > 1 {
+				h2 = t.Headers[1]
+			}
+			if len(t.Headers) > 2 {
+				h3 = t.Headers[2]
+			}
+			h2Text := text.New(h2, *headerTextProps)
+			h3Text := text.New(h3, *headerTextProps)
+			b.maroto.AddRow(baseHeight,
+				col.New(4).Add(h1),
+				col.New(4).Add(h2Text),
+				col.New(4).Add(h3Text))
+		default:
+			// For more columns, just use the first 4
+			h1 := text.New(t.Headers[0], *headerTextProps)
+			h2 := ""
+			h3 := ""
+			h4 := ""
+			if len(t.Headers) > 1 {
+				h2 = t.Headers[1]
+			}
+			if len(t.Headers) > 2 {
+				h3 = t.Headers[2]
+			}
+			if len(t.Headers) > 3 {
+				h4 = t.Headers[3]
+			}
+			h2Text := text.New(h2, *headerTextProps)
+			h3Text := text.New(h3, *headerTextProps)
+			h4Text := text.New(h4, *headerTextProps)
+			b.maroto.AddRow(baseHeight,
+				col.New(3).Add(h1),
+				col.New(3).Add(h2Text),
+				col.New(3).Add(h3Text),
+				col.New(3).Add(h4Text))
 		}
-		
-		currentY += rowHeight
-		
-		// Restore style after header
-		style.RestoreState(savedState)
 	}
 
 	// Draw data rows
-	if t.RowStyle != (api.Class{}) {
-		style.ApplyClassToPDF(t.RowStyle)
+	rowTextProps := b.style.ConvertToTextProps(t.RowStyle)
+	
+	for _, dataRow := range t.Rows {
+		// Create row based on number of columns
+		switch numColumns {
+		case 1:
+			cellText := fmt.Sprintf("%v", dataRow[0])
+			cellTextComponent := text.New(cellText, *rowTextProps)
+			b.maroto.AddRow(baseHeight, col.New(12).Add(cellTextComponent))
+		case 2:
+			c1 := fmt.Sprintf("%v", dataRow[0])
+			c2 := ""
+			if len(dataRow) > 1 {
+				c2 = fmt.Sprintf("%v", dataRow[1])
+			}
+			c1Text := text.New(c1, *rowTextProps)
+			c2Text := text.New(c2, *rowTextProps)
+			b.maroto.AddRow(baseHeight,
+				col.New(6).Add(c1Text),
+				col.New(6).Add(c2Text))
+		case 3:
+			c1 := fmt.Sprintf("%v", dataRow[0])
+			c2 := ""
+			c3 := ""
+			if len(dataRow) > 1 {
+				c2 = fmt.Sprintf("%v", dataRow[1])
+			}
+			if len(dataRow) > 2 {
+				c3 = fmt.Sprintf("%v", dataRow[2])
+			}
+			c1Text := text.New(c1, *rowTextProps)
+			c2Text := text.New(c2, *rowTextProps)
+			c3Text := text.New(c3, *rowTextProps)
+			b.maroto.AddRow(baseHeight,
+				col.New(4).Add(c1Text),
+				col.New(4).Add(c2Text),
+				col.New(4).Add(c3Text))
+		default:
+			// For more columns, just use the first 4
+			c1 := fmt.Sprintf("%v", dataRow[0])
+			c2 := ""
+			c3 := ""
+			c4 := ""
+			if len(dataRow) > 1 {
+				c2 = fmt.Sprintf("%v", dataRow[1])
+			}
+			if len(dataRow) > 2 {
+				c3 = fmt.Sprintf("%v", dataRow[2])
+			}
+			if len(dataRow) > 3 {
+				c4 = fmt.Sprintf("%v", dataRow[3])
+			}
+			c1Text := text.New(c1, *rowTextProps)
+			c2Text := text.New(c2, *rowTextProps)
+			c3Text := text.New(c3, *rowTextProps)
+			c4Text := text.New(c4, *rowTextProps)
+			b.maroto.AddRow(baseHeight,
+				col.New(3).Add(c1Text),
+				col.New(3).Add(c2Text),
+				col.New(3).Add(c3Text),
+				col.New(3).Add(c4Text))
+		}
 	}
 
-	for rowIndex, row := range t.Rows {
-		// Check if we need a new page
-		if currentY+rowHeight > 280 { // Near bottom of A4
-			b.GetPDF().AddPage()
-			currentY = float64(b.GetCurrentPosition().Y)
-		}
-
-		// Draw row cells
-		for colIndex, cell := range row {
-			if colIndex >= numColumns {
-				break // Don't exceed column count
-			}
-
-			cellX := currentX + float64(colIndex)*columnWidth
-			
-			// Draw cell border
-			pdf.Rect(cellX, currentY, columnWidth, rowHeight, "D")
-			
-			// Draw background if specified and alternating rows
-			if t.RowStyle.Background != nil && rowIndex%2 == 0 {
-				pdf.Rect(cellX, currentY, columnWidth, rowHeight, "F")
-			}
-
-			// Position text within cell
-			textX := cellX + 2 // Small left padding
-			textY := currentY + rowHeight/2 + style.GetTextHeight()/2 // Center vertically
-			pdf.SetXY(textX, textY)
-			
-			// Convert cell content to string
-			cellText := fmt.Sprintf("%v", cell)
-			
-			// Truncate text if too long for cell
-			if style.GetTextWidth(cellText) > columnWidth-4 {
-				// Simple truncation - in a more sophisticated version,
-				// you might wrap text or use ellipsis
-				for len(cellText) > 0 && style.GetTextWidth(cellText+"...") > columnWidth-4 {
-					cellText = cellText[:len(cellText)-1]
-				}
-				if len(cellText) > 0 {
-					cellText += "..."
-				}
-			}
-			
-			// Write cell text
-			pdf.Cell(columnWidth-4, style.GetTextHeight(), cellText)
-		}
-		
-		currentY += rowHeight
-	}
-
-	// Update builder position to end of table
-	b.MoveTo(api.Position{X: startPos.X, Y: int(currentY)})
-
-	// Restore state
-	style.RestoreState(savedState)
+	// Add a spacing row at the bottom
+	b.maroto.AddRows(row.New(2))
 
 	return nil
 }

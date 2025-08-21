@@ -233,6 +233,11 @@ func (f *HTMLFormatter) formatFieldValueHTMLWithStyle(fieldValue api.FieldValue,
 		}
 	}
 
+	// Check if this is an image field
+	if field.Format == "image" || f.isImageURL(fieldValue.Formatted()) {
+		return f.formatImageHTML(fieldValue, field)
+	}
+
 	// Handle nested fields by formatting them as HTML
 	if fieldValue.HasNestedFields() {
 		return f.formatNestedFieldValue(fieldValue)
@@ -444,4 +449,91 @@ func (f *HTMLFormatter) formatTreeNodeHTML(node api.TreeNode, depth int) string 
 	}
 	
 	return result.String()
+}
+
+// isImageURL checks if a string is likely an image URL
+func (f *HTMLFormatter) isImageURL(s string) bool {
+	s = strings.ToLower(s)
+	
+	// Check for data URLs (base64 encoded images)
+	if strings.HasPrefix(s, "data:image/") {
+		return true
+	}
+	
+	// Check for common image file extensions
+	imageExts := []string{".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg", ".bmp", ".ico"}
+	for _, ext := range imageExts {
+		if strings.HasSuffix(s, ext) {
+			return true
+		}
+	}
+	
+	// Check for URLs that might be images
+	if strings.HasPrefix(s, "http://") || strings.HasPrefix(s, "https://") {
+		for _, ext := range imageExts {
+			if strings.Contains(s, ext) {
+				return true
+			}
+		}
+		// Check for common image hosting patterns
+		if strings.Contains(s, "images") || strings.Contains(s, "img") || 
+		   strings.Contains(s, "photo") || strings.Contains(s, "picture") ||
+		   strings.Contains(s, "media") || strings.Contains(s, "cdn") {
+			return true
+		}
+	}
+	
+	return false
+}
+
+// formatImageHTML formats an image field as HTML
+func (f *HTMLFormatter) formatImageHTML(fieldValue api.FieldValue, field api.PrettyField) string {
+	imageURL := fieldValue.Formatted()
+	
+	// Get image options from field
+	width := "auto"
+	height := "auto"
+	alt := field.Label
+	if alt == "" {
+		alt = field.Name
+	}
+	
+	// Check format options for width/height
+	if field.FormatOptions != nil {
+		if w, ok := field.FormatOptions["width"]; ok {
+			width = w
+		}
+		if h, ok := field.FormatOptions["height"]; ok {
+			height = h
+		}
+		if a, ok := field.FormatOptions["alt"]; ok {
+			alt = a
+		}
+	}
+	
+	// Build style attribute
+	styleAttrs := []string{}
+	if width != "auto" {
+		if strings.HasSuffix(width, "%") || strings.HasSuffix(width, "px") {
+			styleAttrs = append(styleAttrs, fmt.Sprintf("width: %s", width))
+		} else {
+			styleAttrs = append(styleAttrs, fmt.Sprintf("width: %spx", width))
+		}
+	}
+	if height != "auto" {
+		if strings.HasSuffix(height, "%") || strings.HasSuffix(height, "px") {
+			styleAttrs = append(styleAttrs, fmt.Sprintf("height: %s", height))
+		} else {
+			styleAttrs = append(styleAttrs, fmt.Sprintf("height: %spx", height))
+		}
+	}
+	
+	style := ""
+	if len(styleAttrs) > 0 {
+		style = fmt.Sprintf(` style="%s"`, strings.Join(styleAttrs, "; "))
+	}
+	
+	// Generate HTML
+	return fmt.Sprintf(`<img src="%s" alt="%s" class="rounded-lg shadow-md" loading="lazy"%s>`,
+		html.EscapeString(imageURL), html.EscapeString(alt), style)
 }

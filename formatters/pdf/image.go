@@ -8,10 +8,18 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/flanksource/clicky/api"
-	"github.com/go-pdf/fpdf"
+	"github.com/johnfercher/maroto/v2/pkg/components/col"
+	"github.com/johnfercher/maroto/v2/pkg/components/image"
+	"github.com/johnfercher/maroto/v2/pkg/components/row"
+	"github.com/johnfercher/maroto/v2/pkg/components/text"
+	"github.com/johnfercher/maroto/v2/pkg/consts/align"
+	"github.com/johnfercher/maroto/v2/pkg/consts/border"
+	"github.com/johnfercher/maroto/v2/pkg/consts/extension"
+	"github.com/johnfercher/maroto/v2/pkg/consts/fontstyle"
+	"github.com/johnfercher/maroto/v2/pkg/props"
 )
 
+// Image widget for rendering images in PDF
 type Image struct {
 	// Local path or URL of an image
 	Source  string   `json:"source,omitempty"`
@@ -20,202 +28,148 @@ type Image struct {
 	Height  *float64 `json:"height,omitempty"`
 }
 
-func (i Image) GetWidth() float64 {
-	if i.Width != nil {
-		return *i.Width
-	}
-	
-	// Try to extract from actual image if possible
-	// For now, return a default width
-	return 50.0 // Default width in mm
-}
-
-func (i Image) GetHeight() float64 {
-	if i.Height != nil {
-		return *i.Height
-	}
-	
-	// Try to maintain aspect ratio if width is specified
-	if i.Width != nil {
-		// Assume 4:3 aspect ratio as default
-		return (*i.Width * 3.0) / 4.0
-	}
-	
-	// Default height
-	return 37.5 // Default height in mm (maintains 4:3 with 50mm width)
-}
-
-func (i Image) Draw(b *Builder, opts ...DrawOptions) error {
+// Draw implements the Widget interface
+func (i Image) Draw(b *Builder) error {
 	if i.Source == "" {
 		// Draw a placeholder rectangle with alt text
-		return i.drawPlaceholder(b, opts...)
-	}
-
-	// Parse options
-	options := &drawOptions{}
-	for _, opt := range opts {
-		opt(options)
-	}
-
-	// Save current state
-	savedPos := b.GetCurrentPosition()
-
-	// Apply position if specified
-	if options.Position != (api.Position{}) {
-		b.MoveTo(options.Position)
+		return i.drawPlaceholder(b)
 	}
 
 	// Get image dimensions
-	width := i.GetWidth()
-	height := i.GetHeight()
-
-	// Override with options if provided
-	if options.Size != (api.Rectangle{}) {
-		width = float64(options.Size.Width)
-		height = float64(options.Size.Height)
+	height := 50.0 // Default height in mm
+	if i.Height != nil {
+		height = *i.Height
+	} else if i.Width != nil {
+		// Assume 4:3 aspect ratio as default
+		height = (*i.Width * 3.0) / 4.0
 	}
-
-	pos := b.GetCurrentPosition()
-	pdf := b.GetPDF()
 
 	// Try to load and draw the image
-	err := i.drawImage(pdf, float64(pos.X), float64(pos.Y), width, height)
+	err := i.drawImage(b, height)
 	if err != nil {
 		// Fall back to placeholder
-		b.MoveTo(savedPos)
-		return i.drawPlaceholder(b, opts...)
+		return i.drawPlaceholder(b)
 	}
-
-	// Update builder position to below the image
-	b.MoveTo(api.Position{X: pos.X, Y: pos.Y + int(height)})
 
 	return nil
 }
 
 // drawImage attempts to draw the actual image
-func (i Image) drawImage(pdf *fpdf.Fpdf, x, y, width, height float64) error {
-	var imagePath string
-	var isTemp bool
-
+func (i Image) drawImage(b *Builder, height float64) error {
 	// Handle URL vs local file
 	if isURL(i.Source) {
-		// Download image to temporary file
-		tempPath, err := i.downloadImage(i.Source)
+		// Download image to bytes
+		imageBytes, ext, err := i.downloadImageBytes(i.Source)
 		if err != nil {
 			return fmt.Errorf("failed to download image: %w", err)
 		}
-		imagePath = tempPath
-		isTemp = true
-		defer func() {
-			if isTemp {
-				os.Remove(imagePath)
-			}
-		}()
+		
+		// Create image component from bytes and add to row
+		imageComponent := image.NewFromBytes(imageBytes, ext)
+		imageCol := col.New(12).Add(imageComponent)
+		b.maroto.AddRow(height, imageCol)
 	} else {
-		imagePath = i.Source
+		// Check if file exists
+		if _, err := os.Stat(i.Source); os.IsNotExist(err) {
+			return fmt.Errorf("image file not found: %s", i.Source)
+		}
+		
+		// Create image component from file and add to row
+		imageComponent := image.NewFromFile(i.Source)
+		imageCol := col.New(12).Add(imageComponent)
+		b.maroto.AddRow(height, imageCol)
 	}
-
-	// Check if file exists
-	if _, err := os.Stat(imagePath); os.IsNotExist(err) {
-		return fmt.Errorf("image file not found: %s", imagePath)
+	
+	// Add alt text caption if available
+	if i.AltText != "" {
+		captionProps := props.Text{
+			Size:  8,
+			Style: fontstyle.Italic,
+			Align: align.Center,
+			Color: &props.Color{Red: 100, Green: 100, Blue: 100},
+		}
+		captionText := text.New(i.AltText, captionProps)
+		captionCol := col.New(12).Add(captionText)
+		b.maroto.AddRow(5, captionCol)
 	}
-
-	// Get image format from extension
-	format := getImageFormat(imagePath)
-	if format == "" {
-		return fmt.Errorf("unsupported image format: %s", filepath.Ext(imagePath))
-	}
-
-	// Add image to PDF
-	pdf.ImageOptions(imagePath, x, y, width, height, false, fpdf.ImageOptions{
-		ReadDpi:   false,
-		ImageType: format,
-	}, 0, "")
-
+	
 	return nil
 }
 
 // drawPlaceholder draws a placeholder rectangle with alt text
-func (i Image) drawPlaceholder(b *Builder, opts ...DrawOptions) error {
-	// Parse options
-	options := &drawOptions{}
-	for _, opt := range opts {
-		opt(options)
-	}
-
-	// Apply position if specified
-	if options.Position != (api.Position{}) {
-		b.MoveTo(options.Position)
-	}
-
-	pos := b.GetCurrentPosition()
-	pdf := b.GetPDF()
-
+func (i Image) drawPlaceholder(b *Builder) error {
 	// Get dimensions
-	width := i.GetWidth()
-	height := i.GetHeight()
-
-	// Override with options if provided
-	if options.Size != (api.Rectangle{}) {
-		width = float64(options.Size.Width)
-		height = float64(options.Size.Height)
+	height := 50.0 // Default height in mm
+	if i.Height != nil {
+		height = *i.Height
+	} else if i.Width != nil {
+		// Assume 4:3 aspect ratio as default
+		height = (*i.Width * 3.0) / 4.0
 	}
-
-	// Draw placeholder rectangle
-	pdf.SetDrawColor(128, 128, 128) // Gray border
-	pdf.SetFillColor(240, 240, 240) // Light gray fill
-	pdf.Rect(float64(pos.X), float64(pos.Y), width, height, "DF")
-
-	// Add alt text if available
+	
+	// Create placeholder box with border
+	placeholderRow := row.New(height)
+	placeholderCol := col.New(12)
+	
+	// Add alt text in the center if available
 	if i.AltText != "" {
-		pdf.SetFont("Arial", "", 10)
-		pdf.SetTextColor(64, 64, 64) // Dark gray text
-		
-		// Center text in placeholder
-		textWidth := pdf.GetStringWidth(i.AltText)
-		textHeight := 3.5 // Approximate height for 10pt font
-		
-		textX := float64(pos.X) + (width-textWidth)/2
-		textY := float64(pos.Y) + (height+textHeight)/2
-		
-		pdf.SetXY(textX, textY)
-		pdf.Cell(textWidth, textHeight, i.AltText)
+		textProps := props.Text{
+			Size:  10,
+			Style: fontstyle.Normal,
+			Align: align.Center,
+			Color: &props.Color{Red: 64, Green: 64, Blue: 64},
+		}
+		altTextComponent := text.New(i.AltText, textProps)
+		placeholderCol.Add(altTextComponent)
+	} else {
+		// Add generic placeholder text
+		textProps := props.Text{
+			Size:  10,
+			Style: fontstyle.Italic,
+			Align: align.Center,
+			Color: &props.Color{Red: 128, Green: 128, Blue: 128},
+		}
+		placeholderText := text.New("[Image Placeholder]", textProps)
+		placeholderCol.Add(placeholderText)
 	}
-
-	// Update builder position
-	b.MoveTo(api.Position{X: pos.X, Y: pos.Y + int(height)})
-
+	
+	placeholderRow.Add(placeholderCol)
+	
+	// Add border and background
+	placeholderRow.WithStyle(&props.Cell{
+		BackgroundColor: &props.Color{Red: 240, Green: 240, Blue: 240},
+		BorderType:      border.Full,
+		BorderColor:     &props.Color{Red: 128, Green: 128, Blue: 128},
+		BorderThickness: 0.5,
+	})
+	
+	b.maroto.AddRows(placeholderRow)
+	
 	return nil
 }
 
-// downloadImage downloads an image from URL to a temporary file
-func (i Image) downloadImage(url string) (string, error) {
+// downloadImageBytes downloads an image from URL and returns bytes
+func (i Image) downloadImageBytes(url string) ([]byte, extension.Type, error) {
 	resp, err := http.Get(url)
 	if err != nil {
-		return "", err
+		return nil, "", err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("HTTP error: %d", resp.StatusCode)
+		return nil, "", fmt.Errorf("HTTP error: %d", resp.StatusCode)
 	}
 
-	// Create temporary file
-	ext := getFileExtension(url)
-	tempFile, err := os.CreateTemp("", "pdf_image_*"+ext)
+	// Read image data
+	imageBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return "", err
+		return nil, "", err
 	}
-	defer tempFile.Close()
-
-	// Copy image data
-	_, err = io.Copy(tempFile, resp.Body)
-	if err != nil {
-		os.Remove(tempFile.Name())
-		return "", err
-	}
-
-	return tempFile.Name(), nil
+	
+	// Determine extension
+	ext := getImageExtension(url, resp.Header.Get("Content-Type"))
+	
+	return imageBytes, ext, nil
 }
 
 // isURL checks if a string looks like a URL
@@ -223,35 +177,36 @@ func isURL(str string) bool {
 	return len(str) > 7 && (str[:7] == "http://" || str[:8] == "https://")
 }
 
-// getFileExtension gets file extension from path or URL
-func getFileExtension(path string) string {
-	ext := filepath.Ext(path)
-	if ext == "" {
-		// Try to extract from URL query parameters
-		if idx := strings.LastIndex(path, "."); idx != -1 {
-			if endIdx := strings.Index(path[idx:], "?"); endIdx != -1 {
-				ext = path[idx : idx+endIdx]
-			} else if endIdx := strings.Index(path[idx:], "&"); endIdx != -1 {
-				ext = path[idx : idx+endIdx]
-			} else {
-				ext = path[idx:]
-			}
-		}
+// getImageExtension determines the image extension
+func getImageExtension(url string, contentType string) extension.Type {
+	// Try content type first
+	switch contentType {
+	case "image/jpeg", "image/jpg":
+		return extension.Jpg
+	case "image/png":
+		return extension.Png
+	case "image/gif":
+		// Maroto doesn't support GIF, treat as PNG
+		return extension.Png
 	}
-	return ext
-}
-
-// getImageFormat returns the fpdf image format string
-func getImageFormat(path string) string {
-	ext := strings.ToLower(filepath.Ext(path))
+	
+	// Try URL extension
+	ext := strings.ToLower(filepath.Ext(url))
+	// Remove query parameters if present
+	if idx := strings.Index(ext, "?"); idx != -1 {
+		ext = ext[:idx]
+	}
+	
 	switch ext {
 	case ".jpg", ".jpeg":
-		return "JPG"
+		return extension.Jpg
 	case ".png":
-		return "PNG"
+		return extension.Png
 	case ".gif":
-		return "GIF"
+		// Maroto doesn't support GIF, treat as PNG
+		return extension.Png
 	default:
-		return ""
+		// Default to PNG
+		return extension.Png
 	}
 }

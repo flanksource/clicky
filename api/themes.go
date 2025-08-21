@@ -2,7 +2,7 @@ package api
 
 import (
 	"os"
-	
+
 	"github.com/charmbracelet/lipgloss"
 	"github.com/muesli/termenv"
 	"golang.org/x/term"
@@ -14,9 +14,48 @@ type Color struct {
 }
 
 type Font struct {
-	Name   string
-	Weight string
-	Size   float64
+	Name          string
+	Weight        string
+	Size          float64
+	Background    Color
+	Foreground    Color
+	Bold          bool
+	Faint         bool
+	Italic        bool
+	Underline     bool
+	Strikethrough bool
+}
+
+type LineStyle string
+
+const (
+	Solid  LineStyle = "solid"
+	Dashed LineStyle = "dashed"
+	Dotted LineStyle = "dotted"
+	Double LineStyle = "double"
+	None   LineStyle = "none"
+)
+
+type LineEndStyle string
+
+const (
+	LineEndStyleNone    LineEndStyle = "none"
+	LineEndStyleArrow   LineEndStyle = "arrow"
+	LineEndStyleDiamond LineEndStyle = "diamond"
+)
+
+type Line struct {
+	Color      Color
+	Style      LineStyle
+	Width      float64
+	EndStyle   LineEndStyle
+	StartStyle LineEndStyle
+}
+
+type Circle struct {
+	Color    Color
+	Border   Line
+	Diameter float64
 }
 
 type Padding struct {
@@ -26,12 +65,44 @@ type Padding struct {
 	Left   float64
 }
 
+type Box struct {
+	Rectangle
+	Fill    Color
+	Border  Borders
+	Padding Padding
+}
+
+type Borders struct {
+	Left   Line
+	Right  Line
+	Top    Line
+	Bottom Line
+}
+
+type Rectangle struct {
+	Width  int `json:"width,omitempty"`
+	Height int `json:"height,omitempty"`
+}
+
+type Position struct {
+	X int `json:"x,omitempty"`
+	Y int `json:"y,omitempty"`
+}
+
+func (p Position) RelativeTo(other Position) Position {
+	return Position{
+		X: p.X + other.X,
+		Y: p.Y + other.Y,
+	}
+}
+
 type Class struct {
 	Name       string
 	Background *Color
 	Foreground *Color
 	Font       *Font
 	Padding    *Padding
+	Border     *Borders
 }
 
 // Theme defines color schemes and styles
@@ -104,7 +175,7 @@ func AutoTheme() Theme {
 	if !isTerminal() {
 		return NoTTYTheme()
 	}
-	
+
 	// Detect terminal background and choose appropriate theme
 	if termenv.HasDarkBackground() {
 		return DarkTheme()

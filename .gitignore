@@ -4,7 +4,6 @@
 *.dll
 *.so
 *.dylib
-clicky
 
 # Test binary, built with `go test -c`
 *.test
@@ -55,5 +54,5 @@ coverage.html
 test.*
 hack/
 out.*
-clicky-*
+icky-*
 test-*
