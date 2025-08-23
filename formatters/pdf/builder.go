@@ -30,16 +30,45 @@ type Widget interface {
 
 // Builder wraps Maroto for PDF generation
 type Builder struct {
-	maroto      core.Maroto
-	config      *PageSize
-	style       *StyleConverter
-	header      api.Text
-	footer      api.Text
-	pageNumbers bool
+	maroto           core.Maroto
+	config           *PageSize
+	style            *StyleConverter
+	header           api.Text
+	footer           api.Text
+	pageNumbers      bool
+	debugMode        bool
+	converterManager *SVGConverterManager
+}
+
+// BuilderOption is a function that configures a Builder
+type BuilderOption func(*Builder)
+
+// WithDebug enables debug mode which shows grid lines
+func WithDebug(enabled bool) BuilderOption {
+	return func(b *Builder) {
+		b.debugMode = enabled
+	}
+}
+
+// WithPageSize sets the page size
+func WithPageSize(size pagesize.Type) BuilderOption {
+	return func(b *Builder) {
+		// This will be applied when creating the Maroto instance
+	}
 }
 
 // NewBuilder creates a new PDF builder using Maroto
-func NewBuilder() *Builder {
+func NewBuilder(opts ...BuilderOption) *Builder {
+	b := &Builder{
+		style:     NewStyleConverter(),
+		debugMode: false,
+	}
+	
+	// Apply options
+	for _, opt := range opts {
+		opt(b)
+	}
+	
 	// Create Maroto configuration
 	cfg := config.NewBuilder().
 		WithPageSize(pagesize.A4).
@@ -47,22 +76,20 @@ func NewBuilder() *Builder {
 		WithRightMargin(10).
 		WithTopMargin(10).
 		WithBottomMargin(10).
+		WithDebug(b.debugMode). // Enable debug mode if requested
 		Build()
 
 	// Create Maroto instance
 	m := maroto.New(cfg)
-
-	builder := &Builder{
-		maroto: m,
-		config: &PageSize{
-			Rectangle: api.Rectangle{Width: 210, Height: 297}, // A4 in mm
-			Margins:   api.Padding{Top: 10, Right: 10, Bottom: 10, Left: 10},
-		},
-		style:       NewStyleConverter(),
-		pageNumbers: false,
+	
+	b.maroto = m
+	b.config = &PageSize{
+		Rectangle: api.Rectangle{Width: 210, Height: 297}, // A4 in mm
+		Margins:   api.Padding{Top: 10, Right: 10, Bottom: 10, Left: 10},
 	}
-
-	return builder
+	b.pageNumbers = false
+	
+	return b
 }
 
 // SetHeader sets the header text for all pages
@@ -193,6 +220,14 @@ func (b *Builder) GetStyleConverter() *StyleConverter {
 	return b.style
 }
 
+// GetConverterManager returns the SVG converter manager, creating it if necessary
+func (b *Builder) GetConverterManager() *SVGConverterManager {
+	if b.converterManager == nil {
+		b.converterManager = NewSVGConverterManager()
+	}
+	return b.converterManager
+}
+
 // Output generates the final PDF content
 func (b *Builder) Output() ([]byte, error) {
 	// Generate the PDF document
@@ -205,6 +240,11 @@ func (b *Builder) Output() ([]byte, error) {
 	return document.GetBytes(), nil
 }
 
+
+// Build is an alias for Output to match the expected interface
+func (b *Builder) Build() ([]byte, error) {
+	return b.Output()
+}
 
 // Helper function to create text properties with alignment
 func createTextProps(style fontstyle.Type, size float64, alignment align.Type, color *props.Color) *props.Text {

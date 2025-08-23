@@ -1,6 +1,7 @@
 package pdf
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -26,6 +27,10 @@ type Image struct {
 	AltText string   `json:"alt_text,omitempty"`
 	Width   *float64 `json:"width,omitempty"`
 	Height  *float64 `json:"height,omitempty"`
+	
+	// SVG conversion options
+	ConverterOptions   *ConvertOptions `json:"converter_options,omitempty"`
+	PreferredConverter string          `json:"preferred_converter,omitempty"`
 }
 
 // Draw implements the Widget interface
@@ -74,8 +79,26 @@ func (i Image) drawImage(b *Builder, height float64) error {
 			return fmt.Errorf("image file not found: %s", i.Source)
 		}
 		
+		// Check if it's an SVG file that needs conversion
+		imagePath := i.Source
+		var tempFile string
+		if isSVGFile(i.Source) {
+			// Convert SVG to PNG using the converter manager
+			convertedPath, err := i.convertSVG(b, i.Source)
+			if err != nil {
+				return fmt.Errorf("failed to convert SVG: %w", err)
+			}
+			imagePath = convertedPath
+			tempFile = convertedPath
+			defer func() {
+				if tempFile != "" {
+					os.Remove(tempFile)
+				}
+			}()
+		}
+		
 		// Create image component from file and add to row
-		imageComponent := image.NewFromFile(i.Source)
+		imageComponent := image.NewFromFile(imagePath)
 		imageCol := col.New(12).Add(imageComponent)
 		b.maroto.AddRow(height, imageCol)
 	}
@@ -209,4 +232,56 @@ func getImageExtension(url string, contentType string) extension.Type {
 		// Default to PNG
 		return extension.Png
 	}
+}
+
+// isSVGFile checks if a file path points to an SVG file
+func isSVGFile(path string) bool {
+	ext := strings.ToLower(filepath.Ext(path))
+	return ext == ".svg"
+}
+
+// convertSVG converts an SVG file to PNG using the converter manager
+func (i Image) convertSVG(b *Builder, svgPath string) (string, error) {
+	// Get the converter manager
+	manager := b.GetConverterManager()
+	
+	// Prepare conversion options
+	options := i.ConverterOptions
+	if options == nil {
+		options = &ConvertOptions{
+			Format: "png",
+			DPI:    96,
+		}
+	}
+	
+	// Set dimensions if provided
+	if i.Width != nil {
+		options.Width = int(*i.Width * 3.78) // Convert mm to pixels at 96 DPI
+	}
+	if i.Height != nil {
+		options.Height = int(*i.Height * 3.78) // Convert mm to pixels at 96 DPI
+	}
+	
+	// Create temporary output file
+	tempFile, err := os.CreateTemp("", "converted_*.png")
+	if err != nil {
+		return "", fmt.Errorf("failed to create temp file: %w", err)
+	}
+	tempFile.Close()
+	outputPath := tempFile.Name()
+	
+	// Set preferred converter if specified
+	if i.PreferredConverter != "" {
+		manager.SetPreferred(i.PreferredConverter)
+	}
+	
+	// Convert with fallback
+	ctx := context.Background()
+	err = manager.ConvertWithFallback(ctx, svgPath, outputPath, options)
+	if err != nil {
+		os.Remove(outputPath)
+		return "", fmt.Errorf("SVG conversion failed: %w", err)
+	}
+	
+	return outputPath, nil
 }
