@@ -110,7 +110,7 @@ textWidget := pdf.Text{
 
 ### Table Widget
 ```go
-tableWidget := pdf.Table{
+tableWidget := pdf.TableImproved{
     Headers: []string{"Name", "Age", "City"},
     Rows: [][]any{
         {"Alice", 30, "New York"},
@@ -123,6 +123,8 @@ tableWidget := pdf.Table{
     RowStyle: api.Class{
         Font: &api.Font{Size: 0.9},
     },
+    ShowBorders: true,
+    AlternateRowColor: true,
 }
 ```
 
@@ -165,7 +167,7 @@ imageWidget := pdf.Image{
 
 1. **Builder** (`builder.go`): Main PDF document builder with fpdf integration
 2. **StyleConverter** (`style.go`): Converts `api.Class` to fpdf styling
-3. **Widgets** (`text.go`, `table.go`, `box.go`, `image.go`): Individual widget implementations
+3. **Widgets** (`text.go`, `table_improved.go`, `box.go`, `image.go`, `svg_box.go`): Individual widget implementations
 4. **Layout** (`layout.go`): Grid layout system
 
 ### Key Features

@@ -60,6 +60,11 @@ func TestGenerateShowcasePDF(t *testing.T) {
 				t.Fatalf("Failed to build PDF: %v", err)
 			}
 			
+			// Verify no errors in the generated PDF
+			AssertPDFDoesNotContainErrors(t, pdfData)
+			AssertNoImageLoadErrors(t, pdfData)
+			AssertNoSVGRenderingErrors(t, pdfData)
+			
 			// Save PDF
 			saveShowcasePDF(t, name, pdfData)
 		})

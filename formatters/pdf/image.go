@@ -27,7 +27,7 @@ type Image struct {
 	AltText string   `json:"alt_text,omitempty"`
 	Width   *float64 `json:"width,omitempty"`
 	Height  *float64 `json:"height,omitempty"`
-	
+
 	// SVG conversion options
 	ConverterOptions   *ConvertOptions `json:"converter_options,omitempty"`
 	PreferredConverter string          `json:"preferred_converter,omitempty"`
@@ -49,14 +49,7 @@ func (i Image) Draw(b *Builder) error {
 		height = (*i.Width * 3.0) / 4.0
 	}
 
-	// Try to load and draw the image
-	err := i.drawImage(b, height)
-	if err != nil {
-		// Fall back to placeholder
-		return i.drawPlaceholder(b)
-	}
-
-	return nil
+	return i.drawImage(b, height)
 }
 
 // drawImage attempts to draw the actual image
@@ -68,7 +61,7 @@ func (i Image) drawImage(b *Builder, height float64) error {
 		if err != nil {
 			return fmt.Errorf("failed to download image: %w", err)
 		}
-		
+
 		// Create image component from bytes and add to row
 		imageComponent := image.NewFromBytes(imageBytes, ext)
 		imageCol := col.New(12).Add(imageComponent)
@@ -78,7 +71,7 @@ func (i Image) drawImage(b *Builder, height float64) error {
 		if _, err := os.Stat(i.Source); os.IsNotExist(err) {
 			return fmt.Errorf("image file not found: %s", i.Source)
 		}
-		
+
 		// Check if it's an SVG file that needs conversion
 		imagePath := i.Source
 		var tempFile string
@@ -96,13 +89,13 @@ func (i Image) drawImage(b *Builder, height float64) error {
 				}
 			}()
 		}
-		
+
 		// Create image component from file and add to row
 		imageComponent := image.NewFromFile(imagePath)
 		imageCol := col.New(12).Add(imageComponent)
 		b.maroto.AddRow(height, imageCol)
 	}
-	
+
 	// Add alt text caption if available
 	if i.AltText != "" {
 		captionProps := props.Text{
@@ -115,7 +108,7 @@ func (i Image) drawImage(b *Builder, height float64) error {
 		captionCol := col.New(12).Add(captionText)
 		b.maroto.AddRow(5, captionCol)
 	}
-	
+
 	return nil
 }
 
@@ -129,11 +122,11 @@ func (i Image) drawPlaceholder(b *Builder) error {
 		// Assume 4:3 aspect ratio as default
 		height = (*i.Width * 3.0) / 4.0
 	}
-	
+
 	// Create placeholder box with border
 	placeholderRow := row.New(height)
 	placeholderCol := col.New(12)
-	
+
 	// Add alt text in the center if available
 	if i.AltText != "" {
 		textProps := props.Text{
@@ -155,9 +148,9 @@ func (i Image) drawPlaceholder(b *Builder) error {
 		placeholderText := text.New("[Image Placeholder]", textProps)
 		placeholderCol.Add(placeholderText)
 	}
-	
+
 	placeholderRow.Add(placeholderCol)
-	
+
 	// Add border and background
 	placeholderRow.WithStyle(&props.Cell{
 		BackgroundColor: &props.Color{Red: 240, Green: 240, Blue: 240},
@@ -165,9 +158,9 @@ func (i Image) drawPlaceholder(b *Builder) error {
 		BorderColor:     &props.Color{Red: 128, Green: 128, Blue: 128},
 		BorderThickness: 0.5,
 	})
-	
+
 	b.maroto.AddRows(placeholderRow)
-	
+
 	return nil
 }
 
@@ -188,10 +181,10 @@ func (i Image) downloadImageBytes(url string) ([]byte, extension.Type, error) {
 	if err != nil {
 		return nil, "", err
 	}
-	
+
 	// Determine extension
 	ext := getImageExtension(url, resp.Header.Get("Content-Type"))
-	
+
 	return imageBytes, ext, nil
 }
 
@@ -212,14 +205,14 @@ func getImageExtension(url string, contentType string) extension.Type {
 		// Maroto doesn't support GIF, treat as PNG
 		return extension.Png
 	}
-	
+
 	// Try URL extension
 	ext := strings.ToLower(filepath.Ext(url))
 	// Remove query parameters if present
 	if idx := strings.Index(ext, "?"); idx != -1 {
 		ext = ext[:idx]
 	}
-	
+
 	switch ext {
 	case ".jpg", ".jpeg":
 		return extension.Jpg
@@ -244,7 +237,7 @@ func isSVGFile(path string) bool {
 func (i Image) convertSVG(b *Builder, svgPath string) (string, error) {
 	// Get the converter manager
 	manager := b.GetConverterManager()
-	
+
 	// Prepare conversion options
 	options := i.ConverterOptions
 	if options == nil {
@@ -253,7 +246,7 @@ func (i Image) convertSVG(b *Builder, svgPath string) (string, error) {
 			DPI:    96,
 		}
 	}
-	
+
 	// Set dimensions if provided
 	if i.Width != nil {
 		options.Width = int(*i.Width * 3.78) // Convert mm to pixels at 96 DPI
@@ -261,7 +254,7 @@ func (i Image) convertSVG(b *Builder, svgPath string) (string, error) {
 	if i.Height != nil {
 		options.Height = int(*i.Height * 3.78) // Convert mm to pixels at 96 DPI
 	}
-	
+
 	// Create temporary output file
 	tempFile, err := os.CreateTemp("", "converted_*.png")
 	if err != nil {
@@ -269,12 +262,12 @@ func (i Image) convertSVG(b *Builder, svgPath string) (string, error) {
 	}
 	tempFile.Close()
 	outputPath := tempFile.Name()
-	
+
 	// Set preferred converter if specified
 	if i.PreferredConverter != "" {
 		manager.SetPreferred(i.PreferredConverter)
 	}
-	
+
 	// Convert with fallback
 	ctx := context.Background()
 	err = manager.ConvertWithFallback(ctx, svgPath, outputPath, options)
@@ -282,6 +275,6 @@ func (i Image) convertSVG(b *Builder, svgPath string) (string, error) {
 		os.Remove(outputPath)
 		return "", fmt.Errorf("SVG conversion failed: %w", err)
 	}
-	
+
 	return outputPath, nil
 }

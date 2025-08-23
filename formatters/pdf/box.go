@@ -92,22 +92,31 @@ type Box struct {
 
 // Draw implements the Widget interface
 func (b Box) Draw(builder *Builder) error {
-	// Calculate box dimensions in mm
-	height := float64(b.Rectangle.Height)
+	// Since Maroto doesn't have a rectangle component, we'll use borders and spacing
+	// to simulate a box appearance
 	
-	// If height is 0, use default value
+	height := float64(b.Rectangle.Height)
 	if height == 0 {
 		height = 20 // Default box height
 	}
-
-	// Add labels to the box
+	
+	// Add top spacing
+	builder.maroto.AddRows(row.New(2))
+	
+	// Draw labels if any
 	if len(b.Labels) > 0 {
 		for _, label := range b.Labels {
 			textProps := builder.style.ConvertToTextProps(label.Class)
 			textComponent := text.New(label.Content, *textProps)
 			
+			// Get horizontal alignment
+			var horizontalAlign HorizontalPosition = HorizontalCenter
+			if label.Position != nil {
+				horizontalAlign = label.Position.Horizontal
+			}
+			
 			// Create columns based on horizontal alignment
-			switch label.Position.Horizontal {
+			switch horizontalAlign {
 			case HorizontalLeft:
 				builder.maroto.AddRow(6,
 					col.New(4).Add(textComponent),
@@ -123,27 +132,13 @@ func (b Box) Draw(builder *Builder) error {
 					col.New(3)) // Empty space
 			}
 		}
+	} else {
+		// Add empty space for the box height
+		builder.maroto.AddRows(row.New(height))
 	}
 	
-	// Add an empty row to represent the box (since Maroto doesn't have direct box drawing)
-	// This will just add spacing
-	builder.maroto.AddRows(row.New(height))
-	
-	// Add lines if specified
-	for range b.Lines {
-		// Add a simple horizontal line representation
-		builder.maroto.AddRows(row.New(1))
-		
-		// Add line labels if any
-		for _, ln := range b.Lines {
-			for _, label := range ln.Labels {
-				textProps := builder.style.ConvertToTextProps(label.Class)
-				textComponent := text.New(label.Content, *textProps)
-				textCol := col.New(12).Add(textComponent)
-				builder.maroto.AddRow(6, textCol)
-			}
-		}
-	}
+	// Add bottom spacing
+	builder.maroto.AddRows(row.New(2))
 	
 	return nil
 }
