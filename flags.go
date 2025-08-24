@@ -1,6 +1,8 @@
 package clicky
 
 import (
+	"time"
+
 	"github.com/flanksource/commons/logger"
 	"github.com/spf13/pflag"
 )
@@ -8,12 +10,30 @@ import (
 type AllFlags struct {
 	TaskManagerOptions
 	FormatOptions
+	DependencyScannerOptions
 	logger.Flags
+}
+
+type DependencyScannerOptions struct {
+	CacheTTL time.Duration // Cache TTL for dependency scans
+	NoCache  bool          // Disable caching (equivalent to --cache-ttl=0)
+}
+
+// GetEffectiveTTL returns the effective cache TTL considering the no-cache flag
+func (d DependencyScannerOptions) GetEffectiveTTL() time.Duration {
+	if d.NoCache {
+		return 0 // --no-cache sets TTL to 0
+	}
+	return d.CacheTTL
 }
 
 var Flags AllFlags = AllFlags{
 	FormatOptions:      FormatOptions{},
 	TaskManagerOptions: *DefaultTaskManagerOptions(),
+	DependencyScannerOptions: DependencyScannerOptions{
+		CacheTTL: 24 * time.Hour, // Default 24 hour cache
+		NoCache:  false,
+	},
 	Flags: logger.Flags{
 		Level:        "info",
 		LevelCount:   0,
@@ -58,6 +78,11 @@ func BindAllFlags(flags *pflag.FlagSet) AllFlags {
 	flags.BoolVar(&Flags.FormatOptions.Pretty, "pretty", false, "Output in pretty format (default)")
 	flags.BoolVar(&Flags.FormatOptions.HTML, "html", false, "Output in HTML format")
 	flags.BoolVar(&Flags.FormatOptions.PDF, "pdf", false, "Output in PDF format")
+	
+	// Dependency Scanner flags
+	flags.DurationVar(&Flags.DependencyScannerOptions.CacheTTL, "cache-ttl", 24*time.Hour, "Cache TTL for dependency scans")
+	flags.BoolVar(&Flags.DependencyScannerOptions.NoCache, "no-cache", false, "Disable caching (equivalent to --cache-ttl=0)")
+	
 	return Flags
 }
 

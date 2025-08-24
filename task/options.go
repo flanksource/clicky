@@ -94,6 +94,13 @@ func WithPriority(priority int) Option {
 	}
 }
 
+// WithIdentity sets a unique identifier for task deduplication
+func WithIdentity(identity string) Option {
+	return func(t *Task) {
+		t.identity = identity
+	}
+}
+
 // ManagerOptions contains configuration options for TaskManager
 type ManagerOptions struct {
 	NoColor         bool          // Disable colored output

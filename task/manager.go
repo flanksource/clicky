@@ -47,6 +47,9 @@ type Manager struct {
 	workers       []*worker
 	shutdown      chan struct{}
 	workersActive atomic.Int32
+	
+	// Task identity tracking for deduplication
+	tasksByIdentity sync.Map // map[string]*Task
 }
 
 var Global *Manager
@@ -111,7 +114,15 @@ func NewManagerWithConcurrency(maxConcurrent int) *Manager {
 			}
 			return 0
 		},
-		Dedupe: false,
+		Equals: func(a, b *Task) bool {
+			// Two tasks are equal if they have the same non-empty identity
+			if a.identity != "" && b.identity != "" {
+				return a.identity == b.identity
+			}
+			// Otherwise, they're only equal if they're the same pointer
+			return a == b
+		},
+		Dedupe: true, // Enable deduplication based on Equals function
 		Metrics: collections.MetricsOpts[*Task]{
 			Disable: true,
 		},
@@ -305,9 +316,20 @@ func (tm *Manager) newTask(name string, opts ...Option) *Task {
 }
 
 func (tm *Manager) enqueue(task *Task) *Task {
+	// Check if a task with this identity already exists
+	if task.identity != "" {
+		if existing, ok := tm.tasksByIdentity.Load(task.identity); ok {
+			// Return the existing task instead of creating a duplicate
+			return existing.(*Task)
+		}
+		// Store this task for future deduplication
+		tm.tasksByIdentity.Store(task.identity, task)
+	}
+	
 	task.enqueuedAt = time.Now()
 	tm.tasks = append(tm.tasks, task)
 	tm.taskQueue.Enqueue(task)
+	
 	return task
 }
 

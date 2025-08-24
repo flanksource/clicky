@@ -119,7 +119,7 @@ type WaitResult struct {
 
 // LogEntry represents a log message from a task
 type LogEntry struct {
-	Level   string
+	Level   logger.LogLevel
 	Message string
 	Time    time.Time
 }
@@ -185,6 +185,7 @@ type Task struct {
 	completed      atomic.Bool   // Atomic flag for completion status
 	priority       int           // Priority for queue ordering (lower = higher priority)
 	enqueuedAt     time.Time     // Time when task was added to queue
+	identity       string        // Unique identifier for task deduplication
 
 	// Generic result storage
 	result     interface{}
@@ -220,6 +221,11 @@ func (t TypedTask[T]) GetResult() (T, error) {
 		return *new(T), fmt.Errorf("result type mismatch: expected %T, got %T", *new(T), result)
 	}
 	return typedResult, nil
+}
+
+// Identity returns the task's unique identifier for deduplication
+func (t *Task) Identity() string {
+	return t.identity
 }
 
 // Context returns the task's context for cancellation
@@ -259,7 +265,7 @@ func (t *Task) signalDone() {
 func (t *Task) Debugf(format string, args ...interface{}) {
 	message := fmt.Sprintf(format, args...)
 	t.logs = append(t.logs, LogEntry{
-		Level:   "debug",
+		Level:   logger.Debug,
 		Message: message,
 		Time:    time.Now(),
 	})
@@ -277,7 +283,7 @@ func (t *Task) PopDirty() bool {
 func (t *Task) Infof(format string, args ...interface{}) {
 	message := fmt.Sprintf(format, args...)
 	t.logs = append(t.logs, LogEntry{
-		Level:   "info",
+		Level:   logger.Info,
 		Message: message,
 		Time:    time.Now(),
 	})
@@ -289,7 +295,7 @@ func (t *Task) Errorf(format string, args ...interface{}) {
 
 	message := fmt.Sprintf(format, args...)
 	t.logs = append(t.logs, LogEntry{
-		Level:   "error",
+		Level:   logger.Error,
 		Message: message,
 		Time:    time.Now(),
 	})
@@ -300,7 +306,7 @@ func (t *Task) Errorf(format string, args ...interface{}) {
 func (t *Task) Warnf(format string, args ...interface{}) {
 	message := fmt.Sprintf(format, args...)
 	t.logs = append(t.logs, LogEntry{
-		Level:   "warning",
+		Level:   logger.Warn,
 		Message: message,
 		Time:    time.Now(),
 	})
@@ -348,7 +354,7 @@ func (t *Task) Failed() *Task {
 // FailedWithError marks the task as failed with an error
 func (t *Task) FailedWithError(err error) (*Task, error) {
 	t.logs = append(t.logs, LogEntry{
-		Level:   "error",
+		Level:   logger.Error,
 		Message: err.Error(),
 		Time:    time.Now(),
 	})
@@ -494,6 +500,17 @@ func (t *Task) GetResult() (interface{}, error) {
 	return t.result, t.err
 }
 
+// SetResult stores a result in the task
+func (t *Task) SetResult(result interface{}) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	
+	t.result = result
+	if result != nil {
+		t.resultType = reflect.TypeOf(result)
+	}
+}
+
 // GetTypedResult retrieves the result with type assertion
 func (t *Task) GetTypedResult(target interface{}) error {
 	t.mu.Lock()
@@ -585,17 +602,20 @@ func (t *Task) Pretty() api.Text {
 
 	level := t.ctx.Logger.GetLevel()
 	// Add logs as children if present
-	for _, log := range t.logs {
-		if log.Level == "info" && level <= logger.Info {
-			continue // Skip info logs unless verbose
+	logs := t.logs
+	if len(logs) > 5 {
+		logs = logs[len(logs)-5:]
+	}
+	for _, log := range logs {
+		if level <= log.Level {
+			continue
 		}
-
 		var logStyle string
 
 		switch log.Level {
-		case "error":
+		case logger.Error:
 			logStyle = "text-red-600"
-		case "warning":
+		case logger.Warn:
 			logStyle = "text-yellow-600"
 		default:
 			logStyle = "text-gray-600"

@@ -44,14 +44,14 @@ func (w SVGWidget) Draw(b *Builder) error {
 	// Generate SVG content
 	svgBytes, err := w.SVGBox.GenerateSVG()
 	if err != nil {
-		return w.drawError(b, fmt.Sprintf("Failed to generate SVG: %v", err))
+		return fmt.Errorf("failed to generate SVG: %w", err)
 	}
 	
 	// Convert SVG to PNG for embedding in PDF
 	// Since maroto doesn't support SVG directly, we need to convert to a raster format
 	pngBytes, err := w.convertSVGToPNG(svgBytes)
 	if err != nil {
-		return w.drawError(b, fmt.Sprintf("Failed to convert SVG to PNG: %v", err))
+		return fmt.Errorf("failed to convert SVG to PNG: %w", err)
 	}
 	
 	// Calculate height
@@ -207,30 +207,8 @@ func (w SVGWidget) extractViewBox(svgContent string) []float64 {
 	return values
 }
 
-// drawError draws an error message instead of the SVG
-func (w SVGWidget) drawError(b *Builder, errorMsg string) error {
-	// Calculate height
-	height := 50.0 // Default height for error message
-	if w.Height != nil {
-		height = *w.Height
-	}
-	
-	// Create error text
-	errorText := fmt.Sprintf("SVG Rendering Error: %s", errorMsg)
-	textProps := props.Text{
-		Size:  10,
-		Style: fontstyle.Normal,
-		Align: align.Center,
-		Color: &props.Color{Red: 200, Green: 50, Blue: 50},
-	}
-	
-	errorComponent := text.New(errorText, textProps)
-	errorCol := col.New(12).Add(errorComponent)
-	b.maroto.AddRow(height, errorCol)
-	
-	// Add a description of the SVG contents as fallback
-	return w.drawSVGDescription(b)
-}
+// Removed drawError method - errors should be returned, not drawn in the PDF
+// Errors are now properly returned to the caller for handling
 
 // drawSVGDescription draws a text description of the SVG contents
 func (w SVGWidget) drawSVGDescription(b *Builder) error {

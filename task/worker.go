@@ -9,6 +9,7 @@ import (
 	"time"
 
 	flanksourceContext "github.com/flanksource/commons/context"
+	"github.com/flanksource/commons/logger"
 )
 
 // worker represents a worker goroutine that processes tasks
@@ -50,6 +51,11 @@ func (w *worker) run() {
 
 			// Mark task as completed
 			task.completed.Store(true)
+			
+			// Clean up identity tracking
+			if task.identity != "" {
+				w.manager.tasksByIdentity.Delete(task.identity)
+			}
 
 			// Signal done channel for compatibility
 			task.signalDone()
@@ -148,7 +154,7 @@ func (w *worker) executeWithRetry(task *Task) {
 			if shouldRetry && task.retryCount < task.retryConfig.MaxRetries {
 				task.retryCount++
 				task.logs = append(task.logs, LogEntry{
-					Level:   "warning",
+					Level:   logger.Warn,
 					Message: fmt.Sprintf("Attempt %d failed, retrying: %v", task.retryCount, err),
 					Time:    time.Now(),
 				})

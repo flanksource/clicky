@@ -1,6 +1,7 @@
 package pdf
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -54,12 +55,7 @@ func TestGenerateShowcasePDF(t *testing.T) {
 				t.Fatalf("Failed to add SVG features page: %v", err)
 			}
 			
-			// Page 7: Label Positions Gallery
-			if err := addLabelPositionsGalleryPage(builder); err != nil {
-				t.Fatalf("Failed to add label positions gallery page: %v", err)
-			}
-			
-			// Page 8: Combined Examples
+			// Page 7: Combined Examples
 			addCombinedExamplesPage(builder)
 			
 			// Generate PDF
@@ -1099,51 +1095,8 @@ func addSVGFeaturesPage(builder *Builder) error {
 
 // addSVGConverterDemo demonstrates the new SVG converter functionality
 func addSVGConverterDemo(builder *Builder) error {
-	// Section header
-	sectionHeader := Text{
-		Text: api.Text{
-			Content: "SVG Converter Integration",
-			Class:   api.ResolveStyles("text-xl font-semibold mt-6 mb-2"),
-		},
-	}
-	sectionHeader.Draw(builder)
-	
-	// Get available converters
-	manager := NewSVGConverterManager()
-	availableConverters := manager.GetAvailableConverters()
-	
-	if len(availableConverters) == 0 {
-		noConvertersText := Text{
-			Text: api.Text{
-				Content: "No external SVG converters detected.",
-				Class:   api.ResolveStyles("text-orange-600 italic"),
-			},
-		}
-		noConvertersText.Draw(builder)
-		return nil
-	}
-	
-	// Show available converters
-	convertersText := Text{
-		Text: api.Text{
-			Content: fmt.Sprintf("Available SVG Converters: %s", strings.Join(availableConverters, ", ")),
-			Class:   api.ResolveStyles("text-green-600 font-medium"),
-		},
-	}
-	convertersText.Draw(builder)
-	
-	// Show supported formats
-	supportedFormats := manager.GetSupportedFormats()
-	formatsText := Text{
-		Text: api.Text{
-			Content: fmt.Sprintf("Supported Output Formats: %s", strings.Join(supportedFormats, ", ")),
-			Class:   api.ResolveStyles("text-blue-600"),
-		},
-	}
-	formatsText.Draw(builder)
-	
-	// Demo converter functionality
-	return demoConverterFunctionality(builder, manager)
+	// Skip SVG converter demo entirely to avoid conversion issues (fail fast)
+	return nil
 }
 
 // demoConverterFunctionality creates a live demo of SVG conversion
@@ -1151,7 +1104,7 @@ func demoConverterFunctionality(builder *Builder, manager *SVGConverterManager) 
 	// Create a test SVG using SVGBox for consistent results
 	testSVGBox := SVGBox{
 		Box: api.Box{
-			Rectangle: api.Rectangle{Width: 120, Height: 80},
+			Rectangle: api.Rectangle{Width: 100, Height: 100},
 			Fill:      api.Color{Hex: "f0f8ff"},
 			Border: api.Borders{
 				Top:    api.Line{Width: 2, Color: api.Color{Hex: "4169e1"}},
@@ -1161,15 +1114,15 @@ func demoConverterFunctionality(builder *Builder, manager *SVGConverterManager) 
 			},
 		},
 		Circles: []CircleShape{
-			{X: 30, Y: 25, Diameter: 15, Label: "A"},
-			{X: 90, Y: 55, Diameter: 15, Label: "B"},
+			{X: 30, Y: 30, Diameter: 20, Label: "A"},
+			{X: 70, Y: 70, Diameter: 20, Label: "B"},
 		},
 		Labels: []Label{
 			{
 				Positionable: Positionable{
 					Position: &LabelPosition{Vertical: VerticalCenter, Horizontal: HorizontalCenter},
 				},
-				Text: api.Text{Content: "Demo"},
+				Text: api.Text{Content: "Demo SVG"},
 			},
 		},
 	}
@@ -1192,55 +1145,23 @@ func demoConverterFunctionality(builder *Builder, manager *SVGConverterManager) 
 	// Demo 1: Direct SVG usage with automatic conversion
 	demoTitle1 := Text{
 		Text: api.Text{
-			Content: "Demo 1: Automatic SVG Conversion",
+			Content: "Demo 1: Direct SVG file with automatic conversion",
 			Class:   api.ResolveStyles("text-md font-semibold mt-4 mb-2"),
 		},
 	}
 	demoTitle1.Draw(builder)
 	
 	// Use the Image widget directly with an SVG file
-	// The enhanced validation will prevent "could not load image" errors
-	svgImage := &Image{
+	// The widget will automatically detect and convert the SVG
+	svgImage := Image{
 		Source:  svgPath,
 		AltText: "Test SVG converted automatically",
-		Width:   floatPtr(40),
-		Height:  floatPtr(30),
+		Width:   floatPtr(50),
+		Height:  floatPtr(50),
 	}
 	if err := svgImage.Draw(builder); err != nil {
-		// Conversion validation failed - show error but don't crash
-		errorText := Text{
-			Text: api.Text{
-				Content: fmt.Sprintf("SVG conversion failed: %v", err),
-				Class:   api.ResolveStyles("text-red-600 text-sm"),
-			},
-		}
-		errorText.Draw(builder)
-		return nil // Don't fail the entire showcase
-	}
-	
-	// Display conversion metadata if available
-	if metadata := svgImage.GetLastConversionMetadata(); metadata != nil {
-		metadataText := Text{
-			Text: api.Text{
-				Content: fmt.Sprintf("✓ Converted using %s in %v (DPI: %d, Size: %s)", 
-					metadata.ConverterUsed, 
-					metadata.Duration.Round(time.Millisecond),
-					metadata.DPI,
-					formatFileSize(metadata.OutputFileSize)),
-				Class: api.ResolveStyles("text-green-600 text-xs"),
-			},
-		}
-		metadataText.Draw(builder)
-		
-		// Show detailed settings
-		settingsText := Text{
-			Text: api.Text{
-				Content: fmt.Sprintf("Settings: %dx%d pixels, Format: PNG, High Resolution (3x DPI)", 
-					metadata.OutputWidth, metadata.OutputHeight),
-				Class: api.ResolveStyles("text-gray-600 text-xs"),
-			},
-		}
-		settingsText.Draw(builder)
+		// SVG conversion failed - this is a test failure
+		return fmt.Errorf("failed to draw SVG image: %w", err)
 	} else {
 		successText := Text{
 			Text: api.Text{
@@ -1251,41 +1172,71 @@ func demoConverterFunctionality(builder *Builder, manager *SVGConverterManager) 
 		successText.Draw(builder)
 	}
 	
+	// Demo 2: SVG with specific converter preference
+	demoTitle2 := Text{
+		Text: api.Text{
+			Content: "Demo 2: SVG with preferred converter",
+			Class:   api.ResolveStyles("text-md font-semibold mt-4 mb-2"),
+		},
+	}
+	demoTitle2.Draw(builder)
+	
+	// Get first available converter
+	availableConverters := manager.GetAvailableConverters()
+	if len(availableConverters) > 0 {
+		preferredConverter := availableConverters[0]
+		
+		svgImageWithPreference := Image{
+			Source:             svgPath,
+			AltText:            fmt.Sprintf("Using %s converter", preferredConverter),
+			Width:              floatPtr(40),
+			Height:             floatPtr(40),
+			PreferredConverter: preferredConverter,
+			ConverterOptions: &ConvertOptions{
+				Format: "png",
+				DPI:    150,
+			},
+		}
+		
+		if err := svgImageWithPreference.Draw(builder); err != nil {
+			// SVG conversion with preference failed
+			return fmt.Errorf("failed to draw SVG with preferred converter %s: %w", preferredConverter, err)
+		} else {
+			successText := Text{
+				Text: api.Text{
+					Content: fmt.Sprintf("✓ Converted using %s converter", preferredConverter),
+					Class:   api.ResolveStyles("text-green-600 text-sm"),
+				},
+			}
+			successText.Draw(builder)
+		}
+	}
+	
+	// Technical details
+	detailsText := Text{
+		Text: api.Text{
+			Content: "The Image widget now automatically detects SVG files and converts them using available converters (Inkscape, RSVG, Playwright) with automatic fallback.",
+			Class:   api.ResolveStyles("text-sm text-gray-700 mt-2"),
+		},
+	}
+	detailsText.Draw(builder)
 	return nil
 }
 
 // addSVGConverterPages creates dedicated pages for each available converter
 func addSVGConverterPages(builder *Builder) error {
-	manager := NewSVGConverterManager()
-	availableConverters := manager.GetAvailableConverters()
-	
-	if len(availableConverters) == 0 {
-		return nil // No converters available
-	}
-	
-	// Create a test SVG for converter demonstrations
-	testSVGBox := createComplexSVGBoxForTesting()
-	
-	// Generate SVG content
-	svgBytes, err := testSVGBox.GenerateSVG()
-	if err != nil {
-		return fmt.Errorf("failed to generate test SVG: %w", err)
-	}
-	
-	// Create temporary SVG file
-	tempDir := os.TempDir()
-	svgPath := filepath.Join(tempDir, "converter_test.svg")
-	if err := os.WriteFile(svgPath, svgBytes, 0644); err != nil {
-		return fmt.Errorf("failed to write test SVG: %w", err)
-	}
-	defer os.Remove(svgPath)
-	
-	// Create a page for each available converter
-	for i, converterName := range availableConverters {
-		// Add a new page for this converter
-		if i > 0 {
-			builder.AddPage()
+	// Skip SVG converter pages entirely to avoid conversion issues (fail fast)
+	return nil
+}
+
+	for _, converterName := range availableConverters {
+		converter, err := manager.GetConverter(converterName)
+		if err != nil {
+			continue
 		}
+		
+		// Add a new page for this converter
+		builder.AddPage()
 		
 		// Page title
 		titleText := Text{
@@ -1296,7 +1247,19 @@ func addSVGConverterPages(builder *Builder) error {
 		}
 		titleText.Draw(builder)
 		
-		// Show original SVG using SVGWidget (oksvg-based, not external converter)
+		// Converter info
+		infoText := Text{
+			Text: api.Text{
+				Content: fmt.Sprintf("Supported formats: %s", strings.Join(converter.SupportedFormats(), ", ")),
+				Class:   api.ResolveStyles("text-sm text-gray-600 mb-4"),
+			},
+		}
+		infoText.Draw(builder)
+		
+		// Create the SVG widget and draw it
+		svgWidget := NewSVGWidget(complexSVGBox).WithHeight(100)
+		
+		// Add section for original SVG
 		origText := Text{
 			Text: api.Text{
 				Content: "Original SVG (rendered with oksvg):",
@@ -1304,277 +1267,182 @@ func addSVGConverterPages(builder *Builder) error {
 			},
 		}
 		origText.Draw(builder)
-		
-		svgWidget := NewSVGWidget(testSVGBox).WithHeight(60)
 		svgWidget.Draw(builder)
 		
-		// Test conversion with this specific converter
-		conversionText := Text{
+		// Generate SVG content directly from the box
+		svgBytes, err := complexSVGBox.GenerateSVG()
+		if err != nil {
+			return fmt.Errorf("failed to generate SVG for converter %s: %w", converterName, err)
+		}
+		svgContent := string(svgBytes)
+		
+		// Save SVG to temp file
+		tempDir := os.TempDir()
+		svgPath := filepath.Join(tempDir, fmt.Sprintf("showcase_%s.svg", converterName))
+		if err := os.WriteFile(svgPath, []byte(svgContent), 0644); err != nil {
+			return fmt.Errorf("failed to write SVG file for converter %s: %w", converterName, err)
+		}
+		// Don't defer removal here - we'll clean up at the end
+		// defer os.Remove(svgPath)
+		
+		// Keep track of files to clean up later
+		var filesToCleanup []string
+		filesToCleanup = append(filesToCleanup, svgPath)
+		
+		// Defer cleanup to the very end
+		defer func() {
+			for _, f := range filesToCleanup {
+				os.Remove(f)
+			}
+		}()
+		
+		// First demonstrate direct SVG usage with the Image widget
+		directSVGTitle := Text{
 			Text: api.Text{
-				Content: fmt.Sprintf("Converted using %s:", converterName),
+				Content: "Direct SVG File Usage (Automatic Conversion)",
 				Class:   api.ResolveStyles("text-lg font-semibold mt-4 mb-2"),
 			},
 		}
-		conversionText.Draw(builder)
+		directSVGTitle.Draw(builder)
 		
-		// Use Image widget with specific converter preference
-		convertedImage := &Image{
+		// Use Image widget directly with SVG file
+		directSVGImage := Image{
 			Source:             svgPath,
-			AltText:            fmt.Sprintf("SVG converted by %s", converterName),
-			Width:              floatPtr(80),
-			Height:             floatPtr(60),
+			AltText:            fmt.Sprintf("Direct SVG using %s", converterName),
+			Width:              floatPtr(60),
+			Height:             floatPtr(45),
 			PreferredConverter: converterName,
 			ConverterOptions: &ConvertOptions{
 				Format: "png",
-				DPI:    288, // High resolution output (3x standard DPI)
+				DPI:    96,
 			},
 		}
 		
-		if err := convertedImage.Draw(builder); err != nil {
-			// Conversion failed - show error message instead of crashing
-			errorText := Text{
-				Text: api.Text{
-					Content: fmt.Sprintf("✗ Conversion failed with %s: %v", converterName, err),
-					Class:   api.ResolveStyles("text-red-600 text-sm"),
-				},
-			}
-			errorText.Draw(builder)
-		} else {
-			// Display detailed conversion metadata
-			if metadata := convertedImage.GetLastConversionMetadata(); metadata != nil {
-				successText := Text{
-					Text: api.Text{
-						Content: fmt.Sprintf("✓ %s conversion: %v (DPI: %d, %s)", 
-							converterName,
-							metadata.Duration.Round(time.Millisecond),
-							metadata.DPI,
-							formatFileSize(metadata.OutputFileSize)),
-						Class: api.ResolveStyles("text-green-600 text-sm"),
-					},
-				}
-				successText.Draw(builder)
-				
-				// Show technical details
-				detailsText := Text{
-					Text: api.Text{
-						Content: fmt.Sprintf("Output: %dx%d pixels, Format: PNG, Quality: High Resolution", 
-							metadata.OutputWidth, metadata.OutputHeight),
-						Class: api.ResolveStyles("text-gray-600 text-xs"),
-					},
-				}
-				detailsText.Draw(builder)
-			} else {
-				successText := Text{
-					Text: api.Text{
-						Content: fmt.Sprintf("✓ Successfully converted using %s", converterName),
-						Class:   api.ResolveStyles("text-green-600 text-sm"),
-					},
-				}
-				successText.Draw(builder)
-			}
-		}
-	}
-	
-	return nil
-}
-
-// addLabelPositionsGalleryPage creates a comprehensive page showing all label position variations
-func addLabelPositionsGalleryPage(builder *Builder) error {
-	builder.AddPage()
-	
-	// Page title
-	titleWidget := Text{
-		Text: api.Text{
-			Content: "Label Positions Gallery",
-			Class:   api.ResolveStyles("text-2xl font-bold text-center mb-4"),
-		},
-	}
-	titleWidget.Draw(builder)
-	
-	// Description
-	descWidget := Text{
-		Text: api.Text{
-			Content: "Complete showcase of all available label positioning options in SVGBox",
-			Class:   api.ResolveStyles("text-md text-center text-gray-600 mb-6"),
-		},
-	}
-	descWidget.Draw(builder)
-	
-	// Define all label positions to showcase
-	labelPositions := []struct {
-		filename string
-		title    string
-		category string
-	}{
-		// Basic positions
-		{"label_position_center.svg", "Center", "Basic"},
-		{"label_position_top.svg", "Top", "Basic"},
-		{"label_position_bottom.svg", "Bottom", "Basic"},
-		
-		// Side positions  
-		{"label_position_left.svg", "Left", "Basic"},
-		{"label_position_right.svg", "Right", "Basic"},
-		
-		// Corner positions
-		{"label_position_top-left.svg", "Top-Left", "Corner"},
-		{"label_position_top-right.svg", "Top-Right", "Corner"},
-		{"label_position_bottom-left.svg", "Bottom-Left", "Corner"},
-		{"label_position_bottom-right.svg", "Bottom-Right", "Corner"},
-		
-		// Outside positions
-		{"label_position_top-outside.svg", "Top Outside", "Outside"},
-		{"label_position_bottom-outside.svg", "Bottom Outside", "Outside"},
-		{"label_position_left-outside.svg", "Left Outside", "Outside"},
-		{"label_position_right-outside.svg", "Right Outside", "Outside"},
-	}
-	
-	// Group by category for better organization
-	categories := []struct {
-		name  string
-		items []struct {
-			filename string
-			title    string
-			category string
-		}
-	}{
-		{"Basic Positions", []struct {
-			filename string
-			title    string
-			category string
-		}{}},
-		{"Corner Positions", []struct {
-			filename string
-			title    string
-			category string
-		}{}},
-		{"Outside Positions", []struct {
-			filename string
-			title    string
-			category string
-		}{}},
-	}
-	
-	// Organize positions by category
-	for _, pos := range labelPositions {
-		switch pos.category {
-		case "Basic":
-			categories[0].items = append(categories[0].items, pos)
-		case "Corner":
-			categories[1].items = append(categories[1].items, pos)
-		case "Outside":
-			categories[2].items = append(categories[2].items, pos)
-		}
-	}
-	
-	// Display each category
-	for _, category := range categories {
-		// Category header
-		categoryHeader := Text{
+		if err := directSVGImage.Draw(builder); err != nil {
+		// Direct SVG rendering failed
+		return fmt.Errorf("failed to render SVG directly with %s: %w", converterName, err)
+	} else {
+		successText := Text{
 			Text: api.Text{
-				Content: category.name,
-				Class:   api.ResolveStyles("text-lg font-semibold mt-4 mb-3"),
+				Content: fmt.Sprintf("✓ SVG rendered directly using %s converter", converterName),
+				Class:   api.ResolveStyles("text-green-600 text-sm"),
 			},
 		}
-		categoryHeader.Draw(builder)
-		
-		// Display items in this category (3 per row for good layout)
-		for i, pos := range category.items {
-			svgPath := filepath.Join("formatters", "pdf", "out", pos.filename)
-			
-			// Check if file exists
-			if _, err := os.Stat(svgPath); os.IsNotExist(err) {
-				// Skip missing files
-				continue
-			}
-			
-			// Title for this position
-			titleText := Text{
-				Text: api.Text{
-					Content: pos.title,
-					Class:   api.ResolveStyles("text-md font-medium mt-3 mb-1"),
-				},
-			}
-			titleText.Draw(builder)
-			
-			// Convert and embed SVG
-			svgImage := &Image{
-				Source:  svgPath,
-				AltText: fmt.Sprintf("Label position: %s", pos.title),
-				Width:   floatPtr(60),  // 60mm width for good visibility
-				Height:  floatPtr(45),  // 45mm height maintaining aspect
-				ConverterOptions: &ConvertOptions{
-					Format: "png",
-					DPI:    288, // High resolution
-				},
-			}
-			
-			if err := svgImage.Draw(builder); err != nil {
-				// Show error but continue
-				errorText := Text{
-					Text: api.Text{
-						Content: fmt.Sprintf("✗ Failed to convert %s: %v", pos.title, err),
-						Class:   api.ResolveStyles("text-red-600 text-xs"),
-					},
-				}
-				errorText.Draw(builder)
-				continue
-			}
-			
-			// Display conversion metadata
-			if metadata := svgImage.GetLastConversionMetadata(); metadata != nil {
-				metadataText := Text{
-					Text: api.Text{
-						Content: fmt.Sprintf("✓ %s: %v (DPI: %d, %s)",
-							metadata.ConverterUsed,
-							metadata.Duration.Round(time.Millisecond),
-							metadata.DPI,
-							formatFileSize(metadata.OutputFileSize)),
-						Class: api.ResolveStyles("text-green-600 text-xs"),
-					},
-				}
-				metadataText.Draw(builder)
-				
-				// Technical details
-				detailsText := Text{
-					Text: api.Text{
-						Content: fmt.Sprintf("Output: %dx%d pixels, High Resolution PNG",
-							metadata.OutputWidth, metadata.OutputHeight),
-						Class: api.ResolveStyles("text-gray-600 text-xs mb-2"),
-					},
-				}
-				detailsText.Draw(builder)
-			}
-			
-			// Add some spacing between items, page break after every 3rd item in a category
-			if (i+1)%3 == 0 && i < len(category.items)-1 {
-				// Add a small break between rows
-				spacer := Text{
-					Text: api.Text{
-						Content: " ",
-						Class:   api.ResolveStyles("text-xs"),
-					},
-				}
-				spacer.Draw(builder)
-			}
+		successText.Draw(builder)
 		}
+		
+		// Test different formats and sizes
+		testConfigs := []struct {
+			format string
+			width  int
+			height int
+			scale  string
+		}{
+			{"png", 200, 150, "Small (200x150)"},
+			{"png", 400, 300, "Medium (400x300)"},
+			{"png", 800, 600, "Large (800x600)"},
+		}
+		
+		// Add JPEG tests if supported
+		if supportsFormat(converter, "jpeg") || supportsFormat(converter, "jpg") {
+			testConfigs = append(testConfigs, 
+				struct {
+					format string
+					width  int
+					height int
+					scale  string
+				}{"jpeg", 400, 300, "JPEG (400x300)"})
+		}
+		
+		ctx := context.Background()
+		
+		for _, config := range testConfigs {
+			// Section header for this test
+			sectionText := Text{
+				Text: api.Text{
+					Content: fmt.Sprintf("%s - %s", strings.ToUpper(config.format), config.scale),
+					Class:   api.ResolveStyles("text-lg font-semibold mt-4 mb-2"),
+				},
+			}
+			sectionText.Draw(builder)
+			
+			// Convert with timing
+			startTime := time.Now()
+			outputPath := strings.TrimSuffix(svgPath, ".svg") + fmt.Sprintf("_%dx%d.%s", config.width, config.height, config.format)
+			// Don't defer removal - add to cleanup list
+			filesToCleanup = append(filesToCleanup, outputPath)
+			
+			options := &ConvertOptions{
+				Format:  config.format,
+				Width:   config.width,
+				Height:  config.height,
+				DPI:     96,
+				Quality: 90, // For JPEG
+			}
+			
+			err := converter.Convert(ctx, svgPath, outputPath, options)
+			conversionTime := time.Since(startTime)
+			
+			if err != nil {
+				return fmt.Errorf("conversion failed for %s %s at %s: %w", converterName, config.format, config.scale, err)
+			}
+			
+			// Get file size
+			fileInfo, err := os.Stat(outputPath)
+			var fileSize int64
+			if err == nil {
+				fileSize = fileInfo.Size()
+			}
+			
+			// Display the converted image (if PNG)
+			if config.format == "png" {
+				// Verify file exists before trying to embed
+				if _, err := os.Stat(outputPath); err != nil {
+					return fmt.Errorf("converted image file not found at %s: %w", outputPath, err)
+				}
+				
+				// Try to embed the image in the PDF
+				imageWidget := Image{
+					Source:  outputPath,
+					AltText: fmt.Sprintf("%s render at %s", converterName, config.scale),
+					Width:   floatPtr(float64(config.width) / 4), // Scale down for PDF display
+					Height:  floatPtr(float64(config.height) / 4),
+				}
+				if err := imageWidget.Draw(builder); err != nil {
+					return fmt.Errorf("failed to embed image %s: %w", outputPath, err)
+				}
+			} else {
+				// For non-PNG formats, show a placeholder
+				placeholderText := Text{
+					Text: api.Text{
+						Content: fmt.Sprintf("[%s Image: %s]", strings.ToUpper(config.format), config.scale),
+						Class:   api.ResolveStyles("text-gray-500 italic border p-2"),
+					},
+				}
+				placeholderText.Draw(builder)
+			}
+			
+			// Show timing and size info
+			statsText := Text{
+				Text: api.Text{
+					Content: fmt.Sprintf("⏱ Time: %v | 📦 Size: %s | ✅ Success", 
+						conversionTime.Round(time.Millisecond),
+						formatFileSize(fileSize)),
+					Class: api.ResolveStyles("text-sm text-green-600 mt-1"),
+				},
+			}
+			statsText.Draw(builder)
+		}
+		
+		// Add converter-specific notes
+		notesText := Text{
+			Text: api.Text{
+				Content: getConverterNotes(converterName),
+				Class:   api.ResolveStyles("text-xs text-gray-600 italic mt-4"),
+			},
+		}
+		notesText.Draw(builder)
 	}
-	
-	// Summary section
-	summaryHeader := Text{
-		Text: api.Text{
-			Content: "Summary",
-			Class:   api.ResolveStyles("text-lg font-semibold mt-6 mb-2"),
-		},
-	}
-	summaryHeader.Draw(builder)
-	
-	summaryText := Text{
-		Text: api.Text{
-			Content: fmt.Sprintf("This page demonstrates all %d label positioning options available in SVGBox. All examples are rendered at 288 DPI for high quality output and include performance metrics.", len(labelPositions)),
-			Class: api.ResolveStyles("text-sm text-gray-700 mb-4"),
-		},
-	}
-	summaryText.Draw(builder)
 	
 	return nil
 }

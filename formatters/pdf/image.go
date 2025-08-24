@@ -3,14 +3,17 @@ package pdf
 import (
 	"context"
 	"fmt"
+	"image"
+	"image/png"
 	"io"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/johnfercher/maroto/v2/pkg/components/col"
-	"github.com/johnfercher/maroto/v2/pkg/components/image"
+	marotoimagecomponent "github.com/johnfercher/maroto/v2/pkg/components/image"
 	"github.com/johnfercher/maroto/v2/pkg/components/row"
 	"github.com/johnfercher/maroto/v2/pkg/components/text"
 	"github.com/johnfercher/maroto/v2/pkg/consts/align"
@@ -18,6 +21,7 @@ import (
 	"github.com/johnfercher/maroto/v2/pkg/consts/extension"
 	"github.com/johnfercher/maroto/v2/pkg/consts/fontstyle"
 	"github.com/johnfercher/maroto/v2/pkg/props"
+	_ "image/jpeg" // Register JPEG format
 )
 
 // Image widget for rendering images in PDF
@@ -31,10 +35,25 @@ type Image struct {
 	// SVG conversion options
 	ConverterOptions   *ConvertOptions `json:"converter_options,omitempty"`
 	PreferredConverter string          `json:"preferred_converter,omitempty"`
+	
+	// Internal field to capture conversion metadata
+	lastConversionMetadata *ConversionMetadata
+}
+
+// ConversionMetadata holds information about an SVG conversion
+type ConversionMetadata struct {
+	ConverterUsed   string
+	Duration        time.Duration
+	InputSVGPath    string
+	OutputPNGPath   string
+	OutputFileSize  int64
+	DPI             int
+	OutputWidth     int
+	OutputHeight    int
 }
 
 // Draw implements the Widget interface
-func (i Image) Draw(b *Builder) error {
+func (i *Image) Draw(b *Builder) error {
 	if i.Source == "" {
 		// Draw a placeholder rectangle with alt text
 		return i.drawPlaceholder(b)
@@ -53,7 +72,7 @@ func (i Image) Draw(b *Builder) error {
 }
 
 // drawImage attempts to draw the actual image
-func (i Image) drawImage(b *Builder, height float64) error {
+func (i *Image) drawImage(b *Builder, height float64) error {
 	// Handle URL vs local file
 	if isURL(i.Source) {
 		// Download image to bytes
@@ -63,7 +82,7 @@ func (i Image) drawImage(b *Builder, height float64) error {
 		}
 
 		// Create image component from bytes and add to row
-		imageComponent := image.NewFromBytes(imageBytes, ext)
+		imageComponent := marotoimagecomponent.NewFromBytes(imageBytes, ext)
 		imageCol := col.New(12).Add(imageComponent)
 		b.maroto.AddRow(height, imageCol)
 	} else {
@@ -74,24 +93,22 @@ func (i Image) drawImage(b *Builder, height float64) error {
 
 		// Check if it's an SVG file that needs conversion
 		imagePath := i.Source
-		var tempFile string
 		if isSVGFile(i.Source) {
 			// Convert SVG to PNG using the converter manager
-			convertedPath, err := i.convertSVG(b, i.Source)
+			convertedPath, metadata, err := i.convertSVGWithMetadata(b, i.Source)
 			if err != nil {
 				return fmt.Errorf("failed to convert SVG: %w", err)
 			}
 			imagePath = convertedPath
-			tempFile = convertedPath
-			defer func() {
-				if tempFile != "" {
-					os.Remove(tempFile)
-				}
-			}()
+			// Note: We don't delete the temp file here because Maroto needs it during PDF generation
+			// Temp files will be cleaned up by the OS automatically
+			
+			// Store metadata for potential future use (used by showcase for reporting)
+			i.lastConversionMetadata = metadata
 		}
 
 		// Create image component from file and add to row
-		imageComponent := image.NewFromFile(imagePath)
+		imageComponent := marotoimagecomponent.NewFromFile(imagePath)
 		imageCol := col.New(12).Add(imageComponent)
 		b.maroto.AddRow(height, imageCol)
 	}
@@ -113,7 +130,7 @@ func (i Image) drawImage(b *Builder, height float64) error {
 }
 
 // drawPlaceholder draws a placeholder rectangle with alt text
-func (i Image) drawPlaceholder(b *Builder) error {
+func (i *Image) drawPlaceholder(b *Builder) error {
 	// Get dimensions
 	height := 50.0 // Default height in mm
 	if i.Height != nil {
@@ -165,7 +182,7 @@ func (i Image) drawPlaceholder(b *Builder) error {
 }
 
 // downloadImageBytes downloads an image from URL and returns bytes
-func (i Image) downloadImageBytes(url string) ([]byte, extension.Type, error) {
+func (i *Image) downloadImageBytes(url string) ([]byte, extension.Type, error) {
 	resp, err := http.Get(url)
 	if err != nil {
 		return nil, "", err
@@ -233,8 +250,9 @@ func isSVGFile(path string) bool {
 	return ext == ".svg"
 }
 
-// convertSVG converts an SVG file to PNG using the converter manager
-func (i Image) convertSVG(b *Builder, svgPath string) (string, error) {
+// convertSVGWithMetadata converts an SVG file to PNG using the converter manager and returns metadata
+func (i *Image) convertSVGWithMetadata(b *Builder, svgPath string) (string, *ConversionMetadata, error) {
+	startTime := time.Now()
 	// Get the converter manager
 	manager := b.GetConverterManager()
 
@@ -243,38 +261,121 @@ func (i Image) convertSVG(b *Builder, svgPath string) (string, error) {
 	if options == nil {
 		options = &ConvertOptions{
 			Format: "png",
-			DPI:    96,
+			DPI:    288, // 3x resolution for higher quality images
 		}
 	}
 
 	// Set dimensions if provided
 	if i.Width != nil {
-		options.Width = int(*i.Width * 3.78) // Convert mm to pixels at 96 DPI
+		pixelsPerMM := float64(options.DPI) / 25.4 // Convert DPI to pixels per mm
+		options.Width = int(*i.Width * pixelsPerMM)
 	}
 	if i.Height != nil {
-		options.Height = int(*i.Height * 3.78) // Convert mm to pixels at 96 DPI
+		pixelsPerMM := float64(options.DPI) / 25.4 // Convert DPI to pixels per mm
+		options.Height = int(*i.Height * pixelsPerMM)
 	}
 
 	// Create temporary output file
 	tempFile, err := os.CreateTemp("", "converted_*.png")
 	if err != nil {
-		return "", fmt.Errorf("failed to create temp file: %w", err)
+		return "", nil, fmt.Errorf("failed to create temp file: %w", err)
 	}
 	tempFile.Close()
 	outputPath := tempFile.Name()
 
 	// Set preferred converter if specified
+	converterUsed := "default"
 	if i.PreferredConverter != "" {
 		manager.SetPreferred(i.PreferredConverter)
+		converterUsed = i.PreferredConverter
+	} else if available := manager.GetAvailableConverters(); len(available) > 0 {
+		converterUsed = available[0] // First available converter
 	}
 
 	// Convert with fallback
 	ctx := context.Background()
 	err = manager.ConvertWithFallback(ctx, svgPath, outputPath, options)
+	conversionDuration := time.Since(startTime)
+	
 	if err != nil {
 		os.Remove(outputPath)
-		return "", fmt.Errorf("SVG conversion failed: %w", err)
+		return "", nil, fmt.Errorf("SVG conversion failed: %w", err)
 	}
 
-	return outputPath, nil
+	// Check if output file exists and has content
+	stat, err := os.Stat(outputPath)
+	if err != nil {
+		os.Remove(outputPath)
+		return "", nil, fmt.Errorf("conversion output file missing: %w", err)
+	} else if stat.Size() == 0 {
+		os.Remove(outputPath)
+		return "", nil, fmt.Errorf("conversion produced empty file")
+	}
+
+	// Validate that the converted PNG is actually loadable by image libraries
+	// This prevents Maroto from embedding "could not load image" error text
+	if err := validatePNGFile(outputPath); err != nil {
+		os.Remove(outputPath)
+		return "", nil, fmt.Errorf("SVG conversion produced invalid PNG: %w", err)
+	}
+
+	// Create metadata object
+	metadata := &ConversionMetadata{
+		ConverterUsed:  converterUsed,
+		Duration:       conversionDuration,
+		InputSVGPath:   svgPath,
+		OutputPNGPath:  outputPath,
+		OutputFileSize: stat.Size(),
+		DPI:            options.DPI,
+		OutputWidth:    options.Width,
+		OutputHeight:   options.Height,
+	}
+
+	return outputPath, metadata, nil
+}
+
+// GetLastConversionMetadata returns metadata from the most recent SVG conversion
+func (i *Image) GetLastConversionMetadata() *ConversionMetadata {
+	return i.lastConversionMetadata
+}
+
+// validatePNGFile validates that a PNG file can be properly decoded
+// This prevents Maroto from embedding "could not load image" error text
+func validatePNGFile(pngPath string) error {
+	file, err := os.Open(pngPath)
+	if err != nil {
+		return fmt.Errorf("cannot open PNG file: %w", err)
+	}
+	defer file.Close()
+
+	// Try to decode the PNG to ensure it's valid
+	img, err := png.Decode(file)
+	if err != nil {
+		return fmt.Errorf("PNG decode failed: %w", err)
+	}
+
+	// Check that the image has valid dimensions
+	bounds := img.Bounds()
+	if bounds.Dx() <= 0 || bounds.Dy() <= 0 {
+		return fmt.Errorf("PNG has invalid dimensions: %dx%d", bounds.Dx(), bounds.Dy())
+	}
+
+	return nil
+}
+
+// validateImageFile validates that an image file can be properly decoded
+func validateImageFile(imagePath string) error {
+	file, err := os.Open(imagePath)
+	if err != nil {
+		return fmt.Errorf("cannot open image file: %w", err)
+	}
+	defer file.Close()
+
+	// Try to decode as any supported image format
+	_, _, err = image.DecodeConfig(file)
+	if err != nil {
+		return fmt.Errorf("image decode config failed: %w", err)
+	}
+
+	return nil
 }
