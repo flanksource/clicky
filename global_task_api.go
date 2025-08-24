@@ -36,6 +36,8 @@ func UseGlobalTaskManager(opts task.ManagerOptions) {
 	task.Global = globalTaskManager
 	globalTaskManager.SetMaxConcurrent(opts.MaxConcurrent)
 	globalTaskManager.SetGracefulTimeout(opts.GracefulTimeout)
+	globalTaskManager.SetNoProgress(opts.NoProgress)
+	globalTaskManager.SetNoColor(opts.NoColor)
 	globalTaskManager.SetRetryConfig(RetryConfig{
 		MaxRetries:      opts.MaxRetries,
 		BaseDelay:       opts.RetryDelay,

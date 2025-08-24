@@ -33,7 +33,9 @@ func (tm *Manager) render() {
 
 			// Only use ANSI escape codes if we're in interactive mode and colors are enabled
 			if isInteractive {
-				fmt.Fprint(os.Stderr, "\033[2J")
+				// Move cursor to home position and clear from cursor down
+				// This is less aggressive than clearing the entire screen
+				fmt.Fprint(os.Stderr, "\033[H\033[J")
 				fmt.Fprint(os.Stderr, tm.Pretty().ANSI())
 			} else if !isInteractive || tm.noColor {
 
