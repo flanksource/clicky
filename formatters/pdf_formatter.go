@@ -2,17 +2,13 @@ package formatters
 
 import (
 	"fmt"
-	"io"
 	"strings"
-	"time"
 
 	"github.com/flanksource/clicky/api"
-	"github.com/go-rod/rod"
-	"github.com/go-rod/rod/lib/launcher"
-	"github.com/go-rod/rod/lib/proto"
+	"github.com/playwright-community/playwright-go"
 )
 
-// PDFFormatter handles PDF formatting using HTML-to-PDF conversion via Rod/Chromium
+// PDFFormatter handles PDF formatting using HTML-to-PDF conversion via Playwright/Chromium
 type PDFFormatter struct{}
 
 // NewPDFFormatter creates a new PDF formatter
@@ -32,10 +28,10 @@ func (f *PDFFormatter) Format(data *api.PrettyData) (string, error) {
 	// Optimize HTML for PDF output
 	pdfOptimizedHTML := f.optimizeHTMLForPDF(htmlContent)
 
-	// Convert HTML to PDF using Rod
+	// Convert HTML to PDF using Playwright
 	pdfBytes, err := f.convertHTMLToPDFWithRod(pdfOptimizedHTML)
 	if err != nil {
-		return "", fmt.Errorf("failed to convert HTML to PDF with Rod: %w", err)
+		return "", fmt.Errorf("failed to convert HTML to PDF with Playwright: %w", err)
 	}
 
 	return string(pdfBytes), nil
@@ -71,71 +67,73 @@ func (f *PDFFormatter) optimizeHTMLForPDF(htmlContent string) string {
 	return htmlContent
 }
 
-// convertHTMLToPDFWithRod converts HTML content to PDF using Rod/Chromium
+// convertHTMLToPDFWithRod converts HTML content to PDF using Playwright/Chromium
 func (f *PDFFormatter) convertHTMLToPDFWithRod(htmlContent string) ([]byte, error) {
-	// Create a launcher with headless mode
-	l := launcher.New().
-		Headless(true).
-		Set("disable-gpu").
-		Set("no-sandbox").
-		Set("disable-dev-shm-usage")
+	// Install playwright if needed
+	err := playwright.Install()
+	if err != nil {
+		return nil, fmt.Errorf("failed to install playwright: %w", err)
+	}
 
-	// Launch the browser
-	url, err := l.Launch()
+	// Launch playwright
+	pw, err := playwright.Run()
+	if err != nil {
+		return nil, fmt.Errorf("failed to run playwright: %w", err)
+	}
+	defer pw.Stop()
+
+	// Launch browser with headless mode
+	browser, err := pw.Chromium.Launch(playwright.BrowserTypeLaunchOptions{
+		Headless: playwright.Bool(true),
+		Args: []string{
+			"--disable-gpu",
+			"--no-sandbox",
+			"--disable-dev-shm-usage",
+		},
+	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to launch browser: %w", err)
 	}
-
-	// Create a new browser instance
-	browser := rod.New().ControlURL(url)
-	err = browser.Connect()
-	if err != nil {
-		return nil, fmt.Errorf("failed to connect to browser: %w", err)
-	}
-	defer browser.MustClose()
+	defer browser.Close()
 
 	// Create a new page
-	page := browser.MustPage()
-	defer page.MustClose()
+	page, err := browser.NewPage()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create new page: %w", err)
+	}
+	defer page.Close()
 
 	// Set the HTML content
-	err = page.SetDocumentContent(htmlContent)
+	err = page.SetContent(htmlContent)
 	if err != nil {
 		return nil, fmt.Errorf("failed to set HTML content: %w", err)
 	}
 
 	// Wait for the page to be fully loaded
-	err = page.WaitStable(2 * time.Second)
+	err = page.WaitForLoadState(playwright.PageWaitForLoadStateOptions{
+		State: playwright.LoadStateNetworkidle,
+	})
 	if err != nil {
-		return nil, fmt.Errorf("failed to wait for page to stabilize: %w", err)
-	}
-
-	// Helper function to create float64 pointer
-	float64Ptr := func(v float64) *float64 {
-		return &v
+		return nil, fmt.Errorf("failed to wait for page to load: %w", err)
 	}
 
 	// Generate PDF with options
-	pdfReader, err := page.PDF(&proto.PagePrintToPDF{
-		DisplayHeaderFooter: false,
-		PrintBackground:     true,
-		Scale:               float64Ptr(1.0),
-		PaperWidth:          float64Ptr(8.27),  // A4 width in inches
-		PaperHeight:         float64Ptr(11.69), // A4 height in inches
-		MarginTop:           float64Ptr(0.2),   // ~1cm in inches
-		MarginBottom:        float64Ptr(0.2),
-		MarginLeft:          float64Ptr(0.2),
-		MarginRight:         float64Ptr(0.2),
-		PreferCSSPageSize:   true,
+	pdfData, err := page.PDF(playwright.PagePdfOptions{
+		DisplayHeaderFooter: playwright.Bool(false),
+		PrintBackground:     playwright.Bool(true),
+		Scale:               playwright.Float(1.0),
+		Width:               playwright.String("8.27in"),  // A4 width
+		Height:              playwright.String("11.69in"), // A4 height
+		Margin: &playwright.Margin{
+			Top:    playwright.String("0.2in"), // ~0.5cm
+			Bottom: playwright.String("0.2in"),
+			Left:   playwright.String("0.2in"),
+			Right:  playwright.String("0.2in"),
+		},
+		PreferCSSPageSize: playwright.Bool(true),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate PDF: %w", err)
-	}
-
-	// Read all data from the stream reader
-	pdfData, err := io.ReadAll(pdfReader)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read PDF data: %w", err)
 	}
 
 	return pdfData, nil
