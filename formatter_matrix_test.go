@@ -129,7 +129,7 @@ func TestFormatterMatrix(t *testing.T) {
 			name: "JSONFormatter",
 			formatter: func() (string, error) {
 				sf := &SchemaFormatter{Schema: schema, Parser: parser}
-				return sf.formatJSONWithPrettyData(prettyData)
+				return sf.formatWithPrettyData(prettyData, formatters.FormatOptions{Format: "json"})
 			},
 			validate: func(t *testing.T, output string) {
 				var result map[string]interface{}
@@ -167,7 +167,7 @@ func TestFormatterMatrix(t *testing.T) {
 			name: "YAMLFormatter",
 			formatter: func() (string, error) {
 				sf := &SchemaFormatter{Schema: schema, Parser: parser}
-				return sf.formatYAMLWithPrettyData(prettyData)
+				return sf.formatWithPrettyData(prettyData, formatters.FormatOptions{Format: "yaml"})
 			},
 			validate: func(t *testing.T, output string) {
 				var result map[string]interface{}
@@ -211,7 +211,7 @@ func TestFormatterMatrix(t *testing.T) {
 			name: "CSVFormatter",
 			formatter: func() (string, error) {
 				sf := &SchemaFormatter{Schema: schema, Parser: parser}
-				return sf.formatCSVWithPrettyData(prettyData)
+				return sf.formatWithPrettyData(prettyData, formatters.FormatOptions{Format: "csv"})
 			},
 			validate: func(t *testing.T, output string) {
 				lines := strings.Split(strings.TrimSpace(output), "\n")

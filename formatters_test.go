@@ -399,21 +399,21 @@ func TestAllFormatters(t *testing.T) {
 					Schema: schema,
 					Parser: parser,
 				}
-				output, err = sf.formatJSONWithPrettyData(prettyData)
+				output, err = sf.formatWithPrettyData(prettyData, formatters.FormatOptions{Format: "json"})
 			case *formatters.YAMLFormatter:
 				// Format using schema formatter for consistent output
 				sf := &SchemaFormatter{
 					Schema: schema,
 					Parser: parser,
 				}
-				output, err = sf.formatYAMLWithPrettyData(prettyData)
+				output, err = sf.formatWithPrettyData(prettyData, formatters.FormatOptions{Format: "yaml"})
 			case *formatters.CSVFormatter:
 				// Format using schema formatter for consistent output
 				sf := &SchemaFormatter{
 					Schema: schema,
 					Parser: parser,
 				}
-				output, err = sf.formatCSVWithPrettyData(prettyData)
+				output, err = sf.formatWithPrettyData(prettyData, formatters.FormatOptions{Format: "csv"})
 			case *formatters.HTMLFormatter:
 				output, err = f.Format(prettyData)
 			case *formatters.PDFFormatter:

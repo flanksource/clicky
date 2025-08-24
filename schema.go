@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -146,72 +145,36 @@ func (sf *SchemaFormatter) convertMapToStruct(data map[string]interface{}) inter
 
 // formatWithPrettyData formats PrettyData using the specified format
 func (sf *SchemaFormatter) formatWithPrettyData(data *api.PrettyData, options formatters.FormatOptions) (string, error) {
+	// Convert PrettyData to the appropriate format for the FormatManager
+	output := sf.formatPrettyDataToMap(data)
+	
+	// For JSON/YAML/CSV, use direct formatting to avoid the struct requirement
 	switch strings.ToLower(options.Format) {
 	case "json":
-		return sf.formatJSONWithPrettyData(data)
-	case "yaml":
-		return sf.formatYAMLWithPrettyData(data)
+		jsonFormatter := formatters.NewJSONFormatter()
+		b, err := json.MarshalIndent(output, "", jsonFormatter.Indent)
+		if err != nil {
+			return "", err
+		}
+		return string(b), nil
+	case "yaml", "yml":
+		b, err := yaml.Marshal(output)
+		if err != nil {
+			return "", err
+		}
+		return string(b), nil
 	case "csv":
-		return sf.formatCSVWithPrettyData(data)
-	case "html":
-		return sf.formatHTMLWithPrettyData(data)
-	case "pdf":
-		return sf.formatPDFWithPrettyData(data)
-	case "markdown":
-		return sf.formatMarkdownWithPrettyData(data, options.NoColor)
-	case "pretty":
-		fallthrough
+		csvFormatter := formatters.NewCSVFormatter()
+		// Use the original PrettyData directly for CSV formatting
+		return csvFormatter.FormatPrettyData(data)
 	default:
-		return sf.formatPrettyWithPrettyData(data, options.NoColor)
+		// For other formats, delegate to the format manager
+		manager := formatters.NewFormatManager()
+		return manager.Format(options.Format, output)
 	}
 }
 
-// formatPrettyWithPrettyData formats PrettyData using pretty formatter
-func (sf *SchemaFormatter) formatPrettyWithPrettyData(data *api.PrettyData, noColor bool) (string, error) {
-	prettyFormatter := formatters.NewPrettyFormatter()
-	prettyFormatter.NoColor = noColor
-	return prettyFormatter.Format(data)
-}
 
-// formatCSVWithPrettyData formats PrettyData as CSV
-func (sf *SchemaFormatter) formatCSVWithPrettyData(data *api.PrettyData) (string, error) {
-	csvFormatter := formatters.NewCSVFormatter()
-
-	// Try to find table data first (CSV works best with tabular data)
-	for _, tableData := range data.Tables {
-		if len(tableData) > 0 {
-			// Convert table data to interface{} slice using Formatted() for consistency
-			interfaceData := make([]interface{}, len(tableData))
-			for i, row := range tableData {
-				rowMap := make(map[string]interface{})
-				for key, fieldValue := range row {
-					// Use Formatted() for consistent string representation like other formatters
-					rowMap[key] = fieldValue.Formatted()
-				}
-				interfaceData[i] = rowMap
-			}
-			return csvFormatter.Format(interfaceData)
-		}
-	}
-
-	// Fallback to summary data if no tables found
-	summaryMap := make(map[string]interface{})
-	for key, fieldValue := range data.Values {
-		// Handle nested fields by flattening them
-		if len(fieldValue.NestedFields) > 0 {
-			// Flatten nested fields into the summary
-			for nestedKey, nestedFieldValue := range fieldValue.NestedFields {
-				flatKey := fmt.Sprintf("%s.%s", key, nestedKey)
-				summaryMap[flatKey] = nestedFieldValue.Formatted()
-			}
-		} else {
-			summaryMap[key] = fieldValue.Formatted()
-		}
-	}
-
-	// Return single row CSV for summary data
-	return csvFormatter.Format([]interface{}{summaryMap})
-}
 
 // formatPrettyDataToMap converts PrettyData to a map for JSON/YAML formatting
 func (sf *SchemaFormatter) formatPrettyDataToMap(data *api.PrettyData) map[string]interface{} {
@@ -223,11 +186,11 @@ func (sf *SchemaFormatter) formatPrettyDataToMap(data *api.PrettyData) map[strin
 			// Handle nested fields recursively
 			nestedOutput := make(map[string]interface{})
 			for nestedKey, nestedFieldValue := range fieldValue.NestedFields {
-				nestedOutput[nestedKey] = sf.formatFieldValueForJSON(nestedFieldValue)
+				nestedOutput[nestedKey] = nestedFieldValue.Formatted()
 			}
 			output[key] = nestedOutput
 		} else {
-			output[key] = sf.formatFieldValueForJSON(fieldValue)
+			output[key] = fieldValue.Formatted()
 		}
 	}
 
@@ -237,7 +200,7 @@ func (sf *SchemaFormatter) formatPrettyDataToMap(data *api.PrettyData) map[strin
 		for i, row := range tableRows {
 			rowData := make(map[string]interface{})
 			for fieldName, fieldValue := range row {
-				rowData[fieldName] = sf.formatFieldValueForJSON(fieldValue)
+				rowData[fieldName] = fieldValue.Formatted()
 			}
 			tableData[i] = rowData
 		}
@@ -247,173 +210,11 @@ func (sf *SchemaFormatter) formatPrettyDataToMap(data *api.PrettyData) map[strin
 	return output
 }
 
-// formatJSONWithPrettyData formats PrettyData as JSON including both values and tables
-func (sf *SchemaFormatter) formatJSONWithPrettyData(data *api.PrettyData) (string, error) {
-	output := sf.formatPrettyDataToMap(data)
-	formatter := formatters.NewJSONFormatter()
-	return formatter.Format(output)
-}
 
-// formatFieldValueForJSON formats a api.FieldValue for JSON output using Formatted()
-func (sf *SchemaFormatter) formatFieldValueForJSON(fieldValue api.FieldValue) interface{} {
-	// Always use formatted value if field has a special format (like currency, date, etc.)
-	if fieldValue.Field.Format != "" {
-		return fieldValue.Formatted()
-	}
 
-	// Try to preserve numeric types where possible for fields without special formatting
-	switch fieldValue.Field.Type {
-	case api.FieldTypeInt:
-		if fieldValue.IntValue != nil {
-			return *fieldValue.IntValue
-		}
-	case api.FieldTypeFloat:
-		if fieldValue.FloatValue != nil {
-			return *fieldValue.FloatValue
-		}
-	case api.FieldTypeBoolean:
-		if fieldValue.BooleanValue != nil {
-			return *fieldValue.BooleanValue
-		}
-	}
 
-	// For all other types, use the formatted string
-	return fieldValue.Formatted()
-}
 
-// formatYAMLWithPrettyData formats PrettyData as YAML using the same structure as JSON
-func (sf *SchemaFormatter) formatYAMLWithPrettyData(data *api.PrettyData) (string, error) {
-	output := sf.formatPrettyDataToMap(data)
-	formatter := formatters.NewYAMLFormatter()
-	return formatter.Format(output)
-}
 
-// formatHTMLWithPrettyData formats PrettyData as HTML
-func (sf *SchemaFormatter) formatHTMLWithPrettyData(data *api.PrettyData) (string, error) {
-	htmlFormatter := formatters.NewHTMLFormatter()
-	return htmlFormatter.Format(data)
-}
-
-// formatPDFWithPrettyData formats PrettyData as PDF
-func (sf *SchemaFormatter) formatPDFWithPrettyData(data *api.PrettyData) (string, error) {
-	pdfFormatter := formatters.NewPDFFormatter()
-	return pdfFormatter.Format(data)
-}
-
-// formatMarkdownWithPrettyData formats PrettyData as Markdown using Text.Markdown()
-func (sf *SchemaFormatter) formatMarkdownWithPrettyData(data *api.PrettyData, noColor bool) (string, error) {
-	var result strings.Builder
-
-	// Format summary fields
-	if len(data.Values) > 0 {
-		result.WriteString("## Summary\n\n")
-
-		// Sort field names for consistent output
-		var fieldNames []string
-		for name := range data.Values {
-			fieldNames = append(fieldNames, name)
-		}
-		sort.Strings(fieldNames)
-
-		for _, name := range fieldNames {
-			fieldValue := data.Values[name]
-
-			// Create label text
-			label := sf.prettifyFieldName(name)
-			result.WriteString(fmt.Sprintf("**%s**: ", label))
-
-			// Create styled text for the value
-			text := api.Text{
-				Content: fieldValue.Formatted(),
-				Style:   fieldValue.Field.Style,
-			}
-
-			// Handle nested fields
-			if fieldValue.HasNestedFields() {
-				result.WriteString("\n")
-				for _, nestedKey := range fieldValue.GetNestedFieldKeys() {
-					nestedField, _ := fieldValue.GetNestedField(nestedKey)
-					nestedLabel := sf.prettifyFieldName(nestedKey)
-					nestedText := api.Text{
-						Content: nestedField.Formatted(),
-						Style:   nestedField.Field.Style,
-					}
-					if noColor {
-						result.WriteString(fmt.Sprintf("  - **%s**: %s\n", nestedLabel, nestedText.String()))
-					} else {
-						result.WriteString(fmt.Sprintf("  - **%s**: %s\n", nestedLabel, nestedText.Markdown()))
-					}
-				}
-			} else {
-				if noColor {
-					result.WriteString(text.String())
-				} else {
-					result.WriteString(text.Markdown())
-				}
-				result.WriteString("\n")
-			}
-			result.WriteString("\n")
-		}
-	}
-
-	// Format tables
-	if len(data.Tables) > 0 {
-		for tableName, rows := range data.Tables {
-			if len(rows) == 0 {
-				continue
-			}
-
-			result.WriteString(fmt.Sprintf("\n## %s\n\n", sf.prettifyFieldName(tableName)))
-
-			// Get field names from first row
-			var headers []string
-			firstRow := rows[0]
-			for fieldName := range firstRow {
-				headers = append(headers, fieldName)
-			}
-			sort.Strings(headers)
-
-			// Write header row
-			result.WriteString("| ")
-			for _, header := range headers {
-				result.WriteString(sf.prettifyFieldName(header))
-				result.WriteString(" | ")
-			}
-			result.WriteString("\n")
-
-			// Write separator row
-			result.WriteString("|")
-			for range headers {
-				result.WriteString(" --- |")
-			}
-			result.WriteString("\n")
-
-			// Write data rows
-			for _, row := range rows {
-				result.WriteString("| ")
-				for _, header := range headers {
-					fieldValue := row[header]
-					text := api.Text{
-						Content: fieldValue.Formatted(),
-						Style:   fieldValue.Field.Style,
-					}
-					// Escape pipe characters in markdown table cells
-					var cellContent string
-					if noColor {
-						cellContent = strings.ReplaceAll(text.String(), "|", "\\|")
-					} else {
-						cellContent = strings.ReplaceAll(text.Markdown(), "|", "\\|")
-					}
-					result.WriteString(cellContent)
-					result.WriteString(" | ")
-				}
-				result.WriteString("\n")
-			}
-		}
-	}
-
-	return result.String(), nil
-}
 
 // prettifyFieldName converts field names to human-readable format
 func (sf *SchemaFormatter) prettifyFieldName(name string) string {
