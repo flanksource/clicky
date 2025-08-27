@@ -1,13 +1,11 @@
 module github.com/flanksource/clicky
 
-go 1.24.1
-
-toolchain go1.24.5
+go 1.24.5
 
 require (
 	github.com/ajstarks/svgo v0.0.0-20211024235047-1546f124cd8b
 	github.com/charmbracelet/lipgloss v0.13.1
-	github.com/flanksource/commons v1.41.0
+	github.com/flanksource/commons v1.41.1
 	github.com/johnfercher/maroto/v2 v2.2.3
 	github.com/ledongthuc/pdf v0.0.0-20250511090121-5959a4027728
 	github.com/mattn/go-sqlite3 v1.14.30
@@ -83,4 +81,4 @@ require (
 	sigs.k8s.io/yaml v1.4.0 // indirect
 )
 
-replace github.com/flanksource/commons v1.41.0 => /Users/moshe/go/src/github.com/flanksource/commons
+// replace github.com/flanksource/commons v1.41.0 => /Users/moshe/go/src/github.com/flanksource/commons
