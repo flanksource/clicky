@@ -4,12 +4,12 @@ go 1.24.5
 
 require (
 	github.com/ajstarks/svgo v0.0.0-20211024235047-1546f124cd8b
-	github.com/charmbracelet/lipgloss v0.13.1
+	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/flanksource/commons v1.41.1
 	github.com/johnfercher/maroto/v2 v2.2.3
 	github.com/ledongthuc/pdf v0.0.0-20250511090121-5959a4027728
 	github.com/mattn/go-sqlite3 v1.14.30
-	github.com/muesli/termenv v0.15.3-0.20240618155329-98d742f6907a
+	github.com/muesli/termenv v0.16.0
 	github.com/pdfcpu/pdfcpu v0.11.0
 	github.com/playwright-community/playwright-go v0.4702.0
 	github.com/rustyoz/svg v0.0.0-20250705135709-8b1786137cb3
@@ -28,7 +28,10 @@ require (
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/boombuler/barcode v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
-	github.com/charmbracelet/x/ansi v0.3.2 // indirect
+	github.com/charmbracelet/colorprofile v0.2.3-0.20250311203215-f60798e515dc // indirect
+	github.com/charmbracelet/x/ansi v0.8.0 // indirect
+	github.com/charmbracelet/x/cellbuf v0.0.13-0.20250311204145-2c3ea96c31dd // indirect
+	github.com/charmbracelet/x/term v0.2.1 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/deckarep/golang-set/v2 v2.6.0 // indirect
 	github.com/emirpasic/gods/v2 v2.0.0-alpha // indirect
@@ -67,6 +70,7 @@ require (
 	github.com/rustyoz/Mtransform v0.0.0-20250628105438-00796a985d0a // indirect
 	github.com/rustyoz/genericlexer v0.0.0-20250522144106-d3cfee480384 // indirect
 	github.com/samber/oops v1.17.0 // indirect
+	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
 	go.opentelemetry.io/otel v1.35.0 // indirect
 	go.opentelemetry.io/otel/trace v1.35.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
