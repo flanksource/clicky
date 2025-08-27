@@ -54,7 +54,7 @@ func BindAllFlags(flags *pflag.FlagSet) AllFlags {
 
 	flags.BoolVar(&Flags.NoProgress, "no-progress", Flags.NoProgress,
 		"Disable progress display")
-	flags.IntVar(&Flags.MaxConcurrent, "max-concurrent", Flags.MaxConcurrent,
+	flags.IntVar(&Flags.MaxConcurrent, "max-concurrent", 4,
 		"Maximum concurrent tasks (0 = unlimited)")
 	flags.DurationVar(&Flags.GracefulTimeout, "graceful-timeout", Flags.GracefulTimeout,
 		"Timeout for graceful shutdown on interrupt")
@@ -78,11 +78,11 @@ func BindAllFlags(flags *pflag.FlagSet) AllFlags {
 	flags.BoolVar(&Flags.FormatOptions.Pretty, "pretty", false, "Output in pretty format (default)")
 	flags.BoolVar(&Flags.FormatOptions.HTML, "html", false, "Output in HTML format")
 	flags.BoolVar(&Flags.FormatOptions.PDF, "pdf", false, "Output in PDF format")
-	
+
 	// Dependency Scanner flags
 	flags.DurationVar(&Flags.DependencyScannerOptions.CacheTTL, "cache-ttl", 24*time.Hour, "Cache TTL for dependency scans")
 	flags.BoolVar(&Flags.DependencyScannerOptions.NoCache, "no-cache", false, "Disable caching (equivalent to --cache-ttl=0)")
-	
+
 	return Flags
 }
 

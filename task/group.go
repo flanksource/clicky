@@ -143,6 +143,11 @@ func (g *TypedGroup[T]) WaitFor() *WaitResult {
 	result.Status = g.Status()
 	result.Duration = g.Duration()
 
+	// Force a final render to ensure all completed tasks are displayed
+	if g.manager != nil {
+		g.manager.Render()
+	}
+
 	return result
 }
 

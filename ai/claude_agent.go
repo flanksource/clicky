@@ -377,7 +377,7 @@ func (ca *ClaudeAgent) executeClaude(ctx context.Context, request PromptRequest,
 		if ca.cache != nil {
 			ca.cache.Set(cacheEntry)
 		}
-		return nil, fmt.Errorf(errMsg)
+		return nil, fmt.Errorf("%s", errMsg)
 	}
 	
 	// Build response with detailed token information

@@ -56,3 +56,5 @@ hack/
 out.*
 icky-*
 test-*
+.cache
+*.db

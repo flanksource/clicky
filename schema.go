@@ -145,9 +145,10 @@ func (sf *SchemaFormatter) convertMapToStruct(data map[string]interface{}) inter
 
 // formatWithPrettyData formats PrettyData using the specified format
 func (sf *SchemaFormatter) formatWithPrettyData(data *api.PrettyData, options formatters.FormatOptions) (string, error) {
+
 	// Convert PrettyData to the appropriate format for the FormatManager
 	output := sf.formatPrettyDataToMap(data)
-	
+
 	// For JSON/YAML/CSV, use direct formatting to avoid the struct requirement
 	switch strings.ToLower(options.Format) {
 	case "json":
@@ -173,8 +174,6 @@ func (sf *SchemaFormatter) formatWithPrettyData(data *api.PrettyData, options fo
 		return manager.Format(options.Format, output)
 	}
 }
-
-
 
 // formatPrettyDataToMap converts PrettyData to a map for JSON/YAML formatting
 func (sf *SchemaFormatter) formatPrettyDataToMap(data *api.PrettyData) map[string]interface{} {
@@ -209,12 +208,6 @@ func (sf *SchemaFormatter) formatPrettyDataToMap(data *api.PrettyData) map[strin
 
 	return output
 }
-
-
-
-
-
-
 
 // prettifyFieldName converts field names to human-readable format
 func (sf *SchemaFormatter) prettifyFieldName(name string) string {

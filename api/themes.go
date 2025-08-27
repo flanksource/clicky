@@ -183,6 +183,20 @@ func AutoTheme() Theme {
 	return LightTheme()
 }
 
+var terminalWidth = -1
+
+func GetTerminalWidth() int {
+	if terminalWidth != -1 {
+		return terminalWidth
+	}
+	width, _, err := term.GetSize(int(os.Stdout.Fd()))
+	if err != nil {
+		return 80 // Default width
+	}
+	terminalWidth = width
+	return width
+}
+
 // isTerminal checks if stdout is a terminal
 func isTerminal() bool {
 	return term.IsTerminal(int(os.Stdout.Fd()))

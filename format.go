@@ -1,6 +1,7 @@
 package clicky
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/flanksource/clicky/api"
@@ -30,6 +31,12 @@ func Text(content string, tailwindClasses ...string) api.Text {
 	return api.Text{
 		Content: content,
 		Style:   strings.Join(tailwindClasses, " "),
+	}
+}
+
+func Textf(content string, args ...any) api.Text {
+	return api.Text{
+		Content: fmt.Sprintf(content, args...),
 	}
 }
 

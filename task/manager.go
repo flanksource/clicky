@@ -47,9 +47,12 @@ type Manager struct {
 	workers       []*worker
 	shutdown      chan struct{}
 	workersActive atomic.Int32
-	
+
 	// Task identity tracking for deduplication
 	tasksByIdentity sync.Map // map[string]*Task
+
+	// Track rendered lines for clearing
+	lastRenderedLines int // Number of lines rendered in the last render cycle
 }
 
 var Global *Manager
@@ -186,10 +189,7 @@ func NewManagerWithConcurrency(maxConcurrent int) *Manager {
 	// Register signal handling by default
 	tm.registerSignalHandling()
 
-	// Only start interactive rendering if stderr is a terminal
-	if tm.isInteractive {
-		go tm.render()
-	}
+	go tm.render()
 	return tm
 }
 
@@ -325,11 +325,11 @@ func (tm *Manager) enqueue(task *Task) *Task {
 		// Store this task for future deduplication
 		tm.tasksByIdentity.Store(task.identity, task)
 	}
-	
+
 	task.enqueuedAt = time.Now()
 	tm.tasks = append(tm.tasks, task)
 	tm.taskQueue.Enqueue(task)
-	
+
 	return task
 }
 

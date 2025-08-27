@@ -93,6 +93,7 @@ func (tm *Manager) gracefulShutdown(sig os.Signal, gracefulDone chan bool) {
 	tm.shutdownOnce.Do(func() {
 		fmt.Fprintf(os.Stderr, "\n🛑 Received %v - initiating graceful shutdown...\n", sig)
 		fmt.Fprintf(os.Stderr, "   Press Ctrl+C again to force immediate exit\n\n")
+		fmt.Fprint(os.Stderr, tm.Debug())
 
 		// Call user-defined interrupt handler if provided
 		if tm.onInterrupt != nil {
@@ -119,7 +120,7 @@ func (tm *Manager) gracefulShutdown(sig os.Signal, gracefulDone chan bool) {
 		case <-time.After(tm.gracefulTimeout):
 			// Timeout reached
 			fmt.Fprintf(os.Stderr, "⏰ Graceful shutdown timeout reached\n")
-			fmt.Fprintf(os.Stderr, tm.Pretty().String())
+			fmt.Fprint(os.Stderr, tm.Pretty().String())
 			gracefulDone <- true
 			os.Exit(1)
 		}
@@ -130,7 +131,7 @@ func (tm *Manager) gracefulShutdown(sig os.Signal, gracefulDone chan bool) {
 func (tm *Manager) hardExit(reason string) {
 	fmt.Fprintf(os.Stderr, "\n💥 Force exit (%s) - terminating immediately\n", reason)
 
-	fmt.Fprintf(os.Stderr, tm.Pretty().String())
+	fmt.Fprint(os.Stderr, tm.Pretty().String())
 	// Cancel all tasks immediately (best effort)
 	tm.CancelAll()
 

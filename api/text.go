@@ -22,6 +22,39 @@ func (t Text) Add(child Text) Text {
 	return t
 }
 
+func (t Text) Prefix(prefix string) Text {
+	t.Content = prefix + t.Content
+	return t
+}
+
+func (t Text) Suffix(suffix string) Text {
+	t.Content = t.Content + suffix
+	return t
+}
+
+func (t Text) Text(text string, styles ...string) Text {
+	return t.Add(Text{Content: text, Style: strings.Join(styles, " ")})
+}
+
+func (t Text) Styles(classes ...string) Text {
+	if t.Style != "" {
+		// Append new classes to existing style
+		t.Style = t.Style + " " + strings.Join(classes, " ")
+	} else {
+		t.Style = strings.Join(classes, " ")
+	}
+	return t
+}
+
+func (t Text) WrapSpace() Text {
+	return t.Wrap(" ", " ")
+}
+
+func (t Text) Wrap(prefix, suffix string) Text {
+	t.Content = prefix + t.Content + suffix
+	return t
+}
+
 func (t Text) Append(text string, styles ...string) Text {
 	t.Children = append(t.Children, Text{Content: text, Style: strings.Join(styles, " ")})
 	return t

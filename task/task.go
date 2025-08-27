@@ -216,6 +216,12 @@ func (t TypedTask[T]) GetResult() (T, error) {
 	if err != nil {
 		return *new(T), err
 	}
+
+	// Handle nil result explicitly
+	if result == nil {
+		return *new(T), nil
+	}
+
 	typedResult, ok := result.(T)
 	if !ok {
 		return *new(T), fmt.Errorf("result type mismatch: expected %T, got %T", *new(T), result)
@@ -436,7 +442,7 @@ func (t *Task) Name() string {
 // WaitFor waits for this specific task to complete and returns the result
 func (t *Task) WaitFor() *WaitResult {
 	// Poll for task completion using atomic flag
-	timeout := time.After(30 * time.Second)
+	timeout := time.After(300 * time.Second)
 	ticker := time.NewTicker(10 * time.Millisecond)
 	defer ticker.Stop()
 
@@ -457,7 +463,7 @@ func (t *Task) WaitFor() *WaitResult {
 			t.mu.Lock()
 			if t.status == StatusRunning || t.status == StatusPending {
 				t.status = StatusFailed
-				t.err = fmt.Errorf("task wait timeout after 30 seconds")
+				t.err = fmt.Errorf("task wait timeout after %s", <-timeout)
 				t.endTime = time.Now()
 				t.completed.Store(true)
 			}
@@ -504,7 +510,7 @@ func (t *Task) GetResult() (interface{}, error) {
 func (t *Task) SetResult(result interface{}) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	
+
 	t.result = result
 	if result != nil {
 		t.resultType = reflect.TypeOf(result)
@@ -596,7 +602,7 @@ func (t *Task) Pretty() api.Text {
 		displayName += fmt.Sprintf(" \"%s\"", truncatedPrompt)
 	}
 
-	text.Content = fmt.Sprintf("%50s %-10s", lo.Ellipsis(displayName, 50), duration)
+	text.Content = fmt.Sprintf("%s %-10s", lo.Ellipsis(displayName, api.GetTerminalWidth()-10), duration)
 
 	text = t.Status().Apply(text)
 
@@ -622,7 +628,7 @@ func (t *Task) Pretty() api.Text {
 		}
 
 		text.Children = append(text.Children, api.Text{
-			Content: fmt.Sprintf("\n\t  %s", log.Message),
+			Content: fmt.Sprintf("\n\t%s", lo.Ellipsis(log.Message, 500)),
 			Style:   logStyle,
 		})
 	}

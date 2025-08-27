@@ -169,11 +169,6 @@ func StartGlobalPhase(phaseName string) *Task {
 	currentPhaseTask = globalTaskManager.Start(
 		phaseName,
 		WithFunc(func(ctx flanksourceContext.Context, t *Task) error {
-			t.Infof("Starting %s phase", phaseName)
-			// Set progress as indeterminate (spinner)
-			t.SetProgress(0, 0)
-
-			// This task will run until CompleteGlobalPhase is called
 			select {
 			case <-t.Context().Done():
 				return t.Context().Err()

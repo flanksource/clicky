@@ -7,6 +7,8 @@ import (
 	flanksourceContext "github.com/flanksource/commons/context"
 )
 
+type Context = flanksourceContext.Context
+
 // Type aliases for backward compatibility
 type (
 	Task               = task.Task
