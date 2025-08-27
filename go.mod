@@ -8,7 +8,7 @@ require (
 	github.com/flanksource/commons v1.41.1
 	github.com/johnfercher/maroto/v2 v2.2.3
 	github.com/ledongthuc/pdf v0.0.0-20250511090121-5959a4027728
-	github.com/mattn/go-sqlite3 v1.14.30
+	github.com/mattn/go-sqlite3 v1.14.32
 	github.com/muesli/termenv v0.15.3-0.20240618155329-98d742f6907a
 	github.com/pdfcpu/pdfcpu v0.11.0
 	github.com/playwright-community/playwright-go v0.4702.0
