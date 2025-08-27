@@ -38,7 +38,7 @@ func (f *PrettyFormatter) Format(data interface{}) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to convert to PrettyData: %w", err)
 	}
-	
+
 	if prettyData == nil || prettyData.Schema == nil {
 		return "", nil
 	}
@@ -152,7 +152,7 @@ func (f *PrettyFormatter) formatSummaryFields(fields []api.PrettyField, val refl
 // formatFieldForSummary formats a field for the summary section with pretty field names
 func (f *PrettyFormatter) formatFieldForSummary(name string, val reflect.Value, field api.PrettyField) string {
 	prettyName := f.prettifyFieldName(name)
-	
+
 	// Handle slices and maps specially to dereference pointer elements
 	var value interface{}
 	if val.Kind() == reflect.Slice {
@@ -162,7 +162,7 @@ func (f *PrettyFormatter) formatFieldForSummary(name string, val reflect.Value, 
 	} else {
 		value = val.Interface()
 	}
-	
+
 	valueStr := f.formatValue(value, field)
 
 	// Apply label_style if specified, otherwise use default
@@ -360,7 +360,7 @@ func (f *PrettyFormatter) dereferenceSliceElements(val reflect.Value) interface{
 	if val.Kind() != reflect.Slice {
 		return val.Interface()
 	}
-	
+
 	// Create a new slice with dereferenced elements
 	result := make([]interface{}, val.Len())
 	for i := 0; i < val.Len(); i++ {
@@ -375,7 +375,7 @@ func (f *PrettyFormatter) dereferenceSliceElements(val reflect.Value) interface{
 			result[i] = elem.Interface()
 		}
 	}
-	
+
 	return result
 }
 
@@ -384,16 +384,16 @@ func (f *PrettyFormatter) dereferenceMapValues(val reflect.Value) interface{} {
 	if val.Kind() != reflect.Map {
 		return val.Interface()
 	}
-	
+
 	// Create a new map with dereferenced values
 	result := make(map[string]interface{})
 	iter := val.MapRange()
 	for iter.Next() {
 		k := iter.Key()
 		v := iter.Value()
-		
+
 		keyStr := fmt.Sprintf("%v", k.Interface())
-		
+
 		if v.Kind() == reflect.Ptr {
 			if v.IsNil() {
 				result[keyStr] = nil
@@ -404,7 +404,7 @@ func (f *PrettyFormatter) dereferenceMapValues(val reflect.Value) interface{} {
 			result[keyStr] = v.Interface()
 		}
 	}
-	
+
 	return result
 }
 
@@ -715,7 +715,7 @@ func (f *PrettyFormatter) applyFormatStyle(text string, format string) string {
 	if f.NoColor {
 		return text
 	}
-	
+
 	var style lipgloss.Style
 	switch format {
 	case api.FormatCurrency:
@@ -727,7 +727,7 @@ func (f *PrettyFormatter) applyFormatStyle(text string, format string) string {
 	default:
 		return text
 	}
-	
+
 	return f.applyStyle(text, style)
 }
 
@@ -774,11 +774,10 @@ func (f *PrettyFormatter) getColorStyle(color string) lipgloss.Style {
 	return style
 }
 
-
 // toLipglossStyle converts a tailwind.Style to lipgloss.Style
 func (f *PrettyFormatter) toLipglossStyle(style tailwind.Style) lipgloss.Style {
 	lipStyle := lipgloss.NewStyle()
-	
+
 	if style.Foreground != "" {
 		lipStyle = lipStyle.Foreground(lipgloss.Color(style.Foreground))
 	}
@@ -803,7 +802,7 @@ func (f *PrettyFormatter) toLipglossStyle(style tailwind.Style) lipgloss.Style {
 	if style.MaxWidth > 0 {
 		lipStyle = lipStyle.MaxWidth(style.MaxWidth)
 	}
-	
+
 	return lipStyle
 }
 
@@ -817,7 +816,7 @@ func (f *PrettyFormatter) applyTailwindStyleToText(text string, styleStr string)
 		}
 		return text
 	}
-	
+
 	// Apply style and get transformed text
 	transformedText, style := tailwind.ApplyStyle(text, styleStr)
 	lipglossStyle := f.toLipglossStyle(style)
@@ -915,7 +914,7 @@ func (f *PrettyFormatter) formatSummaryFieldsData(fields []api.PrettyField, valu
 // formatFieldValueData formats a single field value
 func (f *PrettyFormatter) formatFieldValueData(name string, val api.FieldValue, field api.PrettyField) string {
 	prettyName := f.prettifyFieldName(name)
-	
+
 	// Handle tree format specially - format the actual data, not the string representation
 	if field.Format == api.FormatTree {
 		treeOutput := f.formatTree(val.Value, field)
@@ -932,7 +931,7 @@ func (f *PrettyFormatter) formatFieldValueData(name string, val api.FieldValue, 
 		}
 		return fmt.Sprintf("%s:\n%s", styledLabel, treeOutput)
 	}
-	
+
 	formatted := val.Formatted()
 
 	// Apply field style if specified (highest priority)
@@ -1033,7 +1032,7 @@ func (f *PrettyFormatter) formatTableData(rows []api.PrettyDataRow, field api.Pr
 	// Add data rows
 	for _, row := range rows {
 		dataRow := make([]string, len(headers))
-		
+
 		// Use appropriate field source for data extraction
 		if len(field.TableOptions.Fields) > 0 {
 			for i, tableField := range field.TableOptions.Fields {
@@ -1043,24 +1042,24 @@ func (f *PrettyFormatter) formatTableData(rows []api.PrettyDataRow, field api.Pr
 
 					// Apply individual field style first (highest priority)
 					if tableField.Style != "" {
-					formatted = f.applyTailwindStyleToText(formatted, tableField.Style)
-				} else if field.TableOptions.RowStyle != "" {
-					// Apply row_style if no individual field style
-					formatted = f.applyTailwindStyleToText(formatted, field.TableOptions.RowStyle)
-				} else if color := fieldValue.Color(); color != "" {
-					// Apply color styling using FieldValue.Color()
-					style := f.getColorStyle(color)
-					formatted = f.applyStyle(formatted, style)
-				} else {
-					// Apply format-specific styling
-					formatted = f.applyFormatStyle(formatted, tableField.Format)
-				}
+						formatted = f.applyTailwindStyleToText(formatted, tableField.Style)
+					} else if field.TableOptions.RowStyle != "" {
+						// Apply row_style if no individual field style
+						formatted = f.applyTailwindStyleToText(formatted, field.TableOptions.RowStyle)
+					} else if color := fieldValue.Color(); color != "" {
+						// Apply color styling using FieldValue.Color()
+						style := f.getColorStyle(color)
+						formatted = f.applyStyle(formatted, style)
+					} else {
+						// Apply format-specific styling
+						formatted = f.applyFormatStyle(formatted, tableField.Format)
+					}
 
-				dataRow[i] = formatted
-			} else {
-				dataRow[i] = ""
+					dataRow[i] = formatted
+				} else {
+					dataRow[i] = ""
+				}
 			}
-		}
 		} else if len(field.Fields) > 0 {
 			// Use field.Fields as fallback
 			for i, subField := range field.Fields {
@@ -1097,11 +1096,11 @@ func (f *PrettyFormatter) formatTableData(rows []api.PrettyDataRow, field api.Pr
 func (f *PrettyFormatter) formatTree(value interface{}, field api.PrettyField) string {
 	// Create tree formatter with same theme and color settings
 	treeFormatter := NewTreeFormatter(f.Theme, f.NoColor, field.TreeOptions)
-	
+
 	// Convert value to tree node
 	val := reflect.ValueOf(value)
 	var node api.TreeNode
-	
+
 	// Check if value implements TreeNode interface
 	if val.CanInterface() {
 		actualValue := val.Interface()
@@ -1112,11 +1111,11 @@ func (f *PrettyFormatter) formatTree(value interface{}, field api.PrettyField) s
 			node = ConvertToTreeNode(actualValue)
 		}
 	}
-	
+
 	if node == nil {
 		return fmt.Sprintf("%v", value)
 	}
-	
+
 	// Format the tree using the tree formatter
 	return treeFormatter.FormatTreeFromRoot(node)
 }

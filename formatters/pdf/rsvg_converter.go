@@ -50,19 +50,19 @@ func (c *RSVGConverter) Convert(ctx context.Context, svgPath, outputPath string,
 	switch format {
 	case "png":
 		args = append(args, "--format=png")
-		
+
 	case "pdf":
 		args = append(args, "--format=pdf")
-		
+
 	case "ps":
 		args = append(args, "--format=ps")
-		
+
 	case "eps":
 		args = append(args, "--format=eps")
-		
+
 	case "svg":
 		args = append(args, "--format=svg")
-		
+
 	default:
 		return NewConverterError(c.Name(), "convert", fmt.Errorf("unsupported format: %s", format))
 	}

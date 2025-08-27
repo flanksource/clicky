@@ -11,7 +11,7 @@ import (
 	"github.com/johnfercher/maroto/v2/pkg/config"
 	"github.com/johnfercher/maroto/v2/pkg/consts/align"
 	"github.com/johnfercher/maroto/v2/pkg/consts/fontstyle"
-		"github.com/johnfercher/maroto/v2/pkg/consts/pagesize"
+	"github.com/johnfercher/maroto/v2/pkg/consts/pagesize"
 	"github.com/johnfercher/maroto/v2/pkg/core"
 	"github.com/johnfercher/maroto/v2/pkg/props"
 )
@@ -63,12 +63,12 @@ func NewBuilder(opts ...BuilderOption) *Builder {
 		style:     NewStyleConverter(),
 		debugMode: false,
 	}
-	
+
 	// Apply options
 	for _, opt := range opts {
 		opt(b)
 	}
-	
+
 	// Create Maroto configuration
 	cfg := config.NewBuilder().
 		WithPageSize(pagesize.A4).
@@ -81,14 +81,14 @@ func NewBuilder(opts ...BuilderOption) *Builder {
 
 	// Create Maroto instance
 	m := maroto.New(cfg)
-	
+
 	b.maroto = m
 	b.config = &PageSize{
 		Rectangle: api.Rectangle{Width: 210, Height: 297}, // A4 in mm
 		Margins:   api.Padding{Top: 10, Right: 10, Bottom: 10, Left: 10},
 	}
 	b.pageNumbers = false
-	
+
 	return b
 }
 
@@ -136,12 +136,12 @@ func (b *Builder) registerFooter() {
 // createTextRow creates a Maroto row with text
 func (b *Builder) createTextRow(t api.Text, height float64) core.Row {
 	textProps := b.style.ConvertToTextProps(t.Class)
-	
+
 	// Create text component
 	textCol := col.New(12).Add(
 		text.New(t.Content, *textProps),
 	)
-	
+
 	return row.New(height).Add(textCol)
 }
 
@@ -161,13 +161,13 @@ func (b *Builder) Write(text api.Text) *Builder {
 func (b *Builder) AddText(t api.Text) {
 	// Calculate height based on font size
 	height := b.style.CalculateTextHeight(t.Class)
-	
+
 	// Add main text
 	if t.Content != "" {
 		textRow := b.createTextRow(t, height)
 		b.maroto.AddRows(textRow)
 	}
-	
+
 	// Add children
 	for _, child := range t.Children {
 		b.AddText(child)
@@ -239,7 +239,6 @@ func (b *Builder) Output() ([]byte, error) {
 	// Get the bytes
 	return document.GetBytes(), nil
 }
-
 
 // Build is an alias for Output to match the expected interface
 func (b *Builder) Build() ([]byte, error) {

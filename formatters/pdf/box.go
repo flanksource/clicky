@@ -2,7 +2,7 @@ package pdf
 
 import (
 	"strings"
-	
+
 	"github.com/flanksource/clicky/api"
 	"github.com/johnfercher/maroto/v2/pkg/components/col"
 	"github.com/johnfercher/maroto/v2/pkg/components/row"
@@ -94,27 +94,27 @@ type Box struct {
 func (b Box) Draw(builder *Builder) error {
 	// Since Maroto doesn't have a rectangle component, we'll use borders and spacing
 	// to simulate a box appearance
-	
+
 	height := float64(b.Rectangle.Height)
 	if height == 0 {
 		height = 20 // Default box height
 	}
-	
+
 	// Add top spacing
 	builder.maroto.AddRows(row.New(2))
-	
+
 	// Draw labels if any
 	if len(b.Labels) > 0 {
 		for _, label := range b.Labels {
 			textProps := builder.style.ConvertToTextProps(label.Class)
 			textComponent := text.New(label.Content, *textProps)
-			
+
 			// Get horizontal alignment
 			var horizontalAlign HorizontalPosition = HorizontalCenter
 			if label.Position != nil {
 				horizontalAlign = label.Position.Horizontal
 			}
-			
+
 			// Create columns based on horizontal alignment
 			switch horizontalAlign {
 			case HorizontalLeft:
@@ -136,9 +136,9 @@ func (b Box) Draw(builder *Builder) error {
 		// Add empty space for the box height
 		builder.maroto.AddRows(row.New(height))
 	}
-	
+
 	// Add bottom spacing
 	builder.maroto.AddRows(row.New(2))
-	
+
 	return nil
 }

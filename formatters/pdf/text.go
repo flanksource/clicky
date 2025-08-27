@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
-	
+
 	"github.com/flanksource/clicky/api"
 	"github.com/johnfercher/maroto/v2/pkg/components/col"
 	"github.com/johnfercher/maroto/v2/pkg/components/row"
@@ -24,15 +24,15 @@ type Text struct {
 func (t Text) Draw(b *Builder) error {
 	// Process content based on flags
 	processedText := t.Text
-	
+
 	if t.EnableMD && processedText.Content != "" {
 		processedText.Content = t.parseMarkdown(processedText.Content)
 	}
-	
+
 	if t.EnableHTML && processedText.Content != "" {
 		processedText.Content = t.parseHTML(processedText.Content)
 	}
-	
+
 	// Draw the text and all its children
 	t.drawTextWithChildren(b, processedText)
 	return nil
@@ -42,23 +42,23 @@ func (t Text) Draw(b *Builder) error {
 func (t Text) drawTextWithChildren(b *Builder, apiText api.Text) {
 	// Calculate height for this text
 	height := b.style.CalculateTextHeight(apiText.Class)
-	
+
 	// Apply padding if specified
 	var topPadding, bottomPadding float64
 	if apiText.Class.Padding != nil {
 		_, topPadding, _, bottomPadding = b.style.CalculatePadding(apiText.Class.Padding)
-		
+
 		// Add top padding as empty row
 		if topPadding > 0 {
 			b.maroto.AddRows(row.New(topPadding))
 		}
 	}
-	
+
 	// Draw main content if present
 	if apiText.Content != "" {
 		// Convert style to text properties
 		textProps := b.style.ConvertToTextProps(apiText.Class)
-		
+
 		// Apply alignment from Style field (Tailwind classes)
 		if apiText.Style != "" {
 			if strings.Contains(apiText.Style, "text-center") {
@@ -69,22 +69,22 @@ func (t Text) drawTextWithChildren(b *Builder, apiText api.Text) {
 				textProps.Align = align.Justify
 			}
 		}
-		
+
 		// Create text component
 		textComponent := text.New(apiText.Content, *textProps)
-		
+
 		// Create column with text
 		textCol := col.New(12).Add(textComponent)
-		
+
 		// Add row with text
 		b.maroto.AddRow(height, textCol)
 	}
-	
+
 	// Add bottom padding if specified
 	if bottomPadding > 0 {
 		b.maroto.AddRows(row.New(bottomPadding))
 	}
-	
+
 	// Draw children recursively
 	for _, child := range apiText.Children {
 		t.drawTextWithChildren(b, child)
@@ -96,32 +96,32 @@ func (t Text) drawTextWithChildren(b *Builder, apiText api.Text) {
 func (t Text) parseMarkdown(content string) string {
 	// For now, we'll strip markdown syntax and return plain text
 	// In a full implementation, this would parse and apply styles
-	
+
 	// Headers - convert to plain text with emphasis
 	content = regexp.MustCompile(`^#{1,6}\s+(.+)$`).ReplaceAllString(content, "$1")
-	
+
 	// Bold
 	content = regexp.MustCompile(`\*\*(.+?)\*\*`).ReplaceAllString(content, "$1")
 	content = regexp.MustCompile(`__(.+?)__`).ReplaceAllString(content, "$1")
-	
+
 	// Italic
 	content = regexp.MustCompile(`\*(.+?)\*`).ReplaceAllString(content, "$1")
 	content = regexp.MustCompile(`_(.+?)_`).ReplaceAllString(content, "$1")
-	
+
 	// Strikethrough
 	content = regexp.MustCompile(`~~(.+?)~~`).ReplaceAllString(content, "$1")
-	
+
 	// Code blocks
 	content = regexp.MustCompile("```[^`]*```").ReplaceAllString(content, "[code block]")
 	content = regexp.MustCompile("`([^`]+)`").ReplaceAllString(content, "$1")
-	
+
 	// Links
 	content = regexp.MustCompile(`\[([^\]]+)\]\([^\)]+\)`).ReplaceAllString(content, "$1")
-	
+
 	// Lists - convert to plain text
 	content = regexp.MustCompile(`^\s*[-*+]\s+(.+)$`).ReplaceAllString(content, "• $1")
 	content = regexp.MustCompile(`^\s*\d+\.\s+(.+)$`).ReplaceAllString(content, "$1")
-	
+
 	return content
 }
 
@@ -129,47 +129,47 @@ func (t Text) parseMarkdown(content string) string {
 func (t Text) parseHTML(content string) string {
 	// Strip HTML tags but preserve content
 	// In a full implementation, this would parse and apply styles
-	
+
 	// Bold tags
 	content = regexp.MustCompile(`<b>(.+?)</b>`).ReplaceAllString(content, "$1")
 	content = regexp.MustCompile(`<strong>(.+?)</strong>`).ReplaceAllString(content, "$1")
-	
+
 	// Italic tags
 	content = regexp.MustCompile(`<i>(.+?)</i>`).ReplaceAllString(content, "$1")
 	content = regexp.MustCompile(`<em>(.+?)</em>`).ReplaceAllString(content, "$1")
-	
+
 	// Underline and strikethrough
 	content = regexp.MustCompile(`<u>(.+?)</u>`).ReplaceAllString(content, "$1")
 	content = regexp.MustCompile(`<s>(.+?)</s>`).ReplaceAllString(content, "$1")
 	content = regexp.MustCompile(`<strike>(.+?)</strike>`).ReplaceAllString(content, "$1")
-	
+
 	// Headers
 	for i := 6; i >= 1; i-- {
 		pattern := fmt.Sprintf(`<h%d[^>]*>(.+?)</h%d>`, i, i)
 		content = regexp.MustCompile(pattern).ReplaceAllString(content, "$1")
 	}
-	
+
 	// Paragraphs and breaks
 	content = strings.ReplaceAll(content, "<br/>", "\n")
 	content = strings.ReplaceAll(content, "<br>", "\n")
 	content = strings.ReplaceAll(content, "</p>", "\n")
 	content = regexp.MustCompile(`<p[^>]*>`).ReplaceAllString(content, "")
-	
+
 	// Links
 	content = regexp.MustCompile(`<a[^>]+>(.+?)</a>`).ReplaceAllString(content, "$1")
-	
+
 	// Lists
 	content = strings.ReplaceAll(content, "<li>", "• ")
 	content = strings.ReplaceAll(content, "</li>", "\n")
 	content = regexp.MustCompile(`<[ou]l[^>]*>`).ReplaceAllString(content, "")
 	content = regexp.MustCompile(`</[ou]l>`).ReplaceAllString(content, "")
-	
+
 	// Remove any remaining tags
 	content = regexp.MustCompile(`<[^>]+>`).ReplaceAllString(content, "")
-	
+
 	// Clean up extra whitespace
 	content = strings.TrimSpace(content)
-	
+
 	return content
 }
 
@@ -180,10 +180,10 @@ func (t Text) drawEnhancedText(b *Builder, apiText api.Text) {
 		resolvedClass := api.ResolveStyles(apiText.Style)
 		apiText.Class = mergeClasses(apiText.Class, resolvedClass)
 	}
-	
+
 	// Convert to props
 	textProps := b.style.ConvertToTextProps(apiText.Class)
-	
+
 	// Add alignment support
 	if strings.Contains(apiText.Style, "text-center") {
 		textProps.Align = align.Center
@@ -192,17 +192,17 @@ func (t Text) drawEnhancedText(b *Builder, apiText api.Text) {
 	} else if strings.Contains(apiText.Style, "text-justify") {
 		textProps.Align = align.Justify
 	}
-	
+
 	// Add break line strategy
 	if strings.Contains(apiText.Style, "break-words") {
 		textProps.BreakLineStrategy = breakline.DashStrategy
 	}
-	
+
 	// TODO: Add hyperlink support if api.Text gets an Href field
-	
+
 	// Calculate height
 	height := b.style.CalculateTextHeight(apiText.Class)
-	
+
 	// Create and add text component
 	textComponent := text.New(apiText.Content, *textProps)
 	b.maroto.AddRow(height, col.New(12).Add(textComponent))
@@ -211,7 +211,7 @@ func (t Text) drawEnhancedText(b *Builder, apiText api.Text) {
 // mergeClasses merges two api.Class instances
 func mergeClasses(base, override api.Class) api.Class {
 	result := base
-	
+
 	if override.Font != nil {
 		result.Font = override.Font
 	}
@@ -230,6 +230,6 @@ func mergeClasses(base, override api.Class) api.Class {
 	if override.Name != "" {
 		result.Name = override.Name
 	}
-	
+
 	return result
 }

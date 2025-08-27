@@ -11,14 +11,14 @@ import (
 
 // LineWidget represents a line widget
 type LineWidget struct {
-	Orientation string    `json:"orientation,omitempty"` // horizontal or vertical
-	Style       string    `json:"style,omitempty"`       // solid, dashed, dotted
-	Color       api.Color `json:"color,omitempty"`
-	Thickness   float64   `json:"thickness,omitempty"`
-	Length      float64   `json:"length,omitempty"`      // Percentage of available space (0-100)
-	Offset      float64   `json:"offset,omitempty"`      // Offset from start (0-100)
-	TailwindClass string  `json:"tailwind_class,omitempty"` // Tailwind classes
-	ColumnSpan  int       `json:"column_span,omitempty"`    // How many columns to span (1-12)
+	Orientation   string    `json:"orientation,omitempty"` // horizontal or vertical
+	Style         string    `json:"style,omitempty"`       // solid, dashed, dotted
+	Color         api.Color `json:"color,omitempty"`
+	Thickness     float64   `json:"thickness,omitempty"`
+	Length        float64   `json:"length,omitempty"`         // Percentage of available space (0-100)
+	Offset        float64   `json:"offset,omitempty"`         // Offset from start (0-100)
+	TailwindClass string    `json:"tailwind_class,omitempty"` // Tailwind classes
+	ColumnSpan    int       `json:"column_span,omitempty"`    // How many columns to span (1-12)
 }
 
 // Draw implements the Widget interface
@@ -31,7 +31,7 @@ func (l LineWidget) Draw(b *Builder) error {
 			l.Color = *resolvedClass.Foreground
 		}
 	}
-	
+
 	// Set defaults
 	if l.Thickness == 0 {
 		l.Thickness = 0.5
@@ -42,21 +42,21 @@ func (l LineWidget) Draw(b *Builder) error {
 	if l.ColumnSpan == 0 || l.ColumnSpan > 12 {
 		l.ColumnSpan = 12
 	}
-	
+
 	// Convert to Maroto props
 	lineProps := props.Line{
 		Thickness:     l.Thickness,
 		SizePercent:   l.Length,
 		OffsetPercent: l.Offset,
 	}
-	
+
 	// Set orientation
 	if l.Orientation == "vertical" {
 		lineProps.Orientation = orientation.Vertical
 	} else {
 		lineProps.Orientation = orientation.Horizontal
 	}
-	
+
 	// Set style
 	switch l.Style {
 	case "dashed":
@@ -64,14 +64,14 @@ func (l LineWidget) Draw(b *Builder) error {
 	default:
 		lineProps.Style = linestyle.Solid
 	}
-	
+
 	// Set color
 	if l.Color.Hex != "" {
 		lineProps.Color = b.style.ConvertColor(l.Color)
 	}
-	
+
 	// Add the line to the PDF
 	b.maroto.AddRow(1, col.New(l.ColumnSpan).Add(line.New(lineProps)))
-	
+
 	return nil
 }

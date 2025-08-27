@@ -6,12 +6,12 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-	
+
 	"github.com/flanksource/clicky/api"
 )
 
 // MarkdownFormatter handles Markdown formatting
-type MarkdownFormatter struct{
+type MarkdownFormatter struct {
 	NoColor bool
 }
 
@@ -33,7 +33,7 @@ func (f *MarkdownFormatter) Format(data interface{}) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to convert to PrettyData: %w", err)
 	}
-	
+
 	if prettyData == nil || prettyData.Schema == nil {
 		return "", nil
 	}
@@ -154,7 +154,7 @@ func (f *MarkdownFormatter) isImageURL(s string) bool {
 	// Check for common image file extensions
 	lower := strings.ToLower(s)
 	imageExtensions := []string{".png", ".jpg", ".jpeg", ".gif", ".bmp", ".svg", ".webp", ".ico", ".tiff", ".tif"}
-	
+
 	// For URLs, extract the path
 	if strings.HasPrefix(lower, "http://") || strings.HasPrefix(lower, "https://") {
 		if u, err := url.Parse(s); err == nil {
@@ -276,13 +276,13 @@ func (f *MarkdownFormatter) formatTreeData(field api.PrettyField, fieldValue api
 		// Format the tree using TreeNode methods
 		return f.formatTreeNode(treeNode, 0)
 	}
-	
+
 	// Fallback to regular markdown formatting of the value
 	fieldName := field.Name
 	if field.Label != "" {
 		fieldName = field.Label
 	}
-	
+
 	return fmt.Sprintf("**%s**: %s", fieldName, fieldValue.Markdown())
 }
 
@@ -291,12 +291,12 @@ func (f *MarkdownFormatter) formatTreeNode(node api.TreeNode, depth int) string 
 	if node == nil {
 		return ""
 	}
-	
+
 	var result strings.Builder
-	
+
 	// Create indentation based on depth
 	indent := strings.Repeat("  ", depth)
-	
+
 	// Format current node - check if it implements Pretty interface
 	var nodeContent string
 	if prettyNode, ok := node.(api.Pretty); ok {
@@ -307,7 +307,7 @@ func (f *MarkdownFormatter) formatTreeNode(node api.TreeNode, depth int) string 
 		// Fallback to GetLabel()
 		nodeContent = node.GetLabel()
 	}
-	
+
 	if depth == 0 {
 		// Root node - use bold
 		result.WriteString(fmt.Sprintf("**%s**\n", nodeContent))
@@ -315,13 +315,13 @@ func (f *MarkdownFormatter) formatTreeNode(node api.TreeNode, depth int) string 
 		// Child nodes - use bullet points with indentation
 		result.WriteString(fmt.Sprintf("%s- %s\n", indent, nodeContent))
 	}
-	
+
 	// Format children recursively
 	children := node.GetChildren()
 	for _, child := range children {
 		childOutput := f.formatTreeNode(child, depth+1)
 		result.WriteString(childOutput)
 	}
-	
+
 	return result.String()
 }

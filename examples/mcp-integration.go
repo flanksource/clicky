@@ -17,15 +17,15 @@ func main() {
 		Short: "My application with MCP support",
 		Long:  `An example CLI application that exposes commands as MCP tools.`,
 	}
-	
+
 	// Add your application commands
 	rootCmd.AddCommand(newGreetCommand())
 	rootCmd.AddCommand(newCalculateCommand())
 	rootCmd.AddCommand(newFormatCommand())
-	
+
 	// Add MCP command to expose your CLI as an MCP server
 	rootCmd.AddCommand(mcp.NewCommand())
-	
+
 	// Execute
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -37,7 +37,7 @@ func main() {
 func newGreetCommand() *cobra.Command {
 	var name string
 	var formal bool
-	
+
 	cmd := &cobra.Command{
 		Use:   "greet",
 		Short: "Greet someone",
@@ -47,19 +47,19 @@ func newGreetCommand() *cobra.Command {
 			if formal {
 				greeting = "Good day"
 			}
-			
+
 			if name == "" {
 				name = "World"
 			}
-			
+
 			fmt.Printf("%s, %s!\n", greeting, name)
 			return nil
 		},
 	}
-	
+
 	cmd.Flags().StringVarP(&name, "name", "n", "", "Name to greet")
 	cmd.Flags().BoolVarP(&formal, "formal", "f", false, "Use formal greeting")
-	
+
 	return cmd
 }
 
@@ -67,14 +67,14 @@ func newGreetCommand() *cobra.Command {
 func newCalculateCommand() *cobra.Command {
 	var operation string
 	var x, y float64
-	
+
 	cmd := &cobra.Command{
 		Use:   "calculate",
 		Short: "Perform a calculation",
 		Long:  `Performs basic arithmetic operations.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			var result float64
-			
+
 			switch operation {
 			case "add":
 				result = x + y
@@ -90,18 +90,18 @@ func newCalculateCommand() *cobra.Command {
 			default:
 				return fmt.Errorf("unknown operation: %s", operation)
 			}
-			
+
 			fmt.Printf("Result: %f\n", result)
 			return nil
 		},
 	}
-	
+
 	cmd.Flags().StringVarP(&operation, "operation", "o", "add", "Operation: add, subtract, multiply, divide")
 	cmd.Flags().Float64VarP(&x, "x", "x", 0, "First number")
 	cmd.Flags().Float64VarP(&y, "y", "y", 0, "Second number")
 	cmd.MarkFlagRequired("x")
 	cmd.MarkFlagRequired("y")
-	
+
 	return cmd
 }
 
@@ -109,7 +109,7 @@ func newCalculateCommand() *cobra.Command {
 func newFormatCommand() *cobra.Command {
 	var text string
 	var style string
-	
+
 	cmd := &cobra.Command{
 		Use:   "format",
 		Short: "Format text",
@@ -134,11 +134,11 @@ func newFormatCommand() *cobra.Command {
 			return nil
 		},
 	}
-	
+
 	cmd.Flags().StringVarP(&text, "text", "t", "", "Text to format")
 	cmd.Flags().StringVarP(&style, "style", "s", "plain", "Style: upper, lower, title, reverse, plain")
 	cmd.MarkFlagRequired("text")
-	
+
 	return cmd
 }
 

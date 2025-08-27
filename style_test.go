@@ -8,11 +8,11 @@ import (
 
 func TestStyleTagParsing(t *testing.T) {
 	tests := []struct {
-		name        string
-		tag         string
-		wantStyle   string
-		wantHeader  string
-		wantRow     string
+		name       string
+		tag        string
+		wantStyle  string
+		wantHeader string
+		wantRow    string
 	}{
 		{
 			name:      "simple style",
@@ -35,15 +35,15 @@ func TestStyleTagParsing(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			field := api.ParsePrettyTag(tt.tag)
-			
+
 			if field.Style != tt.wantStyle {
 				t.Errorf("ParsePrettyTag() style = %v, want %v", field.Style, tt.wantStyle)
 			}
-			
+
 			if field.TableOptions.HeaderStyle != tt.wantHeader {
 				t.Errorf("ParsePrettyTag() header_style = %v, want %v", field.TableOptions.HeaderStyle, tt.wantHeader)
 			}
-			
+
 			if field.TableOptions.RowStyle != tt.wantRow {
 				t.Errorf("ParsePrettyTag() row_style = %v, want %v", field.TableOptions.RowStyle, tt.wantRow)
 			}
@@ -54,8 +54,8 @@ func TestStyleTagParsing(t *testing.T) {
 func TestTailwindIntegration(t *testing.T) {
 	// Test struct with style tags
 	type TestData struct {
-		Name   string `json:"name" pretty:"string,style=text-blue-600 font-bold"`
-		Status string `json:"status" pretty:"string,style=text-green-500"`
+		Name   string  `json:"name" pretty:"string,style=text-blue-600 font-bold"`
+		Status string  `json:"status" pretty:"string,style=text-green-500"`
 		Amount float64 `json:"amount" pretty:"currency,style=text-yellow-600"`
 	}
 
@@ -94,8 +94,8 @@ func TestTailwindIntegration(t *testing.T) {
 func TestTableStyleTags(t *testing.T) {
 	// Test struct with table and style tags
 	type TableRow struct {
-		ID    int    `json:"id" pretty:"int"`
-		Name  string `json:"name" pretty:"string"`
+		ID    int     `json:"id" pretty:"int"`
+		Name  string  `json:"name" pretty:"string"`
 		Value float64 `json:"value" pretty:"float"`
 	}
 
@@ -135,11 +135,11 @@ func TestTableStyleTags(t *testing.T) {
 	// Verify table styles
 	expectedHeader := "bg-blue-100 text-blue-800 font-bold"
 	expectedRow := "text-gray-700"
-	
+
 	if itemsField.TableOptions.HeaderStyle != expectedHeader {
 		t.Errorf("Table header_style = %v, want %v", itemsField.TableOptions.HeaderStyle, expectedHeader)
 	}
-	
+
 	if itemsField.TableOptions.RowStyle != expectedRow {
 		t.Errorf("Table row_style = %v, want %v", itemsField.TableOptions.RowStyle, expectedRow)
 	}

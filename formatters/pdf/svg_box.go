@@ -3,26 +3,26 @@ package pdf
 import (
 	"bytes"
 	"fmt"
-	
+
 	"github.com/ajstarks/svgo"
 	"github.com/flanksource/clicky/api"
 )
 
 // SVGBox generates an SVG representation of a box with labels and borders
 type SVGBox struct {
-	api.Box              // Inherits Rectangle, Fill, Border, Padding
-	Labels               []Label
-	Lines                []Line
-	Circles              []CircleShape
-	Cuts                 []Cut
-	EdgeCuts             []EdgeCut
-	MeasureLines         []MeasureLine
-	ShowDimensions       bool
-	DimensionUnit        string
-	ActualWidth          float64
-	ActualHeight         float64
-	SVGPadding           float64 // Padding for the SVG canvas
-	EnableCollisionAvoidance bool // Enable automatic collision avoidance
+	api.Box                  // Inherits Rectangle, Fill, Border, Padding
+	Labels                   []Label
+	Lines                    []Line
+	Circles                  []CircleShape
+	Cuts                     []Cut
+	EdgeCuts                 []EdgeCut
+	MeasureLines             []MeasureLine
+	ShowDimensions           bool
+	DimensionUnit            string
+	ActualWidth              float64
+	ActualHeight             float64
+	SVGPadding               float64 // Padding for the SVG canvas
+	EnableCollisionAvoidance bool    // Enable automatic collision avoidance
 }
 
 // CircleShape represents a circular shape in the box
@@ -36,7 +36,7 @@ type CircleShape struct {
 
 // Cut represents a rectangular cut in the box
 type Cut struct {
-	Orientation string  // "horizontal" or "vertical"
+	Orientation string // "horizontal" or "vertical"
 	Position    float64
 	Width       float64
 	Depth       float64
@@ -74,21 +74,21 @@ type LabelBounds struct {
 
 // PositionedLabel represents a label with calculated position
 type PositionedLabel struct {
-	Label   Label
-	X       int
-	Y       int
-	Anchor  string
-	Bounds  LabelBounds
+	Label  Label
+	X      int
+	Y      int
+	Anchor string
+	Bounds LabelBounds
 }
 
 // GenerateSVG creates an SVG representation of the box
 func (b SVGBox) GenerateSVG() ([]byte, error) {
 	var buf bytes.Buffer
 	canvas := svg.New(&buf)
-	
+
 	// Calculate dynamic padding based on labels and measure lines
 	padding := b.calculateDynamicPadding()
-	
+
 	width := float64(b.Rectangle.Width)
 	height := float64(b.Rectangle.Height)
 	actualW := b.ActualWidth
@@ -99,42 +99,42 @@ func (b SVGBox) GenerateSVG() ([]byte, error) {
 	if actualH == 0 {
 		actualH = height
 	}
-	
+
 	svgWidth := int(width + padding.Left + padding.Right)
 	svgHeight := int(height + padding.Top + padding.Bottom)
 	boxX := int(padding.Left)
 	boxY := int(padding.Top)
-	
+
 	// Start SVG
 	canvas.Start(svgWidth, svgHeight)
-	
+
 	// Draw main rectangle with fill
 	fillColor := b.colorToHex(b.Fill)
-	
+
 	// Draw the main box (initially without stroke, we'll draw borders separately)
 	style := fmt.Sprintf("fill:%s;stroke:none", fillColor)
 	canvas.Rect(boxX, boxY, int(width), int(height), style)
-	
+
 	// Draw borders
 	b.drawBorders(canvas, boxX, boxY, int(width), int(height))
-	
+
 	// Draw circles
 	for _, circle := range b.Circles {
 		cx := boxX + int(circle.X)
 		cy := boxY + int(circle.Y)
 		r := int(circle.Diameter / 2)
 		canvas.Circle(cx, cy, r, "fill:rgba(0,0,0,0.2);stroke:black;stroke-width:0.5")
-		
+
 		if circle.Label != "" {
 			labelY := cy + r + 12
 			canvas.Text(cx, labelY, circle.Label, "text-anchor:middle;font-size:10px;fill:#666")
 		}
 	}
-	
+
 	// Draw cuts
 	for _, cut := range b.Cuts {
 		var dx, dy, dw, dh int
-		
+
 		if cut.Orientation == "vertical" {
 			dx = boxX + int(cut.Position-cut.Width/2)
 			dy = boxY
@@ -146,20 +146,20 @@ func (b SVGBox) GenerateSVG() ([]byte, error) {
 			dw = int(width)
 			dh = int(cut.Width)
 		}
-		
+
 		canvas.Rect(dx, dy, dw, dh, "fill:rgba(0,0,0,0.15);stroke:black;stroke-width:0.5;stroke-dasharray:3,3")
-		
+
 		if cut.Label != "" {
 			labelX := dx + dw/2
 			labelY := dy + dh/2
 			canvas.Text(labelX, labelY, cut.Label, "text-anchor:middle;font-size:10px;fill:#666")
 		}
 	}
-	
+
 	// Draw edge cuts
 	for _, edgeCut := range b.EdgeCuts {
 		var rx, ry, rw, rh int
-		
+
 		switch edgeCut.Edge {
 		case "left":
 			rx = boxX
@@ -182,21 +182,21 @@ func (b SVGBox) GenerateSVG() ([]byte, error) {
 			rw = int(width)
 			rh = int(edgeCut.Width)
 		}
-		
+
 		canvas.Rect(rx, ry, rw, rh, "fill:rgba(0,0,0,0.1);stroke:black;stroke-width:0.5;stroke-dasharray:4,2")
-		
+
 		if edgeCut.Label != "" {
 			labelX := rx + rw/2
 			labelY := ry + rh/2
 			canvas.Text(labelX, labelY, edgeCut.Label, "text-anchor:middle;font-size:10px;fill:#666")
 		}
 	}
-	
+
 	// Draw measure lines
 	for _, ml := range b.MeasureLines {
 		b.drawMeasureLine(canvas, ml, boxX, boxY)
 	}
-	
+
 	// Draw labels with collision avoidance
 	if b.EnableCollisionAvoidance {
 		positionedLabels := b.calculateCollisionFreePositions(boxX, boxY, int(width), int(height))
@@ -208,35 +208,35 @@ func (b SVGBox) GenerateSVG() ([]byte, error) {
 			b.drawLabel(canvas, label, boxX, boxY, int(width), int(height))
 		}
 	}
-	
+
 	// Draw dimensions if enabled
 	if b.ShowDimensions {
 		unit := b.DimensionUnit
 		if unit == "" {
 			unit = "mm"
 		}
-		
+
 		// Width dimension (bottom)
 		widthText := fmt.Sprintf("%.0f%s", actualW, unit)
-		canvas.Text(boxX+int(width)/2, boxY+int(height)+30, widthText, 
+		canvas.Text(boxX+int(width)/2, boxY+int(height)+30, widthText,
 			"text-anchor:middle;font-size:12px;fill:#333")
-		
+
 		// Draw dimension line
 		y := boxY + int(height) + 20
 		canvas.Line(boxX, y, boxX+int(width), y, "stroke:#333;stroke-width:0.5")
 		// Arrows
 		canvas.Line(boxX, y-3, boxX, y+3, "stroke:#333;stroke-width:0.5")
 		canvas.Line(boxX+int(width), y-3, boxX+int(width), y+3, "stroke:#333;stroke-width:0.5")
-		
+
 		// Height dimension (left)
 		heightText := fmt.Sprintf("%.0f%s", actualH, unit)
 		// Rotate text for vertical dimension
 		transform := fmt.Sprintf("rotate(-90 %d %d)", boxX-30, boxY+int(height)/2)
 		canvas.Gtransform(transform)
-		canvas.Text(boxX-30, boxY+int(height)/2, heightText, 
+		canvas.Text(boxX-30, boxY+int(height)/2, heightText,
 			"text-anchor:middle;font-size:12px;fill:#333")
 		canvas.Gend()
-		
+
 		// Draw dimension line
 		x := boxX - 20
 		canvas.Line(x, boxY, x, boxY+int(height), "stroke:#333;stroke-width:0.5")
@@ -244,7 +244,7 @@ func (b SVGBox) GenerateSVG() ([]byte, error) {
 		canvas.Line(x-3, boxY, x+3, boxY, "stroke:#333;stroke-width:0.5")
 		canvas.Line(x-3, boxY+int(height), x+3, boxY+int(height), "stroke:#333;stroke-width:0.5")
 	}
-	
+
 	canvas.End()
 	return buf.Bytes(), nil
 }
@@ -258,18 +258,18 @@ func (b SVGBox) drawBorders(canvas *svg.SVG, x, y, w, h int) {
 		if width == 0 {
 			width = 1
 		}
-		
+
 		style := fmt.Sprintf("stroke:%s;stroke-width:%d", color, width)
-		
+
 		if line.Style == api.Dashed {
 			style += ";stroke-dasharray:5,5"
 		} else if line.Style == api.Dotted {
 			style += ";stroke-dasharray:1,2"
 		}
-		
+
 		return style
 	}
-	
+
 	// Draw each border
 	// Top border
 	if b.Border.Top.Width > 0 || b.Border.Top.Color.Hex != "" {
@@ -295,11 +295,11 @@ func (b SVGBox) drawLabel(canvas *svg.SVG, label Label, boxX, boxY, boxW, boxH i
 	if text == "" {
 		return
 	}
-	
+
 	// Calculate label position
 	var x, y int
 	anchor := "middle"
-	
+
 	// Default to center if no position specified
 	pos := "center"
 	if label.Position != nil && label.Position.Horizontal != "" {
@@ -311,7 +311,7 @@ func (b SVGBox) drawLabel(canvas *svg.SVG, label Label, boxX, boxY, boxW, boxH i
 	} else if label.Position != nil && label.Position.Vertical != "" {
 		pos = string(label.Position.Vertical)
 	}
-	
+
 	// Parse position and calculate coordinates
 	switch pos {
 	case "center":
@@ -352,18 +352,18 @@ func (b SVGBox) drawLabel(canvas *svg.SVG, label Label, boxX, boxY, boxW, boxH i
 		x = boxX + boxW/2
 		y = boxY + boxH/2
 	}
-	
+
 	// Apply absolute position offset if specified
 	if label.Absolute != nil {
 		x += label.Absolute.X
 		y += label.Absolute.Y
 	}
-	
+
 	// Determine font properties
 	fontSize := 14
 	fontWeight := "normal"
 	fontColor := "#000"
-	
+
 	if label.Text.Class.Font != nil {
 		if label.Text.Class.Font.Size > 0 {
 			fontSize = int(label.Text.Class.Font.Size)
@@ -372,14 +372,14 @@ func (b SVGBox) drawLabel(canvas *svg.SVG, label Label, boxX, boxY, boxW, boxH i
 			fontWeight = "bold"
 		}
 	}
-	
+
 	if label.Text.Class.Foreground != nil {
 		fontColor = b.colorToHex(*label.Text.Class.Foreground)
 	}
-	
-	style := fmt.Sprintf("text-anchor:%s;font-size:%dpx;font-weight:%s;fill:%s", 
+
+	style := fmt.Sprintf("text-anchor:%s;font-size:%dpx;font-weight:%s;fill:%s",
 		anchor, fontSize, fontWeight, fontColor)
-	
+
 	canvas.Text(x, y, text, style)
 }
 
@@ -390,10 +390,10 @@ func (b SVGBox) drawMeasureLine(canvas *svg.SVG, ml MeasureLine, boxX, boxY int)
 	y1 := boxY + int(ml.Y1)
 	x2 := boxX + int(ml.X2)
 	y2 := boxY + int(ml.Y2)
-	
+
 	isHorizontal := ml.Y1 == ml.Y2
 	isVertical := ml.X1 == ml.X2
-	
+
 	// Apply offset
 	if isHorizontal {
 		y1 += int(ml.Offset)
@@ -402,7 +402,7 @@ func (b SVGBox) drawMeasureLine(canvas *svg.SVG, ml MeasureLine, boxX, boxY int)
 		x1 += int(ml.Offset)
 		x2 += int(ml.Offset)
 	}
-	
+
 	// Draw extension lines (thin lines from object to measure line)
 	if ml.Offset != 0 {
 		if isHorizontal {
@@ -415,29 +415,29 @@ func (b SVGBox) drawMeasureLine(canvas *svg.SVG, ml MeasureLine, boxX, boxY int)
 			canvas.Line(boxX+int(ml.X2), boxY+int(ml.Y2), x2, y2, "stroke:#666;stroke-width:0.5")
 		}
 	}
-	
+
 	// Draw main measure line
 	style := "stroke:#000;stroke-width:0.8"
 	if ml.Style == "dashed" {
 		style += ";stroke-dasharray:5,3"
 	}
 	canvas.Line(x1, y1, x2, y2, style)
-	
+
 	// Draw arrows if enabled
 	if ml.ShowArrows {
 		if isHorizontal {
 			// Left arrow
-			canvas.Polygon([]int{x1, x1+8, x1+8}, []int{y1, y1-4, y1+4}, "fill:#000")
+			canvas.Polygon([]int{x1, x1 + 8, x1 + 8}, []int{y1, y1 - 4, y1 + 4}, "fill:#000")
 			// Right arrow
-			canvas.Polygon([]int{x2, x2-8, x2-8}, []int{y2, y2-4, y2+4}, "fill:#000")
+			canvas.Polygon([]int{x2, x2 - 8, x2 - 8}, []int{y2, y2 - 4, y2 + 4}, "fill:#000")
 		} else if isVertical {
 			// Top arrow
-			canvas.Polygon([]int{x1, x1-4, x1+4}, []int{y1, y1+8, y1+8}, "fill:#000")
+			canvas.Polygon([]int{x1, x1 - 4, x1 + 4}, []int{y1, y1 + 8, y1 + 8}, "fill:#000")
 			// Bottom arrow
-			canvas.Polygon([]int{x2, x2-4, x2+4}, []int{y2, y2-8, y2-8}, "fill:#000")
+			canvas.Polygon([]int{x2, x2 - 4, x2 + 4}, []int{y2, y2 - 8, y2 - 8}, "fill:#000")
 		}
 	}
-	
+
 	// Draw label
 	if ml.Label != "" {
 		var labelX, labelY int
@@ -448,7 +448,7 @@ func (b SVGBox) drawMeasureLine(canvas *svg.SVG, ml MeasureLine, boxX, boxY int)
 			labelX = x1 - 15 // Place label to the left of the line
 			labelY = (y1 + y2) / 2
 		}
-		
+
 		canvas.Text(labelX, labelY, ml.Label, "text-anchor:middle;font-size:11px;fill:#333")
 	}
 }
@@ -469,7 +469,7 @@ func (b SVGBox) calculateDynamicPadding() PaddingBox {
 		Bottom: 50,
 		Left:   50,
 	}
-	
+
 	// Start with SVGPadding if specified
 	if b.SVGPadding > 0 {
 		padding.Top = b.SVGPadding
@@ -477,17 +477,17 @@ func (b SVGBox) calculateDynamicPadding() PaddingBox {
 		padding.Bottom = b.SVGPadding
 		padding.Left = b.SVGPadding
 	}
-	
+
 	// Check labels for outside positions
 	for _, label := range b.Labels {
 		if label.Position == nil {
 			continue
 		}
-		
+
 		// Estimate text size (rough approximation)
 		textWidth := float64(len(label.Text.Content) * 8)
 		textHeight := 20.0
-		
+
 		switch label.Position.Vertical {
 		case VerticalTop:
 			if label.Position.Inside == InsideBottom { // outside
@@ -498,7 +498,7 @@ func (b SVGBox) calculateDynamicPadding() PaddingBox {
 				padding.Bottom = max(padding.Bottom, textHeight+30)
 			}
 		}
-		
+
 		switch label.Position.Horizontal {
 		case HorizontalLeft:
 			if label.Position.Inside == InsideBottom { // outside
@@ -510,7 +510,7 @@ func (b SVGBox) calculateDynamicPadding() PaddingBox {
 			}
 		}
 	}
-	
+
 	// Check measure lines
 	for _, ml := range b.MeasureLines {
 		if ml.Y1 == ml.Y2 { // Horizontal
@@ -527,13 +527,13 @@ func (b SVGBox) calculateDynamicPadding() PaddingBox {
 			}
 		}
 	}
-	
+
 	// Check dimensions if enabled
 	if b.ShowDimensions {
 		padding.Bottom = max(padding.Bottom, 40)
 		padding.Left = max(padding.Left, 40)
 	}
-	
+
 	return padding
 }
 
@@ -541,24 +541,24 @@ func (b SVGBox) calculateDynamicPadding() PaddingBox {
 func (b SVGBox) calculateCollisionFreePositions(boxX, boxY, boxW, boxH int) []PositionedLabel {
 	var positioned []PositionedLabel
 	var occupiedBounds []LabelBounds
-	
+
 	// Add obstacles (circles, cuts, edge cuts) to occupied bounds
 	obstacles := b.getObstacleBounds(boxX, boxY, boxW, boxH)
 	occupiedBounds = append(occupiedBounds, obstacles...)
-	
+
 	for _, label := range b.Labels {
 		pos := b.findBestLabelPosition(label, boxX, boxY, boxW, boxH, occupiedBounds)
 		positioned = append(positioned, pos)
 		occupiedBounds = append(occupiedBounds, pos.Bounds)
 	}
-	
+
 	return positioned
 }
 
 // getObstacleBounds returns bounds of all obstacles (holes, dados, rabbets)
 func (b SVGBox) getObstacleBounds(boxX, boxY, boxW, boxH int) []LabelBounds {
 	var bounds []LabelBounds
-	
+
 	// Add circles as obstacles
 	for _, circle := range b.Circles {
 		cx := float64(boxX) + circle.X
@@ -571,11 +571,11 @@ func (b SVGBox) getObstacleBounds(boxX, boxY, boxW, boxH int) []LabelBounds {
 			Height: circle.Diameter + 10,
 		})
 	}
-	
+
 	// Add cuts as obstacles
 	for _, cut := range b.Cuts {
 		var dx, dy, dw, dh float64
-		
+
 		if cut.Orientation == "vertical" {
 			dx = float64(boxX) + cut.Position - cut.Width/2
 			dy = float64(boxY)
@@ -587,7 +587,7 @@ func (b SVGBox) getObstacleBounds(boxX, boxY, boxW, boxH int) []LabelBounds {
 			dw = float64(boxW)
 			dh = cut.Width
 		}
-		
+
 		bounds = append(bounds, LabelBounds{
 			X:      dx - 5,
 			Y:      dy - 5,
@@ -595,11 +595,11 @@ func (b SVGBox) getObstacleBounds(boxX, boxY, boxW, boxH int) []LabelBounds {
 			Height: dh + 10,
 		})
 	}
-	
+
 	// Add edge cuts as obstacles
 	for _, edgeCut := range b.EdgeCuts {
 		var rx, ry, rw, rh float64
-		
+
 		switch edgeCut.Edge {
 		case "left":
 			rx = float64(boxX)
@@ -622,7 +622,7 @@ func (b SVGBox) getObstacleBounds(boxX, boxY, boxW, boxH int) []LabelBounds {
 			rw = float64(boxW)
 			rh = edgeCut.Width
 		}
-		
+
 		bounds = append(bounds, LabelBounds{
 			X:      rx - 5,
 			Y:      ry - 5,
@@ -630,7 +630,7 @@ func (b SVGBox) getObstacleBounds(boxX, boxY, boxW, boxH int) []LabelBounds {
 			Height: rh + 10,
 		})
 	}
-	
+
 	return bounds
 }
 
@@ -639,13 +639,13 @@ func (b SVGBox) findBestLabelPosition(label Label, boxX, boxY, boxW, boxH int, o
 	// Estimate label size
 	textWidth := float64(len(label.Text.Content) * 8)
 	textHeight := 20.0
-	
+
 	if label.Text.Class.Font != nil && label.Text.Class.Font.Size > 0 {
 		fontSize := float64(label.Text.Class.Font.Size)
 		textWidth = float64(len(label.Text.Content)) * fontSize * 0.6
 		textHeight = fontSize + 5
 	}
-	
+
 	// Define possible positions to try (in order of preference)
 	positions := []struct {
 		x, y   int
@@ -662,7 +662,7 @@ func (b SVGBox) findBestLabelPosition(label Label, boxX, boxY, boxW, boxH int, o
 		{boxX + 20, boxY + boxH - 10, "start", "bottom-left"},
 		{boxX + boxW - 20, boxY + boxH - 10, "end", "bottom-right"},
 	}
-	
+
 	// Use original position if specified and available
 	if label.Position != nil {
 		originalPos := b.calculateOriginalPosition(label, boxX, boxY, boxW, boxH)
@@ -672,7 +672,7 @@ func (b SVGBox) findBestLabelPosition(label Label, boxX, boxY, boxW, boxH int, o
 		}
 		// If original position collides, fall back to alternatives
 	}
-	
+
 	// Try each position until we find one without collisions
 	for _, pos := range positions {
 		bounds := b.calculateLabelBounds(pos.x, pos.y, textWidth, textHeight, pos.anchor)
@@ -686,7 +686,7 @@ func (b SVGBox) findBestLabelPosition(label Label, boxX, boxY, boxW, boxH int, o
 			}
 		}
 	}
-	
+
 	// If no position works, use center as fallback
 	centerBounds := b.calculateLabelBounds(boxX+boxW/2, boxY+boxH/2, textWidth, textHeight, "middle")
 	return PositionedLabel{
@@ -702,7 +702,7 @@ func (b SVGBox) findBestLabelPosition(label Label, boxX, boxY, boxW, boxH int, o
 func (b SVGBox) calculateOriginalPosition(label Label, boxX, boxY, boxW, boxH int) PositionedLabel {
 	var x, y int
 	anchor := "middle"
-	
+
 	// Default to center if no position specified
 	pos := "center"
 	if label.Position != nil && label.Position.Horizontal != "" {
@@ -714,7 +714,7 @@ func (b SVGBox) calculateOriginalPosition(label Label, boxX, boxY, boxW, boxH in
 	} else if label.Position != nil && label.Position.Vertical != "" {
 		pos = string(label.Position.Vertical)
 	}
-	
+
 	// Calculate position
 	switch pos {
 	case "center":
@@ -754,13 +754,13 @@ func (b SVGBox) calculateOriginalPosition(label Label, boxX, boxY, boxW, boxH in
 		x = boxX + boxW/2
 		y = boxY + boxH/2
 	}
-	
+
 	// Apply absolute position offset if specified
 	if label.Absolute != nil {
 		x += label.Absolute.X
 		y += label.Absolute.Y
 	}
-	
+
 	// Estimate text size for bounds
 	textWidth := float64(len(label.Text.Content) * 8)
 	textHeight := 20.0
@@ -769,9 +769,9 @@ func (b SVGBox) calculateOriginalPosition(label Label, boxX, boxY, boxW, boxH in
 		textWidth = float64(len(label.Text.Content)) * fontSize * 0.6
 		textHeight = fontSize + 5
 	}
-	
+
 	bounds := b.calculateLabelBounds(x, y, textWidth, textHeight, anchor)
-	
+
 	return PositionedLabel{
 		Label:  label,
 		X:      x,
@@ -784,7 +784,7 @@ func (b SVGBox) calculateOriginalPosition(label Label, boxX, boxY, boxW, boxH in
 // calculateLabelBounds calculates the rectangular bounds for a label at the given position
 func (b SVGBox) calculateLabelBounds(x, y int, textWidth, textHeight float64, anchor string) LabelBounds {
 	var boundsX, boundsY float64
-	
+
 	switch anchor {
 	case "start":
 		boundsX = float64(x)
@@ -799,7 +799,7 @@ func (b SVGBox) calculateLabelBounds(x, y int, textWidth, textHeight float64, an
 		boundsX = float64(x) - textWidth/2
 		boundsY = float64(y) - textHeight/2
 	}
-	
+
 	return LabelBounds{
 		X:      boundsX,
 		Y:      boundsY,
@@ -828,12 +828,12 @@ func (b SVGBox) drawPositionedLabel(canvas *svg.SVG, pl PositionedLabel) {
 	if text == "" {
 		return
 	}
-	
+
 	// Determine font properties
 	fontSize := 14
 	fontWeight := "normal"
 	fontColor := "#000"
-	
+
 	if label.Text.Class.Font != nil {
 		if label.Text.Class.Font.Size > 0 {
 			fontSize = int(label.Text.Class.Font.Size)
@@ -842,14 +842,14 @@ func (b SVGBox) drawPositionedLabel(canvas *svg.SVG, pl PositionedLabel) {
 			fontWeight = "bold"
 		}
 	}
-	
+
 	if label.Text.Class.Foreground != nil {
 		fontColor = b.colorToHex(*label.Text.Class.Foreground)
 	}
-	
-	style := fmt.Sprintf("text-anchor:%s;font-size:%dpx;font-weight:%s;fill:%s", 
+
+	style := fmt.Sprintf("text-anchor:%s;font-size:%dpx;font-weight:%s;fill:%s",
 		pl.Anchor, fontSize, fontWeight, fontColor)
-	
+
 	canvas.Text(pl.X, pl.Y, text, style)
 }
 
@@ -867,13 +867,13 @@ func (b *SVGBox) ImportFromSVG(svgContent string) error {
 	if err != nil {
 		return fmt.Errorf("failed to import SVG: %w", err)
 	}
-	
+
 	// Add imported elements to the SVGBox
 	b.Circles = append(b.Circles, elements.Circles...)
 	b.Cuts = append(b.Cuts, elements.Cuts...)
 	b.EdgeCuts = append(b.EdgeCuts, elements.EdgeCuts...)
 	b.Labels = append(b.Labels, elements.Labels...)
-	
+
 	return nil
 }
 
@@ -885,7 +885,7 @@ func (b SVGBox) colorToHex(color api.Color) string {
 		}
 		return color.Hex
 	}
-	
+
 	// Default to black if no color specified
 	return "#000000"
 }

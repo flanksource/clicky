@@ -8,15 +8,15 @@ import (
 
 func TestDefaultConfig(t *testing.T) {
 	config := DefaultConfig()
-	
+
 	if config.Type != AgentTypeClaude {
 		t.Errorf("Expected default agent type to be Claude, got %s", config.Type)
 	}
-	
+
 	if config.MaxConcurrent <= 0 {
 		t.Errorf("Expected positive max concurrent, got %d", config.MaxConcurrent)
 	}
-	
+
 	if config.Model == "" {
 		t.Error("Expected default model to be set")
 	}
@@ -104,23 +104,23 @@ func TestAgentManager(t *testing.T) {
 	config := DefaultConfig()
 	am := NewAgentManager(config)
 	defer am.Close()
-	
+
 	// Test getting default agent
 	agent, err := am.GetDefaultAgent()
 	if err != nil {
 		t.Fatalf("Failed to get default agent: %v", err)
 	}
-	
+
 	if agent.GetType() != config.Type {
 		t.Errorf("Expected agent type %s, got %s", config.Type, agent.GetType())
 	}
-	
+
 	// Test getting the same agent again (should be cached)
 	agent2, err := am.GetAgent(config.Type)
 	if err != nil {
 		t.Fatalf("Failed to get cached agent: %v", err)
 	}
-	
+
 	if agent != agent2 {
 		t.Error("Expected cached agent to be the same instance")
 	}
@@ -133,25 +133,25 @@ func TestClaudeAgentListModels(t *testing.T) {
 		MaxTokens:     1000,
 		MaxConcurrent: 1,
 	}
-	
+
 	agent, err := NewClaudeAgent(config)
 	if err != nil {
 		t.Fatalf("Failed to create Claude agent: %v", err)
 	}
 	defer agent.Close()
-	
+
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	
+
 	models, err := agent.ListModels(ctx)
 	if err != nil {
 		t.Fatalf("Failed to list models: %v", err)
 	}
-	
+
 	if len(models) == 0 {
 		t.Error("Expected at least one model")
 	}
-	
+
 	// Check that we have expected Claude models
 	foundHaiku := false
 	for _, model := range models {
@@ -163,12 +163,11 @@ func TestClaudeAgentListModels(t *testing.T) {
 			break
 		}
 	}
-	
+
 	if !foundHaiku {
 		t.Error("Expected to find Claude 3 Haiku model")
 	}
 }
-
 
 func TestFormatPrice(t *testing.T) {
 	tests := []struct {
@@ -181,7 +180,7 @@ func TestFormatPrice(t *testing.T) {
 		{"very small", 0.00000025, "$0.250/1M"},
 		{"large", 0.000075, "$75.00/1M"},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := formatPrice(tt.price)
@@ -204,7 +203,7 @@ func TestFormatTokens(t *testing.T) {
 		{"millions", 200000, "200.0K"},
 		{"large millions", 2000000, "2.0M"},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := formatTokens(tt.tokens)
@@ -217,8 +216,8 @@ func TestFormatTokens(t *testing.T) {
 
 // Helper function to check if a string contains another string
 func containsString(haystack, needle string) bool {
-	return len(needle) > 0 && len(haystack) >= len(needle) && 
-		   findSubstring(haystack, needle) >= 0
+	return len(needle) > 0 && len(haystack) >= len(needle) &&
+		findSubstring(haystack, needle) >= 0
 }
 
 func findSubstring(s, sub string) int {

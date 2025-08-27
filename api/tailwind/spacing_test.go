@@ -62,12 +62,12 @@ func TestParsePadding(t *testing.T) {
 			left:   ptr(0.0),
 		},
 		{
-			name:  "p-px single pixel",
-			class: "p-px",
-			top:   ptr(0.0625),
-			right: ptr(0.0625),
+			name:   "p-px single pixel",
+			class:  "p-px",
+			top:    ptr(0.0625),
+			right:  ptr(0.0625),
 			bottom: ptr(0.0625),
-			left:  ptr(0.0625),
+			left:   ptr(0.0625),
 		},
 		{
 			name:  "invalid class",
@@ -82,7 +82,7 @@ func TestParsePadding(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			top, right, bottom, left := ParsePadding(tt.class)
-			
+
 			if !equalPtr(top, tt.top) {
 				t.Errorf("Expected top %v, got %v", tt.top, top)
 			}
@@ -139,8 +139,8 @@ func TestParseCustomSpacing(t *testing.T) {
 		expected float64
 		hasError bool
 	}{
-		{name: "10px", value: "10px", expected: 0.625},    // 10/16
-		{name: "24px", value: "24px", expected: 1.5},      // 24/16
+		{name: "10px", value: "10px", expected: 0.625}, // 10/16
+		{name: "24px", value: "24px", expected: 1.5},   // 24/16
 		{name: "1.5rem", value: "1.5rem", expected: 1.5},
 		{name: "2rem", value: "2rem", expected: 2},
 		{name: "1em", value: "1em", expected: 1},
@@ -208,7 +208,7 @@ func TestParsePaddingCustom(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			top, right, bottom, left := ParsePadding(tt.class)
-			
+
 			if !equalPtr(top, tt.top) {
 				t.Errorf("Expected top %v, got %v", tt.top, top)
 			}
@@ -231,7 +231,7 @@ func TestParseFontSizeCustom(t *testing.T) {
 		class    string
 		expected float64
 	}{
-		{name: "text-[14px]", class: "text-[14px]", expected: 0.875},  // 14/16
+		{name: "text-[14px]", class: "text-[14px]", expected: 0.875}, // 14/16
 		{name: "text-[1.5rem]", class: "text-[1.5rem]", expected: 1.5},
 		{name: "text-[2em]", class: "text-[2em]", expected: 2},
 		{name: "text-[0.75]", class: "text-[0.75]", expected: 0.75},

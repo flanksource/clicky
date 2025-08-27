@@ -754,7 +754,7 @@ func convertSliceToPrettyData(val reflect.Value) (*api.PrettyData, error) {
 		}
 		rows = append(rows, row)
 	}
-	
+
 	// Sort rows based on sort tags in the struct
 	if len(rows) > 0 {
 		sortFields := ExtractSortFields(firstElem.Type())

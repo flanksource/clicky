@@ -19,11 +19,11 @@ func TestGenerateShowcasePDF(t *testing.T) {
 		if debugMode {
 			name = "showcase_debug"
 		}
-		
+
 		t.Run(name, func(t *testing.T) {
 			// Create builder with debug mode
 			builder := NewBuilder(WithDebug(debugMode))
-			
+
 			// Add header
 			builder.SetHeader(api.Text{
 				Content: "Clicky PDF Widget Showcase",
@@ -31,48 +31,48 @@ func TestGenerateShowcasePDF(t *testing.T) {
 					Font: &api.Font{Bold: true, Size: 1.2},
 				},
 			})
-			
+
 			// Page 1: Text Features
 			addTextFeaturesPage(builder)
-			
+
 			// Page 2: Table Features
 			addTableFeaturesPage(builder)
-			
+
 			// Page 3: Layout Features
 			if err := addLayoutFeaturesPage(builder); err != nil {
 				t.Fatalf("Failed to add layout features page: %v", err)
 			}
-			
+
 			// Page 4: Styling Features
 			addStylingFeaturesPage(builder)
-			
+
 			// Page 5: Image Features
 			addImageFeaturesPage(builder)
-			
+
 			// Page 6: SVG Features
 			if err := addSVGFeaturesPage(builder); err != nil {
 				t.Fatalf("Failed to add SVG features page: %v", err)
 			}
-			
+
 			// Page 7: Label Positions Gallery
 			if err := addLabelPositionsGalleryPage(builder); err != nil {
 				t.Fatalf("Failed to add label positions gallery page: %v", err)
 			}
-			
+
 			// Page 8: Combined Examples
 			addCombinedExamplesPage(builder)
-			
+
 			// Generate PDF
 			pdfData, err := builder.Build()
 			if err != nil {
 				t.Fatalf("Failed to build PDF: %v", err)
 			}
-			
+
 			// Verify no errors in the generated PDF
 			AssertPDFDoesNotContainErrors(t, pdfData)
 			AssertNoImageLoadErrors(t, pdfData)
 			AssertNoSVGRenderingErrors(t, pdfData)
-			
+
 			// Save PDF
 			saveShowcasePDF(t, name, pdfData)
 		})
@@ -88,7 +88,7 @@ func addTextFeaturesPage(b *Builder) {
 		},
 	}
 	textWidget.Draw(b)
-	
+
 	// Section: Alignments
 	sectionTitle := Text{
 		Text: api.Text{
@@ -97,7 +97,7 @@ func addTextFeaturesPage(b *Builder) {
 		},
 	}
 	sectionTitle.Draw(b)
-	
+
 	// Left aligned
 	leftText := Text{
 		Text: api.Text{
@@ -107,7 +107,7 @@ func addTextFeaturesPage(b *Builder) {
 		},
 	}
 	leftText.Draw(b)
-	
+
 	// Center aligned
 	centerText := Text{
 		Text: api.Text{
@@ -117,7 +117,7 @@ func addTextFeaturesPage(b *Builder) {
 		},
 	}
 	centerText.Draw(b)
-	
+
 	// Right aligned
 	rightText := Text{
 		Text: api.Text{
@@ -127,7 +127,7 @@ func addTextFeaturesPage(b *Builder) {
 		},
 	}
 	rightText.Draw(b)
-	
+
 	// Justified text
 	justifyText := Text{
 		Text: api.Text{
@@ -137,7 +137,7 @@ func addTextFeaturesPage(b *Builder) {
 		},
 	}
 	justifyText.Draw(b)
-	
+
 	// Section: Font Styles
 	sectionTitle2 := Text{
 		Text: api.Text{
@@ -146,7 +146,7 @@ func addTextFeaturesPage(b *Builder) {
 		},
 	}
 	sectionTitle2.Draw(b)
-	
+
 	// Bold text
 	boldText := Text{
 		Text: api.Text{
@@ -155,7 +155,7 @@ func addTextFeaturesPage(b *Builder) {
 		},
 	}
 	boldText.Draw(b)
-	
+
 	// Italic text
 	italicText := Text{
 		Text: api.Text{
@@ -164,7 +164,7 @@ func addTextFeaturesPage(b *Builder) {
 		},
 	}
 	italicText.Draw(b)
-	
+
 	// Different sizes
 	sizes := []string{"text-xs", "text-sm", "text-base", "text-lg", "text-xl", "text-2xl"}
 	for _, size := range sizes {
@@ -176,7 +176,7 @@ func addTextFeaturesPage(b *Builder) {
 		}
 		sizeText.Draw(b)
 	}
-	
+
 	// Section: Colors
 	sectionTitle3 := Text{
 		Text: api.Text{
@@ -185,7 +185,7 @@ func addTextFeaturesPage(b *Builder) {
 		},
 	}
 	sectionTitle3.Draw(b)
-	
+
 	colors := []string{"text-red-500", "text-blue-500", "text-green-500", "text-yellow-600", "text-purple-500"}
 	for _, color := range colors {
 		colorText := Text{
@@ -196,7 +196,7 @@ func addTextFeaturesPage(b *Builder) {
 		}
 		colorText.Draw(b)
 	}
-	
+
 	// Section: Markdown Support
 	sectionTitle4 := Text{
 		Text: api.Text{
@@ -205,7 +205,7 @@ func addTextFeaturesPage(b *Builder) {
 		},
 	}
 	sectionTitle4.Draw(b)
-	
+
 	markdownText := Text{
 		Text: api.Text{
 			Content: "This text has **bold**, *italic*, and ~~strikethrough~~ markdown formatting. Also supports [links](https://example.com) and `inline code`.",
@@ -213,7 +213,7 @@ func addTextFeaturesPage(b *Builder) {
 		EnableMD: true,
 	}
 	markdownText.Draw(b)
-	
+
 	// Section: HTML Support
 	sectionTitle5 := Text{
 		Text: api.Text{
@@ -222,7 +222,7 @@ func addTextFeaturesPage(b *Builder) {
 		},
 	}
 	sectionTitle5.Draw(b)
-	
+
 	htmlText := Text{
 		Text: api.Text{
 			Content: "This text has <b>bold</b>, <i>italic</i>, <u>underline</u>, and <s>strikethrough</s> HTML formatting.<br/>It also supports line breaks.",
@@ -230,7 +230,7 @@ func addTextFeaturesPage(b *Builder) {
 		EnableHTML: true,
 	}
 	htmlText.Draw(b)
-	
+
 	// Add line separator
 	line := LineWidget{
 		Style:     "solid",
@@ -249,7 +249,7 @@ func addTableFeaturesPage(b *Builder) {
 		},
 	}
 	pageTitle.Draw(b)
-	
+
 	// Simple table with 3 columns
 	sectionTitle := Text{
 		Text: api.Text{
@@ -258,7 +258,7 @@ func addTableFeaturesPage(b *Builder) {
 		},
 	}
 	sectionTitle.Draw(b)
-	
+
 	table1 := TableImproved{
 		Headers: []string{"Name", "Age", "City"},
 		Rows: [][]any{
@@ -270,7 +270,7 @@ func addTableFeaturesPage(b *Builder) {
 		AlternateRowColor: true,
 	}
 	table1.Draw(b)
-	
+
 	// Table with custom column widths
 	sectionTitle2 := Text{
 		Text: api.Text{
@@ -279,7 +279,7 @@ func addTableFeaturesPage(b *Builder) {
 		},
 	}
 	sectionTitle2.Draw(b)
-	
+
 	table2 := TableImproved{
 		Headers: []string{"Product", "Description", "Price", "Stock"},
 		Rows: [][]any{
@@ -293,7 +293,7 @@ func addTableFeaturesPage(b *Builder) {
 		AlternateRowColor: true,
 	}
 	table2.Draw(b)
-	
+
 	// Table with many columns
 	sectionTitle3 := Text{
 		Text: api.Text{
@@ -302,13 +302,13 @@ func addTableFeaturesPage(b *Builder) {
 		},
 	}
 	sectionTitle3.Draw(b)
-	
+
 	headers12 := []string{"1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12"}
 	rows12 := [][]any{
 		{"A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L"},
 		{"1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12"},
 	}
-	
+
 	table3 := TableImproved{
 		Headers:           headers12,
 		Rows:              rows12,
@@ -317,7 +317,7 @@ func addTableFeaturesPage(b *Builder) {
 		HeaderStyle:       api.ResolveStyles("bg-blue-100 font-bold text-xs"),
 	}
 	table3.Draw(b)
-	
+
 	// Table with Tailwind styling
 	sectionTitle4 := Text{
 		Text: api.Text{
@@ -326,7 +326,7 @@ func addTableFeaturesPage(b *Builder) {
 		},
 	}
 	sectionTitle4.Draw(b)
-	
+
 	table4 := TableImproved{
 		Headers: []string{"Task", "Status", "Priority"},
 		Rows: [][]any{
@@ -336,10 +336,10 @@ func addTableFeaturesPage(b *Builder) {
 			{"Update dependencies", "Pending", "Low"},
 		},
 		HeaderStyle:       api.ResolveStyles("bg-gray-800 text-white font-bold"),
-		RowStyle:         api.ResolveStyles("text-sm"),
-		ShowBorders:      true,
+		RowStyle:          api.ResolveStyles("text-sm"),
+		ShowBorders:       true,
 		AlternateRowColor: true,
-		ColumnAlignments: []string{"left", "center", "center"},
+		ColumnAlignments:  []string{"left", "center", "center"},
 	}
 	table4.Draw(b)
 }
@@ -353,7 +353,7 @@ func addLayoutFeaturesPage(b *Builder) error {
 		},
 	}
 	pageTitle.Draw(b)
-	
+
 	// Grid demonstration
 	sectionTitle := Text{
 		Text: api.Text{
@@ -362,7 +362,7 @@ func addLayoutFeaturesPage(b *Builder) error {
 		},
 	}
 	sectionTitle.Draw(b)
-	
+
 	// Show different column combinations
 	gridExamples := []struct {
 		title string
@@ -396,7 +396,7 @@ func addLayoutFeaturesPage(b *Builder) error {
 			},
 		},
 	}
-	
+
 	for _, example := range gridExamples {
 		exampleTitle := Text{
 			Text: api.Text{
@@ -407,7 +407,7 @@ func addLayoutFeaturesPage(b *Builder) error {
 		exampleTitle.Draw(b)
 		example.table.Draw(b)
 	}
-	
+
 	// Lists demonstration
 	sectionTitle2 := Text{
 		Text: api.Text{
@@ -416,7 +416,7 @@ func addLayoutFeaturesPage(b *Builder) error {
 		},
 	}
 	sectionTitle2.Draw(b)
-	
+
 	// Unordered list
 	listTitle := Text{
 		Text: api.Text{
@@ -425,7 +425,7 @@ func addLayoutFeaturesPage(b *Builder) error {
 		},
 	}
 	listTitle.Draw(b)
-	
+
 	unorderedList := List{
 		Type:        UnorderedList,
 		Items:       []string{"First item", "Second item", "Third item with longer text", "Fourth item"},
@@ -433,7 +433,7 @@ func addLayoutFeaturesPage(b *Builder) error {
 		ItemStyle:   api.ResolveStyles("text-sm"),
 	}
 	unorderedList.Draw(b)
-	
+
 	// Ordered list
 	listTitle2 := Text{
 		Text: api.Text{
@@ -442,7 +442,7 @@ func addLayoutFeaturesPage(b *Builder) error {
 		},
 	}
 	listTitle2.Draw(b)
-	
+
 	orderedList := List{
 		Type:      OrderedList,
 		Items:     []string{"Step one", "Step two", "Step three", "Step four"},
@@ -461,7 +461,7 @@ func addStylingFeaturesPage(b *Builder) {
 		},
 	}
 	pageTitle.Draw(b)
-	
+
 	// Lines section
 	sectionTitle := Text{
 		Text: api.Text{
@@ -470,7 +470,7 @@ func addStylingFeaturesPage(b *Builder) {
 		},
 	}
 	sectionTitle.Draw(b)
-	
+
 	// Solid line
 	lineDesc := Text{
 		Text: api.Text{
@@ -479,14 +479,14 @@ func addStylingFeaturesPage(b *Builder) {
 		},
 	}
 	lineDesc.Draw(b)
-	
+
 	solidLine := LineWidget{
 		Style:     "solid",
 		Color:     api.Color{Hex: "#000000"},
 		Thickness: 1,
 	}
 	solidLine.Draw(b)
-	
+
 	// Dashed line
 	lineDesc2 := Text{
 		Text: api.Text{
@@ -495,14 +495,14 @@ func addStylingFeaturesPage(b *Builder) {
 		},
 	}
 	lineDesc2.Draw(b)
-	
+
 	dashedLine := LineWidget{
 		Style:     "dashed",
 		Color:     api.Color{Hex: "#666666"},
 		Thickness: 0.5,
 	}
 	dashedLine.Draw(b)
-	
+
 	// Dotted line
 	lineDesc3 := Text{
 		Text: api.Text{
@@ -511,14 +511,14 @@ func addStylingFeaturesPage(b *Builder) {
 		},
 	}
 	lineDesc3.Draw(b)
-	
+
 	dottedLine := LineWidget{
 		Style:     "dotted",
 		Color:     api.Color{Hex: "#999999"},
 		Thickness: 0.5,
 	}
 	dottedLine.Draw(b)
-	
+
 	// Colored lines
 	sectionTitle2 := Text{
 		Text: api.Text{
@@ -527,7 +527,7 @@ func addStylingFeaturesPage(b *Builder) {
 		},
 	}
 	sectionTitle2.Draw(b)
-	
+
 	colors := []struct {
 		name  string
 		color api.Color
@@ -537,7 +537,7 @@ func addStylingFeaturesPage(b *Builder) {
 		{"Green", api.Color{Hex: "#10b981"}},
 		{"Purple", api.Color{Hex: "#8b5cf6"}},
 	}
-	
+
 	for _, c := range colors {
 		colorLine := LineWidget{
 			Style:      "solid",
@@ -547,7 +547,7 @@ func addStylingFeaturesPage(b *Builder) {
 		}
 		colorLine.Draw(b)
 	}
-	
+
 	// Box demonstrations
 	sectionTitle3 := Text{
 		Text: api.Text{
@@ -556,7 +556,7 @@ func addStylingFeaturesPage(b *Builder) {
 		},
 	}
 	sectionTitle3.Draw(b)
-	
+
 	// Create boxes with different styles
 	box1 := Box{
 		Rectangle: api.Rectangle{
@@ -567,7 +567,7 @@ func addStylingFeaturesPage(b *Builder) {
 			{
 				Text: api.Text{
 					Content: "Box with border",
-					Class: api.ResolveStyles("text-center"),
+					Class:   api.ResolveStyles("text-center"),
 				},
 			},
 		},
@@ -579,7 +579,7 @@ func addStylingFeaturesPage(b *Builder) {
 		},
 	}
 	box1.Draw(b)
-	
+
 	box2 := Box{
 		Rectangle: api.Rectangle{
 			Width:  100,
@@ -589,7 +589,7 @@ func addStylingFeaturesPage(b *Builder) {
 			{
 				Text: api.Text{
 					Content: "Colored background",
-					Class: api.ResolveStyles("text-center bg-blue-100"),
+					Class:   api.ResolveStyles("text-center bg-blue-100"),
 				},
 			},
 		},
@@ -612,7 +612,7 @@ func addCombinedExamplesPage(b *Builder) {
 		},
 	}
 	pageTitle.Draw(b)
-	
+
 	// Invoice-like example
 	sectionTitle := Text{
 		Text: api.Text{
@@ -621,7 +621,7 @@ func addCombinedExamplesPage(b *Builder) {
 		},
 	}
 	sectionTitle.Draw(b)
-	
+
 	// Company header
 	companyText := Text{
 		Text: api.Text{
@@ -630,7 +630,7 @@ func addCombinedExamplesPage(b *Builder) {
 		},
 	}
 	companyText.Draw(b)
-	
+
 	addressText := Text{
 		Text: api.Text{
 			Content: "123 Business Street, Suite 100\nNew York, NY 10001\nPhone: (555) 123-4567",
@@ -638,7 +638,7 @@ func addCombinedExamplesPage(b *Builder) {
 		},
 	}
 	addressText.Draw(b)
-	
+
 	// Invoice details table
 	invoiceTable := TableImproved{
 		Headers: []string{"Item", "Description", "Qty", "Price", "Total"},
@@ -654,7 +654,7 @@ func addCombinedExamplesPage(b *Builder) {
 		HeaderStyle:       api.ResolveStyles("bg-gray-700 text-white font-bold"),
 	}
 	invoiceTable.Draw(b)
-	
+
 	// Total line
 	totalLine := LineWidget{
 		Style:     "solid",
@@ -664,7 +664,7 @@ func addCombinedExamplesPage(b *Builder) {
 		Length:    50,
 	}
 	totalLine.Draw(b)
-	
+
 	// Total amount
 	totalTable := TableImproved{
 		Headers: []string{"", ""},
@@ -676,10 +676,10 @@ func addCombinedExamplesPage(b *Builder) {
 		ColumnWidths:     []int{10, 2},
 		ColumnAlignments: []string{"right", "right"},
 		ShowBorders:      false,
-		RowStyle:        api.ResolveStyles("font-bold"),
+		RowStyle:         api.ResolveStyles("font-bold"),
 	}
 	totalTable.Draw(b)
-	
+
 	// Report example with mixed content
 	sectionTitle2 := Text{
 		Text: api.Text{
@@ -688,7 +688,7 @@ func addCombinedExamplesPage(b *Builder) {
 		},
 	}
 	sectionTitle2.Draw(b)
-	
+
 	// Report text with markdown
 	reportText := Text{
 		Text: api.Text{
@@ -697,7 +697,7 @@ func addCombinedExamplesPage(b *Builder) {
 		EnableMD: true,
 	}
 	reportText.Draw(b)
-	
+
 	// Data table
 	dataTable := TableImproved{
 		Headers: []string{"Quarter", "Revenue", "Growth", "Status"},
@@ -712,7 +712,7 @@ func addCombinedExamplesPage(b *Builder) {
 		ColumnAlignments:  []string{"left", "right", "center", "center"},
 	}
 	dataTable.Draw(b)
-	
+
 	// Conclusion
 	conclusionText := Text{
 		Text: api.Text{
@@ -730,7 +730,7 @@ func saveShowcasePDF(t *testing.T, name string, pdfData []byte) {
 		t.Logf("Warning: Could not create output directory: %v", err)
 		return
 	}
-	
+
 	// Save PDF
 	filename := fmt.Sprintf("%s.pdf", name)
 	filepath := filepath.Join(outDir, filename)
@@ -754,7 +754,7 @@ func addImageFeaturesPage(builder *Builder) {
 		},
 	}
 	pageHeader.Draw(builder)
-	
+
 	// Placeholder image section
 	sectionHeader := Text{
 		Text: api.Text{
@@ -764,7 +764,7 @@ func addImageFeaturesPage(builder *Builder) {
 		},
 	}
 	sectionHeader.Draw(builder)
-	
+
 	// Create a simple SVG for demo purposes
 	demoSVGBox := SVGBox{
 		Box: api.Box{
@@ -786,26 +786,26 @@ func addImageFeaturesPage(builder *Builder) {
 			},
 		},
 	}
-	
+
 	svgBytes, err := demoSVGBox.GenerateSVG()
 	var demoImagePath string
 	if err != nil {
 		// Skip image features if SVG generation fails (fail fast)
 		return
 	}
-	
+
 	// Write to temporary file
 	tempFile, err := os.CreateTemp("", "demo_image_*.svg")
 	if err != nil {
 		// Skip image features if temp file creation fails (fail fast)
 		return
 	}
-	
+
 	demoImagePath = tempFile.Name()
 	defer os.Remove(demoImagePath)
 	tempFile.Write(svgBytes)
 	tempFile.Close()
-	
+
 	placeholderImage := Image{
 		Source:  demoImagePath,
 		AltText: "Demo image created from SVG",
@@ -813,7 +813,7 @@ func addImageFeaturesPage(builder *Builder) {
 	}
 	// Try to draw the image, skip if it fails
 	placeholderImage.Draw(builder)
-	
+
 	// SVG Box as image example
 	sectionHeader = Text{
 		Text: api.Text{
@@ -823,7 +823,7 @@ func addImageFeaturesPage(builder *Builder) {
 		},
 	}
 	sectionHeader.Draw(builder)
-	
+
 	// Create an SVG box
 	svgBox := SVGBox{
 		Box: api.Box{
@@ -859,12 +859,12 @@ func addImageFeaturesPage(builder *Builder) {
 		ActualHeight:   100,
 		DimensionUnit:  "mm",
 	}
-	
+
 	// Generate SVG and save for reference
 	svgData, err := svgBox.GenerateSVG()
 	if err == nil {
 		os.WriteFile("out/showcase_svgbox.svg", svgData, 0644)
-		
+
 		// Note about SVG
 		note := Text{
 			Text: api.Text{
@@ -875,7 +875,7 @@ func addImageFeaturesPage(builder *Builder) {
 		}
 		note.Draw(builder)
 	}
-	
+
 	// Multiple placeholder images with different sizes
 	sectionHeader = Text{
 		Text: api.Text{
@@ -885,7 +885,7 @@ func addImageFeaturesPage(builder *Builder) {
 		},
 	}
 	sectionHeader.Draw(builder)
-	
+
 	// Use the same SVG demo approach for different sized images
 	if demoImagePath != "" {
 		// Reuse the same SVG source for different sizes
@@ -895,14 +895,14 @@ func addImageFeaturesPage(builder *Builder) {
 			Height:  &[]float64{30}[0],
 		}
 		smallImage.Draw(builder)
-		
+
 		mediumImage := Image{
 			Source:  demoImagePath,
 			AltText: "Medium Image (50mm height)",
 			Height:  &[]float64{50}[0],
 		}
 		mediumImage.Draw(builder)
-		
+
 		largeImage := Image{
 			Source:  demoImagePath,
 			AltText: "Large Image (70mm height)",
@@ -921,7 +921,7 @@ func addSVGFeaturesPage(builder *Builder) error {
 		},
 	}
 	titleWidget.Draw(builder)
-	
+
 	// Section 1: Basic SVG Box
 	sectionHeader := Text{
 		Text: api.Text{
@@ -930,7 +930,7 @@ func addSVGFeaturesPage(builder *Builder) error {
 		},
 	}
 	sectionHeader.Draw(builder)
-	
+
 	// Create SVG box with basic elements
 	basicSVGBox := SVGBox{
 		Box: api.Box{
@@ -962,11 +962,11 @@ func addSVGFeaturesPage(builder *Builder) error {
 		},
 		EnableCollisionAvoidance: true,
 	}
-	
+
 	// Create SVG widget
 	basicSVGWidget := NewSVGWidget(basicSVGBox).WithHeight(80)
 	basicSVGWidget.Draw(builder)
-	
+
 	// Section 2: SVG Import from Content
 	sectionHeader = Text{
 		Text: api.Text{
@@ -975,7 +975,7 @@ func addSVGFeaturesPage(builder *Builder) error {
 		},
 	}
 	sectionHeader.Draw(builder)
-	
+
 	// Create SVG from external content
 	externalSVGContent := `<?xml version="1.0"?>
 <svg width="300" height="200" xmlns="http://www.w3.org/2000/svg">
@@ -985,7 +985,7 @@ func addSVGFeaturesPage(builder *Builder) error {
     <rect width="50" height="10" id="horizontal-cut"/>
     <rect width="8" height="80" id="vertical-cut"/>
 </svg>`
-	
+
 	importedBox := api.Box{
 		Rectangle: api.Rectangle{Width: 300, Height: 200},
 		Fill:      api.Color{Hex: "ffffff"},
@@ -996,7 +996,7 @@ func addSVGFeaturesPage(builder *Builder) error {
 			Left:   api.Line{Width: 1, Color: api.Color{Hex: "888888"}},
 		},
 	}
-	
+
 	importedSVGWidget, err := FromSVGContent(externalSVGContent, importedBox)
 	if err != nil {
 		// Import failed - skip this section
@@ -1005,7 +1005,7 @@ func addSVGFeaturesPage(builder *Builder) error {
 		// Try to draw, but if it fails, skip
 		_ = importedSVGWidget.WithHeight(60).Draw(builder)
 	}
-	
+
 	// Section 3: Aspect Ratio Preservation Demo
 	sectionHeader = Text{
 		Text: api.Text{
@@ -1014,7 +1014,7 @@ func addSVGFeaturesPage(builder *Builder) error {
 		},
 	}
 	sectionHeader.Draw(builder)
-	
+
 	// Landscape SVG (2:1 aspect ratio)
 	landscapeSVGBox := SVGBox{
 		Box: api.Box{
@@ -1041,10 +1041,10 @@ func addSVGFeaturesPage(builder *Builder) error {
 			},
 		},
 	}
-	
+
 	landscapeWidget := NewSVGWidget(landscapeSVGBox).WithHeight(40)
 	landscapeWidget.Draw(builder)
-	
+
 	// Portrait SVG (1:2 aspect ratio)
 	portraitSVGBox := SVGBox{
 		Box: api.Box{
@@ -1071,10 +1071,10 @@ func addSVGFeaturesPage(builder *Builder) error {
 			},
 		},
 	}
-	
+
 	portraitWidget := NewSVGWidget(portraitSVGBox).WithHeight(60)
 	portraitWidget.Draw(builder)
-	
+
 	// Technical Note
 	noteText := Text{
 		Text: api.Text{
@@ -1083,12 +1083,12 @@ func addSVGFeaturesPage(builder *Builder) error {
 		},
 	}
 	noteText.Draw(builder)
-	
+
 	// Section 4: SVG Converter Integration
 	if err := addSVGConverterDemo(builder); err != nil {
 		return fmt.Errorf("failed to add SVG converter demo: %w", err)
 	}
-	
+
 	// Section 5: Dedicated converter pages
 	if err := addSVGConverterPages(builder); err != nil {
 		// Error generating converter pages - return it
@@ -1107,11 +1107,11 @@ func addSVGConverterDemo(builder *Builder) error {
 		},
 	}
 	sectionHeader.Draw(builder)
-	
+
 	// Get available converters
 	manager := NewSVGConverterManager()
 	availableConverters := manager.GetAvailableConverters()
-	
+
 	if len(availableConverters) == 0 {
 		noConvertersText := Text{
 			Text: api.Text{
@@ -1122,7 +1122,7 @@ func addSVGConverterDemo(builder *Builder) error {
 		noConvertersText.Draw(builder)
 		return nil
 	}
-	
+
 	// Show available converters
 	convertersText := Text{
 		Text: api.Text{
@@ -1131,7 +1131,7 @@ func addSVGConverterDemo(builder *Builder) error {
 		},
 	}
 	convertersText.Draw(builder)
-	
+
 	// Show supported formats
 	supportedFormats := manager.GetSupportedFormats()
 	formatsText := Text{
@@ -1141,7 +1141,7 @@ func addSVGConverterDemo(builder *Builder) error {
 		},
 	}
 	formatsText.Draw(builder)
-	
+
 	// Demo converter functionality
 	return demoConverterFunctionality(builder, manager)
 }
@@ -1173,22 +1173,22 @@ func demoConverterFunctionality(builder *Builder, manager *SVGConverterManager) 
 			},
 		},
 	}
-	
+
 	// Generate SVG content
 	svgBytes, err := testSVGBox.GenerateSVG()
 	if err != nil {
 		return fmt.Errorf("failed to generate demo SVG: %w", err)
 	}
-	
+
 	// Create temporary file with generated SVG content
 	tempDir := os.TempDir()
 	svgPath := filepath.Join(tempDir, "showcase_demo.svg")
-	
+
 	if err := os.WriteFile(svgPath, svgBytes, 0644); err != nil {
 		return fmt.Errorf("failed to write demo SVG file: %w", err)
 	}
 	defer os.Remove(svgPath)
-	
+
 	// Demo 1: Direct SVG usage with automatic conversion
 	demoTitle1 := Text{
 		Text: api.Text{
@@ -1197,7 +1197,7 @@ func demoConverterFunctionality(builder *Builder, manager *SVGConverterManager) 
 		},
 	}
 	demoTitle1.Draw(builder)
-	
+
 	// Use the Image widget directly with an SVG file
 	// The enhanced validation will prevent "could not load image" errors
 	svgImage := &Image{
@@ -1217,13 +1217,13 @@ func demoConverterFunctionality(builder *Builder, manager *SVGConverterManager) 
 		errorText.Draw(builder)
 		return nil // Don't fail the entire showcase
 	}
-	
+
 	// Display conversion metadata if available
 	if metadata := svgImage.GetLastConversionMetadata(); metadata != nil {
 		metadataText := Text{
 			Text: api.Text{
-				Content: fmt.Sprintf("✓ Converted using %s in %v (DPI: %d, Size: %s)", 
-					metadata.ConverterUsed, 
+				Content: fmt.Sprintf("✓ Converted using %s in %v (DPI: %d, Size: %s)",
+					metadata.ConverterUsed,
 					metadata.Duration.Round(time.Millisecond),
 					metadata.DPI,
 					formatFileSize(metadata.OutputFileSize)),
@@ -1231,11 +1231,11 @@ func demoConverterFunctionality(builder *Builder, manager *SVGConverterManager) 
 			},
 		}
 		metadataText.Draw(builder)
-		
+
 		// Show detailed settings
 		settingsText := Text{
 			Text: api.Text{
-				Content: fmt.Sprintf("Settings: %dx%d pixels, Format: PNG, High Resolution (3x DPI)", 
+				Content: fmt.Sprintf("Settings: %dx%d pixels, Format: PNG, High Resolution (3x DPI)",
 					metadata.OutputWidth, metadata.OutputHeight),
 				Class: api.ResolveStyles("text-gray-600 text-xs"),
 			},
@@ -1250,7 +1250,7 @@ func demoConverterFunctionality(builder *Builder, manager *SVGConverterManager) 
 		}
 		successText.Draw(builder)
 	}
-	
+
 	return nil
 }
 
@@ -1258,20 +1258,20 @@ func demoConverterFunctionality(builder *Builder, manager *SVGConverterManager) 
 func addSVGConverterPages(builder *Builder) error {
 	manager := NewSVGConverterManager()
 	availableConverters := manager.GetAvailableConverters()
-	
+
 	if len(availableConverters) == 0 {
 		return nil // No converters available
 	}
-	
+
 	// Create a test SVG for converter demonstrations
 	testSVGBox := createComplexSVGBoxForTesting()
-	
+
 	// Generate SVG content
 	svgBytes, err := testSVGBox.GenerateSVG()
 	if err != nil {
 		return fmt.Errorf("failed to generate test SVG: %w", err)
 	}
-	
+
 	// Create temporary SVG file
 	tempDir := os.TempDir()
 	svgPath := filepath.Join(tempDir, "converter_test.svg")
@@ -1279,14 +1279,14 @@ func addSVGConverterPages(builder *Builder) error {
 		return fmt.Errorf("failed to write test SVG: %w", err)
 	}
 	defer os.Remove(svgPath)
-	
+
 	// Create a page for each available converter
 	for i, converterName := range availableConverters {
 		// Add a new page for this converter
 		if i > 0 {
 			builder.AddPage()
 		}
-		
+
 		// Page title
 		titleText := Text{
 			Text: api.Text{
@@ -1295,7 +1295,7 @@ func addSVGConverterPages(builder *Builder) error {
 			},
 		}
 		titleText.Draw(builder)
-		
+
 		// Show original SVG using SVGWidget (oksvg-based, not external converter)
 		origText := Text{
 			Text: api.Text{
@@ -1304,10 +1304,10 @@ func addSVGConverterPages(builder *Builder) error {
 			},
 		}
 		origText.Draw(builder)
-		
+
 		svgWidget := NewSVGWidget(testSVGBox).WithHeight(60)
 		svgWidget.Draw(builder)
-		
+
 		// Test conversion with this specific converter
 		conversionText := Text{
 			Text: api.Text{
@@ -1316,7 +1316,7 @@ func addSVGConverterPages(builder *Builder) error {
 			},
 		}
 		conversionText.Draw(builder)
-		
+
 		// Use Image widget with specific converter preference
 		convertedImage := &Image{
 			Source:             svgPath,
@@ -1329,7 +1329,7 @@ func addSVGConverterPages(builder *Builder) error {
 				DPI:    288, // High resolution output (3x standard DPI)
 			},
 		}
-		
+
 		if err := convertedImage.Draw(builder); err != nil {
 			// Conversion failed - show error message instead of crashing
 			errorText := Text{
@@ -1344,7 +1344,7 @@ func addSVGConverterPages(builder *Builder) error {
 			if metadata := convertedImage.GetLastConversionMetadata(); metadata != nil {
 				successText := Text{
 					Text: api.Text{
-						Content: fmt.Sprintf("✓ %s conversion: %v (DPI: %d, %s)", 
+						Content: fmt.Sprintf("✓ %s conversion: %v (DPI: %d, %s)",
 							converterName,
 							metadata.Duration.Round(time.Millisecond),
 							metadata.DPI,
@@ -1353,11 +1353,11 @@ func addSVGConverterPages(builder *Builder) error {
 					},
 				}
 				successText.Draw(builder)
-				
+
 				// Show technical details
 				detailsText := Text{
 					Text: api.Text{
-						Content: fmt.Sprintf("Output: %dx%d pixels, Format: PNG, Quality: High Resolution", 
+						Content: fmt.Sprintf("Output: %dx%d pixels, Format: PNG, Quality: High Resolution",
 							metadata.OutputWidth, metadata.OutputHeight),
 						Class: api.ResolveStyles("text-gray-600 text-xs"),
 					},
@@ -1374,14 +1374,14 @@ func addSVGConverterPages(builder *Builder) error {
 			}
 		}
 	}
-	
+
 	return nil
 }
 
 // addLabelPositionsGalleryPage creates a comprehensive page showing all label position variations
 func addLabelPositionsGalleryPage(builder *Builder) error {
 	builder.AddPage()
-	
+
 	// Page title
 	titleWidget := Text{
 		Text: api.Text{
@@ -1390,7 +1390,7 @@ func addLabelPositionsGalleryPage(builder *Builder) error {
 		},
 	}
 	titleWidget.Draw(builder)
-	
+
 	// Description
 	descWidget := Text{
 		Text: api.Text{
@@ -1399,7 +1399,7 @@ func addLabelPositionsGalleryPage(builder *Builder) error {
 		},
 	}
 	descWidget.Draw(builder)
-	
+
 	// Define all label positions to showcase
 	labelPositions := []struct {
 		filename string
@@ -1410,24 +1410,24 @@ func addLabelPositionsGalleryPage(builder *Builder) error {
 		{"label_position_center.svg", "Center", "Basic"},
 		{"label_position_top.svg", "Top", "Basic"},
 		{"label_position_bottom.svg", "Bottom", "Basic"},
-		
-		// Side positions  
+
+		// Side positions
 		{"label_position_left.svg", "Left", "Basic"},
 		{"label_position_right.svg", "Right", "Basic"},
-		
+
 		// Corner positions
 		{"label_position_top-left.svg", "Top-Left", "Corner"},
 		{"label_position_top-right.svg", "Top-Right", "Corner"},
 		{"label_position_bottom-left.svg", "Bottom-Left", "Corner"},
 		{"label_position_bottom-right.svg", "Bottom-Right", "Corner"},
-		
+
 		// Outside positions
 		{"label_position_top-outside.svg", "Top Outside", "Outside"},
 		{"label_position_bottom-outside.svg", "Bottom Outside", "Outside"},
 		{"label_position_left-outside.svg", "Left Outside", "Outside"},
 		{"label_position_right-outside.svg", "Right Outside", "Outside"},
 	}
-	
+
 	// Group by category for better organization
 	categories := []struct {
 		name  string
@@ -1453,7 +1453,7 @@ func addLabelPositionsGalleryPage(builder *Builder) error {
 			category string
 		}{}},
 	}
-	
+
 	// Organize positions by category
 	for _, pos := range labelPositions {
 		switch pos.category {
@@ -1465,7 +1465,7 @@ func addLabelPositionsGalleryPage(builder *Builder) error {
 			categories[2].items = append(categories[2].items, pos)
 		}
 	}
-	
+
 	// Display each category
 	for _, category := range categories {
 		// Category header
@@ -1476,17 +1476,17 @@ func addLabelPositionsGalleryPage(builder *Builder) error {
 			},
 		}
 		categoryHeader.Draw(builder)
-		
+
 		// Display items in this category (3 per row for good layout)
 		for i, pos := range category.items {
 			svgPath := filepath.Join("formatters", "pdf", "out", pos.filename)
-			
+
 			// Check if file exists
 			if _, err := os.Stat(svgPath); os.IsNotExist(err) {
 				// Skip missing files
 				continue
 			}
-			
+
 			// Title for this position
 			titleText := Text{
 				Text: api.Text{
@@ -1495,19 +1495,19 @@ func addLabelPositionsGalleryPage(builder *Builder) error {
 				},
 			}
 			titleText.Draw(builder)
-			
+
 			// Convert and embed SVG
 			svgImage := &Image{
 				Source:  svgPath,
 				AltText: fmt.Sprintf("Label position: %s", pos.title),
-				Width:   floatPtr(60),  // 60mm width for good visibility
-				Height:  floatPtr(45),  // 45mm height maintaining aspect
+				Width:   floatPtr(60), // 60mm width for good visibility
+				Height:  floatPtr(45), // 45mm height maintaining aspect
 				ConverterOptions: &ConvertOptions{
 					Format: "png",
 					DPI:    288, // High resolution
 				},
 			}
-			
+
 			if err := svgImage.Draw(builder); err != nil {
 				// Show error but continue
 				errorText := Text{
@@ -1519,7 +1519,7 @@ func addLabelPositionsGalleryPage(builder *Builder) error {
 				errorText.Draw(builder)
 				continue
 			}
-			
+
 			// Display conversion metadata
 			if metadata := svgImage.GetLastConversionMetadata(); metadata != nil {
 				metadataText := Text{
@@ -1533,7 +1533,7 @@ func addLabelPositionsGalleryPage(builder *Builder) error {
 					},
 				}
 				metadataText.Draw(builder)
-				
+
 				// Technical details
 				detailsText := Text{
 					Text: api.Text{
@@ -1544,7 +1544,7 @@ func addLabelPositionsGalleryPage(builder *Builder) error {
 				}
 				detailsText.Draw(builder)
 			}
-			
+
 			// Add some spacing between items, page break after every 3rd item in a category
 			if (i+1)%3 == 0 && i < len(category.items)-1 {
 				// Add a small break between rows
@@ -1558,7 +1558,7 @@ func addLabelPositionsGalleryPage(builder *Builder) error {
 			}
 		}
 	}
-	
+
 	// Summary section
 	summaryHeader := Text{
 		Text: api.Text{
@@ -1567,15 +1567,15 @@ func addLabelPositionsGalleryPage(builder *Builder) error {
 		},
 	}
 	summaryHeader.Draw(builder)
-	
+
 	summaryText := Text{
 		Text: api.Text{
 			Content: fmt.Sprintf("This page demonstrates all %d label positioning options available in SVGBox. All examples are rendered at 288 DPI for high quality output and include performance metrics.", len(labelPositions)),
-			Class: api.ResolveStyles("text-sm text-gray-700 mb-4"),
+			Class:   api.ResolveStyles("text-sm text-gray-700 mb-4"),
 		},
 	}
 	summaryText.Draw(builder)
-	
+
 	return nil
 }
 
@@ -1669,7 +1669,7 @@ func createComplexSVGBoxForTesting() SVGBox {
 			},
 		},
 		EnableCollisionAvoidance: true,
-		ShowDimensions:          true,
+		ShowDimensions:           true,
 	}
 }
 
@@ -1705,4 +1705,3 @@ func getConverterNotes(converterName string) string {
 func floatPtr(f float64) *float64 {
 	return &f
 }
-

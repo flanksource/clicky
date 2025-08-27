@@ -51,7 +51,7 @@ func (w *worker) run() {
 
 			// Mark task as completed
 			task.completed.Store(true)
-			
+
 			// Clean up identity tracking
 			if task.identity != "" {
 				w.manager.tasksByIdentity.Delete(task.identity)

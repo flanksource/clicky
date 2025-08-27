@@ -17,10 +17,10 @@ func TestDumpSchemaFlag(t *testing.T) {
 	testSchema := &api.PrettyObject{
 		Fields: []api.PrettyField{
 			{
-				Name:   "id",
-				Type:   "string",
-				Style:  "text-blue-600 font-bold",
-				Label:  "Order ID",
+				Name:  "id",
+				Type:  "string",
+				Style: "text-blue-600 font-bold",
+				Label: "Order ID",
 			},
 			{
 				Name:   "total",
@@ -29,8 +29,8 @@ func TestDumpSchemaFlag(t *testing.T) {
 				Style:  "text-green-600",
 			},
 			{
-				Name:   "status",
-				Type:   "string",
+				Name: "status",
+				Type: "string",
 				ColorOptions: map[string]string{
 					"green":  "completed",
 					"yellow": "pending",

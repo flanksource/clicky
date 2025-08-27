@@ -31,7 +31,7 @@ func TestText(t *testing.T) {
 			ansi:     "Hello, \x1b[1mworld!\x1b[0m",
 		},
 		{
-			name:     "Text Color", 
+			name:     "Text Color",
 			input:    Text{Content: "Hello, world!", Style: "text-red-500"},
 			plain:    "Hello, world!",
 			markdown: "<span style=\"color: #ef4444\">Hello, world!</span>",
@@ -56,7 +56,6 @@ func TestText(t *testing.T) {
 		})
 	}
 }
-
 
 func TestTailwindStyles(t *testing.T) {
 	fixtures := []struct {
@@ -210,19 +209,19 @@ func TestTailwindStyles(t *testing.T) {
 // Keep a simple benchmark for performance testing
 func BenchmarkTailwindStyles(b *testing.B) {
 	testText := Text{Content: "Hello World", Style: "uppercase text-blue-700 bg-gray-100 font-bold italic underline"}
-	
+
 	b.Run("ANSI", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			testText.ANSI()
 		}
 	})
-	
+
 	b.Run("HTML", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			testText.HTML()
 		}
 	})
-	
+
 	b.Run("Markdown", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			testText.Markdown()
@@ -414,7 +413,7 @@ func TestResolveStyles(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := ResolveStyles(tt.styles...)
-			
+
 			// Check foreground color
 			if tt.expected.Foreground != nil {
 				if result.Foreground == nil {
@@ -425,7 +424,7 @@ func TestResolveStyles(t *testing.T) {
 			} else if result.Foreground != nil {
 				t.Errorf("Expected nil foreground, got %v", result.Foreground)
 			}
-			
+
 			// Check background color
 			if tt.expected.Background != nil {
 				if result.Background == nil {
@@ -436,7 +435,7 @@ func TestResolveStyles(t *testing.T) {
 			} else if result.Background != nil {
 				t.Errorf("Expected nil background, got %v", result.Background)
 			}
-			
+
 			// Check font properties
 			if tt.expected.Font != nil && result.Font != nil {
 				if result.Font.Bold != tt.expected.Font.Bold {
@@ -458,7 +457,7 @@ func TestResolveStyles(t *testing.T) {
 					t.Errorf("Expected size %v, got %v", tt.expected.Font.Size, result.Font.Size)
 				}
 			}
-			
+
 			// Check padding
 			if tt.expected.Padding != nil {
 				if result.Padding == nil {

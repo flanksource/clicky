@@ -47,7 +47,7 @@ func TestTextBuilder(t *testing.T) {
 			if result.Content != tt.expected {
 				t.Errorf("expected content %q, got %q", tt.expected, result.Content)
 			}
-			
+
 			// Check that styles are applied
 			if result.Style == "" && (strings.Contains(tt.name, "bold") || strings.Contains(tt.name, "success") || strings.Contains(tt.name, "error")) {
 				t.Error("expected style to be set")
@@ -88,7 +88,7 @@ func TestStyleBuilder(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := tt.builder().Build()
-			
+
 			for _, expected := range tt.contains {
 				if !strings.Contains(result, expected) {
 					t.Errorf("expected style to contain %q, got %q", expected, result)
@@ -154,17 +154,17 @@ func TestStatusText(t *testing.T) {
 func TestChildBuilder(t *testing.T) {
 	parent := NewText("Parent: ")
 	child := NewText("Child").Bold()
-	
+
 	result := parent.ChildBuilder(child).Build()
-	
+
 	if result.Content != "Parent: " {
 		t.Errorf("expected parent content %q, got %q", "Parent: ", result.Content)
 	}
-	
+
 	if len(result.Children) != 1 {
 		t.Errorf("expected 1 child, got %d", len(result.Children))
 	}
-	
+
 	if result.Children[0].Content != "Child" {
 		t.Errorf("expected child content %q, got %q", "Child", result.Children[0].Content)
 	}

@@ -13,15 +13,15 @@ type Config struct {
 	Name        string `json:"name"`
 	Description string `json:"description"`
 	Version     string `json:"version"`
-	
+
 	// Transport configuration
-	Transport   TransportConfig `json:"transport"`
-	
+	Transport TransportConfig `json:"transport"`
+
 	// Security settings
-	Security    SecurityConfig  `json:"security"`
-	
+	Security SecurityConfig `json:"security"`
+
 	// Tool exposure settings
-	Tools       ToolsConfig     `json:"tools"`
+	Tools ToolsConfig `json:"tools"`
 }
 
 // TransportConfig defines how the MCP server communicates
@@ -35,16 +35,16 @@ type TransportConfig struct {
 type SecurityConfig struct {
 	// Require user confirmation for tool invocations
 	RequireConfirmation bool `json:"require_confirmation"`
-	
+
 	// Allowed commands (if empty, all commands are allowed)
 	AllowedCommands []string `json:"allowed_commands"`
-	
+
 	// Blocked commands
 	BlockedCommands []string `json:"blocked_commands"`
-	
+
 	// Enable audit logging
 	AuditLog bool `json:"audit_log"`
-	
+
 	// Maximum execution time for tools
 	TimeoutSeconds int `json:"timeout_seconds"`
 }
@@ -53,13 +53,13 @@ type SecurityConfig struct {
 type ToolsConfig struct {
 	// Auto-expose all commands
 	AutoExpose bool `json:"auto_expose"`
-	
+
 	// Include pattern for command names
 	Include []string `json:"include"`
-	
-	// Exclude pattern for command names  
+
+	// Exclude pattern for command names
 	Exclude []string `json:"exclude"`
-	
+
 	// Override descriptions for specific commands
 	Descriptions map[string]string `json:"descriptions,omitempty"`
 }
@@ -75,12 +75,12 @@ func DefaultConfig() *Config {
 		},
 		Security: SecurityConfig{
 			RequireConfirmation: true,
-			AuditLog:           true,
-			TimeoutSeconds:     30,
+			AuditLog:            true,
+			TimeoutSeconds:      30,
 		},
 		Tools: ToolsConfig{
 			AutoExpose: false,
-			Include:    []string{".*"}, // Include all by default
+			Include:    []string{".*"},  // Include all by default
 			Exclude:    []string{"mcp"}, // Exclude MCP commands themselves
 		},
 	}
@@ -92,7 +92,7 @@ func LoadConfig(configPath string) (*Config, error) {
 	if err := os.MkdirAll(filepath.Dir(configPath), 0755); err != nil {
 		return nil, fmt.Errorf("failed to create config directory: %w", err)
 	}
-	
+
 	// If config file doesn't exist, create default
 	if _, err := os.Stat(configPath); os.IsNotExist(err) {
 		config := DefaultConfig()
@@ -101,18 +101,18 @@ func LoadConfig(configPath string) (*Config, error) {
 		}
 		return config, nil
 	}
-	
+
 	// Load existing config
 	data, err := os.ReadFile(configPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read config file: %w", err)
 	}
-	
+
 	var config Config
 	if err := json.Unmarshal(data, &config); err != nil {
 		return nil, fmt.Errorf("failed to parse config file: %w", err)
 	}
-	
+
 	return &config, nil
 }
 
@@ -122,11 +122,11 @@ func SaveConfig(config *Config, configPath string) error {
 	if err != nil {
 		return fmt.Errorf("failed to marshal config: %w", err)
 	}
-	
+
 	if err := os.WriteFile(configPath, data, 0644); err != nil {
 		return fmt.Errorf("failed to write config file: %w", err)
 	}
-	
+
 	return nil
 }
 

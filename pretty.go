@@ -358,7 +358,7 @@ func (p *PrettyParser) formatDefault(val reflect.Value) string {
 		}
 		return fmt.Sprintf("%v", result)
 	}
-	
+
 	// Handle maps with pointer values
 	if val.Kind() == reflect.Map {
 		result := make(map[string]interface{})
@@ -366,9 +366,9 @@ func (p *PrettyParser) formatDefault(val reflect.Value) string {
 		for iter.Next() {
 			k := iter.Key()
 			v := iter.Value()
-			
+
 			keyStr := fmt.Sprintf("%v", k.Interface())
-			
+
 			if v.Kind() == reflect.Ptr {
 				if v.IsNil() {
 					result[keyStr] = nil
@@ -381,7 +381,7 @@ func (p *PrettyParser) formatDefault(val reflect.Value) string {
 		}
 		return fmt.Sprintf("%v", result)
 	}
-	
+
 	return fmt.Sprintf("%v", val.Interface())
 }
 

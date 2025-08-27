@@ -47,7 +47,7 @@ func (f *HTMLFormatter) Format(in interface{}) (string, error) {
 	if pretty, ok := in.(api.Pretty); ok {
 		text := pretty.Pretty()
 		htmlContent := text.HTML()
-		
+
 		if f.IncludeCSS {
 			var result strings.Builder
 			result.WriteString(f.getCSS())
@@ -155,7 +155,7 @@ func (f *HTMLFormatter) Format(in interface{}) (string, error) {
 				// Format as tree with HTML styling
 				treeHTML := f.formatTreeFieldHTML(fieldValue, field)
 				result.WriteString(treeHTML)
-				
+
 				result.WriteString("            </div>\n")
 				result.WriteString("        </div>\n")
 			}
@@ -362,11 +362,11 @@ func (f *HTMLFormatter) formatTreeFieldHTML(fieldValue api.FieldValue, field api
 			node = ConvertToTreeNode(fieldValue.Value)
 		}
 	}
-	
+
 	if node == nil {
 		return "<p class=\"text-gray-500\">No tree data available</p>"
 	}
-	
+
 	// Format tree using HTML elements
 	return f.formatTreeNodeHTML(node, 0)
 }
@@ -376,9 +376,9 @@ func (f *HTMLFormatter) formatTreeNodeHTML(node api.TreeNode, depth int) string 
 	if node == nil {
 		return ""
 	}
-	
+
 	var result strings.Builder
-	
+
 	// Format current node
 	var nodeContent string
 	if prettyNode, ok := node.(api.Pretty); ok {
@@ -399,17 +399,17 @@ func (f *HTMLFormatter) formatTreeNodeHTML(node api.TreeNode, depth int) string 
 			nodeContent = fmt.Sprintf(`<span class="%s">%s</span>`, style, nodeContent)
 		}
 	}
-	
+
 	// Get children
 	children := node.GetChildren()
-	
+
 	if depth == 0 {
 		// Root node - start the tree
 		result.WriteString(`<div class="tree-view">`)
 		result.WriteString(`<div class="tree-node font-semibold text-lg mb-2">`)
 		result.WriteString(nodeContent)
 		result.WriteString(`</div>`)
-		
+
 		if len(children) > 0 {
 			result.WriteString(`<ul class="ml-4 space-y-1">`)
 			for _, child := range children {
@@ -418,7 +418,7 @@ func (f *HTMLFormatter) formatTreeNodeHTML(node api.TreeNode, depth int) string 
 			}
 			result.WriteString(`</ul>`)
 		}
-		
+
 		result.WriteString(`</div>`)
 	} else {
 		// Child node
@@ -434,7 +434,7 @@ func (f *HTMLFormatter) formatTreeNodeHTML(node api.TreeNode, depth int) string 
 		result.WriteString(`<div class="tree-node">`)
 		result.WriteString(nodeContent)
 		result.WriteString(`</div>`)
-		
+
 		if len(children) > 0 {
 			result.WriteString(`<ul class="ml-4 mt-1 space-y-1">`)
 			for _, child := range children {
@@ -443,23 +443,23 @@ func (f *HTMLFormatter) formatTreeNodeHTML(node api.TreeNode, depth int) string 
 			}
 			result.WriteString(`</ul>`)
 		}
-		
+
 		result.WriteString(`</div>`)
 		result.WriteString(`</li>`)
 	}
-	
+
 	return result.String()
 }
 
 // isImageURL checks if a string is likely an image URL
 func (f *HTMLFormatter) isImageURL(s string) bool {
 	s = strings.ToLower(s)
-	
+
 	// Check for data URLs (base64 encoded images)
 	if strings.HasPrefix(s, "data:image/") {
 		return true
 	}
-	
+
 	// Check for common image file extensions
 	imageExts := []string{".jpg", ".jpeg", ".png", ".gif", ".webp", ".svg", ".bmp", ".ico"}
 	for _, ext := range imageExts {
@@ -467,7 +467,7 @@ func (f *HTMLFormatter) isImageURL(s string) bool {
 			return true
 		}
 	}
-	
+
 	// Check for URLs that might be images
 	if strings.HasPrefix(s, "http://") || strings.HasPrefix(s, "https://") {
 		for _, ext := range imageExts {
@@ -476,20 +476,20 @@ func (f *HTMLFormatter) isImageURL(s string) bool {
 			}
 		}
 		// Check for common image hosting patterns
-		if strings.Contains(s, "images") || strings.Contains(s, "img") || 
-		   strings.Contains(s, "photo") || strings.Contains(s, "picture") ||
-		   strings.Contains(s, "media") || strings.Contains(s, "cdn") {
+		if strings.Contains(s, "images") || strings.Contains(s, "img") ||
+			strings.Contains(s, "photo") || strings.Contains(s, "picture") ||
+			strings.Contains(s, "media") || strings.Contains(s, "cdn") {
 			return true
 		}
 	}
-	
+
 	return false
 }
 
 // formatImageHTML formats an image field as HTML
 func (f *HTMLFormatter) formatImageHTML(fieldValue api.FieldValue, field api.PrettyField) string {
 	imageURL := fieldValue.Formatted()
-	
+
 	// Get image options from field
 	width := "auto"
 	height := "auto"
@@ -497,7 +497,7 @@ func (f *HTMLFormatter) formatImageHTML(fieldValue api.FieldValue, field api.Pre
 	if alt == "" {
 		alt = field.Name
 	}
-	
+
 	// Check format options for width/height
 	if field.FormatOptions != nil {
 		if w, ok := field.FormatOptions["width"]; ok {
@@ -510,7 +510,7 @@ func (f *HTMLFormatter) formatImageHTML(fieldValue api.FieldValue, field api.Pre
 			alt = a
 		}
 	}
-	
+
 	// Build style attribute
 	styleAttrs := []string{}
 	if width != "auto" {
@@ -527,12 +527,12 @@ func (f *HTMLFormatter) formatImageHTML(fieldValue api.FieldValue, field api.Pre
 			styleAttrs = append(styleAttrs, fmt.Sprintf("height: %spx", height))
 		}
 	}
-	
+
 	style := ""
 	if len(styleAttrs) > 0 {
 		style = fmt.Sprintf(` style="%s"`, strings.Join(styleAttrs, "; "))
 	}
-	
+
 	// Generate HTML
 	return fmt.Sprintf(`<img src="%s" alt="%s" class="rounded-lg shadow-md" loading="lazy"%s>`,
 		html.EscapeString(imageURL), html.EscapeString(alt), style)

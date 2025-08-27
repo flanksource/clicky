@@ -613,7 +613,7 @@ func TestTableFormattingWithDates(t *testing.T) {
 	// Check dates are formatted (using local timezone for Unix timestamps)
 	expectedDate1 := time.Unix(1705315800, 0).Format("2006-01-02 15:04:05")
 	expectedDate2 := time.Unix(1705315860, 0).Format("2006-01-02 15:04:05")
-	
+
 	// Just check the content exists, ignore exact spacing
 	if !strings.Contains(output, "ROW-1") || !strings.Contains(output, expectedDate1) || !strings.Contains(output, "$99.99") {
 		t.Errorf("Table should format Unix timestamp string correctly, expected date: %s", expectedDate1)

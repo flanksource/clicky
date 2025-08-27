@@ -53,7 +53,7 @@ func (c *InkscapeConverter) Convert(ctx context.Context, svgPath, outputPath str
 	switch format {
 	case "png":
 		args = append(args, "--export-type=png")
-		
+
 		if options.Width > 0 {
 			args = append(args, "--export-width="+strconv.Itoa(options.Width))
 		}

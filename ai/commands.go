@@ -44,7 +44,7 @@ func ListModels(ctx context.Context, config *AgentConfig) error {
 	// Display models grouped by agent
 	for _, agentType := range agentTypes {
 		models := allModels[agentType]
-		
+
 		// Sort models by ID for consistent output
 		sort.Slice(models, func(i, j int) bool {
 			return models[i].ID < models[j].ID
@@ -54,7 +54,7 @@ func ListModels(ctx context.Context, config *AgentConfig) error {
 			inputPrice := formatPrice(model.InputPrice)
 			outputPrice := formatPrice(model.OutputPrice)
 			maxTokens := formatTokens(model.MaxTokens)
-			
+
 			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
 				strings.ToUpper(string(agentType)),
 				model.ID,

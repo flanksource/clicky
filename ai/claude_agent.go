@@ -25,17 +25,17 @@ func NewClaudeAgent(config AgentConfig) (*ClaudeAgent, error) {
 	if err := ValidateConfig(config); err != nil {
 		return nil, fmt.Errorf("invalid config: %w", err)
 	}
-	
+
 	// Configure global task manager settings
 	clicky.SetGlobalMaxConcurrency(config.MaxConcurrent)
 	if config.Debug || config.Verbose {
 		clicky.SetGlobalVerbose(true)
 	}
-	
+
 	agent := &ClaudeAgent{
 		config: config,
 	}
-	
+
 	// Initialize cache if not disabled
 	if !config.NoCache {
 		cacheConfig := cache.Config{
@@ -44,7 +44,7 @@ func NewClaudeAgent(config AgentConfig) (*ClaudeAgent, error) {
 			DBPath:  config.CacheDBPath,
 			Debug:   config.Debug,
 		}
-		
+
 		c, err := cache.New(cacheConfig)
 		if err != nil {
 			// Log error but continue without cache
@@ -55,7 +55,7 @@ func NewClaudeAgent(config AgentConfig) (*ClaudeAgent, error) {
 			agent.cache = c
 		}
 	}
-	
+
 	return agent, nil
 }
 
@@ -69,7 +69,6 @@ func (ca *ClaudeAgent) GetConfig() AgentConfig {
 	return ca.config
 }
 
-
 // ListModels returns available Claude models
 func (ca *ClaudeAgent) ListModels(ctx context.Context) ([]Model, error) {
 	// For Claude, we'll return a predefined list of known models
@@ -79,8 +78,8 @@ func (ca *ClaudeAgent) ListModels(ctx context.Context) ([]Model, error) {
 			ID:          "claude-3-5-sonnet-20241022",
 			Name:        "Claude 3.5 Sonnet",
 			Provider:    "anthropic",
-			InputPrice:  0.000003,  // $3 per million tokens
-			OutputPrice: 0.000015,  // $15 per million tokens
+			InputPrice:  0.000003, // $3 per million tokens
+			OutputPrice: 0.000015, // $15 per million tokens
 			MaxTokens:   200000,
 			Metadata: map[string]string{
 				"version": "2024-10-22",
@@ -103,8 +102,8 @@ func (ca *ClaudeAgent) ListModels(ctx context.Context) ([]Model, error) {
 			ID:          "claude-3-sonnet-20240229",
 			Name:        "Claude 3 Sonnet",
 			Provider:    "anthropic",
-			InputPrice:  0.000003,  // $3 per million tokens
-			OutputPrice: 0.000015,  // $15 per million tokens
+			InputPrice:  0.000003, // $3 per million tokens
+			OutputPrice: 0.000015, // $15 per million tokens
 			MaxTokens:   200000,
 			Metadata: map[string]string{
 				"version": "2024-02-29",
@@ -115,8 +114,8 @@ func (ca *ClaudeAgent) ListModels(ctx context.Context) ([]Model, error) {
 			ID:          "claude-3-opus-20240229",
 			Name:        "Claude 3 Opus",
 			Provider:    "anthropic",
-			InputPrice:  0.000015,  // $15 per million tokens
-			OutputPrice: 0.000075,  // $75 per million tokens
+			InputPrice:  0.000015, // $15 per million tokens
+			OutputPrice: 0.000075, // $75 per million tokens
 			MaxTokens:   200000,
 			Metadata: map[string]string{
 				"version": "2024-02-29",
@@ -124,7 +123,7 @@ func (ca *ClaudeAgent) ListModels(ctx context.Context) ([]Model, error) {
 			},
 		},
 	}
-	
+
 	return models, nil
 }
 
@@ -132,7 +131,7 @@ func (ca *ClaudeAgent) ListModels(ctx context.Context) ([]Model, error) {
 func (ca *ClaudeAgent) ExecutePrompt(ctx context.Context, request PromptRequest) (*PromptResponse, error) {
 	var response *PromptResponse
 	var err error
-	
+
 	task := clicky.StartGlobalTask(request.Name,
 		clicky.WithTimeout(5*time.Minute),
 		clicky.WithModel(ca.config.Model),
@@ -141,19 +140,19 @@ func (ca *ClaudeAgent) ExecutePrompt(ctx context.Context, request PromptRequest)
 			t.Infof("Starting Claude request")
 			// Start with unknown progress (infinite spinner)
 			t.SetProgress(0, 0)
-			
+
 			resp, execErr := ca.executeClaude(ctx, request, t)
 			if execErr != nil {
 				t.Errorf("Claude request failed: %v", execErr)
 				return execErr
 			}
-			
+
 			t.Infof("Completed (%d tokens, $%.6f)", resp.TokensUsed, resp.CostUSD)
-			
+
 			response = resp
 			return nil
 		}))
-	
+
 	// Wait for task completion
 	for task.Status() == clicky.StatusPending || task.Status() == clicky.StatusRunning {
 		select {
@@ -163,11 +162,11 @@ func (ca *ClaudeAgent) ExecutePrompt(ctx context.Context, request PromptRequest)
 		case <-time.After(100 * time.Millisecond):
 		}
 	}
-	
+
 	if err = task.Error(); err != nil {
 		return nil, err
 	}
-	
+
 	return response, nil
 }
 
@@ -179,14 +178,14 @@ func (ca *ClaudeAgent) ExecuteBatch(ctx context.Context, requests []PromptReques
 		response *PromptResponse
 		err      error
 	}, len(requests))
-	
-	// Store tasks to wait for them properly  
+
+	// Store tasks to wait for them properly
 	var tasks []*clicky.Task
-	
+
 	// Create tasks for all requests
 	for _, request := range requests {
 		req := request // Capture for closure
-		
+
 		task := clicky.StartGlobalTask(req.Name,
 			clicky.WithTimeout(5*time.Minute),
 			clicky.WithModel(ca.config.Model),
@@ -195,9 +194,9 @@ func (ca *ClaudeAgent) ExecuteBatch(ctx context.Context, requests []PromptReques
 				t.Infof("Processing request")
 				// Start with unknown progress (infinite spinner)
 				t.SetProgress(0, 0)
-				
+
 				response, err := ca.executeClaude(t.Context(), req, t)
-				
+
 				// Always send result to channel, even if there's an error
 				select {
 				case resultsChan <- struct {
@@ -212,20 +211,20 @@ func (ca *ClaudeAgent) ExecuteBatch(ctx context.Context, requests []PromptReques
 				case <-t.Context().Done():
 					return t.Context().Err()
 				}
-				
+
 				if err != nil {
 					// Log error but don't fail the task - let it complete as a warning
 					t.Warnf("Failed: %v", err)
 					return nil // Return nil so task shows as completed with warning
 				}
-				
+
 				t.Infof("Completed (%d tokens)", response.TokensUsed)
 				return nil
 			}))
-		
+
 		tasks = append(tasks, task)
 	}
-	
+
 	// Wait for all tasks to complete and collect results concurrently
 	go func() {
 		for _, task := range tasks {
@@ -240,7 +239,7 @@ func (ca *ClaudeAgent) ExecuteBatch(ctx context.Context, requests []PromptReques
 		}
 		close(resultsChan) // Close channel when all tasks complete
 	}()
-	
+
 	// Collect results from channel
 	for result := range resultsChan {
 		if result.err == nil {
@@ -253,13 +252,13 @@ func (ca *ClaudeAgent) ExecuteBatch(ctx context.Context, requests []PromptReques
 			}
 		}
 	}
-	
+
 	// Check for context cancellation
 	if ctx.Err() != nil {
 		clicky.CancelAllGlobalTasks()
 		return results, ctx.Err()
 	}
-	
+
 	return results, nil
 }
 
@@ -274,7 +273,7 @@ func (ca *ClaudeAgent) executeClaude(ctx context.Context, request PromptRequest,
 		}
 		prompt = fmt.Sprintf("Context:\n%s\n\n%s", strings.Join(contextParts, "\n"), prompt)
 	}
-	
+
 	// Check cache first
 	if ca.cache != nil {
 		entry, err := ca.cache.Get(prompt, ca.config.Model, ca.config.Temperature, ca.config.MaxTokens)
@@ -297,31 +296,31 @@ func (ca *ClaudeAgent) executeClaude(ctx context.Context, request PromptRequest,
 			}, nil
 		}
 	}
-	
+
 	// Build Claude CLI arguments
 	args := []string{"-p"}
-	
+
 	if ca.config.Model != "" {
 		args = append(args, "--model", ca.config.Model)
 	}
-	
+
 	args = append(args, "--output-format", "json")
-	
+
 	if ca.config.StrictMCPConfig {
 		args = append(args, "--strict-mcp-config")
 	}
-	
+
 	args = append(args, prompt)
-	
+
 	if task != nil {
 		task.Infof("Executing: claude %s", strings.Join(args[:len(args)-1], " "))
 	}
-	
+
 	startTime := time.Now()
 	cmd := exec.CommandContext(ctx, "claude", args...)
 	output, err := cmd.CombinedOutput()
 	duration := time.Since(startTime)
-	
+
 	// Prepare cache entry
 	cacheEntry := &cache.Entry{
 		Model:       ca.config.Model,
@@ -334,22 +333,22 @@ func (ca *ClaudeAgent) executeClaude(ctx context.Context, request PromptRequest,
 		SessionID:   ca.config.SessionID,
 		CreatedAt:   time.Now(),
 	}
-	
+
 	if err != nil {
 		errMsg := fmt.Sprintf("claude CLI failed: %v", err)
 		if ctx.Err() != nil {
 			errMsg = fmt.Sprintf("claude CLI cancelled: %v", ctx.Err())
 		}
-		
+
 		// Cache the error
 		cacheEntry.Error = errMsg
 		if ca.cache != nil {
 			ca.cache.Set(cacheEntry)
 		}
-		
+
 		return nil, fmt.Errorf("%s\nOutput: %s", errMsg, string(output))
 	}
-	
+
 	// Try to parse JSON response
 	var claudeResp ClaudeResponse
 	if err := json.Unmarshal(output, &claudeResp); err != nil {
@@ -361,16 +360,16 @@ func (ca *ClaudeAgent) executeClaude(ctx context.Context, request PromptRequest,
 			DurationMs: int(duration.Milliseconds()),
 			Model:      ca.config.Model,
 		}
-		
+
 		// Cache the response
 		cacheEntry.Response = response.Result
 		if ca.cache != nil {
 			ca.cache.Set(cacheEntry)
 		}
-		
+
 		return response, nil
 	}
-	
+
 	if claudeResp.IsError {
 		errMsg := fmt.Sprintf("claude returned error: %s", claudeResp.Result)
 		cacheEntry.Error = errMsg
@@ -379,7 +378,7 @@ func (ca *ClaudeAgent) executeClaude(ctx context.Context, request PromptRequest,
 		}
 		return nil, fmt.Errorf("%s", errMsg)
 	}
-	
+
 	// Build response with detailed token information
 	response := &PromptResponse{
 		Result:           claudeResp.Result,
@@ -393,7 +392,7 @@ func (ca *ClaudeAgent) executeClaude(ctx context.Context, request PromptRequest,
 		Model:            ca.config.Model,
 		CacheHit:         false,
 	}
-	
+
 	// Update cache entry with successful response
 	cacheEntry.Response = response.Result
 	cacheEntry.TokensInput = response.TokensInput
@@ -402,14 +401,14 @@ func (ca *ClaudeAgent) executeClaude(ctx context.Context, request PromptRequest,
 	cacheEntry.TokensCacheWrite = response.TokensCacheWrite
 	cacheEntry.TokensTotal = response.TokensUsed
 	cacheEntry.CostUSD = response.CostUSD
-	
+
 	// Save to cache
 	if ca.cache != nil {
 		if err := ca.cache.Set(cacheEntry); err != nil && ca.config.Debug {
 			fmt.Fprintf(os.Stderr, "Warning: Failed to cache response: %v\n", err)
 		}
 	}
-	
+
 	if task != nil && ca.config.Debug {
 		task.Infof("Token usage: input=%d, cache_creation=%d, cache_read=%d, output=%d",
 			claudeResp.Usage.InputTokens,
@@ -418,7 +417,7 @@ func (ca *ClaudeAgent) executeClaude(ctx context.Context, request PromptRequest,
 			claudeResp.Usage.OutputTokens)
 		task.Infof("Cost: $%.6f USD", response.CostUSD)
 	}
-	
+
 	return response, nil
 }
 
@@ -426,11 +425,11 @@ func (ca *ClaudeAgent) executeClaude(ctx context.Context, request PromptRequest,
 func (ca *ClaudeAgent) Close() error {
 	// Cancel any tasks this agent started
 	clicky.CancelAllGlobalTasks()
-	
+
 	// Close cache if initialized
 	if ca.cache != nil {
 		return ca.cache.Close()
 	}
-	
+
 	return nil
 }

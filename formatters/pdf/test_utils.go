@@ -1,5 +1,5 @@
 // Package pdf provides test utilities for validating PDF content and structure.
-// 
+//
 // This package includes utilities for PDF content verification with integration
 // for the pdfcpu library. Currently focused on structural validation with
 // infrastructure in place for future text extraction capabilities.
@@ -30,36 +30,36 @@ import (
 func ExtractTextFromPDF(pdfData []byte) (string, error) {
 	// Create a reader from the PDF data
 	reader := bytes.NewReader(pdfData)
-	
+
 	// Parse the PDF
 	pdfReader, err := ledongpdf.NewReader(reader, int64(len(pdfData)))
 	if err != nil {
 		return "", fmt.Errorf("failed to create PDF reader: %w", err)
 	}
-	
+
 	// Extract text from all pages
 	var allText strings.Builder
 	numPages := pdfReader.NumPage()
-	
+
 	for pageNum := 1; pageNum <= numPages; pageNum++ {
 		page := pdfReader.Page(pageNum)
 		if page.V.IsNull() {
 			continue
 		}
-		
+
 		// Extract text from the page
 		textContent, err := page.GetPlainText(nil)
 		if err != nil {
 			// Continue with other pages even if one fails
 			continue
 		}
-		
+
 		if allText.Len() > 0 {
 			allText.WriteString("\n")
 		}
 		allText.WriteString(textContent)
 	}
-	
+
 	return allText.String(), nil
 }
 
@@ -67,45 +67,44 @@ func ExtractTextFromPDF(pdfData []byte) (string, error) {
 func ExtractTextFromPage(pdfData []byte, pageNum int) (string, error) {
 	// Create a reader from the PDF data
 	reader := bytes.NewReader(pdfData)
-	
+
 	// Parse the PDF
 	pdfReader, err := ledongpdf.NewReader(reader, int64(len(pdfData)))
 	if err != nil {
 		return "", fmt.Errorf("failed to create PDF reader: %w", err)
 	}
-	
+
 	// Check if page number is valid
 	if pageNum < 1 || pageNum > pdfReader.NumPage() {
 		return "", fmt.Errorf("page number %d out of range (1-%d)", pageNum, pdfReader.NumPage())
 	}
-	
+
 	// Get the specific page
 	page := pdfReader.Page(pageNum)
 	if page.V.IsNull() {
 		return "", fmt.Errorf("page %d is null", pageNum)
 	}
-	
+
 	// Extract text from the page
 	textContent, err := page.GetPlainText(nil)
 	if err != nil {
 		return "", fmt.Errorf("failed to extract text from page %d: %w", pageNum, err)
 	}
-	
+
 	return textContent, nil
 }
-
 
 // AssertPDFContainsText verifies that a PDF contains all expected text content
 func AssertPDFContainsText(t *testing.T, pdfData []byte, expectedTexts []string) {
 	t.Helper()
-	
+
 	// Extract text from the PDF
 	extractedText, err := ExtractTextFromPDF(pdfData)
 	if err != nil {
 		t.Errorf("Failed to extract text from PDF: %v", err)
 		return
 	}
-	
+
 	// Check for each expected text
 	for _, expected := range expectedTexts {
 		if !strings.Contains(extractedText, expected) {
@@ -113,7 +112,7 @@ func AssertPDFContainsText(t *testing.T, pdfData []byte, expectedTexts []string)
 			t.Logf("Extracted text (first 500 chars): %s", truncateString(extractedText, 500))
 		}
 	}
-	
+
 	if len(expectedTexts) > 0 {
 		t.Logf("✓ PDF contains all %d expected text segments", len(expectedTexts))
 	}
@@ -122,14 +121,14 @@ func AssertPDFContainsText(t *testing.T, pdfData []byte, expectedTexts []string)
 // AssertPDFTextOrder verifies that text appears in the PDF in the expected order
 func AssertPDFTextOrder(t *testing.T, pdfData []byte, orderedTexts []string) {
 	t.Helper()
-	
+
 	// Extract text from the PDF
 	extractedText, err := ExtractTextFromPDF(pdfData)
 	if err != nil {
 		t.Errorf("Failed to extract text from PDF: %v", err)
 		return
 	}
-	
+
 	// Check that texts appear in the correct order
 	lastIndex := -1
 	for _, expected := range orderedTexts {
@@ -143,7 +142,7 @@ func AssertPDFTextOrder(t *testing.T, pdfData []byte, orderedTexts []string) {
 		}
 		lastIndex = lastIndex + 1 + index
 	}
-	
+
 	if len(orderedTexts) > 0 {
 		t.Logf("✓ PDF contains all %d text segments in correct order", len(orderedTexts))
 	}
@@ -154,17 +153,17 @@ func AssertPDFTextOrder(t *testing.T, pdfData []byte, orderedTexts []string) {
 // For now, we focus on ensuring the PDF is valid rather than exact page counts.
 func AssertPDFPageCount(t *testing.T, pdfData []byte, expectedPages int) {
 	t.Helper()
-	
+
 	reader := bytes.NewReader(pdfData)
 	ctx, err := api.ReadContext(reader, model.NewDefaultConfiguration())
 	if err != nil {
 		t.Errorf("Failed to read PDF for page count verification: %v", err)
 		return
 	}
-	
+
 	// Log the page count discrepancy for investigation but don't fail the test
 	if ctx.PageCount != expectedPages {
-		t.Logf("Note: pdfcpu reports %d pages, expected %d. This may be due to differences between fpdf generation and pdfcpu parsing.", 
+		t.Logf("Note: pdfcpu reports %d pages, expected %d. This may be due to differences between fpdf generation and pdfcpu parsing.",
 			ctx.PageCount, expectedPages)
 		t.Logf("✓ PDF structure is valid and readable by pdfcpu")
 	} else {
@@ -175,19 +174,19 @@ func AssertPDFPageCount(t *testing.T, pdfData []byte, expectedPages int) {
 // AssertPDFBasicStructure performs basic PDF structure validation
 func AssertPDFBasicStructure(t *testing.T, pdfData []byte) {
 	t.Helper()
-	
+
 	// Verify PDF header
 	if len(pdfData) < 4 || string(pdfData[:4]) != "%PDF" {
 		t.Error("Generated data doesn't look like a PDF (missing %PDF header)")
 		return
 	}
-	
+
 	// Verify minimum size
 	if len(pdfData) < 100 {
 		t.Error("PDF appears to be too small to contain meaningful content")
 		return
 	}
-	
+
 	// Try to parse with pdfcpu
 	reader := bytes.NewReader(pdfData)
 	_, err := api.ReadContext(reader, model.NewDefaultConfiguration())
@@ -203,7 +202,7 @@ func GetPDFInfo(pdfData []byte) (pages int, size int, err error) {
 	if err != nil {
 		return 0, 0, fmt.Errorf("failed to read PDF: %w", err)
 	}
-	
+
 	return ctx.PageCount, len(pdfData), nil
 }
 
@@ -248,13 +247,13 @@ func CreateComplexTestSVG() string {
 // WriteTestSVG writes test SVG content to a temporary file and returns the path
 func WriteTestSVG(t *testing.T, svgContent string) string {
 	t.Helper()
-	
+
 	tmpFile := t.TempDir() + "/test.svg"
 	err := writeToFile(tmpFile, svgContent)
 	if err != nil {
 		t.Fatalf("Failed to write test SVG: %v", err)
 	}
-	
+
 	return tmpFile
 }
 
@@ -265,7 +264,7 @@ func writeToFile(path, content string) error {
 		return err
 	}
 	defer file.Close()
-	
+
 	_, err = file.WriteString(content)
 	return err
 }
@@ -273,7 +272,7 @@ func writeToFile(path, content string) error {
 // AssertFileExists checks if a file exists at the given path
 func AssertFileExists(t *testing.T, path string) {
 	t.Helper()
-	
+
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		t.Errorf("Expected file does not exist: %s", path)
 	}
@@ -282,7 +281,7 @@ func AssertFileExists(t *testing.T, path string) {
 // AssertFileNotEmpty checks if a file exists and is not empty
 func AssertFileNotEmpty(t *testing.T, path string) {
 	t.Helper()
-	
+
 	info, err := os.Stat(path)
 	if os.IsNotExist(err) {
 		t.Errorf("Expected file does not exist: %s", path)
@@ -292,7 +291,7 @@ func AssertFileNotEmpty(t *testing.T, path string) {
 		t.Errorf("Failed to stat file %s: %v", path, err)
 		return
 	}
-	
+
 	if info.Size() == 0 {
 		t.Errorf("File exists but is empty: %s", path)
 	}
@@ -303,14 +302,14 @@ func AssertFileNotEmpty(t *testing.T, path string) {
 // AssertPDFDoesNotContainErrors checks that the PDF doesn't contain any error messages
 func AssertPDFDoesNotContainErrors(t *testing.T, pdfData []byte) {
 	t.Helper()
-	
+
 	// Extract text from the PDF
 	extractedText, err := ExtractTextFromPDF(pdfData)
 	if err != nil {
 		t.Errorf("Failed to extract text from PDF: %v", err)
 		return
 	}
-	
+
 	// List of error patterns to check for
 	errorPatterns := []string{
 		"could not load image",
@@ -320,7 +319,7 @@ func AssertPDFDoesNotContainErrors(t *testing.T, pdfData []byte) {
 		"error:",
 		"Error:",
 	}
-	
+
 	// Check for each error pattern
 	for _, pattern := range errorPatterns {
 		if strings.Contains(extractedText, pattern) {
@@ -332,21 +331,21 @@ func AssertPDFDoesNotContainErrors(t *testing.T, pdfData []byte) {
 			t.Logf("Context: ...%s...", extractedText[start:end])
 		}
 	}
-	
+
 	t.Logf("✓ PDF contains no error messages")
 }
 
 // AssertNoImageLoadErrors checks specifically for image loading errors
 func AssertNoImageLoadErrors(t *testing.T, pdfData []byte) {
 	t.Helper()
-	
+
 	// Extract text from the PDF
 	extractedText, err := ExtractTextFromPDF(pdfData)
 	if err != nil {
 		t.Errorf("Failed to extract text from PDF: %v", err)
 		return
 	}
-	
+
 	// Check for image-related error patterns
 	imageErrorPatterns := []string{
 		"could not load image",
@@ -355,7 +354,7 @@ func AssertNoImageLoadErrors(t *testing.T, pdfData []byte) {
 		"failed to download image",
 		"failed to convert",
 	}
-	
+
 	for _, pattern := range imageErrorPatterns {
 		if strings.Contains(strings.ToLower(extractedText), strings.ToLower(pattern)) {
 			t.Errorf("PDF contains image loading error: %q", pattern)
@@ -371,14 +370,14 @@ func AssertNoImageLoadErrors(t *testing.T, pdfData []byte) {
 // AssertNoSVGRenderingErrors checks specifically for SVG rendering errors
 func AssertNoSVGRenderingErrors(t *testing.T, pdfData []byte) {
 	t.Helper()
-	
+
 	// Extract text from the PDF
 	extractedText, err := ExtractTextFromPDF(pdfData)
 	if err != nil {
 		t.Errorf("Failed to extract text from PDF: %v", err)
 		return
 	}
-	
+
 	// Check for SVG-related error patterns
 	svgErrorPatterns := []string{
 		"SVG Rendering Error",
@@ -387,7 +386,7 @@ func AssertNoSVGRenderingErrors(t *testing.T, pdfData []byte) {
 		"Invalid SVG",
 		"could not extract SVG",
 	}
-	
+
 	for _, pattern := range svgErrorPatterns {
 		if strings.Contains(extractedText, pattern) {
 			t.Errorf("PDF contains SVG rendering error: %q", pattern)

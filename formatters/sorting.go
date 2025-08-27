@@ -11,29 +11,29 @@ import (
 
 // SortField represents a field to sort by with its priority
 type SortField struct {
-	Name     string
-	Priority int
+	Name      string
+	Priority  int
 	Direction string // "asc" or "desc"
 }
 
 // ExtractSortFields extracts sort fields from struct tags
 func ExtractSortFields(typ reflect.Type) []SortField {
 	var sortFields []SortField
-	
+
 	for i := 0; i < typ.NumField(); i++ {
 		field := typ.Field(i)
-		
+
 		// Skip unexported fields
 		if !field.IsExported() {
 			continue
 		}
-		
+
 		// Parse pretty tag
 		prettyTag := field.Tag.Get("pretty")
 		if prettyTag == "" || prettyTag == "-" || prettyTag == "hide" {
 			continue
 		}
-		
+
 		// Get field name
 		fieldName := field.Name
 		jsonTag := field.Tag.Get("json")
@@ -42,7 +42,7 @@ func ExtractSortFields(typ reflect.Type) []SortField {
 				fieldName = parts[0]
 			}
 		}
-		
+
 		// Look for sort=N in the pretty tag
 		parts := strings.Split(prettyTag, ",")
 		for _, part := range parts {
@@ -55,7 +55,7 @@ func ExtractSortFields(typ reflect.Type) []SortField {
 						Priority:  priority,
 						Direction: "asc", // Default to ascending
 					}
-					
+
 					// Check for direction
 					for _, p := range parts {
 						if strings.HasPrefix(p, "dir=") {
@@ -63,19 +63,19 @@ func ExtractSortFields(typ reflect.Type) []SortField {
 							break
 						}
 					}
-					
+
 					sortFields = append(sortFields, sortField)
 					break
 				}
 			}
 		}
 	}
-	
+
 	// Sort by priority (lower number = higher priority)
 	sort.Slice(sortFields, func(i, j int) bool {
 		return sortFields[i].Priority < sortFields[j].Priority
 	})
-	
+
 	return sortFields
 }
 
@@ -84,12 +84,12 @@ func SortRows(rows []api.PrettyDataRow, sortFields []SortField) {
 	if len(sortFields) == 0 {
 		return
 	}
-	
+
 	sort.Slice(rows, func(i, j int) bool {
 		for _, field := range sortFields {
 			valI := rows[i][field.Name]
 			valJ := rows[j][field.Name]
-			
+
 			cmp := compareValues(valI, valJ)
 			if cmp != 0 {
 				if field.Direction == "desc" {
@@ -111,7 +111,7 @@ func compareValues(a, b interface{}) int {
 	if fieldValB, ok := b.(api.FieldValue); ok {
 		b = fieldValB.Value
 	}
-	
+
 	// Handle nil values
 	if a == nil && b == nil {
 		return 0
@@ -122,11 +122,11 @@ func compareValues(a, b interface{}) int {
 	if b == nil {
 		return 1
 	}
-	
+
 	// Convert to strings for comparison
 	strA := toString(a)
 	strB := toString(b)
-	
+
 	if strA < strB {
 		return -1
 	} else if strA > strB {
@@ -140,7 +140,7 @@ func toString(v interface{}) string {
 	if v == nil {
 		return ""
 	}
-	
+
 	switch val := v.(type) {
 	case string:
 		return val

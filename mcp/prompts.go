@@ -10,12 +10,12 @@ import (
 
 // Prompt represents an MCP prompt that can be provided to AI assistants
 type Prompt struct {
-	Name        string            `json:"name"`
-	Description string            `json:"description"`
-	Arguments   []PromptArgument  `json:"arguments,omitempty"`
-	Template    string            `json:"template"`
-	Tags        []string          `json:"tags,omitempty"`
-	Examples    []string          `json:"examples,omitempty"`
+	Name        string           `json:"name"`
+	Description string           `json:"description"`
+	Arguments   []PromptArgument `json:"arguments,omitempty"`
+	Template    string           `json:"template"`
+	Tags        []string         `json:"tags,omitempty"`
+	Examples    []string         `json:"examples,omitempty"`
 }
 
 // PromptArgument represents an argument for a prompt
@@ -50,7 +50,7 @@ func (r *PromptRegistry) LoadDefaults() {
 List the main commands and their purposes.`,
 		Tags: []string{"discovery", "help"},
 	})
-	
+
 	r.Register(&Prompt{
 		Name:        "explore",
 		Description: "Explore specific functionality",
@@ -61,7 +61,7 @@ List the main commands and their purposes.`,
 Show me what it can do and provide some examples of common use cases.`,
 		Tags: []string{"discovery", "learning"},
 	})
-	
+
 	// Task-oriented prompts
 	r.Register(&Prompt{
 		Name:        "task",
@@ -75,7 +75,7 @@ Show me what it can do and provide some examples of common use cases.`,
 Please help me accomplish this using the available tools.`,
 		Tags: []string{"task", "execution"},
 	})
-	
+
 	r.Register(&Prompt{
 		Name:        "debug",
 		Description: "Debug an issue",
@@ -88,7 +88,7 @@ Please help me accomplish this using the available tools.`,
 Please help me debug and resolve this issue.`,
 		Tags: []string{"debugging", "troubleshooting"},
 	})
-	
+
 	// Analysis prompts
 	r.Register(&Prompt{
 		Name:        "analyze",
@@ -101,7 +101,7 @@ Please help me debug and resolve this issue.`,
 Provide insights and recommendations based on the analysis.`,
 		Tags: []string{"analysis", "insights"},
 	})
-	
+
 	r.Register(&Prompt{
 		Name:        "optimize",
 		Description: "Optimize performance or configuration",
@@ -113,7 +113,7 @@ Provide insights and recommendations based on the analysis.`,
 Analyze the current state and suggest improvements.`,
 		Tags: []string{"optimization", "performance"},
 	})
-	
+
 	// Workflow prompts
 	r.Register(&Prompt{
 		Name:        "workflow",
@@ -125,13 +125,13 @@ Analyze the current state and suggest improvements.`,
 		Template: `I want to achieve: {{.goal}}
 {{if .constraints}}Constraints: {{.constraints}}{{end}}
 Please create a step-by-step workflow using the available tools.`,
-		Tags:     []string{"workflow", "automation"},
+		Tags: []string{"workflow", "automation"},
 		Examples: []string{
 			"workflow --goal 'deploy application to production' --constraints 'zero downtime'",
 			"workflow --goal 'generate monthly reports'",
 		},
 	})
-	
+
 	// Batch operations
 	r.Register(&Prompt{
 		Name:        "batch",
@@ -145,7 +145,7 @@ Targets: {{.targets}}
 Execute efficiently and report the results.`,
 		Tags: []string{"batch", "automation"},
 	})
-	
+
 	// Monitoring and status
 	r.Register(&Prompt{
 		Name:        "monitor",
@@ -158,7 +158,7 @@ Execute efficiently and report the results.`,
 Report the current status and any issues found.`,
 		Tags: []string{"monitoring", "status"},
 	})
-	
+
 	// Report generation
 	r.Register(&Prompt{
 		Name:        "report",
@@ -171,7 +171,7 @@ Report the current status and any issues found.`,
 		Template: `Generate a {{.type}} report{{if .period}} for {{.period}}{{end}}.
 Format: {{.format}}
 Include relevant metrics, trends, and recommendations.`,
-		Tags:     []string{"reporting", "analysis"},
+		Tags: []string{"reporting", "analysis"},
 		Examples: []string{
 			"report --type 'performance' --period 'last week' --format 'detailed'",
 			"report --type 'security audit'",
@@ -219,37 +219,37 @@ func (r *PromptRegistry) LoadFromFile(path string) error {
 	if err != nil {
 		return fmt.Errorf("failed to read prompts file: %w", err)
 	}
-	
+
 	var prompts []*Prompt
 	if err := json.Unmarshal(data, &prompts); err != nil {
 		return fmt.Errorf("failed to parse prompts file: %w", err)
 	}
-	
+
 	for _, p := range prompts {
 		r.Register(p)
 	}
-	
+
 	return nil
 }
 
 // SaveToFile saves prompts to a JSON file
 func (r *PromptRegistry) SaveToFile(path string) error {
 	prompts := r.List()
-	
+
 	data, err := json.MarshalIndent(prompts, "", "  ")
 	if err != nil {
 		return fmt.Errorf("failed to marshal prompts: %w", err)
 	}
-	
+
 	// Create directory if it doesn't exist
 	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
 		return fmt.Errorf("failed to create directory: %w", err)
 	}
-	
+
 	if err := os.WriteFile(path, data, 0644); err != nil {
 		return fmt.Errorf("failed to write prompts file: %w", err)
 	}
-	
+
 	return nil
 }
 
@@ -285,11 +285,11 @@ func (p *Prompt) ToMCPResponse(args map[string]string) *GetPromptResponse {
 		placeholder := fmt.Sprintf("{{.%s}}", key)
 		content = strings.ReplaceAll(content, placeholder, value)
 	}
-	
+
 	// Handle conditionals (simple implementation)
 	// Remove unfilled conditionals
 	content = removeUnfilledConditionals(content)
-	
+
 	return &GetPromptResponse{
 		Description: p.Description,
 		Arguments:   p.Arguments,
@@ -311,12 +311,12 @@ func removeUnfilledConditionals(content string) string {
 		if start == -1 {
 			break
 		}
-		
+
 		end := strings.Index(content[start:], "{{end}}")
 		if end == -1 {
 			break
 		}
-		
+
 		// Check if the condition has unfilled variables (contains {{.)
 		block := content[start : start+end+7]
 		if strings.Contains(block, "{{.") {
@@ -333,7 +333,7 @@ func removeUnfilledConditionals(content string) string {
 			}
 		}
 	}
-	
+
 	// Clean up any remaining template variables
 	for {
 		start := strings.Index(content, "{{")
@@ -346,7 +346,7 @@ func removeUnfilledConditionals(content string) string {
 		}
 		content = content[:start] + content[start+end+2:]
 	}
-	
+
 	// Clean up extra whitespace
 	lines := strings.Split(content, "\n")
 	var cleaned []string
@@ -356,6 +356,6 @@ func removeUnfilledConditionals(content string) string {
 			cleaned = append(cleaned, line)
 		}
 	}
-	
+
 	return strings.Join(cleaned, "\n")
 }

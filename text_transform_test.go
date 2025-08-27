@@ -2,18 +2,18 @@ package clicky
 
 import (
 	"testing"
-	
+
 	"github.com/flanksource/clicky/formatters"
 )
 
 func TestTextTransforms(t *testing.T) {
 	_ = formatters.NewPrettyFormatter()
-	
+
 	tests := []struct {
-		name      string
-		text      string
-		style     string
-		expected  string
+		name     string
+		text     string
+		style    string
+		expected string
 	}{
 		{
 			name:     "uppercase transform",
@@ -58,18 +58,18 @@ func TestTextTransforms(t *testing.T) {
 			expected: "MiXeD cAsE",
 		},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Since applyTailwindStyleToText is internal, we'll test through the formatter
 			// This would require making the function public or testing through a public interface
 			// For now, this is a placeholder test structure
-			
+
 			// In a real test, we would either:
 			// 1. Make applyTailwindStyleToText public for testing
 			// 2. Test through the public Format method with actual data
 			// 3. Create a test helper that exposes the internal functionality
-			
+
 			// Example of what the test would look like:
 			// result := formatter.ApplyTailwindStyleToText(tt.text, tt.style)
 			// // Strip ANSI codes for comparison
@@ -95,7 +95,7 @@ func TestFontWeights(t *testing.T) {
 		{"font-thin", false, true},
 		{"font-extralight", false, true},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.style, func(t *testing.T) {
 			// Test font weight parsing
@@ -106,10 +106,10 @@ func TestFontWeights(t *testing.T) {
 
 func TestTextDecorations(t *testing.T) {
 	tests := []struct {
-		style          string
-		hasUnderline   bool
+		style            string
+		hasUnderline     bool
 		hasStrikethrough bool
-		hasItalic      bool
+		hasItalic        bool
 	}{
 		{"underline", true, false, false},
 		{"line-through", false, true, false},
@@ -119,7 +119,7 @@ func TestTextDecorations(t *testing.T) {
 		{"no-underline", false, false, false},
 		{"not-italic", false, false, false},
 	}
-	
+
 	for _, tt := range tests {
 		t.Run(tt.style, func(t *testing.T) {
 			// Test text decoration parsing

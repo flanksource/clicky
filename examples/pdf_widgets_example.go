@@ -45,7 +45,7 @@ func main() {
 
 	// Example 1: Text Widget with api.Class styling
 	fmt.Println("Adding styled text widget...")
-	
+
 	textWidget := pdf.Text{
 		Text: api.Text{
 			Content: "Welcome to PDF Widgets with API Class Styling!",
@@ -77,7 +77,7 @@ func main() {
 
 	// Example 2: Text Widget using Tailwind-style resolved classes
 	fmt.Println("Adding text with Tailwind-resolved styling...")
-	
+
 	// Use our ResolveStyles function to convert Tailwind classes to api.Class
 	tailwindClasses := "text-green-600 font-bold text-lg p-3 bg-green-50"
 	resolvedClass := api.ResolveStyles(tailwindClasses)
@@ -99,7 +99,7 @@ func main() {
 
 	// Example 3: Table Widget with styling
 	fmt.Println("Adding styled table widget...")
-	
+
 	tableWidget := pdf.Table{
 		Headers: []string{"Product", "Price", "Quantity", "Total"},
 		Rows: [][]any{
@@ -140,7 +140,7 @@ func main() {
 
 	// Example 4: Box Widget with labels
 	fmt.Println("Adding box widget with labels...")
-	
+
 	boxWidget := pdf.Box{
 		Rectangle: api.Rectangle{Width: 120, Height: 80},
 		Labels: []pdf.Label{
@@ -166,7 +166,7 @@ func main() {
 				Text: api.Text{
 					Content: "Step 1",
 					Class: api.Class{
-						Font: &api.Font{Size: 0.8},
+						Font:       &api.Font{Size: 0.8},
 						Foreground: &api.Color{Hex: "#6b7280"},
 					},
 				},
@@ -213,7 +213,7 @@ func main() {
 
 	// Example 5: Image Widget (placeholder)
 	fmt.Println("Adding image widget...")
-	
+
 	imageWidget := pdf.Image{
 		Source:  "", // Empty source creates placeholder
 		AltText: "Chart or Diagram",
@@ -228,7 +228,7 @@ func main() {
 
 	// Example 6: Complex text with children
 	builder.MoveBy(0, 20)
-	
+
 	complexTextWidget := pdf.Text{
 		Text: api.Text{
 			Content: "Summary Report",
@@ -243,9 +243,9 @@ func main() {
 				{
 					Content: "This document demonstrates the PDF widget system with full api.Class support.",
 					Class: api.Class{
-						Font: &api.Font{Size: 1.0},
+						Font:       &api.Font{Size: 1.0},
 						Foreground: &api.Color{Hex: "#4b5563"},
-						Padding: &api.Padding{Top: 0.5},
+						Padding:    &api.Padding{Top: 0.5},
 					},
 				},
 				{
@@ -256,31 +256,31 @@ func main() {
 							Bold: true,
 						},
 						Foreground: &api.Color{Hex: "#1f2937"},
-						Padding: &api.Padding{Top: 0.5},
+						Padding:    &api.Padding{Top: 0.5},
 					},
 				},
 				{
 					Content: "• Full api.Class styling support",
 					Class: api.Class{
-						Font: &api.Font{Size: 0.9},
+						Font:       &api.Font{Size: 0.9},
 						Foreground: &api.Color{Hex: "#4b5563"},
-						Padding: &api.Padding{Left: 0.5, Top: 0.2},
+						Padding:    &api.Padding{Left: 0.5, Top: 0.2},
 					},
 				},
 				{
 					Content: "• Tailwind utility class parsing",
 					Class: api.Class{
-						Font: &api.Font{Size: 0.9},
+						Font:       &api.Font{Size: 0.9},
 						Foreground: &api.Color{Hex: "#4b5563"},
-						Padding: &api.Padding{Left: 0.5, Top: 0.2},
+						Padding:    &api.Padding{Left: 0.5, Top: 0.2},
 					},
 				},
 				{
 					Content: "• Comprehensive widget system",
 					Class: api.Class{
-						Font: &api.Font{Size: 0.9},
+						Font:       &api.Font{Size: 0.9},
 						Foreground: &api.Color{Hex: "#4b5563"},
-						Padding: &api.Padding{Left: 0.5, Top: 0.2},
+						Padding:    &api.Padding{Left: 0.5, Top: 0.2},
 					},
 				},
 			},

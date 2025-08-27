@@ -13,7 +13,7 @@ import (
 func TestPDFTextExtraction(t *testing.T) {
 	// Create a simple PDF with known text
 	builder := NewBuilder()
-	
+
 	// Add some text
 	textWidget := Text{
 		Text: api.Text{
@@ -22,7 +22,7 @@ func TestPDFTextExtraction(t *testing.T) {
 		},
 	}
 	textWidget.Draw(builder)
-	
+
 	// Add more text
 	textWidget2 := Text{
 		Text: api.Text{
@@ -31,25 +31,25 @@ func TestPDFTextExtraction(t *testing.T) {
 		},
 	}
 	textWidget2.Draw(builder)
-	
+
 	// Generate PDF
 	pdfData, err := builder.Build()
 	if err != nil {
 		t.Fatalf("Failed to build PDF: %v", err)
 	}
-	
+
 	// Extract text
 	extractedText, err := ExtractTextFromPDF(pdfData)
 	if err != nil {
 		t.Fatalf("Failed to extract text: %v", err)
 	}
-	
+
 	// Verify text extraction works
 	expectedTexts := []string{
 		"This is a test PDF",
 		"Second line of text",
 	}
-	
+
 	for _, expected := range expectedTexts {
 		if !contains(extractedText, expected) {
 			t.Errorf("Extracted text does not contain: %q", expected)
@@ -62,7 +62,7 @@ func TestPDFTextExtraction(t *testing.T) {
 func TestPDFErrorDetection_NoErrors(t *testing.T) {
 	// Create a valid PDF
 	builder := NewBuilder()
-	
+
 	// Add normal content
 	textWidget := Text{
 		Text: api.Text{
@@ -71,13 +71,13 @@ func TestPDFErrorDetection_NoErrors(t *testing.T) {
 		},
 	}
 	textWidget.Draw(builder)
-	
+
 	// Generate PDF
 	pdfData, err := builder.Build()
 	if err != nil {
 		t.Fatalf("Failed to build PDF: %v", err)
 	}
-	
+
 	// Should detect no errors
 	AssertPDFDoesNotContainErrors(t, pdfData)
 	AssertNoImageLoadErrors(t, pdfData)
@@ -91,10 +91,10 @@ func TestPDFErrorDetection_SVGConversion(t *testing.T) {
 	if len(manager.GetAvailableConverters()) == 0 {
 		t.Skip("No SVG converters available")
 	}
-	
+
 	// Create a PDF with SVG content
 	builder := NewBuilder()
-	
+
 	// Add title
 	titleWidget := Text{
 		Text: api.Text{
@@ -103,16 +103,16 @@ func TestPDFErrorDetection_SVGConversion(t *testing.T) {
 		},
 	}
 	titleWidget.Draw(builder)
-	
+
 	// Create a test SVG file
 	svgContent := CreateTestSVG()
 	tempDir := t.TempDir()
 	svgPath := filepath.Join(tempDir, "test.svg")
-	
+
 	if err := os.WriteFile(svgPath, []byte(svgContent), 0644); err != nil {
 		t.Fatalf("Failed to write SVG file: %v", err)
 	}
-	
+
 	// Add SVG using Image widget (should auto-convert)
 	svgImage := Image{
 		Source:  svgPath,
@@ -120,23 +120,23 @@ func TestPDFErrorDetection_SVGConversion(t *testing.T) {
 		Width:   floatPtr(50),
 		Height:  floatPtr(50),
 	}
-	
+
 	err := svgImage.Draw(builder)
 	if err != nil {
 		// If conversion fails, that's okay for this test
 		t.Logf("SVG conversion failed (expected in some environments): %v", err)
 		return
 	}
-	
+
 	// Generate PDF
 	pdfData, err := builder.Build()
 	if err != nil {
 		t.Fatalf("Failed to build PDF: %v", err)
 	}
-	
+
 	// Should not contain SVG errors if conversion succeeded
 	AssertNoSVGRenderingErrors(t, pdfData)
-	
+
 	// Should contain the alt text
 	extractedText, _ := ExtractTextFromPDF(pdfData)
 	if !contains(extractedText, "successfully converted") {
@@ -149,7 +149,7 @@ func TestPDFErrorDetection_ImageWidget(t *testing.T) {
 	// For this test, we'll just verify that the error detection works
 	// with text content, since creating valid image files is complex
 	builder := NewBuilder()
-	
+
 	// Add title
 	titleWidget := Text{
 		Text: api.Text{
@@ -158,7 +158,7 @@ func TestPDFErrorDetection_ImageWidget(t *testing.T) {
 		},
 	}
 	titleWidget.Draw(builder)
-	
+
 	// Add some normal text content
 	textWidget := Text{
 		Text: api.Text{
@@ -167,13 +167,13 @@ func TestPDFErrorDetection_ImageWidget(t *testing.T) {
 		},
 	}
 	textWidget.Draw(builder)
-	
+
 	// Generate PDF
 	pdfData, err := builder.Build()
 	if err != nil {
 		t.Fatalf("Failed to build PDF: %v", err)
 	}
-	
+
 	// Should not contain image errors
 	AssertNoImageLoadErrors(t, pdfData)
 	AssertPDFDoesNotContainErrors(t, pdfData)
@@ -182,7 +182,7 @@ func TestPDFErrorDetection_ImageWidget(t *testing.T) {
 // TestPDFErrorDetection_MissingImage tests handling of missing images
 func TestPDFErrorDetection_MissingImage(t *testing.T) {
 	builder := NewBuilder()
-	
+
 	// Add title
 	titleWidget := Text{
 		Text: api.Text{
@@ -191,7 +191,7 @@ func TestPDFErrorDetection_MissingImage(t *testing.T) {
 		},
 	}
 	titleWidget.Draw(builder)
-	
+
 	// Try to add a non-existent image
 	imageWidget := Image{
 		Source:  "/non/existent/image.png",
@@ -199,7 +199,7 @@ func TestPDFErrorDetection_MissingImage(t *testing.T) {
 		Width:   floatPtr(50),
 		Height:  floatPtr(50),
 	}
-	
+
 	// This should return an error
 	err := imageWidget.Draw(builder)
 	if err == nil {
@@ -212,7 +212,7 @@ func TestPDFErrorDetection_MissingImage(t *testing.T) {
 // TestPDFTextOrder tests that text appears in the correct order
 func TestPDFTextOrder(t *testing.T) {
 	builder := NewBuilder()
-	
+
 	// Add text in specific order
 	texts := []string{
 		"First line",
@@ -220,7 +220,7 @@ func TestPDFTextOrder(t *testing.T) {
 		"Third line",
 		"Fourth line",
 	}
-	
+
 	for _, text := range texts {
 		widget := Text{
 			Text: api.Text{
@@ -230,13 +230,13 @@ func TestPDFTextOrder(t *testing.T) {
 		}
 		widget.Draw(builder)
 	}
-	
+
 	// Generate PDF
 	pdfData, err := builder.Build()
 	if err != nil {
 		t.Fatalf("Failed to build PDF: %v", err)
 	}
-	
+
 	// Verify text order
 	AssertPDFTextOrder(t, pdfData, texts)
 }
@@ -244,7 +244,7 @@ func TestPDFTextOrder(t *testing.T) {
 // TestExtractTextFromPage tests page-specific text extraction
 func TestExtractTextFromPage(t *testing.T) {
 	builder := NewBuilder()
-	
+
 	// Add enough content to ensure multiple pages
 	for i := 1; i <= 50; i++ {
 		text := Text{
@@ -255,10 +255,10 @@ func TestExtractTextFromPage(t *testing.T) {
 		}
 		text.Draw(builder)
 	}
-	
+
 	// Add new page explicitly
 	builder.AddPage()
-	
+
 	// Page 2 content
 	text2 := Text{
 		Text: api.Text{
@@ -267,26 +267,26 @@ func TestExtractTextFromPage(t *testing.T) {
 		},
 	}
 	text2.Draw(builder)
-	
+
 	// Generate PDF
 	pdfData, err := builder.Build()
 	if err != nil {
 		t.Fatalf("Failed to build PDF: %v", err)
 	}
-	
+
 	// Get PDF info to check page count
 	extractedText, err := ExtractTextFromPDF(pdfData)
 	if err != nil {
 		t.Fatalf("Failed to extract all text: %v", err)
 	}
-	
+
 	// Just verify we can extract text from the whole document
 	if !contains(extractedText, "first page") {
 		t.Errorf("First page content not found in extracted text")
 	}
-	
+
 	t.Logf("Successfully extracted text from PDF")
-	
+
 	// Try to extract from page 1
 	page1Text, err := ExtractTextFromPage(pdfData, 1)
 	if err != nil {
@@ -294,7 +294,7 @@ func TestExtractTextFromPage(t *testing.T) {
 		// This is acceptable - not all PDFs support page-specific extraction
 		return
 	}
-	
+
 	if len(page1Text) > 0 {
 		t.Logf("Successfully extracted %d characters from page 1", len(page1Text))
 	}
@@ -302,11 +302,11 @@ func TestExtractTextFromPage(t *testing.T) {
 
 // Helper function to check if a string contains a substring
 func contains(s, substr string) bool {
-	return len(s) > 0 && len(substr) > 0 && 
-		(s == substr || len(s) > len(substr) && 
-		(s[:len(substr)] == substr || 
-		s[len(s)-len(substr):] == substr ||
-		containsMiddle(s, substr)))
+	return len(s) > 0 && len(substr) > 0 &&
+		(s == substr || len(s) > len(substr) &&
+			(s[:len(substr)] == substr ||
+				s[len(s)-len(substr):] == substr ||
+				containsMiddle(s, substr)))
 }
 
 // containsMiddle checks if substr is in the middle of s
@@ -321,4 +321,3 @@ func containsMiddle(s, substr string) bool {
 	}
 	return false
 }
-

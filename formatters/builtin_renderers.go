@@ -32,7 +32,7 @@ func RenderASTNode(value interface{}, field api.PrettyField, theme api.Theme) st
 		if c, ok := v["complexity"].(int); ok {
 			complexity = c
 		}
-		
+
 		result := fmt.Sprintf("%s:%d", name, line)
 		if complexity > 0 {
 			complexityStr := fmt.Sprintf("(c:%d)", complexity)
@@ -67,12 +67,12 @@ func RenderFileTree(value interface{}, field api.PrettyField, theme api.Theme) s
 		if d, ok := v["isDir"].(bool); ok {
 			isDir = d
 		}
-		
+
 		icon := "📄"
 		if isDir {
 			icon = "📁"
 		}
-		
+
 		// Special icons for specific file types
 		if strings.HasSuffix(path, ".go") {
 			icon = "🐹"
@@ -83,7 +83,7 @@ func RenderFileTree(value interface{}, field api.PrettyField, theme api.Theme) s
 		} else if strings.HasSuffix(path, ".md") {
 			icon = "📝"
 		}
-		
+
 		style := lipgloss.NewStyle().Foreground(theme.Info)
 		return fmt.Sprintf("%s %s", icon, style.Render(path))
 	default:
@@ -107,7 +107,7 @@ func RenderCompactMethods(value interface{}, field api.PrettyField, theme api.Th
 				if c, ok := m["complexity"].(int); ok {
 					complexity = c
 				}
-				
+
 				itemStr := fmt.Sprintf("%s:%d", name, line)
 				if complexity > 0 {
 					itemStr += fmt.Sprintf("(c:%d)", complexity)
@@ -117,7 +117,7 @@ func RenderCompactMethods(value interface{}, field api.PrettyField, theme api.Th
 				items = append(items, fmt.Sprintf("%v", item))
 			}
 		}
-		
+
 		// Join with comma and wrap if needed
 		formatter := NewTreeFormatter(theme, false, nil)
 		return formatter.FormatCompactList(items, ", ")
@@ -142,7 +142,7 @@ func RenderComplexityColored(value interface{}, field api.PrettyField, theme api
 	default:
 		return fmt.Sprintf("%v", value)
 	}
-	
+
 	style := lipgloss.NewStyle()
 	if complexity > 10 {
 		style = style.Foreground(theme.Error).Bold(true)
@@ -153,7 +153,7 @@ func RenderComplexityColored(value interface{}, field api.PrettyField, theme api
 	} else {
 		style = style.Foreground(theme.Muted)
 	}
-	
+
 	return style.Render(fmt.Sprintf("%d", complexity))
 }
 
@@ -167,7 +167,7 @@ func RenderLineNumber(value interface{}, field api.PrettyField, theme api.Theme)
 // RenderIconLabel renders a value with an icon prefix
 func RenderIconLabel(value interface{}, field api.PrettyField, theme api.Theme) string {
 	text := fmt.Sprintf("%v", value)
-	
+
 	// Get icon from field metadata
 	icon := field.FormatOptions["icon"]
 	if icon == "" {
@@ -192,19 +192,19 @@ func RenderIconLabel(value interface{}, field api.PrettyField, theme api.Theme) 
 			icon = "•"
 		}
 	}
-	
+
 	// Apply style if specified
 	if field.Style != "" {
 		text = applyStyle(text, field.Style, theme)
 	}
-	
+
 	return fmt.Sprintf("%s %s", icon, text)
 }
 
 // applyStyle applies a style string to text
 func applyStyle(text string, styleStr string, theme api.Theme) string {
 	style := lipgloss.NewStyle()
-	
+
 	// Parse style string (simplified)
 	styles := strings.Fields(styleStr)
 	for _, s := range styles {
@@ -227,6 +227,6 @@ func applyStyle(text string, styleStr string, theme api.Theme) string {
 			style = style.Underline(true)
 		}
 	}
-	
+
 	return style.Render(text)
 }

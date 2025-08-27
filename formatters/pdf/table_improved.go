@@ -59,7 +59,7 @@ func (ti TableImproved) Draw(b *Builder) error {
 	// Draw headers if present
 	if len(ti.Headers) > 0 {
 		ti.drawHeaderRow(b, colWidths, baseHeight)
-		
+
 		// Draw separator line after headers
 		if ti.ShowBorders {
 			ti.drawHorizontalLine(b, 0.5, 200, sumArray(colWidths))
@@ -121,12 +121,12 @@ func (ti TableImproved) drawHeaderRow(b *Builder, colWidths []int, baseHeight fl
 		// Resolve Tailwind classes
 		headerStyle = api.ResolveStyles(headerStyle.Name)
 	}
-	
+
 	// Ensure bold font for headers
 	if headerStyle.Font == nil {
 		headerStyle.Font = &api.Font{Bold: true}
 	}
-	
+
 	// Set default background if not specified
 	if headerStyle.Background == nil {
 		headerStyle.Background = &api.Color{Hex: "#f3f4f6"} // Gray background
@@ -134,7 +134,7 @@ func (ti TableImproved) drawHeaderRow(b *Builder, colWidths []int, baseHeight fl
 
 	// Convert header style
 	headerTextProps := b.style.ConvertToTextProps(headerStyle)
-	
+
 	// Add padding
 	headerTextProps.Left = ti.CellPadding.Left * 4
 	headerTextProps.Top = ti.CellPadding.Top * 4
@@ -146,18 +146,18 @@ func (ti TableImproved) drawHeaderRow(b *Builder, colWidths []int, baseHeight fl
 		if i >= len(colWidths) {
 			break
 		}
-		
+
 		// Apply alignment
 		textProps := *headerTextProps
 		if i < len(ti.ColumnAlignments) {
 			textProps.Align = ti.parseAlignment(ti.ColumnAlignments[i])
 		}
-		
+
 		// Create column with background color
 		headerCol := col.New(colWidths[i]).Add(
 			text.New(header, textProps),
 		)
-		
+
 		// Add background if specified
 		if headerStyle.Background != nil {
 			bgColor := b.style.ConvertBackgroundColor(*headerStyle.Background)
@@ -165,11 +165,11 @@ func (ti TableImproved) drawHeaderRow(b *Builder, colWidths []int, baseHeight fl
 				BackgroundColor: bgColor,
 			})
 		}
-		
+
 		cols = append(cols, headerCol)
 		totalColWidth += colWidths[i]
 	}
-	
+
 	// Add empty column to fill remaining space if needed
 	if totalColWidth < 12 {
 		cols = append(cols, col.New(12-totalColWidth))
@@ -186,7 +186,7 @@ func (ti TableImproved) drawDataRows(b *Builder, colWidths []int, baseHeight flo
 	if rowStyle.Name != "" {
 		rowStyle = api.ResolveStyles(rowStyle.Name)
 	}
-	
+
 	// Default row style
 	if rowStyle.Font == nil {
 		rowStyle.Font = &api.Font{Size: 0.9}
@@ -198,43 +198,43 @@ func (ti TableImproved) drawDataRows(b *Builder, colWidths []int, baseHeight flo
 
 	// Alternate row background colors
 	altBgColor := &props.Color{Red: 248, Green: 248, Blue: 248} // Very light gray
-	
+
 	for rowIndex, dataRow := range ti.Rows {
 		cols := make([]core.Col, 0, len(dataRow))
 		totalColWidth := 0
-		
+
 		for colIndex := 0; colIndex < len(colWidths) && colIndex < len(dataRow); colIndex++ {
 			cellText := fmt.Sprintf("%v", dataRow[colIndex])
-			
+
 			// Apply alignment
 			textProps := *rowTextProps
 			if colIndex < len(ti.ColumnAlignments) {
 				textProps.Align = ti.parseAlignment(ti.ColumnAlignments[colIndex])
 			}
-			
+
 			cellCol := col.New(colWidths[colIndex]).Add(
 				text.New(cellText, textProps),
 			)
-			
+
 			// Add alternating background if enabled
 			if ti.AlternateRowColor && rowIndex%2 == 1 {
 				cellCol = cellCol.WithStyle(&props.Cell{
 					BackgroundColor: altBgColor,
 				})
 			}
-			
+
 			cols = append(cols, cellCol)
 			totalColWidth += colWidths[colIndex]
 		}
-		
+
 		// Add empty column to fill remaining space if needed
 		if totalColWidth < 12 {
 			cols = append(cols, col.New(12-totalColWidth))
 		}
-		
+
 		// Add the data row
 		b.maroto.AddRow(baseHeight, cols...)
-		
+
 		// Add row separator if borders are enabled
 		if ti.ShowBorders && rowIndex < len(ti.Rows)-1 {
 			ti.drawHorizontalLine(b, 0.2, 240, sumArray(colWidths))

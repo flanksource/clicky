@@ -233,4 +233,3 @@ func MergePadding(existing, new struct{ Top, Right, Bottom, Left *float64 }) str
 
 	return result
 }
-

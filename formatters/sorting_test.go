@@ -16,16 +16,16 @@ func TestSortRows(t *testing.T) {
 		{"name": api.FieldValue{Value: "cherry"}, "language": api.FieldValue{Value: "javascript"}, "version": api.FieldValue{Value: "3.0"}},
 		{"name": api.FieldValue{Value: "date"}, "language": api.FieldValue{Value: "go"}, "version": api.FieldValue{Value: "1.2"}},
 	}
-	
+
 	// Define sort fields (language first, then name)
 	sortFields := []SortField{
 		{Name: "language", Priority: 1, Direction: "asc"},
 		{Name: "name", Priority: 2, Direction: "asc"},
 	}
-	
+
 	// Sort the rows
 	SortRows(rows, sortFields)
-	
+
 	// Check the order
 	expected := []string{
 		"banana", // go, banana
@@ -34,7 +34,7 @@ func TestSortRows(t *testing.T) {
 		"cherry", // javascript, cherry
 		"apple",  // python, apple
 	}
-	
+
 	for i, exp := range expected {
 		actualName := rows[i]["name"].Value.(string)
 		if actualName != exp {
@@ -51,23 +51,23 @@ func TestExtractSortFields(t *testing.T) {
 		Language string `json:"language" pretty:"label=Language,sort=1"`
 		Version  string `json:"version" pretty:"label=Version"`
 	}
-	
+
 	// Get the type
 	typ := reflect.TypeOf(TestStruct{})
-	
+
 	// Extract sort fields
 	sortFields := ExtractSortFields(typ)
-	
+
 	// Verify we got 2 sort fields
 	if len(sortFields) != 2 {
 		t.Fatalf("Expected 2 sort fields, got %d", len(sortFields))
 	}
-	
+
 	// Check they're in the right order (sorted by priority)
 	if sortFields[0].Name != "language" || sortFields[0].Priority != 1 {
 		t.Errorf("First sort field should be language with priority 1, got %+v", sortFields[0])
 	}
-	
+
 	if sortFields[1].Name != "name" || sortFields[1].Priority != 2 {
 		t.Errorf("Second sort field should be name with priority 2, got %+v", sortFields[1])
 	}

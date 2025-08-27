@@ -15,50 +15,50 @@ import (
 
 // Config holds cache configuration
 type Config struct {
-	TTL      time.Duration // Cache time-to-live
-	NoCache  bool          // Disable caching
-	DBPath   string        // Database file path (default: ~/.cache/clicky-ai.db)
-	Debug    bool          // Enable debug output
+	TTL     time.Duration // Cache time-to-live
+	NoCache bool          // Disable caching
+	DBPath  string        // Database file path (default: ~/.cache/clicky-ai.db)
+	Debug   bool          // Enable debug output
 }
 
 // Entry represents a cached AI response
 type Entry struct {
-	ID           int64
-	CacheKey     string
-	PromptHash   string
-	Model        string
-	Prompt       string
-	Response     string
-	Error        string
-	TokensInput  int
-	TokensOutput int
+	ID               int64
+	CacheKey         string
+	PromptHash       string
+	Model            string
+	Prompt           string
+	Response         string
+	Error            string
+	TokensInput      int
+	TokensOutput     int
 	TokensCacheRead  int
 	TokensCacheWrite int
-	TokensTotal  int
-	CostUSD      float64
-	DurationMS   int64
-	ProjectName  string
-	TaskName     string
-	Temperature  float64
-	MaxTokens    int
-	CreatedAt    time.Time
-	AccessedAt   time.Time
-	ExpiresAt    *time.Time
-	SessionID    string
+	TokensTotal      int
+	CostUSD          float64
+	DurationMS       int64
+	ProjectName      string
+	TaskName         string
+	Temperature      float64
+	MaxTokens        int
+	CreatedAt        time.Time
+	AccessedAt       time.Time
+	ExpiresAt        *time.Time
+	SessionID        string
 }
 
 // StatsEntry represents aggregated statistics
 type StatsEntry struct {
-	Model             string
-	ProjectName       string
-	TotalRequests     int64
+	Model              string
+	ProjectName        string
+	TotalRequests      int64
 	SuccessfulRequests int64
-	FailedRequests    int64
-	TotalTokens       int64
-	TotalCost         float64
-	AvgDurationMS     int64
-	FirstRequest      time.Time
-	LastRequest       time.Time
+	FailedRequests     int64
+	TotalTokens        int64
+	TotalCost          float64
+	AvgDurationMS      int64
+	FirstRequest       time.Time
+	LastRequest        time.Time
 }
 
 // Cache manages AI response caching in SQLite
@@ -145,7 +145,7 @@ func (c *Cache) Get(prompt, model string, temperature float64, maxTokens int) (*
 	}
 
 	cacheKey := c.generateCacheKey(prompt, model, temperature, maxTokens)
-	
+
 	query := `
 		SELECT id, cache_key, prompt_hash, model, prompt, response, error,
 		       tokens_input, tokens_output, tokens_cache_read, tokens_cache_write, 
@@ -168,7 +168,7 @@ func (c *Cache) Get(prompt, model string, temperature float64, maxTokens int) (*
 		&entry.ProjectName, &entry.TaskName, &entry.Temperature, &entry.MaxTokens,
 		&entry.CreatedAt, &entry.AccessedAt, &expiresAt, &entry.SessionID,
 	)
-	
+
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -229,7 +229,7 @@ func (c *Cache) Set(entry *Entry) error {
 	}
 
 	if c.config.Debug {
-		fmt.Fprintf(os.Stderr, "Cached response for prompt hash %s (model: %s, tokens: %d, cost: $%.6f)\n", 
+		fmt.Fprintf(os.Stderr, "Cached response for prompt hash %s (model: %s, tokens: %d, cost: $%.6f)\n",
 			entry.PromptHash, entry.Model, entry.TokensTotal, entry.CostUSD)
 	}
 
@@ -249,13 +249,13 @@ func (c *Cache) GetHistory(limit int, projectName string) ([]Entry, error) {
 		FROM ai_cache
 		WHERE 1=1
 	`
-	
+
 	args := []interface{}{}
 	if projectName != "" {
 		query += " AND project_name = ?"
 		args = append(args, projectName)
 	}
-	
+
 	query += " ORDER BY created_at DESC LIMIT ?"
 	args = append(args, limit)
 
@@ -304,13 +304,13 @@ func (c *Cache) GetStats(projectName string) ([]StatsEntry, error) {
 		FROM ai_cache
 		WHERE 1=1
 	`
-	
+
 	args := []interface{}{}
 	if projectName != "" {
 		query += " AND project_name = ?"
 		args = append(args, projectName)
 	}
-	
+
 	query += " GROUP BY model, project_name ORDER BY total_requests DESC"
 
 	rows, err := c.db.Query(query, args...)
@@ -345,7 +345,7 @@ func (c *Cache) GetStats(projectName string) ([]StatsEntry, error) {
 func (c *Cache) Clear(projectName string) error {
 	query := "DELETE FROM ai_cache WHERE 1=1"
 	args := []interface{}{}
-	
+
 	if projectName != "" {
 		query += " AND project_name = ?"
 		args = append(args, projectName)
@@ -378,7 +378,7 @@ func (c *Cache) cleanupExpired() {
 			}
 			continue
 		}
-		
+
 		if rows, _ := result.RowsAffected(); rows > 0 && c.config.Debug {
 			fmt.Fprintf(os.Stderr, "Cleaned up %d expired cache entries\n", rows)
 		}
@@ -388,7 +388,7 @@ func (c *Cache) cleanupExpired() {
 // updateStats updates daily statistics
 func (c *Cache) updateStats(entry *Entry) {
 	date := entry.CreatedAt.Format("2006-01-02")
-	
+
 	query := `
 		INSERT INTO ai_stats (
 			date, model, project_name, request_count, 
@@ -405,7 +405,7 @@ func (c *Cache) updateStats(entry *Entry) {
 			total_cost_usd = total_cost_usd + excluded.total_cost_usd,
 			updated_at = CURRENT_TIMESTAMP
 	`
-	
+
 	_, _ = c.db.Exec(query,
 		date, entry.Model, entry.ProjectName,
 		entry.TokensInput, entry.TokensOutput,
@@ -417,7 +417,7 @@ func (c *Cache) updateStats(entry *Entry) {
 // initSchema creates the database schema
 func (c *Cache) initSchema() error {
 	schemaPath := filepath.Join(filepath.Dir(c.config.DBPath), "schema.sql")
-	
+
 	// Try to read embedded schema first, fall back to file
 	schema := embeddedSchema
 	if _, err := os.Stat(schemaPath); err == nil {
@@ -425,11 +425,11 @@ func (c *Cache) initSchema() error {
 			schema = string(data)
 		}
 	}
-	
+
 	if _, err := c.db.Exec(schema); err != nil {
 		return fmt.Errorf("failed to execute schema: %w", err)
 	}
-	
+
 	return nil
 }
 
@@ -439,7 +439,7 @@ func (c *Cache) ExportToJSON(w io.Writer, projectName string) error {
 	if err != nil {
 		return fmt.Errorf("failed to get entries: %w", err)
 	}
-	
+
 	encoder := json.NewEncoder(w)
 	encoder.SetIndent("", "  ")
 	return encoder.Encode(entries)
@@ -452,12 +452,12 @@ func (c *Cache) ImportFromJSON(r io.Reader) error {
 	if err := decoder.Decode(&entries); err != nil {
 		return fmt.Errorf("failed to decode JSON: %w", err)
 	}
-	
+
 	for _, entry := range entries {
 		if err := c.Set(&entry); err != nil {
 			return fmt.Errorf("failed to import entry: %w", err)
 		}
 	}
-	
+
 	return nil
 }

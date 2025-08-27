@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
-	
+
 	"github.com/flanksource/clicky/api"
 )
 
@@ -34,14 +34,13 @@ func (f *CSVFormatter) Format(data interface{}) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to convert to PrettyData: %w", err)
 	}
-	
+
 	if prettyData == nil || prettyData.Schema == nil {
 		return "", nil
 	}
 
 	return f.FormatPrettyData(prettyData)
 }
-
 
 // FormatPrettyData formats PrettyData as CSV, flattening all fields
 func (f *CSVFormatter) FormatPrettyData(data *api.PrettyData) (string, error) {
@@ -58,7 +57,7 @@ func (f *CSVFormatter) FormatPrettyData(data *api.PrettyData) (string, error) {
 	var tableField *api.PrettyField
 	var treeField *api.PrettyField
 	var nonTableFields []api.PrettyField
-	
+
 	for _, field := range data.Schema.Fields {
 		if field.Format == api.FormatTable {
 			tableField = &field
@@ -76,13 +75,13 @@ func (f *CSVFormatter) FormatPrettyData(data *api.PrettyData) (string, error) {
 			if treeNode, ok := fieldValue.Value.(api.TreeNode); ok {
 				// Flatten tree to CSV rows
 				rows := f.flattenTree(treeNode, 0)
-				
+
 				// Write headers
 				headers := []string{"Level", "Name", "Details"}
 				if err := writer.Write(headers); err != nil {
 					return "", err
 				}
-				
+
 				// Write rows
 				for _, row := range rows {
 					if err := writer.Write(row); err != nil {
@@ -109,15 +108,15 @@ func (f *CSVFormatter) FormatPrettyData(data *api.PrettyData) (string, error) {
 			for key := range tableData[0] {
 				headers = append(headers, key)
 			}
-			
+
 			// Sort headers for consistent output
 			sort.Strings(headers)
-			
+
 			// Write headers
 			if err := writer.Write(headers); err != nil {
 				return "", err
 			}
-			
+
 			// Write data rows
 			for _, row := range tableData {
 				var values []string
@@ -143,7 +142,7 @@ func (f *CSVFormatter) FormatPrettyData(data *api.PrettyData) (string, error) {
 			if field.Format == api.FormatTable || field.Format == api.FormatTree {
 				continue
 			}
-			
+
 			if fieldValue, exists := data.Values[field.Name]; exists {
 				headers = append(headers, field.Name)
 				values = append(values, fieldValue.Plain())
@@ -155,7 +154,7 @@ func (f *CSVFormatter) FormatPrettyData(data *api.PrettyData) (string, error) {
 			if err := writer.Write(headers); err != nil {
 				return "", err
 			}
-			
+
 			if err := writer.Write(values); err != nil {
 				return "", err
 			}
@@ -175,9 +174,9 @@ func (f *CSVFormatter) flattenTree(node api.TreeNode, depth int) [][]string {
 	if node == nil {
 		return nil
 	}
-	
+
 	var rows [][]string
-	
+
 	// Format current node
 	var nodeContent string
 	if prettyNode, ok := node.(api.Pretty); ok {
@@ -188,24 +187,24 @@ func (f *CSVFormatter) flattenTree(node api.TreeNode, depth int) [][]string {
 		// Fallback to GetLabel()
 		nodeContent = node.GetLabel()
 	}
-	
+
 	// Create indentation based on depth
 	indent := strings.Repeat("  ", depth)
-	
+
 	// Add current node as a row
 	row := []string{
-		fmt.Sprintf("%d", depth),           // Level
+		fmt.Sprintf("%d", depth),                 // Level
 		fmt.Sprintf("%s%s", indent, nodeContent), // Name with indentation
-		"",                                  // Details (could be extended)
+		"",                                       // Details (could be extended)
 	}
 	rows = append(rows, row)
-	
+
 	// Process children recursively
 	children := node.GetChildren()
 	for _, child := range children {
 		childRows := f.flattenTree(child, depth+1)
 		rows = append(rows, childRows...)
 	}
-	
+
 	return rows
 }

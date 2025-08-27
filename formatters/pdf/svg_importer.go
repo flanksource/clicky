@@ -106,8 +106,8 @@ func (importer *SVGImporter) extractFromElements(elementList []svg.DrawingInstru
 			if err != nil {
 				return err
 			}
-		// Note: The rustyoz/svg library doesn't seem to have a Text type,
-		// so we'll skip text elements for now
+			// Note: The rustyoz/svg library doesn't seem to have a Text type,
+			// so we'll skip text elements for now
 		}
 	}
 	return nil
@@ -143,7 +143,7 @@ func (importer *SVGImporter) convertRectangle(svgRect *svg.Rect) (*Cut, *EdgeCut
 	// we'll make some assumptions for now
 	// For a more complete implementation, we'd need to parse the transform
 	// or use a different SVG library
-	
+
 	// For now, assume it's a regular cut and determine orientation by aspect ratio
 	var orientation string
 	var position float64 = 50.0 // Default center position

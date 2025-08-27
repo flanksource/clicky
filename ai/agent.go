@@ -31,22 +31,21 @@ type Model struct {
 
 // AgentConfig holds configuration for AI agents
 type AgentConfig struct {
-	Type            AgentType     `json:"type"`
-	Model           string        `json:"model"`
-	MaxTokens       int           `json:"max_tokens"`
-	MaxConcurrent   int           `json:"max_concurrent"`
-	Debug           bool          `json:"debug"`
-	Verbose         bool          `json:"verbose"`
-	StrictMCPConfig bool          `json:"strict_mcp_config"`
-	Temperature     float64       `json:"temperature,omitempty"`
-	
+	Type            AgentType `json:"type"`
+	Model           string    `json:"model"`
+	MaxTokens       int       `json:"max_tokens"`
+	MaxConcurrent   int       `json:"max_concurrent"`
+	Debug           bool      `json:"debug"`
+	Verbose         bool      `json:"verbose"`
+	StrictMCPConfig bool      `json:"strict_mcp_config"`
+	Temperature     float64   `json:"temperature,omitempty"`
+
 	// Cache configuration
-	CacheTTL        time.Duration `json:"cache_ttl,omitempty"`
-	NoCache         bool          `json:"no_cache,omitempty"`
-	CacheDBPath     string        `json:"cache_db_path,omitempty"`
-	ProjectName     string        `json:"project_name,omitempty"`
-	SessionID       string        `json:"session_id,omitempty"`
-	
+	CacheTTL    time.Duration `json:"cache_ttl,omitempty"`
+	NoCache     bool          `json:"no_cache,omitempty"`
+	CacheDBPath string        `json:"cache_db_path,omitempty"`
+	ProjectName string        `json:"project_name,omitempty"`
+	SessionID   string        `json:"session_id,omitempty"`
 }
 
 // PromptRequest represents a request to process a prompt
@@ -75,19 +74,19 @@ type PromptResponse struct {
 type Agent interface {
 	// GetType returns the agent type
 	GetType() AgentType
-	
+
 	// GetConfig returns the agent configuration
 	GetConfig() AgentConfig
-	
+
 	// ListModels returns available models for this agent
 	ListModels(ctx context.Context) ([]Model, error)
-	
+
 	// ExecutePrompt processes a single prompt
 	ExecutePrompt(ctx context.Context, request PromptRequest) (*PromptResponse, error)
-	
+
 	// ExecuteBatch processes multiple prompts
 	ExecuteBatch(ctx context.Context, requests []PromptRequest) (map[string]*PromptResponse, error)
-	
+
 	// Close cleans up resources
 	Close() error
 }
@@ -105,7 +104,7 @@ func NewAgentManager(config AgentConfig) *AgentManager {
 		agents: make(map[AgentType]Agent),
 		config: config,
 	}
-	
+
 	// Initialize cache if not disabled
 	if !config.NoCache {
 		cacheConfig := cache.Config{
@@ -114,7 +113,7 @@ func NewAgentManager(config AgentConfig) *AgentManager {
 			DBPath:  config.CacheDBPath,
 			Debug:   config.Debug,
 		}
-		
+
 		c, err := cache.New(cacheConfig)
 		if err != nil {
 			// Log error but continue without cache
@@ -125,7 +124,7 @@ func NewAgentManager(config AgentConfig) *AgentManager {
 			am.cache = c
 		}
 	}
-	
+
 	return am
 }
 
@@ -134,11 +133,11 @@ func (am *AgentManager) GetAgent(agentType AgentType) (Agent, error) {
 	if agent, exists := am.agents[agentType]; exists {
 		return agent, nil
 	}
-	
+
 	// Create new agent
 	var agent Agent
 	var err error
-	
+
 	switch agentType {
 	case AgentTypeClaude:
 		agent, err = NewClaudeAgent(am.config)
@@ -147,11 +146,11 @@ func (am *AgentManager) GetAgent(agentType AgentType) (Agent, error) {
 	default:
 		return nil, fmt.Errorf("unsupported agent type: %s", agentType)
 	}
-	
+
 	if err != nil {
 		return nil, fmt.Errorf("failed to create %s agent: %w", agentType, err)
 	}
-	
+
 	am.agents[agentType] = agent
 	return agent, nil
 }
@@ -164,23 +163,23 @@ func (am *AgentManager) GetDefaultAgent() (Agent, error) {
 // ListAllModels returns models from all available agents
 func (am *AgentManager) ListAllModels(ctx context.Context) (map[AgentType][]Model, error) {
 	results := make(map[AgentType][]Model)
-	
+
 	for _, agentType := range []AgentType{AgentTypeClaude, AgentTypeAider} {
 		agent, err := am.GetAgent(agentType)
 		if err != nil {
 			// Skip agents that can't be created
 			continue
 		}
-		
+
 		models, err := agent.ListModels(ctx)
 		if err != nil {
 			// Skip agents that can't list models
 			continue
 		}
-		
+
 		results[agentType] = models
 	}
-	
+
 	return results, nil
 }
 
@@ -192,25 +191,25 @@ func (am *AgentManager) GetCache() *cache.Cache {
 // Close closes all agents and the cache
 func (am *AgentManager) Close() error {
 	var errs []string
-	
+
 	// Close all agents
 	for _, agent := range am.agents {
 		if err := agent.Close(); err != nil {
 			errs = append(errs, err.Error())
 		}
 	}
-	
+
 	// Close cache
 	if am.cache != nil {
 		if err := am.cache.Close(); err != nil {
 			errs = append(errs, err.Error())
 		}
 	}
-	
+
 	if len(errs) > 0 {
 		return fmt.Errorf("errors closing agents: %s", strings.Join(errs, "; "))
 	}
-	
+
 	return nil
 }
 
@@ -240,17 +239,17 @@ func BindFlags(flags *flag.FlagSet, config *AgentConfig) {
 	flags.IntVar(&config.MaxConcurrent, "ai-max-concurrent", config.MaxConcurrent, "Maximum concurrent AI requests")
 	flags.Float64Var(&config.Temperature, "ai-temperature", config.Temperature, "AI temperature (0.0-2.0)")
 	flags.BoolVar(&config.StrictMCPConfig, "ai-strict-mcp", config.StrictMCPConfig, "Use strict MCP configuration (Claude only)")
-	
+
 	// Cache configuration flags
 	flags.DurationVar(&config.CacheTTL, "ai-cache-ttl", config.CacheTTL, "AI cache TTL (e.g., 24h, 7d)")
 	flags.BoolVar(&config.NoCache, "ai-no-cache", config.NoCache, "Disable AI response caching")
 	flags.StringVar(&config.CacheDBPath, "ai-cache-db", config.CacheDBPath, "Path to AI cache database (default: ~/.cache/clicky-ai.db)")
 	flags.StringVar(&config.ProjectName, "ai-project", config.ProjectName, "Project name for cache grouping")
-	
+
 	// Add convenience flags (these will be handled by the calling code)
 	flags.Bool("aider", false, "Use Aider agent (shorthand for --agent=aider)")
 	flags.Bool("claude", false, "Use Claude agent (shorthand for --agent=claude)")
-	
+
 	// Update config type after parsing (caller needs to handle this)
 	config.Type = AgentType(agentType)
 }
@@ -260,26 +259,26 @@ func ValidateConfig(config AgentConfig) error {
 	if config.Type == "" {
 		return fmt.Errorf("agent type is required")
 	}
-	
+
 	if config.Type != AgentTypeClaude && config.Type != AgentTypeAider {
 		return fmt.Errorf("unsupported agent type: %s (supported: claude, aider)", config.Type)
 	}
-	
+
 	if config.Model == "" {
 		return fmt.Errorf("model is required")
 	}
-	
+
 	if config.MaxTokens <= 0 {
 		return fmt.Errorf("max tokens must be positive")
 	}
-	
+
 	if config.MaxConcurrent <= 0 {
 		return fmt.Errorf("max concurrent must be positive")
 	}
-	
+
 	if config.Temperature < 0 || config.Temperature > 2 {
 		return fmt.Errorf("temperature must be between 0 and 2")
 	}
-	
+
 	return nil
 }

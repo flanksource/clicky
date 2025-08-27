@@ -14,18 +14,18 @@ import (
 
 // CommandOptions holds options for MCP command creation
 type CommandOptions struct {
-	ConfigPath   string
-	Verbose      bool
-	Transport    string
-	Address      string
-	Port         int
-	AutoExpose   bool
+	ConfigPath string
+	Verbose    bool
+	Transport  string
+	Address    string
+	Port       int
+	AutoExpose bool
 }
 
 // NewCommand creates the MCP command group that can be added to any cobra CLI
 func NewCommand() *cobra.Command {
 	opts := &CommandOptions{}
-	
+
 	mcpCmd := &cobra.Command{
 		Use:   "mcp",
 		Short: "MCP (Model Context Protocol) server management",
@@ -35,16 +35,16 @@ The MCP command group provides functionality to:
 - Run the CLI as an MCP server
 - Configure tool exposure settings`,
 	}
-	
+
 	// Add subcommands
 	mcpCmd.AddCommand(newServeCommand(opts))
 	mcpCmd.AddCommand(newConfigCommand(opts))
 	mcpCmd.AddCommand(newPromptCommand(opts))
-	
+
 	// Global MCP flags
 	mcpCmd.PersistentFlags().StringVar(&opts.ConfigPath, "config", "", "Path to MCP configuration file")
 	mcpCmd.PersistentFlags().BoolVarP(&opts.Verbose, "verbose", "v", false, "Enable verbose output")
-	
+
 	return mcpCmd
 }
 
@@ -68,12 +68,12 @@ Examples:
 			if configPath == "" {
 				configPath = GetConfigPath()
 			}
-			
+
 			config, err := LoadConfig(configPath)
 			if err != nil {
 				return fmt.Errorf("failed to load configuration: %w", err)
 			}
-			
+
 			// Apply command-line overrides
 			if opts.Transport != "" {
 				config.Transport.Type = opts.Transport
@@ -87,26 +87,26 @@ Examples:
 			if opts.AutoExpose {
 				config.Tools.AutoExpose = true
 			}
-			
+
 			// Get root command (we need to traverse up to find it)
 			rootCmd := cmd
 			for rootCmd.Parent() != nil {
 				rootCmd = rootCmd.Parent()
 			}
-			
+
 			// Create and initialize MCP server
 			server := NewMCPServer(config, rootCmd)
 			if err := server.Initialize(); err != nil {
 				return fmt.Errorf("failed to initialize MCP server: %w", err)
 			}
-			
+
 			// Display startup information
 			displayServerInfo(config)
-			
+
 			// Set up context with cancellation
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
-			
+
 			// Handle shutdown signals
 			sigChan := make(chan os.Signal, 1)
 			signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
@@ -115,19 +115,19 @@ Examples:
 				fmt.Fprintf(os.Stderr, "\nShutting down MCP server...\n")
 				cancel()
 			}()
-			
+
 			// Start the server
 			fmt.Fprintf(os.Stderr, "Starting MCP server...\n")
 			return server.Start(ctx)
 		},
 	}
-	
+
 	// Serve command flags
 	cmd.Flags().StringVar(&opts.Transport, "transport", "", "Transport type (stdio, http)")
 	cmd.Flags().StringVar(&opts.Address, "address", "", "HTTP server address")
 	cmd.Flags().IntVar(&opts.Port, "port", 0, "HTTP server port")
 	cmd.Flags().BoolVar(&opts.AutoExpose, "auto-expose", false, "Auto-expose all commands as tools")
-	
+
 	return cmd
 }
 
@@ -145,12 +145,12 @@ security settings, and transport options.`,
 			if configPath == "" {
 				configPath = GetConfigPath()
 			}
-			
+
 			config, err := LoadConfig(configPath)
 			if err != nil {
 				return fmt.Errorf("failed to load configuration: %w", err)
 			}
-			
+
 			displayConfig(config, configPath)
 			return nil
 		},
@@ -164,18 +164,18 @@ func displayServerInfo(config *Config) {
 	accentColor := lipgloss.Color("12")
 	successColor := lipgloss.Color("10")
 	mutedColor := lipgloss.Color("8")
-	
+
 	boxStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(accentColor).
 		Padding(1, 2).
 		MarginBottom(1)
-	
+
 	title := lipgloss.NewStyle().
 		Bold(true).
 		Foreground(primaryColor).
 		Render("🔧 MCP Server")
-	
+
 	content := []string{
 		title,
 		"",
@@ -183,32 +183,32 @@ func displayServerInfo(config *Config) {
 		fmt.Sprintf("Version: %s", config.Version),
 		fmt.Sprintf("Transport: %s", config.Transport.Type),
 	}
-	
+
 	if config.Transport.Type == "http" {
-		content = append(content, 
+		content = append(content,
 			fmt.Sprintf("Address: %s:%d", config.Transport.Address, config.Transport.Port))
 	}
-	
+
 	content = append(content, "",
 		fmt.Sprintf("Auto-expose: %s", boolToStatus(config.Tools.AutoExpose, successColor, mutedColor)),
 		fmt.Sprintf("Require confirmation: %s", boolToStatus(config.Security.RequireConfirmation, successColor, mutedColor)),
 		fmt.Sprintf("Audit logging: %s", boolToStatus(config.Security.AuditLog, successColor, mutedColor)),
 	)
-	
+
 	if len(config.Tools.Include) > 0 {
 		content = append(content, "", "Included commands:")
 		for _, cmd := range config.Tools.Include {
 			content = append(content, fmt.Sprintf("  • %s", cmd))
 		}
 	}
-	
+
 	if len(config.Tools.Exclude) > 0 {
 		content = append(content, "", "Excluded commands:")
 		for _, cmd := range config.Tools.Exclude {
 			content = append(content, fmt.Sprintf("  • %s", cmd))
 		}
 	}
-	
+
 	fmt.Fprintf(os.Stderr, "%s\n", boxStyle.Render(strings.Join(content, "\n")))
 }
 
@@ -219,24 +219,24 @@ func displayConfig(config *Config, configPath string) {
 	accentColor := lipgloss.Color("12")
 	successColor := lipgloss.Color("10")
 	mutedColor := lipgloss.Color("8")
-	
+
 	titleStyle := lipgloss.NewStyle().
 		Bold(true).
 		Foreground(primaryColor).
 		MarginBottom(1)
-	
+
 	accentStyle := lipgloss.NewStyle().Foreground(accentColor)
 	mutedStyle := lipgloss.NewStyle().Foreground(mutedColor)
-	
+
 	fmt.Println(titleStyle.Render("MCP Server Configuration"))
 	fmt.Printf("Config file: %s\n\n", mutedStyle.Render(configPath))
-	
+
 	// Server settings
 	fmt.Println(accentStyle.Render("Server Settings:"))
 	fmt.Printf("  Name: %s\n", config.Name)
 	fmt.Printf("  Description: %s\n", config.Description)
 	fmt.Printf("  Version: %s\n\n", config.Version)
-	
+
 	// Transport settings
 	fmt.Println(accentStyle.Render("Transport Settings:"))
 	fmt.Printf("  Type: %s\n", config.Transport.Type)
@@ -245,24 +245,24 @@ func displayConfig(config *Config, configPath string) {
 		fmt.Printf("  Port: %d\n", config.Transport.Port)
 	}
 	fmt.Println()
-	
+
 	// Security settings
 	fmt.Println(accentStyle.Render("Security Settings:"))
 	fmt.Printf("  Require confirmation: %s\n", boolToStatus(config.Security.RequireConfirmation, successColor, mutedColor))
 	fmt.Printf("  Audit logging: %s\n", boolToStatus(config.Security.AuditLog, successColor, mutedColor))
 	fmt.Printf("  Timeout: %ds\n\n", config.Security.TimeoutSeconds)
-	
+
 	// Tool settings
 	fmt.Println(accentStyle.Render("Tool Settings:"))
 	fmt.Printf("  Auto-expose: %s\n", boolToStatus(config.Tools.AutoExpose, successColor, mutedColor))
-	
+
 	if len(config.Tools.Include) > 0 {
 		fmt.Println("  Included commands:")
 		for _, cmd := range config.Tools.Include {
 			fmt.Printf("    • %s\n", cmd)
 		}
 	}
-	
+
 	if len(config.Tools.Exclude) > 0 {
 		fmt.Println("  Excluded commands:")
 		for _, cmd := range config.Tools.Exclude {
@@ -285,7 +285,7 @@ func newPromptCommand(opts *CommandOptions) *cobra.Command {
 	var byTag string
 	var showExample bool
 	var savePath string
-	
+
 	cmd := &cobra.Command{
 		Use:   "prompt [name]",
 		Short: "Manage and test MCP prompts",
@@ -309,28 +309,28 @@ Examples:
 			if configPath == "" {
 				configPath = GetConfigPath()
 			}
-			
+
 			config, err := LoadConfig(configPath)
 			if err != nil {
 				return fmt.Errorf("failed to load configuration: %w", err)
 			}
-			
+
 			// Get root command
 			rootCmd := cmd
 			for rootCmd.Parent() != nil {
 				rootCmd = rootCmd.Parent()
 			}
-			
+
 			// Create prompt registry
 			promptRegistry := NewPromptRegistry(config)
 			promptRegistry.LoadDefaults()
-			
+
 			// Try to load custom prompts
 			promptsPath := GetPromptsPath()
 			if _, err := os.Stat(promptsPath); err == nil {
 				promptRegistry.LoadFromFile(promptsPath)
 			}
-			
+
 			// Handle save option
 			if savePath != "" {
 				if err := promptRegistry.SaveToFile(savePath); err != nil {
@@ -339,7 +339,7 @@ Examples:
 				fmt.Printf("Prompts saved to %s\n", savePath)
 				return nil
 			}
-			
+
 			// Handle list tags
 			if listTags {
 				tags := make(map[string]int)
@@ -348,14 +348,14 @@ Examples:
 						tags[tag]++
 					}
 				}
-				
+
 				fmt.Println("Available prompt tags:")
 				for tag, count := range tags {
 					fmt.Printf("  • %s (%d prompts)\n", tag, count)
 				}
 				return nil
 			}
-			
+
 			// Handle filter by tag
 			var prompts []*Prompt
 			if byTag != "" {
@@ -366,7 +366,7 @@ Examples:
 			} else if len(args) == 0 {
 				// List all prompts
 				prompts = promptRegistry.List()
-				
+
 				// Add special discover-tools prompt
 				prompts = append(prompts, &Prompt{
 					Name:        "discover-tools",
@@ -374,18 +374,18 @@ Examples:
 					Tags:        []string{"discovery", "tools", "help"},
 				})
 			}
-			
+
 			// Handle specific prompt
 			if len(args) > 0 {
 				promptName := args[0]
-				
+
 				// Handle special discover-tools prompt
 				if promptName == "discover-tools" {
 					// Create tool registry to get available tools
 					toolRegistry := NewToolRegistry(config)
 					toolRegistry.RegisterCommandTree(rootCmd)
 					tools := toolRegistry.GetTools()
-					
+
 					fmt.Println(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("14")).
 						Render("Tool Discovery Prompt"))
 					fmt.Println()
@@ -394,11 +394,11 @@ Examples:
 					fmt.Println(lipgloss.NewStyle().Foreground(lipgloss.Color("12")).
 						Render("Available Tools:"))
 					fmt.Println()
-					
+
 					for name, tool := range tools {
 						fmt.Printf("  %s\n", lipgloss.NewStyle().Bold(true).Render(name))
 						fmt.Printf("    %s\n", tool.Description)
-						
+
 						if len(tool.InputSchema.Properties) > 0 {
 							fmt.Println("    Parameters:")
 							for param, prop := range tool.InputSchema.Properties {
@@ -417,7 +417,7 @@ Examples:
 						}
 						fmt.Println()
 					}
-					
+
 					if showExample {
 						fmt.Println(lipgloss.NewStyle().Foreground(lipgloss.Color("12")).
 							Render("Example Usage:"))
@@ -426,25 +426,25 @@ Examples:
 						fmt.Println("information about all available tools, their parameters, and how")
 						fmt.Println("to use them effectively.")
 					}
-					
+
 					return nil
 				}
-				
+
 				// Get regular prompt
 				prompt, exists := promptRegistry.Get(promptName)
 				if !exists {
 					return fmt.Errorf("prompt not found: %s", promptName)
 				}
-				
+
 				// Display prompt details
 				fmt.Println(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("14")).
 					Render(prompt.Name))
 				fmt.Printf("Description: %s\n", prompt.Description)
-				
+
 				if len(prompt.Tags) > 0 {
 					fmt.Printf("Tags: %s\n", strings.Join(prompt.Tags, ", "))
 				}
-				
+
 				if len(prompt.Arguments) > 0 {
 					fmt.Println("\nArguments:")
 					for _, arg := range prompt.Arguments {
@@ -458,29 +458,29 @@ Examples:
 						}
 					}
 				}
-				
+
 				fmt.Println("\nTemplate:")
 				fmt.Println(prompt.Template)
-				
+
 				if len(prompt.Examples) > 0 && showExample {
 					fmt.Println("\nExamples:")
 					for _, ex := range prompt.Examples {
 						fmt.Printf("  %s\n", ex)
 					}
 				}
-				
+
 				return nil
 			}
-			
+
 			// List prompts
 			fmt.Println(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("14")).
 				Render("Available MCP Prompts"))
 			fmt.Println()
-			
+
 			// Group by tags
 			byTagMap := make(map[string][]*Prompt)
 			untagged := []*Prompt{}
-			
+
 			for _, p := range prompts {
 				if len(p.Tags) == 0 {
 					untagged = append(untagged, p)
@@ -490,16 +490,16 @@ Examples:
 					}
 				}
 			}
-			
+
 			// Display by category
 			displayedPrompts := make(map[string]bool)
-			
+
 			// Show discovery prompts first
 			if discoveryPrompts, ok := byTagMap["discovery"]; ok {
 				fmt.Println(lipgloss.NewStyle().Foreground(lipgloss.Color("12")).Render("Discovery:"))
 				for _, p := range discoveryPrompts {
 					if !displayedPrompts[p.Name] {
-						fmt.Printf("  • %s - %s\n", 
+						fmt.Printf("  • %s - %s\n",
 							lipgloss.NewStyle().Bold(true).Render(p.Name),
 							p.Description)
 						displayedPrompts[p.Name] = true
@@ -507,7 +507,7 @@ Examples:
 				}
 				fmt.Println()
 			}
-			
+
 			// Show task prompts
 			if taskPrompts, ok := byTagMap["task"]; ok {
 				fmt.Println(lipgloss.NewStyle().Foreground(lipgloss.Color("12")).Render("Tasks:"))
@@ -521,13 +521,13 @@ Examples:
 				}
 				fmt.Println()
 			}
-			
+
 			// Show other categories
 			for tag, tagPrompts := range byTagMap {
 				if tag == "discovery" || tag == "task" {
 					continue
 				}
-				
+
 				fmt.Printf("%s:\n", lipgloss.NewStyle().Foreground(lipgloss.Color("12")).
 					Render(strings.Title(tag)))
 				for _, p := range tagPrompts {
@@ -540,7 +540,7 @@ Examples:
 				}
 				fmt.Println()
 			}
-			
+
 			// Show untagged
 			if len(untagged) > 0 {
 				fmt.Println(lipgloss.NewStyle().Foreground(lipgloss.Color("12")).Render("Other:"))
@@ -553,19 +553,19 @@ Examples:
 				}
 				fmt.Println()
 			}
-			
+
 			fmt.Println(lipgloss.NewStyle().Foreground(lipgloss.Color("8")).
 				Render("Use 'mcp prompt <name>' to see details about a specific prompt"))
-			
+
 			return nil
 		},
 	}
-	
+
 	// Add flags
 	cmd.Flags().BoolVar(&listTags, "list-tags", false, "List all available tags")
 	cmd.Flags().StringVar(&byTag, "tag", "", "Filter prompts by tag")
 	cmd.Flags().BoolVar(&showExample, "examples", false, "Show examples for prompts")
 	cmd.Flags().StringVar(&savePath, "save", "", "Save prompts to JSON file")
-	
+
 	return cmd
 }

@@ -35,21 +35,21 @@ type Image struct {
 	// SVG conversion options
 	ConverterOptions   *ConvertOptions `json:"converter_options,omitempty"`
 	PreferredConverter string          `json:"preferred_converter,omitempty"`
-	
+
 	// Internal field to capture conversion metadata
 	lastConversionMetadata *ConversionMetadata
 }
 
 // ConversionMetadata holds information about an SVG conversion
 type ConversionMetadata struct {
-	ConverterUsed   string
-	Duration        time.Duration
-	InputSVGPath    string
-	OutputPNGPath   string
-	OutputFileSize  int64
-	DPI             int
-	OutputWidth     int
-	OutputHeight    int
+	ConverterUsed  string
+	Duration       time.Duration
+	InputSVGPath   string
+	OutputPNGPath  string
+	OutputFileSize int64
+	DPI            int
+	OutputWidth    int
+	OutputHeight   int
 }
 
 // Draw implements the Widget interface
@@ -102,7 +102,7 @@ func (i *Image) drawImage(b *Builder, height float64) error {
 			imagePath = convertedPath
 			// Note: We don't delete the temp file here because Maroto needs it during PDF generation
 			// Temp files will be cleaned up by the OS automatically
-			
+
 			// Store metadata for potential future use (used by showcase for reporting)
 			i.lastConversionMetadata = metadata
 		}
@@ -296,7 +296,7 @@ func (i *Image) convertSVGWithMetadata(b *Builder, svgPath string) (string, *Con
 	ctx := context.Background()
 	err = manager.ConvertWithFallback(ctx, svgPath, outputPath, options)
 	conversionDuration := time.Since(startTime)
-	
+
 	if err != nil {
 		os.Remove(outputPath)
 		return "", nil, fmt.Errorf("SVG conversion failed: %w", err)

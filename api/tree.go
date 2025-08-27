@@ -59,10 +59,10 @@ func ASCIITreeOptions() *TreeOptions {
 
 // SimpleTreeNode provides a basic tree node implementation
 type SimpleTreeNode struct {
-	Label    string     `json:"label" yaml:"label"`
-	Icon     string     `json:"icon,omitempty" yaml:"icon,omitempty"`
-	Style    string     `json:"style,omitempty" yaml:"style,omitempty"`
-	Children []TreeNode `json:"children,omitempty" yaml:"children,omitempty"`
+	Label    string                 `json:"label" yaml:"label"`
+	Icon     string                 `json:"icon,omitempty" yaml:"icon,omitempty"`
+	Style    string                 `json:"style,omitempty" yaml:"style,omitempty"`
+	Children []TreeNode             `json:"children,omitempty" yaml:"children,omitempty"`
 	Metadata map[string]interface{} `json:"metadata,omitempty" yaml:"metadata,omitempty"`
 }
 

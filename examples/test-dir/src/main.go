@@ -1,1 +1,9 @@
-This is a sample Go program that demonstrates the file tree rendering capability.
+package main
+
+import (
+	"fmt"
+)
+
+func main() {
+	fmt.Println("Hello, World!")
+}

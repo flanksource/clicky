@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 	"testing"
-	
+
 	"github.com/flanksource/clicky/api"
 )
 
@@ -28,10 +28,10 @@ func TestAllLabelPositions(t *testing.T) {
 		{"left-outside", LabelPosition{Horizontal: HorizontalLeft, Inside: InsideBottom}},
 		{"right-outside", LabelPosition{Horizontal: HorizontalRight, Inside: InsideBottom}},
 	}
-	
+
 	// Create output directory
 	os.MkdirAll("out", 0755)
-	
+
 	for _, pos := range positions {
 		t.Run(pos.name, func(t *testing.T) {
 			box := SVGBox{
@@ -62,19 +62,19 @@ func TestAllLabelPositions(t *testing.T) {
 					},
 				},
 			}
-			
+
 			svgData, err := box.GenerateSVG()
 			if err != nil {
 				t.Fatalf("Failed to generate SVG: %v", err)
 			}
-			
+
 			// Save to file
 			filename := fmt.Sprintf("out/label_position_%s.svg", pos.name)
 			err = os.WriteFile(filename, svgData, 0644)
 			if err != nil {
 				t.Fatalf("Failed to write SVG file: %v", err)
 			}
-			
+
 			t.Logf("SVG saved to: %s", filename)
 		})
 	}
@@ -228,24 +228,24 @@ func TestOperations(t *testing.T) {
 			},
 		},
 	}
-	
+
 	// Create output directory
 	os.MkdirAll("out", 0755)
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			svgData, err := tt.box.GenerateSVG()
 			if err != nil {
 				t.Fatalf("Failed to generate SVG: %v", err)
 			}
-			
+
 			// Save to file
 			filename := fmt.Sprintf("out/operations_%s.svg", tt.name)
 			err = os.WriteFile(filename, svgData, 0644)
 			if err != nil {
 				t.Fatalf("Failed to write SVG file: %v", err)
 			}
-			
+
 			t.Logf("SVG saved to: %s", filename)
 		})
 	}
@@ -364,24 +364,24 @@ func TestMeasureLines(t *testing.T) {
 			},
 		},
 	}
-	
+
 	// Create output directory
 	os.MkdirAll("out", 0755)
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			svgData, err := tt.box.GenerateSVG()
 			if err != nil {
 				t.Fatalf("Failed to generate SVG: %v", err)
 			}
-			
+
 			// Save to file
 			filename := fmt.Sprintf("out/measure_lines_%s.svg", tt.name)
 			err = os.WriteFile(filename, svgData, 0644)
 			if err != nil {
 				t.Fatalf("Failed to write SVG file: %v", err)
 			}
-			
+
 			t.Logf("SVG saved to: %s", filename)
 		})
 	}
@@ -531,24 +531,24 @@ func TestCollisionAvoidance(t *testing.T) {
 			},
 		},
 	}
-	
+
 	// Create output directory
 	os.MkdirAll("out", 0755)
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			svgData, err := tt.box.GenerateSVG()
 			if err != nil {
 				t.Fatalf("Failed to generate SVG: %v", err)
 			}
-			
+
 			// Save to file
 			filename := fmt.Sprintf("out/collision_%s.svg", tt.name)
 			err = os.WriteFile(filename, svgData, 0644)
 			if err != nil {
 				t.Fatalf("Failed to write SVG file: %v", err)
 			}
-			
+
 			t.Logf("SVG saved to: %s", filename)
 		})
 	}
@@ -638,28 +638,29 @@ func TestViewboxAdjustment(t *testing.T) {
 			},
 		},
 	}
-	
+
 	// Create output directory
 	os.MkdirAll("out", 0755)
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			svgData, err := tt.box.GenerateSVG()
 			if err != nil {
 				t.Fatalf("Failed to generate SVG: %v", err)
 			}
-			
+
 			// Save to file
 			filename := fmt.Sprintf("out/viewbox_%s.svg", tt.name)
 			err = os.WriteFile(filename, svgData, 0644)
 			if err != nil {
 				t.Fatalf("Failed to write SVG file: %v", err)
 			}
-			
+
 			t.Logf("SVG saved to: %s", filename)
 		})
 	}
 }
+
 // TestSmartCollisionAvoidance tests collision avoidance when enabled
 func TestSmartCollisionAvoidance(t *testing.T) {
 	tests := []struct {
@@ -709,24 +710,24 @@ func TestSmartCollisionAvoidance(t *testing.T) {
 			},
 		},
 	}
-	
+
 	// Create output directory
 	os.MkdirAll("out", 0755)
-	
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			svgData, err := tt.box.GenerateSVG()
 			if err != nil {
 				t.Fatalf("Failed to generate SVG: %v", err)
 			}
-			
+
 			// Save to file
 			filename := fmt.Sprintf("out/smart_collision_%s.svg", tt.name)
 			err = os.WriteFile(filename, svgData, 0644)
 			if err != nil {
 				t.Fatalf("Failed to write SVG file: %v", err)
 			}
-			
+
 			t.Logf("SVG saved to: %s", filename)
 		})
 	}
