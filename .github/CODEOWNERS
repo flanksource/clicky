@@ -1,0 +1,35 @@
+# Code Owners for automatic review assignment
+# Each line is a file pattern followed by one or more owners.
+
+# Default owners for everything in the repo
+*                           @flanksource
+
+# AI and Agent code
+/ai/                        @flanksource
+/mcp/                       @flanksource
+
+# API and core functionality
+/api/                       @flanksource
+/cmd/                       @flanksource
+
+# Formatters and output handling
+/formatters/                @flanksource
+/formatters/pdf/            @flanksource
+
+# Task management
+/task/                      @flanksource
+
+# CI/CD and GitHub configuration
+/.github/                   @flanksource
+/.goreleaser.yaml           @flanksource
+/Dockerfile                 @flanksource
+/Makefile                   @flanksource
+
+# Documentation
+*.md                        @flanksource
+/docs/                      @flanksource
+/examples/                  @flanksource
+
+# Go module files
+go.mod                      @flanksource
+go.sum                      @flanksource

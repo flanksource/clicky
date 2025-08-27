@@ -1,0 +1,188 @@
+name: Pull Request
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+  pull_request_target:
+    types: [opened, synchronize, reopened, edited]
+
+env:
+  GO_VERSION: '1.24'
+
+jobs:
+  validate-pr-title:
+    name: Validate PR Title
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check PR title follows conventional commits
+        uses: amannn/action-semantic-pull-request@v5
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          types: |
+            feat
+            fix
+            docs
+            style
+            refactor
+            perf
+            test
+            build
+            ci
+            chore
+            revert
+          requireScope: false
+          subjectPattern: ^[A-Z].*[^.]$
+          subjectPatternError: |
+            The subject "{subject}" found in the pull request title "{title}"
+            doesn't match the configured pattern. Please ensure that the subject
+            starts with an uppercase letter and doesn't end with a period.
+
+  label-pr:
+    name: Auto Label PR
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/labeler@v5
+        with:
+          repo-token: "${{ secrets.GITHUB_TOKEN }}"
+          sync-labels: true
+
+  size-label:
+    name: Add Size Label
+    runs-on: ubuntu-latest
+    steps:
+      - name: Add size label
+        uses: codelytv/pr-size-labeler@v1
+        with:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          xs_label: 'size/XS'
+          xs_max_size: '10'
+          s_label: 'size/S'
+          s_max_size: '100'
+          m_label: 'size/M'
+          m_max_size: '500'
+          l_label: 'size/L'
+          l_max_size: '1000'
+          xl_label: 'size/XL'
+          fail_if_xl: false
+
+  check-conflicts:
+    name: Check for Merge Conflicts
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check for merge conflicts
+        uses: eps1lon/actions-label-merge-conflict@v3
+        with:
+          dirtyLabel: "has conflicts"
+          repoToken: "${{ secrets.GITHUB_TOKEN }}"
+          commentOnDirty: "This pull request has merge conflicts. Please resolve them before merging."
+
+  verify-files:
+    name: Verify Required Files
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check for required files
+        run: |
+          required_files=("README.md" "LICENSE" "go.mod" "go.sum" "Makefile")
+          missing_files=()
+          
+          for file in "${required_files[@]}"; do
+            if [ ! -f "$file" ]; then
+              missing_files+=("$file")
+            fi
+          done
+          
+          if [ ${#missing_files[@]} -gt 0 ]; then
+            echo "❌ Missing required files:"
+            printf '%s\n' "${missing_files[@]}"
+            exit 1
+          fi
+          
+          echo "✅ All required files present"
+
+  check-go-mod:
+    name: Check Go Modules
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Verify go.mod is tidy
+        run: |
+          go mod tidy
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "❌ go.mod or go.sum is not tidy"
+            echo "Please run 'go mod tidy' and commit the changes"
+            git diff
+            exit 1
+          fi
+          echo "✅ go.mod is tidy"
+
+      - name: Verify dependencies
+        run: |
+          go mod verify
+          echo "✅ Dependencies verified"
+
+  commit-lint:
+    name: Lint Commits
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install commitlint
+        run: |
+          npm install -g @commitlint/cli @commitlint/config-conventional
+
+      - name: Validate commits
+        run: |
+          npx commitlint --from ${{ github.event.pull_request.base.sha }} --to ${{ github.event.pull_request.head.sha }} --verbose
+
+  quality-gates:
+    name: Quality Gates Summary
+    runs-on: ubuntu-latest
+    needs: [validate-pr-title, verify-files, check-go-mod]
+    if: always()
+    steps:
+      - name: Summary
+        run: |
+          echo "## Pull Request Quality Gates" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          if [ "${{ needs.validate-pr-title.result }}" == "success" ]; then
+            echo "✅ PR title follows conventional commits" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ PR title doesn't follow conventional commits" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          if [ "${{ needs.verify-files.result }}" == "success" ]; then
+            echo "✅ All required files present" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ Missing required files" >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          if [ "${{ needs.check-go-mod.result }}" == "success" ]; then
+            echo "✅ Go modules are tidy and verified" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ Go modules need attention" >> $GITHUB_STEP_SUMMARY
+          fi

@@ -1,0 +1,101 @@
+# Configuration for GitHub labeler action
+# Automatically labels PRs based on changed files
+
+# Documentation changes
+documentation:
+  - any:
+    - "**/*.md"
+    - "docs/**"
+    - "examples/**"
+
+# Test changes
+test:
+  - any:
+    - "**/*_test.go"
+    - "**/testdata/**"
+    - "test/**"
+
+# Source code changes
+go:
+  - any:
+    - "**/*.go"
+    - "go.mod"
+    - "go.sum"
+
+# CI/CD changes
+ci:
+  - any:
+    - ".github/workflows/**"
+    - ".github/actions/**"
+    - ".github/dependabot.yml"
+    - ".goreleaser.yaml"
+    - ".goreleaser.yml"
+    - ".releaserc.json"
+    - ".commitlintrc.json"
+
+# Docker changes
+docker:
+  - any:
+    - "Dockerfile"
+    - "Dockerfile.*"
+    - "docker-compose.yml"
+    - "docker-compose.yaml"
+    - ".dockerignore"
+
+# Build configuration
+build:
+  - any:
+    - "Makefile"
+    - ".goreleaser.yaml"
+    - ".goreleaser.yml"
+    - "go.mod"
+    - "go.sum"
+
+# AI/Agent related changes
+ai:
+  - any:
+    - "ai/**"
+    - "**/agent*.go"
+    - "**/claude*.go"
+    - "**/aider*.go"
+
+# API related changes
+api:
+  - any:
+    - "api/**"
+    - "**/api*.go"
+
+# Formatter related changes
+formatters:
+  - any:
+    - "formatters/**"
+    - "**/formatter*.go"
+    - "**/format*.go"
+
+# MCP (Model Context Protocol) changes
+mcp:
+  - any:
+    - "mcp/**"
+
+# Task management changes
+task:
+  - any:
+    - "task/**"
+    - "**/task*.go"
+
+# Schema related changes
+schema:
+  - any:
+    - "**/schema*.go"
+    - "**/*.yaml"
+    - "**/*.yml"
+    - "**/*.json"
+
+# Config files
+config:
+  - any:
+    - ".golangci.yml"
+    - ".golangci.yaml"
+    - ".gitignore"
+    - ".editorconfig"
+    - "**/*config*"

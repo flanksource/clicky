@@ -7,17 +7,27 @@ updates:
       interval: "weekly"
       day: "monday"
       time: "09:00"
+      timezone: "UTC"
     open-pull-requests-limit: 10
-    reviewers:
-      - "@flanksource"
-    assignees:
-      - "@flanksource"
     commit-message:
-      prefix: "deps"
+      prefix: "chore"
+      prefix-development: "chore"
       include: "scope"
     labels:
       - "dependencies"
       - "go"
+    pull-request-branch-name:
+      separator: "-"
+    allow:
+      - dependency-type: "all"
+    groups:
+      # Group all minor and patch updates together
+      minor-and-patch:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
 
   # Enable version updates for GitHub Actions
   - package-ecosystem: "github-actions"
@@ -26,17 +36,16 @@ updates:
       interval: "weekly"
       day: "monday"
       time: "09:00"
-    open-pull-requests-limit: 5
-    reviewers:
-      - "@flanksource"
-    assignees:
-      - "@flanksource"
+      timezone: "UTC"
+    open-pull-requests-limit: 10
     commit-message:
       prefix: "ci"
       include: "scope"
     labels:
       - "dependencies"
       - "github-actions"
+    pull-request-branch-name:
+      separator: "-"
 
   # Enable version updates for Docker
   - package-ecosystem: "docker"
@@ -45,14 +54,14 @@ updates:
       interval: "weekly"
       day: "monday"
       time: "09:00"
-    open-pull-requests-limit: 3
-    reviewers:
-      - "@flanksource"
-    assignees:
-      - "@flanksource"
+      timezone: "UTC"
+    open-pull-requests-limit: 5
     commit-message:
-      prefix: "docker"
+      prefix: "chore"
+      prefix-development: "chore"
       include: "scope"
     labels:
       - "dependencies"
       - "docker"
+    pull-request-branch-name:
+      separator: "-"
