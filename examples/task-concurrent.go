@@ -66,7 +66,7 @@ func main() {
 				for step := 1; step <= steps; step++ {
 					select {
 					case <-ctx.Done():
-						t.Warnf("Task cancelled at step %d", step)
+						t.Warnf("Task canceled at step %d", step)
 						return ctx.Err()
 					case <-time.After(stepDuration):
 						t.SetProgress(step, steps)

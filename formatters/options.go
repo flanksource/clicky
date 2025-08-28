@@ -2,10 +2,11 @@ package formatters
 
 import (
 	"flag"
-	"fmt"
+
+	"github.com/spf13/pflag"
 
 	"github.com/flanksource/clicky/api"
-	"github.com/spf13/pflag"
+	"github.com/flanksource/commons/logger"
 )
 
 type PrettyMixin interface {
@@ -19,6 +20,7 @@ type FormatOptions struct {
 	Output     string
 	Verbose    bool
 	DumpSchema bool
+	Schema     *api.PrettyObject // Schema for schema-aware formatting
 
 	// Format-specific boolean flags (mutually exclusive)
 	JSON     bool
@@ -47,6 +49,9 @@ func MergeOptions(opts ...FormatOptions) FormatOptions {
 		}
 		if opt.DumpSchema {
 			merged.DumpSchema = true
+		}
+		if opt.Schema != nil {
+			merged.Schema = opt.Schema
 		}
 		if opt.JSON {
 			merged.JSON = true
@@ -82,7 +87,7 @@ func MergeOptions(opts ...FormatOptions) FormatOptions {
 
 // BindFlags adds formatting flags to the provided flag set
 func BindFlags(flags *flag.FlagSet, options *FormatOptions) {
-	flags.StringVar(&options.Format, "format", "pretty", "Output format: pretty, json, yaml, csv, html, pdf, markdown")
+	flags.StringVar(&options.Format, "format", "", "Output format: pretty, json, yaml, csv, html, pdf, markdown")
 	flags.StringVar(&options.Output, "output", "", "Output file pattern (optional, uses stdout if not specified)")
 	flags.BoolVar(&options.NoColor, "no-color", false, "Disable colored output")
 	flags.BoolVar(&options.Verbose, "verbose", false, "Enable verbose output")
@@ -100,7 +105,7 @@ func BindFlags(flags *flag.FlagSet, options *FormatOptions) {
 
 // BindPFlags adds formatting flags to the provided pflag set (for cobra)
 func BindPFlags(flags *pflag.FlagSet, options *FormatOptions) {
-	flags.StringVar(&options.Format, "format", "pretty", "Output format: pretty, json, yaml, csv, html, pdf, markdown")
+	flags.StringVar(&options.Format, "format", "", "Output format: pretty, json, yaml, csv, html, pdf, markdown")
 	flags.StringVar(&options.Output, "output", "", "Output file pattern (optional, uses stdout if not specified)")
 	flags.BoolVar(&options.NoColor, "no-color", false, "Disable colored output")
 	flags.BoolVar(&options.Verbose, "verbose", false, "Enable verbose output")
@@ -118,48 +123,36 @@ func BindPFlags(flags *pflag.FlagSet, options *FormatOptions) {
 
 // ResolveFormat resolves the output format from format-specific flags
 func (options *FormatOptions) ResolveFormat() error {
+	logger.Debugf("%+v", *options)
 	// Count how many format flags are set
-	formatCount := 0
-	selectedFormat := ""
+	selectedFormat := []string{}
 
-	if options.JSON {
-		formatCount++
-		selectedFormat = "json"
-	}
-	if options.YAML {
-		formatCount++
-		selectedFormat = "yaml"
-	}
-	if options.CSV {
-		formatCount++
-		selectedFormat = "csv"
-	}
-	if options.Markdown {
-		formatCount++
-		selectedFormat = "markdown"
-	}
-	if options.Pretty {
-		formatCount++
-		selectedFormat = "pretty"
-	}
-	if options.HTML {
-		formatCount++
-		selectedFormat = "html"
-	}
-	if options.PDF {
-		formatCount++
-		selectedFormat = "pdf"
-	}
-
-	// Check for mutual exclusivity
-	if formatCount > 1 {
-		return fmt.Errorf("multiple format flags specified; please use only one format flag")
+	if options.Format != "" {
+		selectedFormat = append(selectedFormat, options.Format)
+	} else if options.JSON {
+		selectedFormat = append(selectedFormat, "json")
+	} else if options.YAML {
+		selectedFormat = append(selectedFormat, "yaml")
+	} else if options.CSV {
+		selectedFormat = append(selectedFormat, "csv")
+	} else if options.Markdown {
+		selectedFormat = append(selectedFormat, "markdown")
+	} else if options.HTML {
+		selectedFormat = append(selectedFormat, "html")
+	} else if options.PDF {
+		selectedFormat = append(selectedFormat, "pdf")
+	} else if options.Pretty {
+		selectedFormat = append(selectedFormat, "pretty")
 	}
 
 	// If a format-specific flag was set, override the --format flag
-	if formatCount == 1 {
-		options.Format = selectedFormat
+	if len(selectedFormat) == 1 {
+		options.Format = selectedFormat[0]
+	} else {
+		options.Format = "pretty" // Default format
 	}
+
+	logger.Tracef("Using format: %s", options.Format)
 
 	return nil
 }

@@ -50,23 +50,20 @@ type Manager struct {
 
 	// Task identity tracking for deduplication
 	tasksByIdentity sync.Map // map[string]*Task
-
-	// Track rendered lines for clearing
-	lastRenderedLines int // Number of lines rendered in the last render cycle
 }
 
 var Global *Manager
 
 type styleSet struct {
-	success   lipgloss.Style
-	failed    lipgloss.Style
-	warning   lipgloss.Style
-	running   lipgloss.Style
-	bar       lipgloss.Style
-	info      lipgloss.Style
-	error     lipgloss.Style
-	cancelled lipgloss.Style
-	pending   lipgloss.Style
+	success  lipgloss.Style
+	failed   lipgloss.Style
+	warning  lipgloss.Style
+	running  lipgloss.Style
+	bar      lipgloss.Style
+	info     lipgloss.Style
+	error    lipgloss.Style
+	canceled lipgloss.Style
+	pending  lipgloss.Style
 }
 
 // NewManager creates a new TaskManager instance
@@ -173,7 +170,7 @@ func NewManagerWithConcurrency(maxConcurrent int) *Manager {
 	tm.styles.bar = renderer.NewStyle().Foreground(lipgloss.Color("12"))
 	tm.styles.info = renderer.NewStyle().Foreground(lipgloss.Color("8"))
 	tm.styles.error = renderer.NewStyle().Foreground(lipgloss.Color("9"))
-	tm.styles.cancelled = renderer.NewStyle().Foreground(lipgloss.Color("13"))
+	tm.styles.canceled = renderer.NewStyle().Foreground(lipgloss.Color("13"))
 	tm.styles.pending = renderer.NewStyle().Foreground(lipgloss.Color("7"))
 
 	// Start worker goroutines
@@ -339,7 +336,6 @@ func (tm *Manager) Start(name string, opts ...Option) *Task {
 }
 
 func StartTask[T any](name string, taskFunc func(flanksourceContext.Context, *Task) (T, error), opts ...Option) TypedTask[T] {
-
 	// Wrap the typed function to work with the existing interface{} system
 	wrappedFunc := func(ctx flanksourceContext.Context, t *Task) (interface{}, error) {
 		result, err := taskFunc(ctx, t)
@@ -347,12 +343,10 @@ func StartTask[T any](name string, taskFunc func(flanksourceContext.Context, *Ta
 	}
 	t := Global.StartWithResult(name, wrappedFunc, opts...)
 	return TypedTask[T]{t}
-
 }
 
 // StartWithResult creates and starts tracking a new task with typed result handling
 func (tm *Manager) StartWithResult(name string, taskFunc func(flanksourceContext.Context, *Task) (interface{}, error), opts ...Option) *Task {
-
 	task := tm.newTask(name, opts...)
 
 	// Wrap the result function in a regular func(flanksourceContext.Context, *Task) error
@@ -410,7 +404,6 @@ func (tm *Manager) Run() error {
 
 // CancelAll cancels all running tasks and groups
 func (tm *Manager) CancelAll() {
-
 	// Cancel all tasks
 	for _, task := range tm.tasks {
 		task.Cancel()
@@ -521,7 +514,7 @@ func (tm *Manager) Wait() int {
 
 	tm.stopRender <- true
 
-	var failed, cancelled int
+	var failed, canceled int
 
 	for _, task := range tm.tasks {
 		task.mu.Lock()
@@ -532,11 +525,11 @@ func (tm *Manager) Wait() int {
 		case StatusFailed:
 			failed++
 		case StatusCancelled:
-			cancelled++
+			canceled++
 		}
 	}
 
-	if failed+cancelled > 0 {
+	if failed+canceled > 0 {
 		return 1
 	}
 	return 0

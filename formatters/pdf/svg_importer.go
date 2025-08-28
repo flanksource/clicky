@@ -5,8 +5,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/flanksource/clicky/api"
 	"github.com/rustyoz/svg"
+
+	"github.com/flanksource/clicky/api"
 )
 
 // SVGImporter handles parsing SVG content and converting to SVGBox elements
@@ -146,7 +147,7 @@ func (importer *SVGImporter) convertRectangle(svgRect *svg.Rect) (*Cut, *EdgeCut
 
 	// For now, assume it's a regular cut and determine orientation by aspect ratio
 	var orientation string
-	var position float64 = 50.0 // Default center position
+	position := 50.0 // Default center position
 
 	if height > width {
 		orientation = "vertical"

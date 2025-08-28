@@ -1,4 +1,4 @@
-package clicky
+package formatters
 
 import (
 	"bytes"
@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/flanksource/clicky/api"
-	"github.com/flanksource/clicky/formatters"
 	"gopkg.in/yaml.v3"
 )
 
@@ -83,7 +82,7 @@ func TestDumpSchemaFlag(t *testing.T) {
 		}
 
 		// Format with DumpSchema enabled
-		options := formatters.FormatOptions{
+		options := FormatOptions{
 			Format:     "json",
 			DumpSchema: true,
 		}
@@ -133,7 +132,7 @@ func TestDumpSchemaFlag(t *testing.T) {
 		}
 
 		// Format with DumpSchema disabled
-		options := formatters.FormatOptions{
+		options := FormatOptions{
 			Format:     "json",
 			DumpSchema: false,
 		}

@@ -5,8 +5,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/flanksource/clicky/task"
 	flanksourceContext "github.com/flanksource/commons/context"
+
+	"github.com/flanksource/clicky/task"
 )
 
 var (

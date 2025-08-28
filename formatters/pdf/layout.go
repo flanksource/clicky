@@ -1,8 +1,9 @@
 package pdf
 
 import (
-	"github.com/flanksource/clicky/api"
 	"github.com/johnfercher/maroto/v2/pkg/components/row"
+
+	"github.com/flanksource/clicky/api"
 )
 
 // GridItem represents an item in the grid layout

@@ -301,7 +301,7 @@ func main() {
 
 	// Save to file
 	filename := "pdf_widgets_demo.pdf"
-	err = os.WriteFile(filename, pdfData, 0644)
+	err = os.WriteFile(filename, pdfData, 0o644)
 	if err != nil {
 		log.Fatalf("Failed to save PDF: %v", err)
 	}

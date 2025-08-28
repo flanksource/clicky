@@ -10,9 +10,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/flanksource/clicky"
 	flanksourceContext "github.com/flanksource/commons/context"
 	"github.com/spf13/cobra"
+
+	"github.com/flanksource/clicky"
 )
 
 // MCPServer implements the MCP protocol server using TaskManager for execution
@@ -320,7 +321,7 @@ func (s *MCPServer) executeToolWithTaskManager(ctx context.Context, tool *ToolDe
 				Content: []ContentBlock{
 					{
 						Type: "text",
-						Text: "Tool execution cancelled by user",
+						Text: "Tool execution canceled by user",
 					},
 				},
 				IsError: true,

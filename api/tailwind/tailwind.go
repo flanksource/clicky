@@ -347,7 +347,7 @@ func isTextUtilityClass(class string) bool {
 }
 
 // TransformText applies text transformation based on the transform type
-func TransformText(text string, transform string) string {
+func TransformText(text, transform string) string {
 	switch transform {
 	case "uppercase":
 		return strings.ToUpper(text)
@@ -373,7 +373,7 @@ func capitalizeWords(text string) string {
 }
 
 // ApplyStyle applies a Tailwind style string to text, including text transforms
-func ApplyStyle(text string, styleStr string) (string, Style) {
+func ApplyStyle(text, styleStr string) (string, Style) {
 	parsedStyle := ParseStyle(styleStr)
 
 	// Apply text transform first
@@ -620,15 +620,6 @@ func hueToRGB(p, q, t float64) float64 {
 		return p + (q-p)*(2.0/3.0-t)*6
 	}
 	return p
-}
-
-// calculateContrastRatio calculates contrast ratio between two luminance values
-func calculateContrastRatio(l1, l2 float64) float64 {
-	// Ensure l1 is the lighter color
-	if l1 < l2 {
-		l1, l2 = l2, l1
-	}
-	return (l1 + 0.05) / (l2 + 0.05)
 }
 
 // adaptColorForBackground adapts a hex color based on terminal background

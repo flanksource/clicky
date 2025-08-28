@@ -3,20 +3,23 @@ package pdf
 import (
 	"strings"
 
-	"github.com/flanksource/clicky/api"
 	"github.com/johnfercher/maroto/v2/pkg/components/col"
 	"github.com/johnfercher/maroto/v2/pkg/components/row"
 	"github.com/johnfercher/maroto/v2/pkg/components/text"
+
+	"github.com/flanksource/clicky/api"
 )
 
-type VerticalPosition string
-type HorizontalPosition string
-type InsidePosition string
-type LabelPosition struct {
-	Vertical   VerticalPosition
-	Horizontal HorizontalPosition
-	Inside     InsidePosition
-}
+type (
+	VerticalPosition   string
+	HorizontalPosition string
+	InsidePosition     string
+	LabelPosition      struct {
+		Vertical   VerticalPosition
+		Horizontal HorizontalPosition
+		Inside     InsidePosition
+	}
+)
 
 const (
 	VerticalTop      VerticalPosition   = "top"
@@ -110,7 +113,7 @@ func (b Box) Draw(builder *Builder) error {
 			textComponent := text.New(label.Content, *textProps)
 
 			// Get horizontal alignment
-			var horizontalAlign HorizontalPosition = HorizontalCenter
+			horizontalAlign := HorizontalCenter
 			if label.Position != nil {
 				horizontalAlign = label.Position.Horizontal
 			}

@@ -129,8 +129,8 @@ func (f *HTMLFormatter) Format(in interface{}) (string, error) {
 			tableData, exists := data.GetTable(field.Name)
 			if exists && len(tableData) > 0 {
 				// Add section title
-				result.WriteString(fmt.Sprintf("        <div class=\"bg-white rounded-lg shadow\">\n"))
-				result.WriteString(fmt.Sprintf("            <div class=\"px-6 py-4 border-b border-gray-200\">\n"))
+				result.WriteString("        <div class=\"bg-white rounded-lg shadow\">\n")
+				result.WriteString("            <div class=\"px-6 py-4 border-b border-gray-200\">\n")
 				result.WriteString(fmt.Sprintf("                <h2 class=\"text-xl font-semibold text-gray-900\">%s</h2>\n",
 					f.prettifyFieldName(field.Name)))
 				result.WriteString("            </div>\n")
@@ -145,8 +145,8 @@ func (f *HTMLFormatter) Format(in interface{}) (string, error) {
 			fieldValue, exists := data.GetValue(field.Name)
 			if exists {
 				// Add section title
-				result.WriteString(fmt.Sprintf("        <div class=\"bg-white rounded-lg shadow\">\n"))
-				result.WriteString(fmt.Sprintf("            <div class=\"px-6 py-4 border-b border-gray-200\">\n"))
+				result.WriteString("        <div class=\"bg-white rounded-lg shadow\">\n")
+				result.WriteString("            <div class=\"px-6 py-4 border-b border-gray-200\">\n")
 				result.WriteString(fmt.Sprintf("                <h2 class=\"text-xl font-semibold text-gray-900\">%s</h2>\n",
 					f.prettifyFieldName(field.Name)))
 				result.WriteString("            </div>\n")
@@ -170,7 +170,7 @@ func (f *HTMLFormatter) Format(in interface{}) (string, error) {
 }
 
 // applyTailwindStyleToHTML applies Tailwind styles to HTML content
-func (f *HTMLFormatter) applyTailwindStyleToHTML(text string, styleStr string) string {
+func (f *HTMLFormatter) applyTailwindStyleToHTML(text, styleStr string) string {
 	if styleStr == "" {
 		return html.EscapeString(text)
 	}
@@ -210,11 +210,6 @@ func (f *HTMLFormatter) getColorClass(color string) string {
 // prettifyFieldName converts field names to readable format
 func (f *HTMLFormatter) prettifyFieldName(name string) string {
 	return PrettifyFieldName(name)
-}
-
-// splitCamelCase splits camelCase strings into words
-func (f *HTMLFormatter) splitCamelCase(s string) []string {
-	return SplitCamelCase(s)
 }
 
 // formatFieldValueHTML formats a FieldValue for HTML output (legacy function)
@@ -352,7 +347,7 @@ func (f *HTMLFormatter) formatTableDataHTML(rows []api.PrettyDataRow, field api.
 }
 
 // formatTreeFieldHTML formats a tree field for HTML output
-func (f *HTMLFormatter) formatTreeFieldHTML(fieldValue api.FieldValue, field api.PrettyField) string {
+func (f *HTMLFormatter) formatTreeFieldHTML(fieldValue api.FieldValue, _ api.PrettyField) string {
 	// Convert value to tree node
 	var node api.TreeNode
 	if fieldValue.Value != nil {

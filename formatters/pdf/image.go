@@ -12,6 +12,8 @@ import (
 	"strings"
 	"time"
 
+	_ "image/jpeg" // Register JPEG format
+
 	"github.com/johnfercher/maroto/v2/pkg/components/col"
 	marotoimagecomponent "github.com/johnfercher/maroto/v2/pkg/components/image"
 	"github.com/johnfercher/maroto/v2/pkg/components/row"
@@ -21,7 +23,6 @@ import (
 	"github.com/johnfercher/maroto/v2/pkg/consts/extension"
 	"github.com/johnfercher/maroto/v2/pkg/consts/fontstyle"
 	"github.com/johnfercher/maroto/v2/pkg/props"
-	_ "image/jpeg" // Register JPEG format
 )
 
 // Image widget for rendering images in PDF
@@ -211,7 +212,7 @@ func isURL(str string) bool {
 }
 
 // getImageExtension determines the image extension
-func getImageExtension(url string, contentType string) extension.Type {
+func getImageExtension(url, contentType string) extension.Type {
 	// Try content type first
 	switch contentType {
 	case "image/jpeg", "image/jpg":

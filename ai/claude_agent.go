@@ -9,9 +9,10 @@ import (
 	"strings"
 	"time"
 
+	flanksourcecontext "github.com/flanksource/commons/context"
+
 	"github.com/flanksource/clicky"
 	"github.com/flanksource/clicky/ai/cache"
-	flanksourceContext "github.com/flanksource/commons/context"
 )
 
 // ClaudeAgent implements the Agent interface for Claude
@@ -130,13 +131,12 @@ func (ca *ClaudeAgent) ListModels(ctx context.Context) ([]Model, error) {
 // ExecutePrompt processes a single prompt
 func (ca *ClaudeAgent) ExecutePrompt(ctx context.Context, request PromptRequest) (*PromptResponse, error) {
 	var response *PromptResponse
-	var err error
 
 	task := clicky.StartGlobalTask(request.Name,
 		clicky.WithTimeout(5*time.Minute),
 		clicky.WithModel(ca.config.Model),
 		clicky.WithPrompt(request.Prompt),
-		clicky.WithFunc(func(ctx flanksourceContext.Context, t *clicky.Task) error {
+		clicky.WithFunc(func(ctx flanksourcecontext.Context, t *clicky.Task) error {
 			t.Infof("Starting Claude request")
 			// Start with unknown progress (infinite spinner)
 			t.SetProgress(0, 0)
@@ -158,13 +158,13 @@ func (ca *ClaudeAgent) ExecutePrompt(ctx context.Context, request PromptRequest)
 		select {
 		case <-ctx.Done():
 			task.Cancel()
-			return nil, ctx.Err()
+			return nil, fmt.Errorf("claude task canceled: %w", ctx.Err())
 		case <-time.After(100 * time.Millisecond):
 		}
 	}
 
-	if err = task.Error(); err != nil {
-		return nil, err
+	if err := task.Error(); err != nil {
+		return nil, fmt.Errorf("claude task failed: %w", err)
 	}
 
 	return response, nil
@@ -180,7 +180,7 @@ func (ca *ClaudeAgent) ExecuteBatch(ctx context.Context, requests []PromptReques
 	}, len(requests))
 
 	// Store tasks to wait for them properly
-	var tasks []*clicky.Task
+	tasks := make([]*clicky.Task, 0, len(requests))
 
 	// Create tasks for all requests
 	for _, request := range requests {
@@ -190,7 +190,7 @@ func (ca *ClaudeAgent) ExecuteBatch(ctx context.Context, requests []PromptReques
 			clicky.WithTimeout(5*time.Minute),
 			clicky.WithModel(ca.config.Model),
 			clicky.WithPrompt(req.Prompt),
-			clicky.WithFunc(func(ctx flanksourceContext.Context, t *clicky.Task) error {
+			clicky.WithFunc(func(ctx flanksourcecontext.Context, t *clicky.Task) error {
 				t.Infof("Processing request")
 				// Start with unknown progress (infinite spinner)
 				t.SetProgress(0, 0)
@@ -209,7 +209,7 @@ func (ca *ClaudeAgent) ExecuteBatch(ctx context.Context, requests []PromptReques
 					err:      err,
 				}:
 				case <-t.Context().Done():
-					return t.Context().Err()
+					return fmt.Errorf("claude batch task canceled: %w", t.Context().Err())
 				}
 
 				if err != nil {
@@ -256,7 +256,7 @@ func (ca *ClaudeAgent) ExecuteBatch(ctx context.Context, requests []PromptReques
 	// Check for context cancellation
 	if ctx.Err() != nil {
 		clicky.CancelAllGlobalTasks()
-		return results, ctx.Err()
+		return results, fmt.Errorf("claude batch execution canceled: %w", ctx.Err())
 	}
 
 	return results, nil
@@ -337,7 +337,7 @@ func (ca *ClaudeAgent) executeClaude(ctx context.Context, request PromptRequest,
 	if err != nil {
 		errMsg := fmt.Sprintf("claude CLI failed: %v", err)
 		if ctx.Err() != nil {
-			errMsg = fmt.Sprintf("claude CLI cancelled: %v", ctx.Err())
+			errMsg = fmt.Sprintf("claude CLI canceled: %v", ctx.Err())
 		}
 
 		// Cache the error

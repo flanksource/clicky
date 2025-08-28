@@ -65,7 +65,7 @@ func BindAllFlags(flags *pflag.FlagSet) AllFlags {
 
 	// Format Options
 
-	flags.StringVar(&Flags.FormatOptions.Format, "format", "pretty", "Output format: pretty, json, yaml, csv, html, pdf, markdown")
+	flags.StringVar(&Flags.FormatOptions.Format, "format", "", "Output format: pretty, json, yaml, csv, html, pdf, markdown")
 	flags.BoolVar(&Flags.FormatOptions.NoColor, "no-color", false, "Disable colored output")
 	flags.BoolVar(&Flags.FormatOptions.Verbose, "verbose", false, "Enable verbose output")
 	flags.BoolVar(&Flags.FormatOptions.DumpSchema, "dump-schema", false, "Dump the schema to stderr for debugging")

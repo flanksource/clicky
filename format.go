@@ -10,12 +10,15 @@ import (
 
 type FormatOptions = formatters.FormatOptions
 
-var Formatter = formatters.NewFormatManager()
-var defaultOpts FormatOptions
+var (
+	Formatter   = formatters.NewFormatManager()
+	defaultOpts FormatOptions
+)
 
 func Format(o any, opts ...FormatOptions) (string, error) {
 	return Formatter.FormatWithOptions(formatters.MergeOptions(append([]FormatOptions{defaultOpts}, opts...)...), o)
 }
+
 func MustFormat(o any, opts ...FormatOptions) string {
 	result, _ := Formatter.FormatWithOptions(formatters.MergeOptions(append([]FormatOptions{defaultOpts}, opts...)...), o)
 	return result
@@ -42,5 +45,4 @@ func Textf(content string, args ...any) api.Text {
 
 func UseFormatter(opts FormatOptions) {
 	defaultOpts = opts
-
 }

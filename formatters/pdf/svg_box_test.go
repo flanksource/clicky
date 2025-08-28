@@ -30,7 +30,7 @@ func TestAllLabelPositions(t *testing.T) {
 	}
 
 	// Create output directory
-	os.MkdirAll("out", 0755)
+	os.MkdirAll("out", 0o755)
 
 	for _, pos := range positions {
 		t.Run(pos.name, func(t *testing.T) {
@@ -70,7 +70,7 @@ func TestAllLabelPositions(t *testing.T) {
 
 			// Save to file
 			filename := fmt.Sprintf("out/label_position_%s.svg", pos.name)
-			err = os.WriteFile(filename, svgData, 0644)
+			err = os.WriteFile(filename, svgData, 0o644)
 			if err != nil {
 				t.Fatalf("Failed to write SVG file: %v", err)
 			}
@@ -230,7 +230,7 @@ func TestOperations(t *testing.T) {
 	}
 
 	// Create output directory
-	os.MkdirAll("out", 0755)
+	os.MkdirAll("out", 0o755)
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -241,7 +241,7 @@ func TestOperations(t *testing.T) {
 
 			// Save to file
 			filename := fmt.Sprintf("out/operations_%s.svg", tt.name)
-			err = os.WriteFile(filename, svgData, 0644)
+			err = os.WriteFile(filename, svgData, 0o644)
 			if err != nil {
 				t.Fatalf("Failed to write SVG file: %v", err)
 			}
@@ -366,7 +366,7 @@ func TestMeasureLines(t *testing.T) {
 	}
 
 	// Create output directory
-	os.MkdirAll("out", 0755)
+	os.MkdirAll("out", 0o755)
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -377,7 +377,7 @@ func TestMeasureLines(t *testing.T) {
 
 			// Save to file
 			filename := fmt.Sprintf("out/measure_lines_%s.svg", tt.name)
-			err = os.WriteFile(filename, svgData, 0644)
+			err = os.WriteFile(filename, svgData, 0o644)
 			if err != nil {
 				t.Fatalf("Failed to write SVG file: %v", err)
 			}
@@ -533,7 +533,7 @@ func TestCollisionAvoidance(t *testing.T) {
 	}
 
 	// Create output directory
-	os.MkdirAll("out", 0755)
+	os.MkdirAll("out", 0o755)
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -544,7 +544,7 @@ func TestCollisionAvoidance(t *testing.T) {
 
 			// Save to file
 			filename := fmt.Sprintf("out/collision_%s.svg", tt.name)
-			err = os.WriteFile(filename, svgData, 0644)
+			err = os.WriteFile(filename, svgData, 0o644)
 			if err != nil {
 				t.Fatalf("Failed to write SVG file: %v", err)
 			}
@@ -640,7 +640,7 @@ func TestViewboxAdjustment(t *testing.T) {
 	}
 
 	// Create output directory
-	os.MkdirAll("out", 0755)
+	os.MkdirAll("out", 0o755)
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -651,7 +651,7 @@ func TestViewboxAdjustment(t *testing.T) {
 
 			// Save to file
 			filename := fmt.Sprintf("out/viewbox_%s.svg", tt.name)
-			err = os.WriteFile(filename, svgData, 0644)
+			err = os.WriteFile(filename, svgData, 0o644)
 			if err != nil {
 				t.Fatalf("Failed to write SVG file: %v", err)
 			}
@@ -712,7 +712,7 @@ func TestSmartCollisionAvoidance(t *testing.T) {
 	}
 
 	// Create output directory
-	os.MkdirAll("out", 0755)
+	os.MkdirAll("out", 0o755)
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -723,7 +723,7 @@ func TestSmartCollisionAvoidance(t *testing.T) {
 
 			// Save to file
 			filename := fmt.Sprintf("out/smart_collision_%s.svg", tt.name)
-			err = os.WriteFile(filename, svgData, 0644)
+			err = os.WriteFile(filename, svgData, 0o644)
 			if err != nil {
 				t.Fatalf("Failed to write SVG file: %v", err)
 			}

@@ -1,12 +1,13 @@
 package pdf
 
 import (
-	"github.com/flanksource/clicky/api"
 	"github.com/johnfercher/maroto/v2/pkg/components/col"
 	"github.com/johnfercher/maroto/v2/pkg/components/line"
 	"github.com/johnfercher/maroto/v2/pkg/consts/linestyle"
 	"github.com/johnfercher/maroto/v2/pkg/consts/orientation"
 	"github.com/johnfercher/maroto/v2/pkg/props"
+
+	"github.com/flanksource/clicky/api"
 )
 
 // LineWidget represents a line widget

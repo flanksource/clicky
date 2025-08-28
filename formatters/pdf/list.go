@@ -4,12 +4,13 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/flanksource/clicky/api"
 	"github.com/johnfercher/maroto/v2/pkg/components/col"
 	"github.com/johnfercher/maroto/v2/pkg/components/row"
 	"github.com/johnfercher/maroto/v2/pkg/components/text"
 	"github.com/johnfercher/maroto/v2/pkg/consts/align"
 	"github.com/johnfercher/maroto/v2/pkg/props"
+
+	"github.com/flanksource/clicky/api"
 )
 
 // ListType represents the type of list

@@ -8,7 +8,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/flanksource/clicky/api"
 	"github.com/johnfercher/maroto/v2/pkg/components/col"
 	marotoimages "github.com/johnfercher/maroto/v2/pkg/components/image"
 	"github.com/johnfercher/maroto/v2/pkg/components/text"
@@ -18,6 +17,8 @@ import (
 	"github.com/johnfercher/maroto/v2/pkg/props"
 	"github.com/srwiley/oksvg"
 	"github.com/srwiley/rasterx"
+
+	"github.com/flanksource/clicky/api"
 )
 
 // SVGWidget renders an SVGBox as a widget in the PDF

@@ -109,7 +109,7 @@ func TestPDFErrorDetection_SVGConversion(t *testing.T) {
 	tempDir := t.TempDir()
 	svgPath := filepath.Join(tempDir, "test.svg")
 
-	if err := os.WriteFile(svgPath, []byte(svgContent), 0644); err != nil {
+	if err := os.WriteFile(svgPath, []byte(svgContent), 0o644); err != nil {
 		t.Fatalf("Failed to write SVG file: %v", err)
 	}
 

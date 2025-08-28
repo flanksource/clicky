@@ -13,9 +13,12 @@ import (
 // AgentType represents the type of AI agent
 type AgentType string
 
+// Supported agent types
 const (
+	// AgentTypeClaude represents the Claude AI agent
 	AgentTypeClaude AgentType = "claude"
-	AgentTypeAider  AgentType = "aider"
+	// AgentTypeAider represents the Aider AI agent
+	AgentTypeAider AgentType = "aider"
 )
 
 // Model represents an AI model
@@ -23,51 +26,49 @@ type Model struct {
 	ID          string            `json:"id"`
 	Name        string            `json:"name"`
 	Provider    string            `json:"provider"`
+	Metadata    map[string]string `json:"metadata,omitempty"`
 	InputPrice  float64           `json:"input_price_per_token,omitempty"`
 	OutputPrice float64           `json:"output_price_per_token,omitempty"`
 	MaxTokens   int               `json:"max_tokens,omitempty"`
-	Metadata    map[string]string `json:"metadata,omitempty"`
 }
 
 // AgentConfig holds configuration for AI agents
 type AgentConfig struct {
-	Type            AgentType `json:"type"`
-	Model           string    `json:"model"`
-	MaxTokens       int       `json:"max_tokens"`
-	MaxConcurrent   int       `json:"max_concurrent"`
-	Debug           bool      `json:"debug"`
-	Verbose         bool      `json:"verbose"`
-	StrictMCPConfig bool      `json:"strict_mcp_config"`
-	Temperature     float64   `json:"temperature,omitempty"`
-
-	// Cache configuration
-	CacheTTL    time.Duration `json:"cache_ttl,omitempty"`
-	NoCache     bool          `json:"no_cache,omitempty"`
-	CacheDBPath string        `json:"cache_db_path,omitempty"`
-	ProjectName string        `json:"project_name,omitempty"`
-	SessionID   string        `json:"session_id,omitempty"`
+	Type            AgentType     `json:"type"`
+	Model           string        `json:"model"`
+	CacheDBPath     string        `json:"cache_db_path,omitempty"`
+	ProjectName     string        `json:"project_name,omitempty"`
+	SessionID       string        `json:"session_id,omitempty"`
+	CacheTTL        time.Duration `json:"cache_ttl,omitempty"`
+	Temperature     float64       `json:"temperature,omitempty"`
+	MaxTokens       int           `json:"max_tokens"`
+	MaxConcurrent   int           `json:"max_concurrent"`
+	Debug           bool          `json:"debug"`
+	Verbose         bool          `json:"verbose"`
+	StrictMCPConfig bool          `json:"strict_mcp_config"`
+	NoCache         bool          `json:"no_cache,omitempty"`
 }
 
 // PromptRequest represents a request to process a prompt
 type PromptRequest struct {
+	Context map[string]string `json:"context,omitempty"`
 	Name    string            `json:"name"`
 	Prompt  string            `json:"prompt"`
-	Context map[string]string `json:"context,omitempty"`
 }
 
 // PromptResponse represents the response from processing a prompt
 type PromptResponse struct {
 	Result           string  `json:"result"`
+	Model            string  `json:"model,omitempty"`
+	Error            string  `json:"error,omitempty"`
+	CostUSD          float64 `json:"cost_usd"`
 	TokensUsed       int     `json:"tokens_used"`
 	TokensInput      int     `json:"tokens_input,omitempty"`
 	TokensOutput     int     `json:"tokens_output,omitempty"`
 	TokensCacheRead  int     `json:"tokens_cache_read,omitempty"`
 	TokensCacheWrite int     `json:"tokens_cache_write,omitempty"`
-	CostUSD          float64 `json:"cost_usd"`
 	DurationMs       int     `json:"duration_ms"`
 	CacheHit         bool    `json:"cache_hit,omitempty"`
-	Model            string  `json:"model,omitempty"`
-	Error            string  `json:"error,omitempty"`
 }
 
 // Agent interface defines the contract for AI agents
@@ -94,8 +95,8 @@ type Agent interface {
 // AgentManager manages AI agents
 type AgentManager struct {
 	agents map[AgentType]Agent
-	config AgentConfig
 	cache  *cache.Cache
+	config AgentConfig
 }
 
 // NewAgentManager creates a new agent manager
@@ -161,7 +162,7 @@ func (am *AgentManager) GetDefaultAgent() (Agent, error) {
 }
 
 // ListAllModels returns models from all available agents
-func (am *AgentManager) ListAllModels(ctx context.Context) (map[AgentType][]Model, error) {
+func (am *AgentManager) ListAllModels(ctx context.Context) map[AgentType][]Model {
 	results := make(map[AgentType][]Model)
 
 	for _, agentType := range []AgentType{AgentTypeClaude, AgentTypeAider} {
@@ -180,7 +181,7 @@ func (am *AgentManager) ListAllModels(ctx context.Context) (map[AgentType][]Mode
 		results[agentType] = models
 	}
 
-	return results, nil
+	return results
 }
 
 // GetCache returns the cache instance

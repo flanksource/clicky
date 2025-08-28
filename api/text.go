@@ -5,9 +5,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/flanksource/clicky/api/tailwind"
 	commonsText "github.com/flanksource/commons/text"
 	"github.com/muesli/termenv"
+
+	"github.com/flanksource/clicky/api/tailwind"
 )
 
 type Text struct {
@@ -71,7 +72,7 @@ func (t Text) Indent(spaces int) Text {
 }
 
 // Printf is like fmt.Printf, but prints floats and durations to 2 decimal places
-func (t Text) PrintfWithStyle(format string, style string, args ...interface{}) Text {
+func (t Text) PrintfWithStyle(format, style string, args ...interface{}) Text {
 	for i := range args {
 		switch v := args[i].(type) {
 		case float64:
@@ -83,6 +84,7 @@ func (t Text) PrintfWithStyle(format string, style string, args ...interface{}) 
 	t.Children = append(t.Children, Text{Content: fmt.Sprintf(format, args...), Style: style})
 	return t
 }
+
 func (t Text) Printf(format string, args ...interface{}) Text {
 	return t.PrintfWithStyle(format, "", args...)
 }
@@ -372,7 +374,7 @@ func ResolveStyles(styles ...string) Class {
 }
 
 // ApplyTailwindStyle applies tailwind styles to text - wrapper around tailwind.ApplyStyle
-func ApplyTailwindStyle(text string, styleStr string) (string, TailwindStyle) {
+func ApplyTailwindStyle(text, styleStr string) (string, TailwindStyle) {
 	// Import the tailwind package functions
 	transformedText, twStyle := tailwind.ApplyStyle(text, styleStr)
 

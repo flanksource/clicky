@@ -202,7 +202,7 @@ func isExecutable(path string) bool {
 		return false
 	}
 	mode := info.Mode()
-	return mode.IsRegular() && mode.Perm()&0111 != 0
+	return mode.IsRegular() && mode.Perm()&0o111 != 0
 }
 
 func main() {

@@ -4,10 +4,11 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/flanksource/clicky/api"
 	"github.com/johnfercher/maroto/v2/pkg/consts/align"
 	"github.com/johnfercher/maroto/v2/pkg/consts/fontstyle"
 	"github.com/johnfercher/maroto/v2/pkg/props"
+
+	"github.com/flanksource/clicky/api"
 )
 
 // StyleConverter handles converting api.Class and Tailwind styles to Maroto properties

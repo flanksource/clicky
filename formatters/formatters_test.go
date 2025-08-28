@@ -1,4 +1,4 @@
-package clicky
+package formatters
 
 import (
 	"encoding/json"
@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/flanksource/clicky/api"
-	"github.com/flanksource/clicky/formatters"
 	"gopkg.in/yaml.v3"
 )
 
@@ -159,7 +158,7 @@ func TestAllFormatters(t *testing.T) {
 	schema := createTestSchema()
 
 	// Parse the data with schema
-	parser := NewStructParser()
+	parser := api.NewStructParser()
 	prettyData, err := parser.ParseDataWithSchema(testData, schema)
 	if err != nil {
 		t.Fatalf("Failed to parse data with schema: %v", err)
@@ -169,7 +168,7 @@ func TestAllFormatters(t *testing.T) {
 	testCases := []FormatterTestCase{
 		{
 			Name:      "PrettyFormatter",
-			Formatter: formatters.NewPrettyFormatter(),
+			Formatter: NewPrettyFormatter(),
 			Validate: func(t *testing.T, output string) {
 				// Check that it contains formatted fields
 				if !strings.Contains(output, "Id: TEST-001") {
@@ -202,7 +201,7 @@ func TestAllFormatters(t *testing.T) {
 		},
 		{
 			Name:      "JSONFormatter",
-			Formatter: formatters.NewJSONFormatter(),
+			Formatter: NewJSONFormatter(),
 			Validate: func(t *testing.T, output string) {
 				var result map[string]interface{}
 				if err := json.Unmarshal([]byte(output), &result); err != nil {
@@ -240,7 +239,7 @@ func TestAllFormatters(t *testing.T) {
 		},
 		{
 			Name:      "YAMLFormatter",
-			Formatter: formatters.NewYAMLFormatter(),
+			Formatter: NewYAMLFormatter(),
 			Validate: func(t *testing.T, output string) {
 				var result map[string]interface{}
 				if err := yaml.Unmarshal([]byte(output), &result); err != nil {
@@ -270,7 +269,7 @@ func TestAllFormatters(t *testing.T) {
 		},
 		{
 			Name:      "CSVFormatter",
-			Formatter: formatters.NewCSVFormatter(),
+			Formatter: NewCSVFormatter(),
 			Validate: func(t *testing.T, output string) {
 				lines := strings.Split(strings.TrimSpace(output), "\n")
 				if len(lines) < 2 {
@@ -307,7 +306,7 @@ func TestAllFormatters(t *testing.T) {
 		},
 		{
 			Name:      "HTMLFormatter",
-			Formatter: formatters.NewHTMLFormatter(),
+			Formatter: NewHTMLFormatter(),
 			Validate: func(t *testing.T, output string) {
 				// Check HTML structure
 				if !strings.Contains(output, "<!DOCTYPE html>") {
@@ -330,7 +329,7 @@ func TestAllFormatters(t *testing.T) {
 		},
 		{
 			Name:      "PDFFormatter",
-			Formatter: formatters.NewPDFFormatter(),
+			Formatter: NewPDFFormatter(),
 			Validate: func(t *testing.T, output string) {
 				// PDF files start with %PDF header
 				if !strings.HasPrefix(output, "%PDF") {
@@ -348,7 +347,7 @@ func TestAllFormatters(t *testing.T) {
 		},
 		{
 			Name:      "MarkdownFormatter",
-			Formatter: formatters.NewMarkdownFormatter(),
+			Formatter: NewMarkdownFormatter(),
 			Validate: func(t *testing.T, output string) {
 				// For markdown, we need to format the raw data as map
 				data := map[string]interface{}{
@@ -365,7 +364,7 @@ func TestAllFormatters(t *testing.T) {
 					"address":      testData.Address,
 				}
 
-				mdFormatter := formatters.NewMarkdownFormatter()
+				mdFormatter := NewMarkdownFormatter()
 				mdOutput, err := mdFormatter.Format(data)
 				if err != nil {
 					t.Errorf("Markdown formatter error: %v", err)
@@ -391,34 +390,34 @@ func TestAllFormatters(t *testing.T) {
 
 			// Format based on formatter type
 			switch f := tc.Formatter.(type) {
-			case *formatters.PrettyFormatter:
-				output, err = f.Format(prettyData)
-			case *formatters.JSONFormatter:
+			case *PrettyFormatter:
+				output, err = f.FormatPrettyData(prettyData)
+			case *JSONFormatter:
 				// Format using schema formatter for consistent output
 				sf := &SchemaFormatter{
 					Schema: schema,
 					Parser: parser,
 				}
-				output, err = sf.formatWithPrettyData(prettyData, formatters.FormatOptions{Format: "json"})
-			case *formatters.YAMLFormatter:
+				output, err = sf.formatWithPrettyData(prettyData, FormatOptions{Format: "json"})
+			case *YAMLFormatter:
 				// Format using schema formatter for consistent output
 				sf := &SchemaFormatter{
 					Schema: schema,
 					Parser: parser,
 				}
-				output, err = sf.formatWithPrettyData(prettyData, formatters.FormatOptions{Format: "yaml"})
-			case *formatters.CSVFormatter:
+				output, err = sf.formatWithPrettyData(prettyData, FormatOptions{Format: "yaml"})
+			case *CSVFormatter:
 				// Format using schema formatter for consistent output
 				sf := &SchemaFormatter{
 					Schema: schema,
 					Parser: parser,
 				}
-				output, err = sf.formatWithPrettyData(prettyData, formatters.FormatOptions{Format: "csv"})
-			case *formatters.HTMLFormatter:
+				output, err = sf.formatWithPrettyData(prettyData, FormatOptions{Format: "csv"})
+			case *HTMLFormatter:
 				output, err = f.Format(prettyData)
-			case *formatters.PDFFormatter:
+			case *PDFFormatter:
 				output, err = f.Format(prettyData)
-			case *formatters.MarkdownFormatter:
+			case *MarkdownFormatter:
 				// Markdown formatter uses different interface
 				// Skip validation in switch, handled in test case
 				return
@@ -589,7 +588,7 @@ func TestTableFormattingWithDates(t *testing.T) {
 		},
 	}
 
-	parser := NewStructParser()
+	parser := api.NewStructParser()
 	data := map[string]interface{}{
 		"items": tableData,
 	}
@@ -600,8 +599,8 @@ func TestTableFormattingWithDates(t *testing.T) {
 	}
 
 	// Test with pretty formatter
-	formatter := formatters.NewPrettyFormatter()
-	output, err := formatter.Format(prettyData)
+	formatter := NewPrettyFormatter()
+	output, err := formatter.FormatPrettyData(prettyData)
 	if err != nil {
 		t.Fatalf("Failed to format table: %v", err)
 	}

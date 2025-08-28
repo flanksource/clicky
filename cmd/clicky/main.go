@@ -1,13 +1,18 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"runtime"
+	"strings"
 
-	"github.com/flanksource/clicky"
-	"github.com/flanksource/clicky/formatters"
 	"github.com/spf13/cobra"
+	"gopkg.in/yaml.v3"
+
+	"github.com/flanksource/clicky/api"
+	"github.com/flanksource/clicky/formatters"
 )
 
 // Build information (set by goreleaser)
@@ -64,19 +69,23 @@ For backward compatibility, you can use the root command directly, or use the
 				return err
 			}
 
-			// Create schema formatter
-			schemaFormatter, err := clicky.LoadSchemaFromYAML(schemaFile)
+			// Load schema directly into options
+			parser := api.NewStructParser()
+			schema, err := parser.LoadSchemaFromYAML(schemaFile)
 			if err != nil {
 				return fmt.Errorf("failed to load schema: %w", err)
 			}
+			options.Schema = schema
 
 			// Set verbose to true for CLI usage
 			options.Verbose = true
 
-			// Format all files
-			err = schemaFormatter.FormatFiles(args, options)
-			if err != nil {
-				return fmt.Errorf("error formatting files: %w", err)
+			// Create format manager and format all files
+			manager := formatters.NewFormatManager()
+			for _, dataFile := range args {
+				if err := formatDataFile(manager, dataFile, options); err != nil {
+					return fmt.Errorf("error processing %s: %w", dataFile, err)
+				}
 			}
 
 			return nil
@@ -122,19 +131,23 @@ raw data into beautifully formatted output using customizable schemas.`,
 				return err
 			}
 
-			// Create schema formatter
-			schemaFormatter, err := clicky.LoadSchemaFromYAML(schemaFile)
+			// Load schema directly into options
+			parser := api.NewStructParser()
+			schema, err := parser.LoadSchemaFromYAML(schemaFile)
 			if err != nil {
 				return fmt.Errorf("failed to load schema: %w", err)
 			}
+			options.Schema = schema
 
 			// Set verbose to true for CLI usage
 			options.Verbose = true
 
-			// Format all files
-			err = schemaFormatter.FormatFiles(args, options)
-			if err != nil {
-				return fmt.Errorf("error formatting files: %w", err)
+			// Create format manager and format all files
+			manager := formatters.NewFormatManager()
+			for _, dataFile := range args {
+				if err := formatDataFile(manager, dataFile, options); err != nil {
+					return fmt.Errorf("error processing %s: %w", dataFile, err)
+				}
 			}
 
 			return nil
@@ -204,7 +217,7 @@ func newSchemaValidateCommand() *cobra.Command {
 			schemaFile := args[0]
 
 			// Try to load the schema
-			_, err := clicky.LoadSchemaFromYAML(schemaFile)
+			_, err := formatters.LoadSchemaFromYAML(schemaFile)
 			if err != nil {
 				return fmt.Errorf("schema validation failed: %w", err)
 			}
@@ -227,7 +240,7 @@ func newSchemaExampleCommand() *cobra.Command {
 
 			if outputFile != "" {
 				// Write to file
-				err := os.WriteFile(outputFile, []byte(example), 0644)
+				err := os.WriteFile(outputFile, []byte(example), 0o644)
 				if err != nil {
 					return fmt.Errorf("failed to write example schema: %w", err)
 				}
@@ -378,7 +391,7 @@ fields:
       green: "completed"
       yellow: "processing"
       orange: "pending"
-      red: "cancelled"
+      red: "canceled"
 
   # Currency field
   - name: "total_amount"
@@ -450,4 +463,115 @@ fields:
       children_field: "subcategories"
       style: "text-gray-700"
 `
+}
+
+// formatDataFile loads a data file and formats it using the provided options
+func formatDataFile(manager *formatters.FormatManager, dataFile string, options formatters.FormatOptions) error {
+	// Load data file based on extension
+	data, err := loadDataFile(dataFile)
+	if err != nil {
+		return fmt.Errorf("failed to load data file: %w", err)
+	}
+
+	var output string
+	// Check if schema-aware formatting is needed
+	if options.Schema != nil {
+		// Use schema-aware formatting
+		parser := api.NewStructParser()
+		prettyData, err := parser.ParseDataWithSchema(data, options.Schema)
+		if err != nil {
+			return fmt.Errorf("failed to parse data with schema: %w", err)
+		}
+		output, err = manager.FormatWithSchema(prettyData, options)
+		if err != nil {
+			return fmt.Errorf("failed to format schema data: %w", err)
+		}
+	} else {
+		// Use regular formatting
+		output, err = manager.FormatWithOptions(options, data)
+		if err != nil {
+			return fmt.Errorf("failed to format data: %w", err)
+		}
+	}
+
+	// Output to file or stdout
+	if options.Output != "" {
+		// Create output file path
+		outputFile := options.Output
+		if strings.Contains(options.Output, "*") || filepath.Ext(options.Output) == "" {
+			// Pattern or directory - generate filename
+			base := strings.TrimSuffix(filepath.Base(dataFile), filepath.Ext(dataFile))
+			ext := getOutputExtension(options.Format)
+			if strings.Contains(options.Output, "*") {
+				outputFile = strings.Replace(options.Output, "*", base, -1)
+			} else {
+				outputFile = filepath.Join(options.Output, base+ext)
+			}
+		}
+
+		// Ensure output directory exists
+		if err := os.MkdirAll(filepath.Dir(outputFile), 0755); err != nil {
+			return fmt.Errorf("failed to create output directory: %w", err)
+		}
+
+		// Write to file
+		if err := os.WriteFile(outputFile, []byte(output), 0644); err != nil {
+			return fmt.Errorf("failed to write output file: %w", err)
+		}
+
+		if options.Verbose {
+			fmt.Printf("Output written to %s\n", outputFile)
+		}
+	} else {
+		// Output to stdout
+		fmt.Print(output)
+	}
+
+	return nil
+}
+
+// loadDataFile loads a data file based on its extension
+func loadDataFile(filename string) (interface{}, error) {
+	data, err := os.ReadFile(filename)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read file %s: %w", filename, err)
+	}
+
+	ext := strings.ToLower(filepath.Ext(filename))
+	switch ext {
+	case ".json":
+		var jsonData interface{}
+		if err := json.Unmarshal(data, &jsonData); err != nil {
+			return nil, fmt.Errorf("failed to parse JSON: %w", err)
+		}
+		return jsonData, nil
+	case ".yaml", ".yml":
+		var yamlData interface{}
+		if err := yaml.Unmarshal(data, &yamlData); err != nil {
+			return nil, fmt.Errorf("failed to parse YAML: %w", err)
+		}
+		return yamlData, nil
+	default:
+		return nil, fmt.Errorf("unsupported file extension: %s", ext)
+	}
+}
+
+// getOutputExtension returns the file extension for a given format
+func getOutputExtension(format string) string {
+	switch strings.ToLower(format) {
+	case "json":
+		return ".json"
+	case "yaml", "yml":
+		return ".yaml"
+	case "csv":
+		return ".csv"
+	case "html":
+		return ".html"
+	case "markdown", "md":
+		return ".md"
+	case "pdf":
+		return ".pdf"
+	default:
+		return ".txt"
+	}
 }

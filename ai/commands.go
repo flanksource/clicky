@@ -17,10 +17,7 @@ func ListModels(ctx context.Context, config *AgentConfig) error {
 	fmt.Printf("Available AI Models:\n\n")
 
 	// Get models from all agents
-	allModels, err := am.ListAllModels(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to list models: %w", err)
-	}
+	allModels := am.ListAllModels(ctx)
 
 	if len(allModels) == 0 {
 		fmt.Printf("No AI agents available. Make sure Claude CLI or Aider is installed.\n")

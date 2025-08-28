@@ -1,11 +1,10 @@
-package clicky
+package formatters
 
 import (
 	"strings"
 	"testing"
 
 	"github.com/flanksource/clicky/api"
-	"github.com/flanksource/clicky/formatters"
 )
 
 func TestTreeRendering(t *testing.T) {
@@ -41,7 +40,7 @@ func TestTreeRendering(t *testing.T) {
 	}
 
 	// Test tree formatting
-	formatter := formatters.NewTreeFormatter(api.DefaultTheme(), true, api.DefaultTreeOptions())
+	formatter := NewTreeFormatter(api.DefaultTheme(), true, api.DefaultTreeOptions())
 	output := formatter.FormatTreeFromRoot(root)
 
 	// Check that output contains expected elements
@@ -85,7 +84,7 @@ func TestCompactListNode(t *testing.T) {
 
 	opts := api.DefaultTreeOptions()
 	opts.Compact = true
-	formatter := formatters.NewTreeFormatter(api.DefaultTheme(), true, opts)
+	formatter := NewTreeFormatter(api.DefaultTheme(), true, opts)
 	output := formatter.FormatTreeFromRoot(root)
 
 	// Check compact list formatting
@@ -110,7 +109,7 @@ func TestASCIITreeOptions(t *testing.T) {
 	}
 
 	// Test with ASCII options
-	formatter := formatters.NewTreeFormatter(api.DefaultTheme(), true, api.ASCIITreeOptions())
+	formatter := NewTreeFormatter(api.DefaultTheme(), true, api.ASCIITreeOptions())
 	output := formatter.FormatTreeFromRoot(root)
 
 	// Check for ASCII characters instead of Unicode
@@ -127,7 +126,7 @@ func TestASCIITreeOptions(t *testing.T) {
 func TestCustomRenderFunction(t *testing.T) {
 	// Register a test render function
 	api.RegisterRenderFunc("test_render", func(value interface{}, field api.PrettyField, theme api.Theme) string {
-		return "CUSTOM:" + formatters.RenderComplexityColored(value, field, theme)
+		return "CUSTOM:" + RenderComplexityColored(value, field, theme)
 	})
 
 	// Test struct with custom render function
@@ -135,7 +134,7 @@ func TestCustomRenderFunction(t *testing.T) {
 		Complexity int `json:"complexity" pretty:"int,render=test_render"`
 	}
 
-	parser := NewPrettyParser()
+	parser := NewPrettyFormatter()
 	parser.NoColor = true // Disable colors for testing
 
 	test := TestStruct{Complexity: 8}
@@ -167,7 +166,7 @@ func TestTreeWithPrettyTags(t *testing.T) {
 		},
 	}
 
-	parser := NewPrettyParser()
+	parser := NewPrettyFormatter()
 	parser.NoColor = true
 
 	output, err := parser.Parse(tree)
@@ -245,7 +244,7 @@ func TestTreeMaxDepth(t *testing.T) {
 	// Test with max depth = 2
 	opts := api.DefaultTreeOptions()
 	opts.MaxDepth = 2
-	formatter := formatters.NewTreeFormatter(api.DefaultTheme(), true, opts)
+	formatter := NewTreeFormatter(api.DefaultTheme(), true, opts)
 	output := formatter.FormatTreeFromRoot(root)
 
 	// Should contain up to Level2 but not Level3

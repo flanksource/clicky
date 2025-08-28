@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+
 	"github.com/flanksource/clicky/api"
 )
 
@@ -202,7 +203,7 @@ func RenderIconLabel(value interface{}, field api.PrettyField, theme api.Theme) 
 }
 
 // applyStyle applies a style string to text
-func applyStyle(text string, styleStr string, theme api.Theme) string {
+func applyStyle(text, styleStr string, theme api.Theme) string {
 	style := lipgloss.NewStyle()
 
 	// Parse style string (simplified)

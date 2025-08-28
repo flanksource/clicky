@@ -318,7 +318,7 @@ func (v FieldValue) Color() string {
 }
 
 // matchesColorPattern checks if a value matches a color pattern
-func (v FieldValue) matchesColorPattern(value string, pattern string) bool {
+func (v FieldValue) matchesColorPattern(value, pattern string) bool {
 	// Handle exact match
 	if value == pattern {
 		return true
@@ -335,7 +335,7 @@ func (v FieldValue) matchesColorPattern(value string, pattern string) bool {
 }
 
 // matchesNumericPattern handles numeric comparison patterns
-func (v FieldValue) matchesNumericPattern(value string, pattern string) bool {
+func (v FieldValue) matchesNumericPattern(value, pattern string) bool {
 	// Extract operator and threshold
 	var op string
 	var thresholdStr string
@@ -847,62 +847,6 @@ func (f PrettyField) splitCamelCase(s string) []string {
 	return words
 }
 
-// formatMapValueReflection formats any map type using reflection
-func (f PrettyField) formatMapValueReflection(value interface{}) string {
-	return f.formatMapValueReflectionWithIndent(value, 0)
-}
-
-// formatMapValueReflectionWithIndent formats any map type using reflection as struct-like fields (no braces)
-func (f PrettyField) formatMapValueReflectionWithIndent(value interface{}, indentLevel int) string {
-	val := reflect.ValueOf(value)
-	if val.Kind() != reflect.Map {
-		return fmt.Sprintf("%v", value)
-	}
-
-	if val.Len() == 0 {
-		return EmptyValue
-	}
-
-	// Get sorted keys
-	keys := val.MapKeys()
-	keyStrings := make([]string, len(keys))
-	for i, key := range keys {
-		keyStrings[i] = fmt.Sprintf("%v", key.Interface())
-	}
-	sort.Strings(keyStrings)
-
-	var lines []string
-	indent := strings.Repeat("  ", indentLevel)
-
-	for _, keyStr := range keyStrings {
-		keyVal := reflect.ValueOf(keyStr)
-		mapValue := val.MapIndex(keyVal)
-
-		if !mapValue.IsValid() {
-			continue
-		}
-
-		prettyKey := f.prettifyFieldName(keyStr)
-		var valueStr string
-		valueInterface := mapValue.Interface()
-
-		// Handle nested maps recursively (also without braces)
-		if mapValue.Kind() == reflect.Map {
-			if reflect.ValueOf(valueInterface).Len() > 0 {
-				valueStr = "\n" + f.formatMapValueReflectionWithIndent(valueInterface, indentLevel+1)
-			} else {
-				valueStr = "(empty)"
-			}
-		} else {
-			valueStr = fmt.Sprintf("%v", valueInterface)
-		}
-
-		lines = append(lines, fmt.Sprintf("%s%s: %s", indent, prettyKey, valueStr))
-	}
-
-	return strings.Join(lines, "\n")
-}
-
 // GetNestedFieldKeys returns sorted keys for nested fields
 func (v FieldValue) GetNestedFieldKeys() []string {
 	if len(v.NestedFields) == 0 {
@@ -952,7 +896,14 @@ func RegisterRenderFunc(name string, fn RenderFunc) {
 
 // ParsePrettyTag parses a pretty tag string into a PrettyField
 func ParsePrettyTag(tag string) PrettyField {
+	return ParsePrettyTagWithName("", tag)
+}
+
+// ParsePrettyTagWithName parses a pretty tag string into a PrettyField with a field name
+func ParsePrettyTagWithName(fieldName, tag string) PrettyField {
 	field := PrettyField{
+		Name:          fieldName,
+		Label:         fieldName, // Default label to field name
 		FormatOptions: make(map[string]string),
 		ColorOptions:  make(map[string]string),
 	}
@@ -962,18 +913,8 @@ func ParsePrettyTag(tag string) PrettyField {
 	}
 
 	parts := strings.Split(tag, ",")
-	for i, part := range parts {
+	for _, part := range parts {
 		part = strings.TrimSpace(part)
-
-		if i == 0 {
-			// First part is the main format
-			field.Format = part
-			// Initialize tree options if format is tree
-			if part == "tree" {
-				field.TreeOptions = DefaultTreeOptions()
-			}
-			continue
-		}
 
 		// Parse key=value pairs
 		if strings.Contains(part, "=") {
@@ -982,12 +923,14 @@ func ParsePrettyTag(tag string) PrettyField {
 			value := strings.TrimSpace(kv[1])
 
 			switch key {
+			case "label":
+				field.Label = value
 			case "sort":
 				field.FormatOptions["sort"] = value
 			case "dir", "direction":
 				field.FormatOptions["dir"] = value
 			case "format":
-				field.FormatOptions["format"] = value
+				field.Format = value
 			case "digits":
 				field.FormatOptions["digits"] = value
 			case "style":
@@ -998,6 +941,8 @@ func ParsePrettyTag(tag string) PrettyField {
 				field.TableOptions.HeaderStyle = value
 			case "row_style":
 				field.TableOptions.RowStyle = value
+			case "title":
+				field.TableOptions.Title = value
 			case "indent":
 				if field.TreeOptions == nil {
 					field.TreeOptions = DefaultTreeOptions()
@@ -1025,6 +970,17 @@ func ParsePrettyTag(tag string) PrettyField {
 		} else {
 			// Simple flags
 			switch part {
+			case "table":
+				field.Format = FormatTable
+			case "tree":
+				field.Format = FormatTree
+				if field.TreeOptions == nil {
+					field.TreeOptions = DefaultTreeOptions()
+				}
+			case "struct":
+				field.Format = "struct"
+			case FormatHide:
+				field.Format = FormatHide
 			case SortAsc, SortDesc:
 				field.FormatOptions["dir"] = part
 			case "compact":
@@ -1059,7 +1015,7 @@ type PrettyData struct {
 	Values map[string]FieldValue
 	Tables map[string][]PrettyDataRow
 	Trees  map[string]PrettyTree
-	// Original stores the original data interface for JSON/YAML marshalling
+	// Original stores the original data interface for JSON/YAML marshaling
 	Original interface{}
 }
 type PrettyTree struct {

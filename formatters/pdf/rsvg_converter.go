@@ -102,7 +102,7 @@ func (c *RSVGConverter) Convert(ctx context.Context, svgPath, outputPath string,
 }
 
 // ConvertToFormat is a convenience method that determines output path based on format
-func (c *RSVGConverter) ConvertToFormat(ctx context.Context, svgPath string, format string, options *ConvertOptions) (string, error) {
+func (c *RSVGConverter) ConvertToFormat(ctx context.Context, svgPath, format string, options *ConvertOptions) (string, error) {
 	if options == nil {
 		options = DefaultConvertOptions()
 	}

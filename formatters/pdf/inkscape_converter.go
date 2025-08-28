@@ -93,7 +93,7 @@ func (c *InkscapeConverter) Convert(ctx context.Context, svgPath, outputPath str
 }
 
 // ConvertToFormat is a convenience method that determines output path based on format
-func (c *InkscapeConverter) ConvertToFormat(ctx context.Context, svgPath string, format string, options *ConvertOptions) (string, error) {
+func (c *InkscapeConverter) ConvertToFormat(ctx context.Context, svgPath, format string, options *ConvertOptions) (string, error) {
 	if options == nil {
 		options = DefaultConvertOptions()
 	}

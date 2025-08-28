@@ -114,6 +114,9 @@ func (f FormatManager) FormatWithOptions(options FormatOptions, data interface{}
 		return "", err
 	}
 
+	// If schema is provided, delegate to external handler
+	// (the calling code should handle ParseDataWithSchema and call FormatWithSchema directly)
+
 	// Handle format-specific options
 	switch strings.ToLower(options.Format) {
 	case "json":
@@ -201,7 +204,7 @@ func (f FormatManager) FormatToFile(options FormatOptions, data interface{}) err
 	// Write to file or stdout
 	if options.Output != "" {
 		// Write to file
-		if err := os.WriteFile(options.Output, []byte(output), 0644); err != nil {
+		if err := os.WriteFile(options.Output, []byte(output), 0o644); err != nil {
 			return fmt.Errorf("failed to write output file: %w", err)
 		}
 		if options.Verbose {
@@ -220,7 +223,7 @@ func (f FormatManager) FormatToFile(options FormatOptions, data interface{}) err
 }
 
 // Excel exports data to Excel format (CSV for now)
-func (f FormatManager) Excel(data interface{}, filename string) error {
+func (f FormatManager) Excel(data interface{}, _ string) error {
 	// For now, we'll just generate CSV which can be opened in Excel
 	// Full Excel support would require a library like excelize
 	_, err := f.CSV(data)
@@ -245,6 +248,76 @@ func (f FormatManager) ParseSchema(data interface{}) (*api.PrettyObject, error) 
 		return nil, err
 	}
 	return d.Schema, nil
+}
+
+// FormatWithSchema handles schema-aware formatting using provided PrettyData
+func (f FormatManager) FormatWithSchema(prettyData *api.PrettyData, options FormatOptions) (string, error) {
+	// Handle different output formats for schema-aware data
+	switch strings.ToLower(options.Format) {
+	case "json":
+		// Convert PrettyData back to map for JSON output
+		output := f.prettyDataToMap(prettyData)
+		if f.jsonFormatter == nil {
+			f.jsonFormatter = NewJSONFormatter()
+		}
+		// Use FormatValue directly to avoid ToPrettyData conversion
+		return f.jsonFormatter.FormatValue(output)
+	case "yaml", "yml":
+		// Convert PrettyData back to map for YAML output
+		output := f.prettyDataToMap(prettyData)
+		if f.yamlFormatter == nil {
+			f.yamlFormatter = NewYAMLFormatter()
+		}
+		return f.yamlFormatter.FormatValue(output)
+	case "csv":
+		if f.csvFormatter == nil {
+			f.csvFormatter = NewCSVFormatter()
+		}
+		return f.csvFormatter.FormatPrettyData(prettyData)
+	case "markdown", "md":
+		if f.markdownFormatter == nil {
+			f.markdownFormatter = NewMarkdownFormatter()
+		}
+		f.markdownFormatter.NoColor = options.NoColor
+		return f.markdownFormatter.FormatPrettyData(prettyData)
+	case "html":
+		if f.htmlFormatter == nil {
+			f.htmlFormatter = NewHTMLFormatter()
+		}
+		return f.htmlFormatter.Format(prettyData)
+	default:
+		// Default to pretty format
+		if f.prettyFormatter == nil {
+			f.prettyFormatter = NewPrettyFormatter()
+		}
+		f.prettyFormatter.NoColor = options.NoColor
+		return f.prettyFormatter.FormatPrettyData(prettyData)
+	}
+}
+
+// prettyDataToMap converts PrettyData back to a map for JSON/YAML formatting
+func (f FormatManager) prettyDataToMap(data *api.PrettyData) map[string]interface{} {
+	output := make(map[string]interface{})
+
+	// Add regular field values
+	for name, fieldValue := range data.Values {
+		output[name] = fieldValue.Value
+	}
+
+	// Add table data as arrays
+	for name, rows := range data.Tables {
+		tableData := make([]map[string]interface{}, len(rows))
+		for i, row := range rows {
+			rowData := make(map[string]interface{})
+			for k, v := range row {
+				rowData[k] = v.Value
+			}
+			tableData[i] = rowData
+		}
+		output[name] = tableData
+	}
+
+	return output
 }
 
 var DEFAULT_MANAGER api.FormatManager = NewFormatManager()

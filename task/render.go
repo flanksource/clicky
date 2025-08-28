@@ -5,8 +5,9 @@ import (
 	"os"
 	"time"
 
-	"github.com/flanksource/clicky/api"
 	"github.com/muesli/termenv"
+
+	"github.com/flanksource/clicky/api"
 )
 
 func (tm *Manager) Render() {
@@ -26,9 +27,7 @@ func (tm *Manager) Render() {
 		// Render the current state
 		rendered := tm.Pretty().ANSI()
 		fmt.Fprint(os.Stderr, rendered)
-
 	} else {
-
 		for _, task := range tm.tasks {
 			if task.PopDirty() {
 				if tm.noColor {
@@ -39,7 +38,6 @@ func (tm *Manager) Render() {
 			}
 		}
 	}
-
 }
 
 // render is the main rendering loop for interactive display
@@ -54,7 +52,6 @@ func (tm *Manager) render() {
 			return
 		case <-ticker.C:
 			tm.Render()
-
 		}
 	}
 }

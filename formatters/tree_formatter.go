@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+
 	"github.com/flanksource/clicky/api"
 )
 
@@ -138,7 +139,7 @@ func (f *TreeFormatter) FormatTreeFromRoot(root api.TreeNode) string {
 }
 
 // applyTailwindStyle applies Tailwind-style classes to text
-func (f *TreeFormatter) applyTailwindStyle(text string, styleStr string) string {
+func (f *TreeFormatter) applyTailwindStyle(text, styleStr string) string {
 	style := lipgloss.NewStyle()
 
 	// Parse style string (simplified version - would need full implementation)

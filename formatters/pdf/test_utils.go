@@ -196,7 +196,7 @@ func AssertPDFBasicStructure(t *testing.T, pdfData []byte) {
 }
 
 // GetPDFInfo returns basic information about a PDF
-func GetPDFInfo(pdfData []byte) (pages int, size int, err error) {
+func GetPDFInfo(pdfData []byte) (pages, size int, err error) {
 	reader := bytes.NewReader(pdfData)
 	ctx, err := api.ReadContext(reader, model.NewDefaultConfiguration())
 	if err != nil {

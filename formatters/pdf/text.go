@@ -5,12 +5,13 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/flanksource/clicky/api"
 	"github.com/johnfercher/maroto/v2/pkg/components/col"
 	"github.com/johnfercher/maroto/v2/pkg/components/row"
 	"github.com/johnfercher/maroto/v2/pkg/components/text"
 	"github.com/johnfercher/maroto/v2/pkg/consts/align"
 	"github.com/johnfercher/maroto/v2/pkg/consts/breakline"
+
+	"github.com/flanksource/clicky/api"
 )
 
 // Text widget for rendering text in PDF

@@ -8,14 +8,14 @@ import (
 	"strings"
 	"time"
 
-	flanksourceContext "github.com/flanksource/commons/context"
+	flanksourcecontext "github.com/flanksource/commons/context"
 	"github.com/flanksource/commons/logger"
 )
 
 // worker represents a worker goroutine that processes tasks
 type worker struct {
-	id      int
 	manager *Manager
+	id      int
 }
 
 // run is the main loop for a worker goroutine
@@ -76,7 +76,7 @@ func (w *worker) checkDependencies(task *Task) bool {
 			dep.mu.Unlock()
 
 			if depStatus == StatusFailed || depStatus == StatusCancelled {
-				// Dependency failed, mark this task as cancelled
+				// Dependency failed, mark this task as canceled
 				task.mu.Lock()
 				task.status = StatusCancelled
 				task.endTime = time.Now()
@@ -108,7 +108,7 @@ func (w *worker) executeTask(task *Task) {
 		originalCtx := task.ctx
 		originalCancel := task.cancel
 
-		task.flanksourceCtx = flanksourceContext.NewContext(timeoutCtx)
+		task.flanksourceCtx = flanksourcecontext.NewContext(timeoutCtx)
 		task.ctx = task.flanksourceCtx
 		task.cancel = func() {
 			timeoutCancel()
@@ -120,7 +120,7 @@ func (w *worker) executeTask(task *Task) {
 		defer func() {
 			task.mu.Lock()
 			task.ctx = originalCtx
-			task.flanksourceCtx = flanksourceContext.NewContext(originalCtx)
+			task.flanksourceCtx = flanksourcecontext.NewContext(originalCtx)
 			task.cancel = originalCancel
 			task.mu.Unlock()
 		}()
@@ -172,7 +172,14 @@ func (w *worker) executeWithRetry(task *Task) {
 					return
 				}
 			} else {
-				task.FailedWithError(err)
+				if _, failErr := task.FailedWithError(err); failErr != nil {
+					// Log error but continue - task is already in failed state
+					task.logs = append(task.logs, LogEntry{
+						Level:   logger.Error,
+						Message: fmt.Sprintf("Failed to set error status: %v", failErr),
+						Time:    time.Now(),
+					})
+				}
 				return
 			}
 		} else {

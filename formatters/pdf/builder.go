@@ -3,7 +3,6 @@ package pdf
 import (
 	"fmt"
 
-	"github.com/flanksource/clicky/api"
 	"github.com/johnfercher/maroto/v2"
 	"github.com/johnfercher/maroto/v2/pkg/components/col"
 	"github.com/johnfercher/maroto/v2/pkg/components/row"
@@ -14,6 +13,8 @@ import (
 	"github.com/johnfercher/maroto/v2/pkg/consts/pagesize"
 	"github.com/johnfercher/maroto/v2/pkg/core"
 	"github.com/johnfercher/maroto/v2/pkg/props"
+
+	"github.com/flanksource/clicky/api"
 )
 
 // PageSize represents the page configuration
@@ -194,7 +195,7 @@ func (b *Builder) DrawWidget(widget Widget) error {
 }
 
 // MoveBy adds vertical spacing
-func (b *Builder) MoveBy(dx, dy int) *Builder {
+func (b *Builder) MoveBy(_, dy int) *Builder {
 	if dy > 0 {
 		// Add empty row for vertical spacing
 		b.maroto.AddRows(row.New(float64(dy)))

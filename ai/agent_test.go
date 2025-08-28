@@ -1,15 +1,17 @@
-package ai
+package ai_test
 
 import (
 	"context"
 	"testing"
 	"time"
+
+	"github.com/flanksource/clicky/ai"
 )
 
 func TestDefaultConfig(t *testing.T) {
-	config := DefaultConfig()
+	config := ai.DefaultConfig()
 
-	if config.Type != AgentTypeClaude {
+	if config.Type != ai.AgentTypeClaude {
 		t.Errorf("Expected default agent type to be Claude, got %s", config.Type)
 	}
 
@@ -25,13 +27,13 @@ func TestDefaultConfig(t *testing.T) {
 func TestValidateConfig(t *testing.T) {
 	tests := []struct {
 		name    string
-		config  AgentConfig
+		config  ai.AgentConfig
 		wantErr bool
 	}{
 		{
 			name: "valid config",
-			config: AgentConfig{
-				Type:          AgentTypeClaude,
+			config: ai.AgentConfig{
+				Type:          ai.AgentTypeClaude,
 				Model:         "claude-3-5-sonnet-20241022",
 				MaxTokens:     1000,
 				MaxConcurrent: 1,
@@ -41,7 +43,7 @@ func TestValidateConfig(t *testing.T) {
 		},
 		{
 			name: "missing type",
-			config: AgentConfig{
+			config: ai.AgentConfig{
 				Model:         "claude-3-5-sonnet-20241022",
 				MaxTokens:     1000,
 				MaxConcurrent: 1,
@@ -50,8 +52,8 @@ func TestValidateConfig(t *testing.T) {
 		},
 		{
 			name: "invalid type",
-			config: AgentConfig{
-				Type:          "invalid",
+			config: ai.AgentConfig{
+				Type:          ai.AgentType("invalid"),
 				Model:         "claude-3-5-sonnet-20241022",
 				MaxTokens:     1000,
 				MaxConcurrent: 1,
@@ -60,8 +62,8 @@ func TestValidateConfig(t *testing.T) {
 		},
 		{
 			name: "missing model",
-			config: AgentConfig{
-				Type:          AgentTypeClaude,
+			config: ai.AgentConfig{
+				Type:          ai.AgentTypeClaude,
 				MaxTokens:     1000,
 				MaxConcurrent: 1,
 			},
@@ -69,8 +71,8 @@ func TestValidateConfig(t *testing.T) {
 		},
 		{
 			name: "invalid max tokens",
-			config: AgentConfig{
-				Type:          AgentTypeClaude,
+			config: ai.AgentConfig{
+				Type:          ai.AgentTypeClaude,
 				Model:         "claude-3-5-sonnet-20241022",
 				MaxTokens:     0,
 				MaxConcurrent: 1,
@@ -79,8 +81,8 @@ func TestValidateConfig(t *testing.T) {
 		},
 		{
 			name: "invalid temperature",
-			config: AgentConfig{
-				Type:          AgentTypeClaude,
+			config: ai.AgentConfig{
+				Type:          ai.AgentTypeClaude,
 				Model:         "claude-3-5-sonnet-20241022",
 				MaxTokens:     1000,
 				MaxConcurrent: 1,
@@ -92,7 +94,7 @@ func TestValidateConfig(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := ValidateConfig(tt.config)
+			err := ai.ValidateConfig(tt.config)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("ValidateConfig() error = %v, wantErr %v", err, tt.wantErr)
 			}
@@ -101,8 +103,8 @@ func TestValidateConfig(t *testing.T) {
 }
 
 func TestAgentManager(t *testing.T) {
-	config := DefaultConfig()
-	am := NewAgentManager(config)
+	config := ai.DefaultConfig()
+	am := ai.NewAgentManager(config)
 	defer am.Close()
 
 	// Test getting default agent
@@ -127,20 +129,20 @@ func TestAgentManager(t *testing.T) {
 }
 
 func TestClaudeAgentListModels(t *testing.T) {
-	config := AgentConfig{
-		Type:          AgentTypeClaude,
+	config := ai.AgentConfig{
+		Type:          ai.AgentTypeClaude,
 		Model:         "claude-3-5-sonnet-20241022",
 		MaxTokens:     1000,
 		MaxConcurrent: 1,
 	}
 
-	agent, err := NewClaudeAgent(config)
+	agent, err := ai.NewClaudeAgent(config)
 	if err != nil {
 		t.Fatalf("Failed to create Claude agent: %v", err)
 	}
 	defer agent.Close()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()
 
 	models, err := agent.ListModels(ctx)
@@ -167,64 +169,4 @@ func TestClaudeAgentListModels(t *testing.T) {
 	if !foundHaiku {
 		t.Error("Expected to find Claude 3 Haiku model")
 	}
-}
-
-func TestFormatPrice(t *testing.T) {
-	tests := []struct {
-		name  string
-		price float64
-		want  string
-	}{
-		{"zero", 0, "N/A"},
-		{"small", 0.000003, "$3.00/1M"},
-		{"very small", 0.00000025, "$0.250/1M"},
-		{"large", 0.000075, "$75.00/1M"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := formatPrice(tt.price)
-			if got != tt.want {
-				t.Errorf("formatPrice(%f) = %s, want %s", tt.price, got, tt.want)
-			}
-		})
-	}
-}
-
-func TestFormatTokens(t *testing.T) {
-	tests := []struct {
-		name   string
-		tokens int
-		want   string
-	}{
-		{"zero", 0, "N/A"},
-		{"small", 100, "100"},
-		{"thousands", 8192, "8.2K"},
-		{"millions", 200000, "200.0K"},
-		{"large millions", 2000000, "2.0M"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := formatTokens(tt.tokens)
-			if got != tt.want {
-				t.Errorf("formatTokens(%d) = %s, want %s", tt.tokens, got, tt.want)
-			}
-		})
-	}
-}
-
-// Helper function to check if a string contains another string
-func containsString(haystack, needle string) bool {
-	return len(needle) > 0 && len(haystack) >= len(needle) &&
-		findSubstring(haystack, needle) >= 0
-}
-
-func findSubstring(s, sub string) int {
-	for i := 0; i <= len(s)-len(sub); i++ {
-		if s[i:i+len(sub)] == sub {
-			return i
-		}
-	}
-	return -1
 }

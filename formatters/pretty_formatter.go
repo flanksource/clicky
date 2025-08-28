@@ -2,304 +2,326 @@ package formatters
 
 import (
 	"fmt"
-	"github.com/flanksource/clicky/api"
-	"github.com/flanksource/clicky/api/tailwind"
 	"reflect"
 	"sort"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/flanksource/clicky/api"
 )
 
-// PrettyFormatter handles formatting of PrettyObject to styled output
+// PrettyFormatter handles formatting of structs with pretty tags
 type PrettyFormatter struct {
 	Theme   api.Theme
 	NoColor bool
+	parser  *api.StructParser
 }
 
 // NewPrettyFormatter creates a new formatter with adaptive theme
 func NewPrettyFormatter() *PrettyFormatter {
 	return &PrettyFormatter{
-		Theme: api.AutoTheme(),
+		Theme:  api.AutoTheme(),
+		parser: api.NewStructParser(),
 	}
 }
 
 // NewPrettyFormatterWithTheme creates a new formatter with a specific theme
 func NewPrettyFormatterWithTheme(theme api.Theme) *PrettyFormatter {
 	return &PrettyFormatter{
-		Theme: theme,
+		Theme:  theme,
+		parser: api.NewStructParser(),
 	}
 }
 
-// Format formats data into styled output, accepting any interface{}
-func (f *PrettyFormatter) Format(data interface{}) (string, error) {
-	// Convert to PrettyData
-	prettyData, err := f.ToPrettyData(data)
-	if err != nil {
-		return "", fmt.Errorf("failed to convert to PrettyData: %w", err)
+// Format formats data and returns formatted output
+func (p *PrettyFormatter) Format(data interface{}) (string, error) {
+	// Check if this is already parsed PrettyData
+	if prettyData, ok := data.(*api.PrettyData); ok {
+		return p.FormatPrettyData(prettyData)
 	}
+	return p.Parse(data)
+}
 
-	if prettyData == nil || prettyData.Schema == nil {
+// Parse parses a struct and returns formatted output
+func (p *PrettyFormatter) Parse(data interface{}) (string, error) {
+	if data == nil {
 		return "", nil
 	}
 
-	return f.FormatPrettyData(prettyData)
-}
-
-// ToPrettyData converts various input types to PrettyData
-func (f *PrettyFormatter) ToPrettyData(data interface{}) (*api.PrettyData, error) {
-	return ToPrettyData(data)
-}
-
-// parseStructSchema creates a PrettyObject schema from struct tags
-func (f *PrettyFormatter) parseStructSchema(val reflect.Value) (*api.PrettyObject, error) {
-	return ParseStructSchema(val)
-}
-
-// parsePrettyTag parses a pretty tag string into a PrettyField
-func (f *PrettyFormatter) parsePrettyTag(fieldName string, tag string) api.PrettyField {
-	return ParsePrettyTag(fieldName, tag)
-}
-
-// getTableFields extracts fields from a struct for table formatting
-func (f *PrettyFormatter) getTableFields(val reflect.Value) ([]api.PrettyField, error) {
-	return GetTableFields(val)
-}
-
-// getFieldValueCaseInsensitive tries to find a field by name with different casing
-func (f *PrettyFormatter) getFieldValueCaseInsensitive(val reflect.Value, name string) reflect.Value {
-	return GetFieldValueCaseInsensitive(val, name)
-}
-
-// structToRow converts a struct to a PrettyDataRow
-func (f *PrettyFormatter) structToRow(val reflect.Value) (api.PrettyDataRow, error) {
-	return StructToRow(val)
-}
-
-// formatStruct formats a struct using the PrettyObject definition
-func (f *PrettyFormatter) formatStruct(obj *api.PrettyObject, val reflect.Value) (string, error) {
-	var sections []string
-	var summaryFields []api.PrettyField
-	var tableFields []api.PrettyField
-
-	// First pass: separate special format fields from summary fields
-	for _, field := range obj.Fields {
-		if field.Format == api.FormatTable {
-			tableFields = append(tableFields, field)
-		} else if field.Format == api.FormatTree {
-			// Tree fields are handled as individual summary items for now
-			// They will render the full tree inline
-			summaryFields = append(summaryFields, field)
-		} else {
-			summaryFields = append(summaryFields, field)
-		}
-	}
-
-	// Format summary fields first in 2-column layout
-	if len(summaryFields) > 0 {
-		summaryOutput := f.formatSummaryFields(summaryFields, val)
-		sections = append(sections, summaryOutput)
-	}
-
-	// Then handle tables
-	for _, field := range tableFields {
-		fieldVal := f.getFieldValue(val, field.Name)
-		if fieldVal.Kind() == reflect.Slice {
-			tableOutput, err := f.formatTable(fieldVal, field)
-			if err != nil {
-				return "", err
-			}
-			sections = append(sections, tableOutput)
-		}
-	}
-
-	return strings.Join(sections, "\n"), nil
-}
-
-// formatSummaryFields formats non-table fields in a 2-column layout
-func (f *PrettyFormatter) formatSummaryFields(fields []api.PrettyField, val reflect.Value) string {
-	if len(fields) == 0 {
-		return ""
-	}
-
-	// Create pairs of fields for 2-column layout
-	var rows []string
-	for i := 0; i < len(fields); i += 2 {
-		leftField := fields[i]
-		leftVal := f.getFieldValue(val, leftField.Name)
-		leftFormatted := f.formatFieldForSummary(leftField.Name, leftVal, leftField)
-
-		if i+1 < len(fields) {
-			// Two columns
-			rightField := fields[i+1]
-			rightVal := f.getFieldValue(val, rightField.Name)
-			rightFormatted := f.formatFieldForSummary(rightField.Name, rightVal, rightField)
-
-			// Create side-by-side layout with wider columns
-			leftColumn := lipgloss.NewStyle().Width(50).Render(leftFormatted)
-			rightColumn := lipgloss.NewStyle().Width(50).Render(rightFormatted)
-			row := lipgloss.JoinHorizontal(lipgloss.Left, leftColumn, rightColumn)
-			rows = append(rows, row)
-		} else {
-			// Single column for odd number of fields
-			rows = append(rows, leftFormatted)
-		}
-	}
-
-	return strings.Join(rows, "\n")
-}
-
-// formatFieldForSummary formats a field for the summary section with pretty field names
-func (f *PrettyFormatter) formatFieldForSummary(name string, val reflect.Value, field api.PrettyField) string {
-	prettyName := f.prettifyFieldName(name)
-
-	// Handle slices and maps specially to dereference pointer elements
-	var value interface{}
-	if val.Kind() == reflect.Slice {
-		value = f.dereferenceSliceElements(val)
-	} else if val.Kind() == reflect.Map {
-		value = f.dereferenceMapValues(val)
-	} else {
-		value = val.Interface()
-	}
-
-	valueStr := f.formatValue(value, field)
-
-	// Apply label_style if specified, otherwise use default
-	var styledLabel string
-	if field.LabelStyle != "" {
-		styledLabel = f.applyTailwindStyleToText(prettyName, field.LabelStyle)
-	} else {
-		// Default label style
-		labelStyle := lipgloss.NewStyle().Bold(true)
-		if !f.NoColor {
-			labelStyle = labelStyle.Foreground(f.Theme.Primary)
-		}
-		styledLabel = f.applyStyle(prettyName, labelStyle)
-	}
-
-	return fmt.Sprintf("%s: %s", styledLabel, valueStr)
-}
-
-// prettifyFieldName converts field names to readable format
-func (f *PrettyFormatter) prettifyFieldName(name string) string {
-	return PrettifyFieldName(name)
-}
-
-// splitCamelCase splits camelCase strings into words
-func (f *PrettyFormatter) splitCamelCase(s string) []string {
-	return SplitCamelCase(s)
-}
-
-// getFieldValue gets a field value by name from a struct
-func (f *PrettyFormatter) getFieldValue(val reflect.Value, fieldName string) reflect.Value {
-	return GetFieldValue(val, fieldName)
-}
-
-// formatField formats a single field
-func (f *PrettyFormatter) formatField(name string, val reflect.Value, field api.PrettyField) string {
-	labelStyle := lipgloss.NewStyle().Bold(true)
-	if !f.NoColor {
-		labelStyle = labelStyle.Foreground(f.Theme.Primary)
-	}
-
-	valueStr := f.formatValue(val.Interface(), field)
-
-	return fmt.Sprintf("%s: %s",
-		f.applyStyle(name, labelStyle),
-		valueStr)
-}
-
-// formatValue formats a value based on the pretty field configuration
-func (f *PrettyFormatter) formatValue(value interface{}, field api.PrettyField) string {
-	if value == nil {
-		return f.applyStyle("null", lipgloss.NewStyle().Foreground(f.Theme.Muted))
-	}
-
-	val := reflect.ValueOf(value)
-	if val.Kind() == reflect.Ptr && val.IsNil() {
-		return f.applyStyle("null", lipgloss.NewStyle().Foreground(f.Theme.Muted))
-	}
+	val := reflect.ValueOf(data)
 	if val.Kind() == reflect.Ptr {
 		val = val.Elem()
-		value = val.Interface()
 	}
 
-	// Check if value implements Pretty interface
-	if pretty, ok := value.(api.Pretty); ok {
-		text := pretty.Pretty()
-		return text.ANSI() // Use ANSI formatting for terminal output
+	if val.Kind() != reflect.Struct {
+		return p.formatValue(val, api.PrettyField{}), nil
 	}
 
-	// Handle nested structs with indentation
-	if val.Kind() == reflect.Struct {
-		return f.formatNestedStruct(val, 0)
-	}
-
-	// Parse value using FieldValue
-	fieldValue, err := field.Parse(value)
-	if err != nil {
-		return f.formatDefault(value)
-	}
-
-	// Get formatted string from FieldValue
-	formatted := fieldValue.Formatted()
-
-	// Apply style if specified
-	if field.Style != "" {
-		return f.applyTailwindStyleToText(formatted, field.Style)
-	}
-
-	// Apply color styling using FieldValue.Color()
-	if color := fieldValue.Color(); color != "" {
-		style := f.getColorStyle(color)
-		return f.applyStyle(formatted, style)
-	}
-
-	// Apply specific styling based on format
-	switch field.Format {
-	case api.FormatCurrency:
-		style := lipgloss.NewStyle()
-		if !f.NoColor {
-			style = style.Foreground(f.Theme.Success)
-		}
-		return f.applyStyle(formatted, style)
-	case api.FormatDate:
-		style := lipgloss.NewStyle()
-		if !f.NoColor {
-			style = style.Foreground(f.Theme.Info)
-		}
-		return f.applyStyle(formatted, style)
-	case api.FormatFloat:
-		style := lipgloss.NewStyle()
-		if !f.NoColor {
-			style = style.Foreground(f.Theme.Secondary)
-		}
-		return f.applyStyle(formatted, style)
-	case api.FormatTree:
-		return f.formatTree(value, field)
-	default:
-		return formatted
-	}
+	return p.parseStruct(val)
 }
 
-// formatNestedStruct formats a nested struct with indentation
-func (f *PrettyFormatter) formatNestedStruct(val reflect.Value, indentLevel int) string {
-	if val.Kind() != reflect.Struct {
-		return f.formatDefault(val.Interface())
+// FormatPrettyData formats PrettyData structure
+func (p *PrettyFormatter) FormatPrettyData(data *api.PrettyData) (string, error) {
+	if data == nil {
+		return "", nil
 	}
 
-	// Check if struct implements Pretty interface
-	if val.CanInterface() {
-		if pretty, ok := val.Interface().(api.Pretty); ok {
-			text := pretty.Pretty()
-			return text.ANSI() // Use ANSI formatting for terminal output
+	var result []string
+
+	// Format regular fields
+	for _, field := range data.Schema.Fields {
+		if field.Format == api.FormatHide {
+			continue
+		}
+
+		// Skip table fields - they'll be handled separately
+		if field.Format == api.FormatTable {
+			continue
+		}
+
+		if fieldValue, ok := data.Values[field.Name]; ok {
+			// Use the field's label or name
+			label := field.Label
+			if label == "" {
+				label = api.PrettifyFieldName(field.Name)
+			}
+
+			// Handle nested map fields - check Format, Type, or presence of NestedFields (for schema mismatches)
+			if (field.Format == "map" || field.Type == "map" || fieldValue.NestedFields != nil) && fieldValue.NestedFields != nil {
+				// Add the field label first
+				result = append(result, label+":")
+				// Format nested fields with indentation
+				nestedLines := p.formatNestedFields(fieldValue, field, 1)
+				result = append(result, nestedLines...)
+			} else {
+				formatted := p.formatField(label, reflect.ValueOf(fieldValue.Value), field)
+				result = append(result, formatted)
+			}
 		}
 	}
 
+	// Format table fields
+	for _, field := range data.Schema.Fields {
+		if field.Format == api.FormatTable {
+			if tableRows, ok := data.Tables[field.Name]; ok && len(tableRows) > 0 {
+				// Convert table rows to items
+				var items []interface{}
+				for _, row := range tableRows {
+					// Convert row map to struct-like map for table rendering
+					rowMap := make(map[string]interface{})
+					for k, v := range row {
+						rowMap[k] = v.Value
+					}
+					items = append(items, rowMap)
+				}
+
+				// Render table - check if field definitions are available
+				var tableStr string
+				var err error
+				if len(field.Fields) > 0 {
+					tableStr, err = p.renderTableFromData(items, field.Fields)
+				} else {
+					tableStr, err = p.renderTableFromMaps(items)
+				}
+				if err == nil {
+					result = append(result, tableStr)
+				}
+			}
+		}
+	}
+
+	return strings.Join(result, "\n"), nil
+}
+
+// formatNestedFields formats nested map fields recursively
+func (p *PrettyFormatter) formatNestedFields(fieldValue api.FieldValue, field api.PrettyField, indent int) []string {
+	var result []string
+
+	// Check if the value is a map with nested values
+	if fieldValue.NestedFields != nil {
+		if len(fieldValue.NestedFields) == 0 {
+			// Empty map case
+			indentStr := strings.Repeat("\t", indent)
+			result = append(result, indentStr+"(empty)")
+			return result
+		}
+		nestedMap := fieldValue.NestedFields
+
+		// If schema has field definitions, use those for ordering and metadata
+		if len(field.Fields) > 0 {
+			// Format each nested field using schema definitions
+			for _, nestedField := range field.Fields {
+				if nestedValue, ok := nestedMap[nestedField.Name]; ok {
+					label := nestedField.Label
+					if label == "" {
+						label = api.PrettifyFieldName(nestedField.Name)
+					}
+
+					// Add indentation with tabs
+					indentStr := strings.Repeat("\t", indent)
+
+					// Check if this field has further nesting
+					if (nestedField.Format == "map" || nestedField.Type == "map") && nestedValue.NestedFields != nil {
+						// Recursive formatting
+						result = append(result, indentStr+label+":")
+						subLines := p.formatNestedFields(nestedValue, nestedField, indent+1)
+						result = append(result, subLines...)
+					} else {
+						// Format the field value
+						formatted := p.formatField(label, reflect.ValueOf(nestedValue.Value), nestedField)
+						result = append(result, indentStr+formatted)
+					}
+				}
+			}
+		} else {
+			// No schema definitions - iterate over all nested fields
+			for fieldName, nestedValue := range nestedMap {
+				label := api.PrettifyFieldName(fieldName)
+
+				// Add indentation with tabs
+				indentStr := strings.Repeat("\t", indent)
+
+				// Check if this field has further nesting
+				if nestedValue.NestedFields != nil {
+					// Recursive formatting - create a minimal field definition
+					nestedField := api.PrettyField{Name: fieldName, Type: "map"}
+					result = append(result, indentStr+label+":")
+					subLines := p.formatNestedFields(nestedValue, nestedField, indent+1)
+					result = append(result, subLines...)
+				} else {
+					// Format the field value with empty field definition
+					formatted := p.formatField(label, reflect.ValueOf(nestedValue.Value), api.PrettyField{})
+					result = append(result, indentStr+formatted)
+				}
+			}
+		}
+	} else {
+		// Fall back to simple formatting
+		formatted := p.formatField(field.Label, reflect.ValueOf(fieldValue.Value), field)
+		result = append(result, formatted)
+	}
+
+	return result
+}
+
+// renderTableFromData renders a table from map items using field definitions
+func (p *PrettyFormatter) renderTableFromData(items []interface{}, fieldDefs []api.PrettyField) (string, error) {
+	if len(items) == 0 {
+		return "", nil
+	}
+
+	// Get headers from field definitions
+	var headers []string
+	fieldMap := make(map[string]api.PrettyField)
+	for _, fieldDef := range fieldDefs {
+		headers = append(headers, fieldDef.Name)
+		fieldMap[fieldDef.Name] = fieldDef
+	}
+
+	// Create rows
+	var rows [][]string
+
+	// Header row
+	headerRow := make([]string, len(headers))
+	for i, header := range headers {
+		style := lipgloss.NewStyle().Bold(true)
+		if !p.NoColor {
+			style = style.Foreground(p.Theme.Primary)
+		}
+		headerRow[i] = p.applyStyle(header, style)
+	}
+	rows = append(rows, headerRow)
+
+	// Data rows
+	for _, item := range items {
+		itemMap, ok := item.(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		row := make([]string, len(headers))
+		for i, header := range headers {
+			if val, ok := itemMap[header]; ok {
+				// Use the field definition for proper formatting
+				fieldDef := fieldMap[header]
+				row[i] = p.formatValue(reflect.ValueOf(val), fieldDef)
+			} else {
+				row[i] = ""
+			}
+		}
+		rows = append(rows, row)
+	}
+
+	return p.formatTableRows(rows), nil
+}
+
+// renderTableFromMaps renders a table from map items
+func (p *PrettyFormatter) renderTableFromMaps(items []interface{}) (string, error) {
+	if len(items) == 0 {
+		return "", nil
+	}
+
+	// Get headers from first item
+	firstItem, ok := items[0].(map[string]interface{})
+	if !ok {
+		return p.renderTable(items)
+	}
+
+	var headers []string
+	for key := range firstItem {
+		headers = append(headers, key)
+	}
+	sort.Strings(headers)
+
+	// Create rows
+	var rows [][]string
+
+	// Header row
+	headerRow := make([]string, len(headers))
+	for i, header := range headers {
+		style := lipgloss.NewStyle().Bold(true)
+		if !p.NoColor {
+			style = style.Foreground(p.Theme.Primary)
+		}
+		headerRow[i] = p.applyStyle(header, style)
+	}
+	rows = append(rows, headerRow)
+
+	// Data rows
+	for _, item := range items {
+		itemMap, ok := item.(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		row := make([]string, len(headers))
+		for i, header := range headers {
+			if val, ok := itemMap[header]; ok {
+				// Try to find the field definition to get proper formatting
+				var field api.PrettyField
+				// This is a simple approach - in a full implementation we'd need to pass field definitions
+				if strings.Contains(header, "date") || strings.Contains(header, "time") || strings.Contains(header, "at") {
+					field.Format = "date"
+				} else if strings.Contains(header, "amount") || strings.Contains(header, "price") {
+					field.Format = "currency"
+				}
+				row[i] = p.formatValue(reflect.ValueOf(val), field)
+			} else {
+				row[i] = ""
+			}
+		}
+		rows = append(rows, row)
+	}
+
+	return p.formatTableRows(rows), nil
+}
+
+// parseStruct processes a struct and its tags
+func (p *PrettyFormatter) parseStruct(val reflect.Value) (string, error) {
 	typ := val.Type()
-	var lines []string
-	indent := strings.Repeat("  ", indentLevel)
+	var fields []string
 
 	for i := 0; i < val.NumField(); i++ {
 		field := typ.Field(i)
@@ -309,113 +331,369 @@ func (f *PrettyFormatter) formatNestedStruct(val reflect.Value, indentLevel int)
 			continue
 		}
 
-		// Skip hidden fields
 		prettyTag := field.Tag.Get("pretty")
-		if strings.Contains(prettyTag, api.FormatHide) {
+		jsonTag := field.Tag.Get("json")
+
+		// Skip hidden fields
+		if prettyTag == "hide" || prettyTag == api.FormatHide {
 			continue
 		}
 
 		fieldName := field.Name
-		jsonTag := field.Tag.Get("json")
 		if jsonTag != "" && jsonTag != "-" {
-			if parts := strings.Split(jsonTag, ","); len(parts) > 0 && parts[0] != "" {
+			if parts := strings.Split(jsonTag, ","); parts[0] != "" {
 				fieldName = parts[0]
 			}
 		}
 
-		prettyName := f.prettifyFieldName(fieldName)
+		prettyField := api.ParsePrettyTagWithName(fieldName, prettyTag)
 
-		labelStyle := lipgloss.NewStyle().Bold(true)
-		if !f.NoColor {
-			labelStyle = labelStyle.Foreground(f.Theme.Primary)
+		// Handle table formatting
+		if prettyField.Format == api.FormatTable {
+			if fieldVal.Kind() == reflect.Slice {
+				tableOutput, err := p.formatTable(fieldVal, prettyField)
+				if err != nil {
+					return "", err
+				}
+				fields = append(fields, tableOutput)
+				continue
+			}
 		}
 
-		var valueStr string
-		if fieldVal.Kind() == reflect.Struct {
-			// Recursively format nested structs
-			valueStr = "\n" + f.formatNestedStruct(fieldVal, indentLevel+1)
-		} else {
-			// Format primitive values
-			prettyField := api.PrettyField{} // Use default formatting for nested fields
-			valueStr = f.formatValue(fieldVal.Interface(), prettyField)
+		// Handle tree formatting
+		if prettyField.Format == api.FormatTree {
+			treeOutput := p.formatAsTree(fieldVal, prettyField)
+			if treeOutput != "" {
+				fields = append(fields, treeOutput)
+			}
+			continue
 		}
 
-		line := fmt.Sprintf("%s%s: %s",
-			indent,
-			f.applyStyle(prettyName, labelStyle),
-			valueStr)
-		lines = append(lines, line)
+		formatted := p.formatField(fieldName, fieldVal, prettyField)
+		fields = append(fields, formatted)
 	}
 
-	return strings.Join(lines, "\n")
+	return strings.Join(fields, "\n"), nil
+}
+
+// formatField formats a single field
+func (p *PrettyFormatter) formatField(name string, val reflect.Value, field api.PrettyField) string {
+	labelStyle := lipgloss.NewStyle().Bold(true)
+	if !p.NoColor {
+		labelStyle = labelStyle.Foreground(p.Theme.Primary)
+	}
+
+	valueStr := p.formatValue(val, field)
+
+	return fmt.Sprintf("%s: %s",
+		labelStyle.Render(name),
+		valueStr)
+}
+
+// formatValue formats a value based on the pretty field configuration
+func (p *PrettyFormatter) formatValue(val reflect.Value, field api.PrettyField) string {
+	return p.formatValueWithVisited(val, field, make(map[uintptr]bool))
+}
+
+// formatValueWithVisited formats a value with circular reference detection
+func (p *PrettyFormatter) formatValueWithVisited(val reflect.Value, field api.PrettyField, visited map[uintptr]bool) string {
+	// Check for custom render function first
+	if field.RenderFunc != nil {
+		var value interface{}
+		if val.IsValid() {
+			value = val.Interface()
+		}
+		return field.RenderFunc(value, field, p.Theme)
+	}
+
+	if !val.IsValid() || (val.Kind() == reflect.Ptr && val.IsNil()) {
+		return p.applyStyle("null", lipgloss.NewStyle().Foreground(p.Theme.Muted))
+	}
+
+	if val.Kind() == reflect.Ptr {
+		val = val.Elem()
+	}
+
+	switch field.Format {
+	case "currency":
+		return p.formatCurrency(val)
+	case "date":
+		return p.formatDate(val, field.FormatOptions["format"])
+	case "float":
+		return p.formatFloat(val, field.FormatOptions["digits"])
+	case "color":
+		return p.formatWithColor(val, field.ColorOptions)
+	case api.FormatTree:
+		return p.formatAsTree(val, field)
+	default:
+		return p.formatDefaultWithVisited(val, visited)
+	}
+}
+
+// formatCurrency formats a value as currency
+func (p *PrettyFormatter) formatCurrency(val reflect.Value) string {
+	style := lipgloss.NewStyle()
+	if !p.NoColor {
+		style = style.Foreground(p.Theme.Success)
+	}
+
+	switch val.Kind() {
+	case reflect.Float32, reflect.Float64:
+		return p.applyStyle(fmt.Sprintf("$%.2f", val.Float()), style)
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return p.applyStyle(fmt.Sprintf("$%.2f", float64(val.Int())), style)
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		return p.applyStyle(fmt.Sprintf("$%.2f", float64(val.Uint())), style)
+	default:
+		return p.formatDefault(val)
+	}
+}
+
+// formatDate formats a value as date
+func (p *PrettyFormatter) formatDate(val reflect.Value, format string) string {
+	style := lipgloss.NewStyle()
+	if !p.NoColor {
+		style = style.Foreground(p.Theme.Info)
+	}
+
+	var t time.Time
+
+	switch val.Kind() {
+	case reflect.String:
+		str := val.String()
+		// Try parsing as Unix timestamp
+		if timestamp, err := strconv.ParseInt(str, 10, 64); err == nil {
+			t = time.Unix(timestamp, 0)
+		} else {
+			// Try parsing as RFC3339
+			parsed, err := time.Parse(time.RFC3339, str)
+			if err != nil {
+				return str
+			}
+			t = parsed
+		}
+	case reflect.Int, reflect.Int64:
+		t = time.Unix(val.Int(), 0)
+	default:
+		if val.Type() == reflect.TypeOf(time.Time{}) {
+			t = val.Interface().(time.Time)
+		} else {
+			return p.formatDefault(val)
+		}
+	}
+
+	if format == "" {
+		format = "2006-01-02 15:04:05"
+	}
+	return p.applyStyle(t.Format(format), style)
+}
+
+// formatFloat formats a float with specified precision
+func (p *PrettyFormatter) formatFloat(val reflect.Value, digits string) string {
+	precision := 2
+	if digits != "" {
+		if p, err := strconv.Atoi(digits); err == nil {
+			precision = p
+		}
+	}
+
+	style := lipgloss.NewStyle()
+	if !p.NoColor {
+		style = style.Foreground(p.Theme.Warning)
+	}
+
+	switch val.Kind() {
+	case reflect.Float32, reflect.Float64:
+		format := fmt.Sprintf("%%.%df", precision)
+		return p.applyStyle(fmt.Sprintf(format, val.Float()), style)
+	default:
+		return p.formatDefault(val)
+	}
+}
+
+// formatWithColor formats a value with specified color
+func (p *PrettyFormatter) formatWithColor(val reflect.Value, colorOptions map[string]string) string {
+	str := p.formatDefault(val)
+
+	if p.NoColor {
+		return str
+	}
+
+	style := lipgloss.NewStyle()
+	if fg, ok := colorOptions["fg"]; ok {
+		style = style.Foreground(lipgloss.Color(fg))
+	}
+	if bg, ok := colorOptions["bg"]; ok {
+		style = style.Background(lipgloss.Color(bg))
+	}
+
+	return style.Render(str)
 }
 
 // formatDefault formats a value using default formatting
-func (f *PrettyFormatter) formatDefault(value interface{}) string {
-	return fmt.Sprintf("%v", value)
+func (p *PrettyFormatter) formatDefault(val reflect.Value) string {
+	return p.formatDefaultWithVisited(val, make(map[uintptr]bool))
 }
 
-// dereferenceSliceElements processes a slice to dereference any pointer elements
-func (f *PrettyFormatter) dereferenceSliceElements(val reflect.Value) interface{} {
-	if val.Kind() != reflect.Slice {
-		return val.Interface()
+// formatDefaultWithVisited formats a value using default formatting with circular reference detection
+func (p *PrettyFormatter) formatDefaultWithVisited(val reflect.Value, visited map[uintptr]bool) string {
+	if !val.IsValid() {
+		return "null"
 	}
 
-	// Create a new slice with dereferenced elements
-	result := make([]interface{}, val.Len())
+	switch val.Kind() {
+	case reflect.Ptr:
+		if val.IsNil() {
+			return "null"
+		}
+		return p.formatDefaultWithVisited(val.Elem(), visited)
+	case reflect.String:
+		return val.String()
+	case reflect.Bool:
+		if val.Bool() {
+			if !p.NoColor {
+				return lipgloss.NewStyle().Foreground(p.Theme.Success).Render("true")
+			}
+			return "true"
+		}
+		if !p.NoColor {
+			return lipgloss.NewStyle().Foreground(p.Theme.Error).Render("false")
+		}
+		return "false"
+	case reflect.Map:
+		return p.formatMapWithVisited(val, visited)
+	case reflect.Slice, reflect.Array:
+		return p.formatSliceWithVisited(val, visited)
+	case reflect.Struct:
+		return p.formatStructWithVisited(val, visited)
+	default:
+		return fmt.Sprint(val.Interface())
+	}
+}
+
+// formatMap formats a map value
+func (p *PrettyFormatter) formatMap(val reflect.Value) string {
+	return p.formatMapWithVisited(val, make(map[uintptr]bool))
+}
+
+// formatMapWithVisited formats a map value with circular reference detection
+func (p *PrettyFormatter) formatMapWithVisited(val reflect.Value, visited map[uintptr]bool) string {
+	if val.IsNil() || val.Len() == 0 {
+		return "map[]"
+	}
+
+	// Check for circular references
+	if val.CanAddr() {
+		addr := val.UnsafeAddr()
+		if visited[addr] {
+			return "map[<circular>]"
+		}
+		visited[addr] = true
+		defer func() { delete(visited, addr) }()
+	}
+
+	var parts []string
+	keys := val.MapKeys()
+
+	// Sort keys for consistent output
+	sort.Slice(keys, func(i, j int) bool {
+		return fmt.Sprint(keys[i].Interface()) < fmt.Sprint(keys[j].Interface())
+	})
+
+	for _, key := range keys {
+		value := val.MapIndex(key)
+		formattedValue := p.formatValueWithVisited(value, api.PrettyField{}, visited)
+		parts = append(parts, fmt.Sprintf("%v:%s", key.Interface(), formattedValue))
+	}
+
+	return fmt.Sprintf("map[%s]", strings.Join(parts, " "))
+}
+
+// formatSlice formats a slice value
+func (p *PrettyFormatter) formatSlice(val reflect.Value) string {
+	return p.formatSliceWithVisited(val, make(map[uintptr]bool))
+}
+
+// formatSliceWithVisited formats a slice value with circular reference detection
+func (p *PrettyFormatter) formatSliceWithVisited(val reflect.Value, visited map[uintptr]bool) string {
+	if val.IsNil() || val.Len() == 0 {
+		return "[]"
+	}
+
+	// Check for circular references
+	if val.CanAddr() {
+		addr := val.UnsafeAddr()
+		if visited[addr] {
+			return "[<circular>]"
+		}
+		visited[addr] = true
+		defer func() { delete(visited, addr) }()
+	}
+
+	var parts []string
 	for i := 0; i < val.Len(); i++ {
-		elem := val.Index(i)
-		if elem.Kind() == reflect.Ptr {
-			if elem.IsNil() {
-				result[i] = nil
-			} else {
-				result[i] = elem.Elem().Interface()
-			}
-		} else {
-			result[i] = elem.Interface()
-		}
+		element := val.Index(i)
+		formattedValue := p.formatValueWithVisited(element, api.PrettyField{}, visited)
+		parts = append(parts, formattedValue)
 	}
 
-	return result
+	return fmt.Sprintf("[%s]", strings.Join(parts, ", "))
 }
 
-// dereferenceMapValues processes a map to dereference any pointer values
-func (f *PrettyFormatter) dereferenceMapValues(val reflect.Value) interface{} {
-	if val.Kind() != reflect.Map {
-		return val.Interface()
-	}
-
-	// Create a new map with dereferenced values
-	result := make(map[string]interface{})
-	iter := val.MapRange()
-	for iter.Next() {
-		k := iter.Key()
-		v := iter.Value()
-
-		keyStr := fmt.Sprintf("%v", k.Interface())
-
-		if v.Kind() == reflect.Ptr {
-			if v.IsNil() {
-				result[keyStr] = nil
-			} else {
-				result[keyStr] = v.Elem().Interface()
-			}
-		} else {
-			result[keyStr] = v.Interface()
+// formatStructWithVisited formats a struct value with circular reference detection
+func (p *PrettyFormatter) formatStructWithVisited(val reflect.Value, visited map[uintptr]bool) string {
+	// Check for circular references
+	if val.CanAddr() {
+		addr := val.UnsafeAddr()
+		if visited[addr] {
+			return "{<circular>}"
 		}
+		visited[addr] = true
+		defer func() { delete(visited, addr) }()
 	}
 
-	return result
+	// For structs, format them in a compact inline way to avoid infinite recursion
+	// This is different from the full parseStruct which formats each field on separate lines
+	typ := val.Type()
+	var parts []string
+
+	for i := 0; i < val.NumField(); i++ {
+		field := typ.Field(i)
+		fieldVal := val.Field(i)
+
+		if !fieldVal.CanInterface() {
+			continue
+		}
+
+		prettyTag := field.Tag.Get("pretty")
+		if prettyTag == "hide" || prettyTag == api.FormatHide {
+			continue
+		}
+
+		// Format field value with visited tracking
+		valueStr := p.formatValueWithVisited(fieldVal, api.PrettyField{}, visited)
+		parts = append(parts, fmt.Sprintf("%s:%s", field.Name, valueStr))
+	}
+
+	return fmt.Sprintf("{%s}", strings.Join(parts, " "))
+}
+
+// applyStyle applies a lipgloss style if colors are enabled
+func (p *PrettyFormatter) applyStyle(text string, style lipgloss.Style) string {
+	if p.NoColor {
+		return text
+	}
+	return style.Render(text)
 }
 
 // formatTable formats a slice as a table
-func (f *PrettyFormatter) formatTable(val reflect.Value, field api.PrettyField) (string, error) {
+func (p *PrettyFormatter) formatTable(val reflect.Value, field api.PrettyField) (string, error) {
 	if val.Kind() != reflect.Slice {
 		return "", fmt.Errorf("table format requires a slice")
 	}
 
 	if val.Len() == 0 {
-		return f.applyStyle("(empty table)", lipgloss.NewStyle().Foreground(f.Theme.Muted)), nil
+		return p.applyStyle("(empty table)", lipgloss.NewStyle().Foreground(p.Theme.Muted)), nil
 	}
 
 	// Convert slice to []interface{}
@@ -430,19 +708,19 @@ func (f *PrettyFormatter) formatTable(val reflect.Value, field api.PrettyField) 
 		if direction == "" {
 			direction = "asc"
 		}
-		f.sortSlice(items, sortField, direction)
+		p.sortSlice(items, sortField, direction)
 	}
 
-	return f.renderTable(items, field.TableOptions.Fields)
+	return p.renderTable(items)
 }
 
 // sortSlice sorts a slice of structs by a field
-func (f *PrettyFormatter) sortSlice(items []interface{}, fieldName string, direction string) {
+func (p *PrettyFormatter) sortSlice(items []interface{}, fieldName, direction string) {
 	sort.Slice(items, func(i, j int) bool {
-		valI := f.getStructFieldValue(items[i], fieldName)
-		valJ := f.getStructFieldValue(items[j], fieldName)
+		valI := p.getFieldValue(items[i], fieldName)
+		valJ := p.getFieldValue(items[j], fieldName)
 
-		less := f.compareValues(valI, valJ)
+		less := p.compareValues(valI, valJ)
 		if direction == "desc" {
 			return !less
 		}
@@ -450,8 +728,8 @@ func (f *PrettyFormatter) sortSlice(items []interface{}, fieldName string, direc
 	})
 }
 
-// getStructFieldValue gets a field value from a struct using reflection
-func (f *PrettyFormatter) getStructFieldValue(item interface{}, fieldName string) interface{} {
+// getFieldValue gets a field value from a struct using reflection
+func (p *PrettyFormatter) getFieldValue(item interface{}, fieldName string) interface{} {
 	val := reflect.ValueOf(item)
 	if val.Kind() == reflect.Ptr {
 		val = val.Elem()
@@ -483,7 +761,7 @@ func (f *PrettyFormatter) getStructFieldValue(item interface{}, fieldName string
 }
 
 // compareValues compares two values for sorting
-func (f *PrettyFormatter) compareValues(a, b interface{}) bool {
+func (p *PrettyFormatter) compareValues(a, b interface{}) bool {
 	if a == nil && b == nil {
 		return false
 	}
@@ -524,15 +802,15 @@ func (f *PrettyFormatter) compareValues(a, b interface{}) bool {
 }
 
 // renderTable renders items as a formatted table
-func (f *PrettyFormatter) renderTable(items []interface{}, fields []api.PrettyField) (string, error) {
+func (p *PrettyFormatter) renderTable(items []interface{}) (string, error) {
 	if len(items) == 0 {
 		return "", nil
 	}
 
-	// Get headers
-	headers := make([]string, len(fields))
-	for i, field := range fields {
-		headers[i] = field.Name
+	// Get headers from first item
+	headers, err := p.getTableHeaders(items[0])
+	if err != nil {
+		return "", err
 	}
 
 	// Create table
@@ -542,197 +820,193 @@ func (f *PrettyFormatter) renderTable(items []interface{}, fields []api.PrettyFi
 	headerRow := make([]string, len(headers))
 	for i, header := range headers {
 		style := lipgloss.NewStyle().Bold(true)
-		if !f.NoColor {
-			style = style.Foreground(f.Theme.Primary)
+		if !p.NoColor {
+			style = style.Foreground(p.Theme.Primary)
 		}
-		headerRow[i] = f.applyStyle(header, style)
+		headerRow[i] = p.applyStyle(header, style)
 	}
 	rows = append(rows, headerRow)
 
 	// Add data rows
 	for _, item := range items {
-		row, err := f.getTableRowFormatted(item, fields)
+		row, err := p.getTableRow(item, headers)
 		if err != nil {
 			continue // Skip invalid rows
 		}
 		rows = append(rows, row)
 	}
 
-	return f.formatTableRows(rows), nil
+	return p.formatTableRows(rows), nil
 }
 
-// getTableRowFormatted extracts a formatted row from a struct or map
-func (f *PrettyFormatter) getTableRowFormatted(item interface{}, fields []api.PrettyField) ([]string, error) {
+// getTableHeaders extracts headers from a struct
+func (p *PrettyFormatter) getTableHeaders(item interface{}) ([]string, error) {
 	val := reflect.ValueOf(item)
 	if val.Kind() == reflect.Ptr {
 		val = val.Elem()
 	}
 
-	row := make([]string, len(fields))
+	if val.Kind() != reflect.Struct {
+		return nil, fmt.Errorf("table items must be structs")
+	}
 
-	for i, field := range fields {
-		var fieldVal reflect.Value
+	var headers []string
+	typ := val.Type()
 
-		if val.Kind() == reflect.Struct {
-			fieldVal = f.getFieldValue(val, field.Name)
-		} else {
-			return nil, fmt.Errorf("table items must be structs, got %v", val.Kind())
-		}
+	for i := 0; i < val.NumField(); i++ {
+		field := typ.Field(i)
 
-		if !fieldVal.IsValid() {
-			row[i] = ""
+		// Skip hidden fields
+		prettyTag := field.Tag.Get("pretty")
+		if prettyTag == "hide" || prettyTag == api.FormatHide {
 			continue
 		}
 
-		// Format the value using the field specification
-		formatted := f.formatValue(fieldVal.Interface(), field)
-		row[i] = formatted
+		// Get display name
+		name := field.Name
+		jsonTag := field.Tag.Get("json")
+		if jsonTag != "" && jsonTag != "-" {
+			if parts := strings.Split(jsonTag, ","); parts[0] != "" {
+				name = parts[0]
+			}
+		}
+
+		headers = append(headers, name)
+	}
+
+	return headers, nil
+}
+
+// getTableRow extracts a row from a struct
+func (p *PrettyFormatter) getTableRow(item interface{}, headers []string) ([]string, error) {
+	val := reflect.ValueOf(item)
+	if val.Kind() == reflect.Ptr {
+		val = val.Elem()
+	}
+
+	if val.Kind() != reflect.Struct {
+		return nil, fmt.Errorf("table items must be structs")
+	}
+
+	row := make([]string, len(headers))
+	typ := val.Type()
+
+	headerIndex := 0
+	for i := 0; i < val.NumField(); i++ {
+		field := typ.Field(i)
+		fieldVal := val.Field(i)
+
+		// Skip hidden fields
+		prettyTag := field.Tag.Get("pretty")
+		if prettyTag == "hide" || prettyTag == api.FormatHide {
+			continue
+		}
+
+		if headerIndex >= len(headers) {
+			break
+		}
+
+		// Parse pretty tag for formatting
+		prettyField := api.ParsePrettyTagWithName(field.Name, prettyTag)
+
+		// Format the value
+		formatted := p.formatValue(fieldVal, prettyField)
+		row[headerIndex] = formatted
+		headerIndex++
 	}
 
 	return row, nil
 }
 
 // formatTableRows formats table rows with proper alignment
-func (f *PrettyFormatter) formatTableRows(rows [][]string) string {
+func (p *PrettyFormatter) formatTableRows(rows [][]string) string {
 	if len(rows) == 0 {
 		return ""
 	}
 
-	// Calculate column widths based on actual content
+	// Calculate column widths
 	colWidths := make([]int, len(rows[0]))
-	minWidth := 8  // Reduced minimum column width for better fitting
-	maxWidth := 50 // Maximum column width to prevent overly wide columns
-
 	for _, row := range rows {
 		for i, cell := range row {
 			// Strip ANSI codes for width calculation
-			cellWidth := len(f.stripAnsi(cell))
+			cellWidth := len(stripAnsi(cell))
 			if cellWidth > colWidths[i] {
 				colWidths[i] = cellWidth
 			}
 		}
 	}
 
-	// Apply min/max constraints and add minimal padding
-	for i := range colWidths {
-		// Ensure minimum width
-		if colWidths[i] < minWidth {
-			colWidths[i] = minWidth
-		}
-		// Cap at maximum width
-		if colWidths[i] > maxWidth {
-			colWidths[i] = maxWidth
-		}
-		// Add minimal padding (2 spaces on each side)
-		colWidths[i] += 2
-	}
-
 	// Create table style
 	borderStyle := lipgloss.NewStyle()
-	if !f.NoColor {
-		borderStyle = borderStyle.Foreground(f.Theme.Muted)
+	if !p.NoColor {
+		borderStyle = borderStyle.Foreground(p.Theme.Muted)
 	}
 
 	var result strings.Builder
 
 	// Top border
-	result.WriteString(f.createTableBorder(colWidths, "┌", "┬", "┐", "─", borderStyle))
+	result.WriteString(p.createTableBorder(colWidths, "┌", "┬", "┐", "─", borderStyle))
 	result.WriteString("\n")
 
 	// Header row
 	if len(rows) > 0 {
-		result.WriteString(f.formatTableRow(rows[0], colWidths, borderStyle))
+		result.WriteString(p.formatTableRow(rows[0], colWidths, borderStyle))
 		result.WriteString("\n")
 
 		// Header separator
 		if len(rows) > 1 {
-			result.WriteString(f.createTableBorder(colWidths, "├", "┼", "┤", "─", borderStyle))
+			result.WriteString(p.createTableBorder(colWidths, "├", "┼", "┤", "─", borderStyle))
 			result.WriteString("\n")
 		}
 	}
 
 	// Data rows
 	for i := 1; i < len(rows); i++ {
-		result.WriteString(f.formatTableRow(rows[i], colWidths, borderStyle))
+		result.WriteString(p.formatTableRow(rows[i], colWidths, borderStyle))
 		result.WriteString("\n")
 	}
 
 	// Bottom border
-	result.WriteString(f.createTableBorder(colWidths, "└", "┴", "┘", "─", borderStyle))
+	result.WriteString(p.createTableBorder(colWidths, "└", "┴", "┘", "─", borderStyle))
 
 	return result.String()
 }
 
 // formatTableRow formats a single table row
-func (f *PrettyFormatter) formatTableRow(row []string, colWidths []int, borderStyle lipgloss.Style) string {
+func (p *PrettyFormatter) formatTableRow(row []string, colWidths []int, borderStyle lipgloss.Style) string {
 	var result strings.Builder
 
-	result.WriteString(f.applyStyle("│", borderStyle))
+	result.WriteString(p.applyStyle("│", borderStyle))
 	for i, cell := range row {
-		// Calculate remaining padding after cell content
-		cellLen := len(f.stripAnsi(cell))
-		totalPadding := colWidths[i] - cellLen
-
-		// Distribute padding - 1 space before, rest after
+		padding := colWidths[i] - len(stripAnsi(cell))
 		result.WriteString(" ")
 		result.WriteString(cell)
-		if totalPadding > 0 {
-			result.WriteString(strings.Repeat(" ", totalPadding-1))
-		}
-		result.WriteString(f.applyStyle("│", borderStyle))
+		result.WriteString(strings.Repeat(" ", padding))
+		result.WriteString(" ")
+		result.WriteString(p.applyStyle("│", borderStyle))
 	}
 
 	return result.String()
 }
 
 // createTableBorder creates a table border line
-func (f *PrettyFormatter) createTableBorder(colWidths []int, left, mid, right, fill string, style lipgloss.Style) string {
+func (p *PrettyFormatter) createTableBorder(colWidths []int, left, mid, right, fill string, style lipgloss.Style) string {
 	var result strings.Builder
 
-	result.WriteString(f.applyStyle(left, style))
+	result.WriteString(p.applyStyle(left, style))
 	for i, width := range colWidths {
-		// Border width matches column width (includes padding)
-		result.WriteString(f.applyStyle(strings.Repeat(fill, width), style))
+		result.WriteString(p.applyStyle(strings.Repeat(fill, width+2), style))
 		if i < len(colWidths)-1 {
-			result.WriteString(f.applyStyle(mid, style))
+			result.WriteString(p.applyStyle(mid, style))
 		}
 	}
-	result.WriteString(f.applyStyle(right, style))
+	result.WriteString(p.applyStyle(right, style))
 
 	return result.String()
 }
 
-// applyStyle applies a lipgloss style if colors are enabled
-func (f *PrettyFormatter) applyStyle(text string, style lipgloss.Style) string {
-	if f.NoColor {
-		return text
-	}
-	return style.Render(text)
-}
-
-// applyFormatStyle applies styling based on format type
-func (f *PrettyFormatter) applyFormatStyle(text string, format string) string {
-	if f.NoColor {
-		return text
-	}
-
-	var style lipgloss.Style
-	switch format {
-	case api.FormatCurrency:
-		style = lipgloss.NewStyle().Foreground(f.Theme.Success)
-	case api.FormatDate:
-		style = lipgloss.NewStyle().Foreground(f.Theme.Info)
-	case api.FormatFloat:
-		style = lipgloss.NewStyle().Foreground(f.Theme.Secondary)
-	default:
-		return text
-	}
-
-	return f.applyStyle(text, style)
-}
-
 // stripAnsi removes ANSI escape codes for width calculation
-func (f *PrettyFormatter) stripAnsi(s string) string {
+func stripAnsi(s string) string {
 	// Simple ANSI stripping - in production you might want a more robust solution
 	var result strings.Builder
 	inEscape := false
@@ -754,368 +1028,28 @@ func (f *PrettyFormatter) stripAnsi(s string) string {
 	return result.String()
 }
 
-// getColorStyle returns lipgloss style for a color name
-func (f *PrettyFormatter) getColorStyle(color string) lipgloss.Style {
-	style := lipgloss.NewStyle()
-	if !f.NoColor {
-		switch color {
-		case "green":
-			style = style.Foreground(f.Theme.Success)
-		case "red":
-			style = style.Foreground(f.Theme.Error)
-		case "blue":
-			style = style.Foreground(f.Theme.Info)
-		case "yellow":
-			style = style.Foreground(f.Theme.Warning)
-		default:
-			style = style.Foreground(lipgloss.Color(color))
-		}
-	}
-	return style
-}
-
-// toLipglossStyle converts a tailwind.Style to lipgloss.Style
-func (f *PrettyFormatter) toLipglossStyle(style tailwind.Style) lipgloss.Style {
-	lipStyle := lipgloss.NewStyle()
-
-	if style.Foreground != "" {
-		lipStyle = lipStyle.Foreground(lipgloss.Color(style.Foreground))
-	}
-	if style.Background != "" {
-		lipStyle = lipStyle.Background(lipgloss.Color(style.Background))
-	}
-	if style.Bold {
-		lipStyle = lipStyle.Bold(true)
-	}
-	if style.Faint {
-		lipStyle = lipStyle.Faint(true)
-	}
-	if style.Italic {
-		lipStyle = lipStyle.Italic(true)
-	}
-	if style.Underline {
-		lipStyle = lipStyle.Underline(true)
-	}
-	if style.Strikethrough {
-		lipStyle = lipStyle.Strikethrough(true)
-	}
-	if style.MaxWidth > 0 {
-		lipStyle = lipStyle.MaxWidth(style.MaxWidth)
-	}
-
-	return lipStyle
-}
-
-// applyTailwindStyleToText applies both style and text transform to text
-func (f *PrettyFormatter) applyTailwindStyleToText(text string, styleStr string) string {
-	if f.NoColor {
-		// If no color, still apply text transforms
-		parsedStyle := tailwind.ParseStyle(styleStr)
-		if parsedStyle.TextTransform != "" {
-			text = tailwind.TransformText(text, parsedStyle.TextTransform)
-		}
-		return text
-	}
-
-	// Apply style and get transformed text
-	transformedText, style := tailwind.ApplyStyle(text, styleStr)
-	lipglossStyle := f.toLipglossStyle(style)
-	return f.applyStyle(transformedText, lipglossStyle)
-}
-
-// formatPrettyData formats PrettyData without using reflection
-func (f *PrettyFormatter) FormatPrettyData(data *api.PrettyData) (string, error) {
-	var sections []string
-	var summaryFields []api.PrettyField
-	var tableFields []api.PrettyField
-
-	// Separate special format fields from summary fields
-	for _, field := range data.Schema.Fields {
-		if field.Format == api.FormatTable {
-			tableFields = append(tableFields, field)
-		} else if field.Format == api.FormatTree {
-			// Tree fields are handled as individual summary items for now
-			// They will render the full tree inline
-			summaryFields = append(summaryFields, field)
-		} else {
-			summaryFields = append(summaryFields, field)
-		}
-	}
-
-	// Format summary fields
-	if len(summaryFields) > 0 {
-		summaryOutput := f.formatSummaryFieldsData(summaryFields, data.Values)
-		if summaryOutput != "" {
-			sections = append(sections, summaryOutput)
-		}
-	}
-
-	// Format tables
-	for _, field := range tableFields {
-		tableData, exists := data.Tables[field.Name]
-		if exists && len(tableData) > 0 {
-			tableOutput, err := f.formatTableData(tableData, field)
-			if err != nil {
-				return "", err
-			}
-			sections = append(sections, tableOutput)
-		}
-	}
-
-	return strings.Join(sections, "\n"), nil
-}
-
-// formatSummaryFieldsData formats summary fields from FieldValues
-func (f *PrettyFormatter) formatSummaryFieldsData(fields []api.PrettyField, values map[string]api.FieldValue) string {
-	if len(fields) == 0 {
-		return ""
-	}
-
-	// Create pairs of fields for 2-column layout
-	var rows []string
-	for i := 0; i < len(fields); i += 2 {
-		leftField := fields[i]
-		leftVal, leftExists := values[leftField.Name]
-
-		var leftFormatted string
-		if leftExists {
-			leftFormatted = f.formatFieldValueData(leftField.Name, leftVal, leftField)
-		} else {
-			// Field not in data
-			leftFormatted = f.formatMissingField(leftField.Name)
-		}
-
-		if i+1 < len(fields) {
-			// Two columns
-			rightField := fields[i+1]
-			rightVal, rightExists := values[rightField.Name]
-
-			var rightFormatted string
-			if rightExists {
-				rightFormatted = f.formatFieldValueData(rightField.Name, rightVal, rightField)
-			} else {
-				rightFormatted = f.formatMissingField(rightField.Name)
-			}
-
-			// Create side-by-side layout with wider columns
-			leftColumn := lipgloss.NewStyle().Width(50).Render(leftFormatted)
-			rightColumn := lipgloss.NewStyle().Width(50).Render(rightFormatted)
-			row := lipgloss.JoinHorizontal(lipgloss.Left, leftColumn, rightColumn)
-			rows = append(rows, row)
-		} else {
-			// Single column for odd number of fields
-			rows = append(rows, leftFormatted)
-		}
-	}
-
-	return strings.Join(rows, "\n")
-}
-
-// formatFieldValueData formats a single field value
-func (f *PrettyFormatter) formatFieldValueData(name string, val api.FieldValue, field api.PrettyField) string {
-	prettyName := f.prettifyFieldName(name)
-
-	// Handle tree format specially - format the actual data, not the string representation
-	if field.Format == api.FormatTree {
-		treeOutput := f.formatTree(val.Value, field)
-		// Apply label style to the field name
-		var styledLabel string
-		if field.LabelStyle != "" {
-			styledLabel = f.applyTailwindStyleToText(prettyName, field.LabelStyle)
-		} else {
-			labelStyle := lipgloss.NewStyle().Bold(true)
-			if !f.NoColor {
-				labelStyle = labelStyle.Foreground(f.Theme.Primary)
-			}
-			styledLabel = f.applyStyle(prettyName, labelStyle)
-		}
-		return fmt.Sprintf("%s:\n%s", styledLabel, treeOutput)
-	}
-
-	formatted := val.Formatted()
-
-	// Apply field style if specified (highest priority)
-	if field.Style != "" {
-		formatted = f.applyTailwindStyleToText(formatted, field.Style)
-	} else if color := val.Color(); color != "" {
-		// Apply color styling using FieldValue.Color()
-		style := f.getColorStyle(color)
-		formatted = f.applyStyle(formatted, style)
-	} else {
-		// Apply format-specific styling
-		formatted = f.applyFormatStyle(formatted, val.Field.Format)
-	}
-
-	// Apply label_style if specified, otherwise use default
-	var styledLabel string
-	if field.LabelStyle != "" {
-		styledLabel = f.applyTailwindStyleToText(prettyName, field.LabelStyle)
-	} else {
-		// Default label style
-		labelStyle := lipgloss.NewStyle().Bold(true)
-		if !f.NoColor {
-			labelStyle = labelStyle.Foreground(f.Theme.Primary)
-		}
-		styledLabel = f.applyStyle(prettyName, labelStyle)
-	}
-
-	return fmt.Sprintf("%s: %s", styledLabel, formatted)
-}
-
-// formatMissingField formats a field that has no data
-func (f *PrettyFormatter) formatMissingField(name string) string {
-	labelStyle := lipgloss.NewStyle().Bold(true)
-	if !f.NoColor {
-		labelStyle = labelStyle.Foreground(f.Theme.Primary)
-	}
-
-	prettyName := f.prettifyFieldName(name)
-	nullStyle := lipgloss.NewStyle()
-	if !f.NoColor {
-		nullStyle = nullStyle.Foreground(f.Theme.Muted)
-	}
-
-	return fmt.Sprintf("%s: %s",
-		f.applyStyle(prettyName, labelStyle),
-		f.applyStyle("null", nullStyle))
-}
-
-// formatTableData formats table data without reflection
-func (f *PrettyFormatter) formatTableData(rows []api.PrettyDataRow, field api.PrettyField) (string, error) {
-	if len(rows) == 0 {
-		return f.applyStyle("(empty table)", lipgloss.NewStyle().Foreground(f.Theme.Muted)), nil
-	}
-
-	// Get headers from table field definition
-	var headers []string
-	if len(field.TableOptions.Fields) > 0 {
-		headers = make([]string, len(field.TableOptions.Fields))
-		for i, tableField := range field.TableOptions.Fields {
-			headers[i] = tableField.Name
-		}
-	} else if len(field.Fields) > 0 {
-		// Fallback to Fields if TableOptions.Fields is empty
-		headers = make([]string, len(field.Fields))
-		for i, subField := range field.Fields {
-			headers[i] = subField.Label
-			if headers[i] == "" {
-				headers[i] = subField.Name
-			}
-		}
-	} else if len(rows) > 0 {
-		// Fallback to getting headers from first row
-		for key := range rows[0] {
-			headers = append(headers, key)
-		}
-	}
-
-	// Create table rows
-	var tableRows [][]string
-
-	// Add header row
-	headerRow := make([]string, len(headers))
-	for i, header := range headers {
-		// Use header_style if specified
-		if field.TableOptions.HeaderStyle != "" {
-			headerRow[i] = f.applyTailwindStyleToText(header, field.TableOptions.HeaderStyle)
-		} else {
-			// Default header style
-			style := lipgloss.NewStyle().Bold(true)
-			if !f.NoColor {
-				style = style.Foreground(f.Theme.Primary)
-			}
-			headerRow[i] = f.applyStyle(header, style)
-		}
-	}
-	tableRows = append(tableRows, headerRow)
-
-	// Add data rows
-	for _, row := range rows {
-		dataRow := make([]string, len(headers))
-
-		// Use appropriate field source for data extraction
-		if len(field.TableOptions.Fields) > 0 {
-			for i, tableField := range field.TableOptions.Fields {
-				fieldValue, exists := row[tableField.Name]
-				if exists {
-					formatted := fieldValue.Formatted()
-
-					// Apply individual field style first (highest priority)
-					if tableField.Style != "" {
-						formatted = f.applyTailwindStyleToText(formatted, tableField.Style)
-					} else if field.TableOptions.RowStyle != "" {
-						// Apply row_style if no individual field style
-						formatted = f.applyTailwindStyleToText(formatted, field.TableOptions.RowStyle)
-					} else if color := fieldValue.Color(); color != "" {
-						// Apply color styling using FieldValue.Color()
-						style := f.getColorStyle(color)
-						formatted = f.applyStyle(formatted, style)
-					} else {
-						// Apply format-specific styling
-						formatted = f.applyFormatStyle(formatted, tableField.Format)
-					}
-
-					dataRow[i] = formatted
-				} else {
-					dataRow[i] = ""
-				}
-			}
-		} else if len(field.Fields) > 0 {
-			// Use field.Fields as fallback
-			for i, subField := range field.Fields {
-				fieldValue, exists := row[subField.Name]
-				if exists {
-					formatted := fieldValue.Formatted()
-					// Apply field style if available
-					if subField.Style != "" {
-						formatted = f.applyTailwindStyleToText(formatted, subField.Style)
-					}
-					dataRow[i] = formatted
-				} else {
-					dataRow[i] = ""
-				}
-			}
-		} else {
-			// Use headers as final fallback
-			for i, header := range headers {
-				fieldValue, exists := row[header]
-				if exists {
-					dataRow[i] = fieldValue.Formatted()
-				} else {
-					dataRow[i] = ""
-				}
-			}
-		}
-		tableRows = append(tableRows, dataRow)
-	}
-
-	return f.formatTableRows(tableRows), nil
-}
-
-// formatTree formats a value as a tree structure using TreeFormatter
-func (f *PrettyFormatter) formatTree(value interface{}, field api.PrettyField) string {
-	// Create tree formatter with same theme and color settings
-	treeFormatter := NewTreeFormatter(f.Theme, f.NoColor, field.TreeOptions)
+// formatAsTree formats a value as a tree structure
+func (p *PrettyFormatter) formatAsTree(val reflect.Value, field api.PrettyField) string {
+	// Create tree formatter
+	formatter := NewTreeFormatter(p.Theme, p.NoColor, field.TreeOptions)
 
 	// Convert value to tree node
-	val := reflect.ValueOf(value)
 	var node api.TreeNode
 
-	// Check if value implements TreeNode interface
+	// Check if value already implements TreeNode
 	if val.CanInterface() {
-		actualValue := val.Interface()
-		if treeNode, ok := actualValue.(api.TreeNode); ok {
+		if treeNode, ok := val.Interface().(api.TreeNode); ok {
 			node = treeNode
 		} else {
-			// Try to convert to tree node using the converter
-			node = ConvertToTreeNode(actualValue)
+			// Try to convert to tree node
+			node = ConvertToTreeNode(val.Interface())
 		}
 	}
 
 	if node == nil {
-		return fmt.Sprintf("%v", value)
+		return p.formatDefault(val)
 	}
 
-	// Format the tree using the tree formatter
-	return treeFormatter.FormatTreeFromRoot(node)
+	// Format the tree
+	return formatter.FormatTreeFromRoot(node)
 }

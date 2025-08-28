@@ -177,7 +177,7 @@ func (c *PlaywrightConverter) convertToPDF(page playwright.Page, outputPath stri
 }
 
 // ConvertToFormat is a convenience method that determines output path based on format
-func (c *PlaywrightConverter) ConvertToFormat(ctx context.Context, svgPath string, format string, options *ConvertOptions) (string, error) {
+func (c *PlaywrightConverter) ConvertToFormat(ctx context.Context, svgPath, format string, options *ConvertOptions) (string, error) {
 	if options == nil {
 		options = DefaultConvertOptions()
 	}

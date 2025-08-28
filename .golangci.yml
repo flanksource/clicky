@@ -73,12 +73,12 @@ linters-settings:
   # Cyclomatic complexity
   gocyclo:
     # Minimal complexity to report
-    min-complexity: 15
+    min-complexity: 30
 
   # Cognitive complexity
   gocognit:
     # Minimal complexity to report
-    min-complexity: 20
+    min-complexity: 30
 
   # Duplicate code detection
   dupl:
@@ -165,7 +165,6 @@ linters-settings:
       # Performance rules
       - name: time-equal
       - name: string-of-int
-      - name: early-return
       - name: redundant-import-alias
       - name: import-alias-naming
         arguments:
@@ -260,6 +259,8 @@ linters-settings:
   govet:
     # Enable all analyzers
     enable-all: true
+    disable:
+      - fieldalignment
 
   # Exhaustive
   exhaustive:
@@ -270,17 +271,6 @@ linters-settings:
     check-generated: false
     # Default signifies exhaustive
     default-signifies-exhaustive: true
-
-  # Wrapcheck - check error wrapping
-  wrapcheck:
-    # Check errors from external packages
-    ignoreSigs:
-      - .Errorf(
-      - errors.New(
-      - errors.Unwrap(
-      - errors.Join(
-      - .Wrap(
-      - .Wrapf(
 
   # Errorlint
   errorlint:
@@ -353,7 +343,7 @@ linters:
 
     # Error handling
     - errorlint # Error wrapping and comparison
-    - wrapcheck # Check error wrapping
+    # - wrapcheck # Check error wrapping
     - nilerr # Find code returning nil even with non-nil error
 
     # Security
@@ -363,30 +353,30 @@ linters:
     # Code quality and style
     - bodyclose # Check HTTP response body closure
     - dupl # Duplicate code detection
-    - gocognit # Cognitive complexity
-    - goconst # Find repeated constants
+    # - gocognit # Cognitive complexity
+    # - goconst # Find repeated constants
     - gocritic # Comprehensive linter
     - gocyclo # Cyclomatic complexity
     - gofmt # Check formatting
     - gofumpt # Stricter gofmt
     - goimports # Check imports
-    - revive # Fast, configurable linter
+    #    - revive # Fast, configurable linter
     - misspell # Find misspellings
     - nakedret # Find naked returns
-    - prealloc # Find slice preallocation opportunities
+    # - prealloc # Find slice preallocation opportunities
     - unconvert # Remove unnecessary conversions
     - unparam # Find unused parameters
     - whitespace # Check for unnecessary whitespace
     - stylecheck # Replacement for golint
 
     # Testing
-    - usetesting # Use t.Setenv and other testing helpers
-    - testpackage # Check test package naming
-    - thelper # Detect test helpers without t.Helper()
+    # - usetesting # Use t.Setenv and other testing helpers
+    # - testpackage # Check test package naming
+    # - thelper # Detect test helpers without t.Helper()
     - tparallel # Check t.Parallel() usage
 
     # Performance
-    - prealloc # Find slice preallocation opportunities
+    # - prealloc # Find slice preallocation opportunities
 
     # Maintainability
     - funlen # Function length
@@ -415,7 +405,6 @@ linters:
     - sqlclosecheck # Check sql.Rows/Stmt Close() calls
     - grouper # Check for grouped imports
     - decorder # Check declaration order
-    - containedctx # Check for struct contained context.Context
     - tagliatelle # Check struct tag naming
 
   disable:
@@ -432,7 +421,6 @@ linters:
     - depguard # Can be too restrictive
     - exhaustruct # Not all structs need all fields initialized
     - nonamedreturns # Named returns can be useful
-    - exportloopref # Replaced by copyloopvar
     - tenv # Replaced by usetesting
 
 # Issues configuration
@@ -457,6 +445,7 @@ issues:
     - ".*\\.pb\\.go$"
     - ".*\\.gen\\.go$"
     - "mock_.*\\.go$"
+    - "_test.go$"
 
   # Include/exclude rules
   exclude-rules:

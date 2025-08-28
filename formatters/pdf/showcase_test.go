@@ -726,7 +726,7 @@ func addCombinedExamplesPage(b *Builder) {
 func saveShowcasePDF(t *testing.T, name string, pdfData []byte) {
 	// Create output directory
 	outDir := "out"
-	if err := os.MkdirAll(outDir, 0755); err != nil {
+	if err := os.MkdirAll(outDir, 0o755); err != nil {
 		t.Logf("Warning: Could not create output directory: %v", err)
 		return
 	}
@@ -734,7 +734,7 @@ func saveShowcasePDF(t *testing.T, name string, pdfData []byte) {
 	// Save PDF
 	filename := fmt.Sprintf("%s.pdf", name)
 	filepath := filepath.Join(outDir, filename)
-	if err := os.WriteFile(filepath, pdfData, 0644); err != nil {
+	if err := os.WriteFile(filepath, pdfData, 0o644); err != nil {
 		t.Logf("Warning: Could not save PDF to %s: %v", filepath, err)
 	} else {
 		t.Logf("PDF saved to: %s", filepath)
@@ -863,7 +863,7 @@ func addImageFeaturesPage(builder *Builder) {
 	// Generate SVG and save for reference
 	svgData, err := svgBox.GenerateSVG()
 	if err == nil {
-		os.WriteFile("out/showcase_svgbox.svg", svgData, 0644)
+		os.WriteFile("out/showcase_svgbox.svg", svgData, 0o644)
 
 		// Note about SVG
 		note := Text{
@@ -1184,7 +1184,7 @@ func demoConverterFunctionality(builder *Builder, manager *SVGConverterManager) 
 	tempDir := os.TempDir()
 	svgPath := filepath.Join(tempDir, "showcase_demo.svg")
 
-	if err := os.WriteFile(svgPath, svgBytes, 0644); err != nil {
+	if err := os.WriteFile(svgPath, svgBytes, 0o644); err != nil {
 		return fmt.Errorf("failed to write demo SVG file: %w", err)
 	}
 	defer os.Remove(svgPath)
@@ -1275,7 +1275,7 @@ func addSVGConverterPages(builder *Builder) error {
 	// Create temporary SVG file
 	tempDir := os.TempDir()
 	svgPath := filepath.Join(tempDir, "converter_test.svg")
-	if err := os.WriteFile(svgPath, svgBytes, 0644); err != nil {
+	if err := os.WriteFile(svgPath, svgBytes, 0o644); err != nil {
 		return fmt.Errorf("failed to write test SVG: %w", err)
 	}
 	defer os.Remove(svgPath)

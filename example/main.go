@@ -15,7 +15,7 @@ import (
 type Order struct {
 	ID                string      `json:"id" pretty:"color,blue"`
 	Customer          Customer    `json:"customer"`
-	Status            string      `json:"status" pretty:"color,green=completed,yellow=processing,orange=pending,red=cancelled"`
+	Status            string      `json:"status" pretty:"color,green=completed,yellow=processing,orange=pending,red=canceled"`
 	Priority          string      `json:"priority" pretty:"color,red=high,yellow=medium,green=low"`
 	TotalAmount       float64     `json:"total_amount" pretty:"currency"`
 	Currency          string      `json:"currency"`

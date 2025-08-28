@@ -4,7 +4,8 @@ import (
 	"bytes"
 	"fmt"
 
-	"github.com/ajstarks/svgo"
+	svg "github.com/ajstarks/svgo"
+
 	"github.com/flanksource/clicky/api"
 )
 

@@ -8,12 +8,13 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/flanksource/clicky/api"
-	"github.com/flanksource/clicky/formatters"
 	flanksourceContext "github.com/flanksource/commons/context"
 	"github.com/flanksource/commons/logger"
 	"github.com/flanksource/commons/text"
 	"github.com/samber/lo"
+
+	"github.com/flanksource/clicky/api"
+	"github.com/flanksource/clicky/formatters"
 )
 
 // Status represents the status of a task
@@ -30,12 +31,16 @@ const (
 	StatusFailed Status = "failed"
 	// StatusWarning indicates the task completed with warnings
 	StatusWarning Status = "warning"
-	// StatusCancelled indicates the task was cancelled
-	StatusCancelled Status = "cancelled"
+	// StatusCancelled indicates the task was canceled
+	StatusCancelled Status = "canceled"
 
+	// StatusPASS indicates a test passed
 	StatusPASS Status = "PASS"
+	// StatusFAIL indicates a test failed
 	StatusFAIL Status = "FAIL"
-	StatusERR  Status = "ERR"
+	// StatusERR indicates a test had an error
+	StatusERR Status = "ERR"
+	// StatusSKIP indicates a test was skipped
 	StatusSKIP Status = "SKIP"
 )
 
@@ -43,6 +48,7 @@ func (s Status) String() string {
 	return string(s)
 }
 
+// Icon returns the emoji icon representation of the status
 func (s Status) Icon() string {
 	switch s {
 	case StatusPending:
@@ -62,6 +68,7 @@ func (s Status) Icon() string {
 	}
 }
 
+// Style returns the CSS style class for the status
 func (s Status) Style() string {
 	if s == StatusRunning {
 		return "text-blue-500"
@@ -69,12 +76,14 @@ func (s Status) Style() string {
 	return s.Health().Style()
 }
 
+// Apply applies the status icon and style to the given text
 func (s Status) Apply(t api.Text) api.Text {
 	t.Content = fmt.Sprintf("%s %s", s.Icon(), t.Content)
 	t.Style = s.Style()
 	return t
 }
 
+// Pretty returns a pretty formatted text representation of the status
 func (s Status) Pretty() api.Text {
 	return api.Text{
 		Content: s.Icon() + " " + s.String(),
@@ -82,6 +91,7 @@ func (s Status) Pretty() api.Text {
 	}
 }
 
+// Health converts the status to a health state
 func (s Status) Health() Health {
 	switch s {
 	case StatusSuccess, StatusPASS:
@@ -108,9 +118,9 @@ type Waitable interface {
 
 // WaitResult contains unified result information
 type WaitResult struct {
+	Error        error
 	Status       Status
 	Duration     time.Duration
-	Error        error
 	TaskCount    int // Number of individual tasks (1 for Task, N for TaskGroup)
 	SuccessCount int // Number of successful tasks
 	FailureCount int // Number of failed tasks
@@ -119,30 +129,30 @@ type WaitResult struct {
 
 // LogEntry represents a log message from a task
 type LogEntry struct {
-	Level   logger.LogLevel
 	Message string
 	Time    time.Time
+	Level   logger.LogLevel
 }
 
 // RetryConfig holds configuration for task retry behavior
 type RetryConfig struct {
-	MaxRetries      int
+	RetryableErrors []string // Error message patterns that should trigger retries
 	BaseDelay       time.Duration
 	MaxDelay        time.Duration
 	BackoffFactor   float64
 	JitterFactor    float64
-	RetryableErrors []string // Error message patterns that should trigger retries
+	MaxRetries      int
 }
 
 // DefaultRetryConfig returns sensible default retry configuration
 func DefaultRetryConfig() RetryConfig {
 	return RetryConfig{
-		MaxRetries:      3,
+		RetryableErrors: []string{"timeout", "connection", "temporary", "rate limit", "429"},
 		BaseDelay:       1 * time.Second,
 		MaxDelay:        30 * time.Second,
 		BackoffFactor:   2.0,
 		JitterFactor:    0.1,
-		RetryableErrors: []string{"timeout", "connection", "temporary", "rate limit", "429"},
+		MaxRetries:      3,
 	}
 }
 
@@ -157,39 +167,50 @@ type TaskResult[T any] struct {
 
 // Task represents a single task being tracked by the TaskManager
 type Task struct {
-	name           string
-	modelName      string
-	prompt         string
-	status         Status
-	dirty          atomic.Bool // Indicates if the task has been modified since last render
-	progress       int
-	maxValue       int
-	startTime      time.Time
-	endTime        time.Time
+	// Pointers and interfaces (8 bytes each on 64-bit)
 	manager        *Manager
-	logs           []LogEntry
 	cancel         context.CancelFunc
 	ctx            flanksourceContext.Context
 	flanksourceCtx flanksourceContext.Context
-	timeout        time.Duration
-	taskTimeout    time.Duration // Individual task timeout applied at execution time
 	runFunc        func(flanksourceContext.Context, *Task) error
 	err            error
-	mu             sync.Mutex
-	retryConfig    RetryConfig
-	retryCount     int
 	parent         *Group        // Reference to parent group (nil if ungrouped)
 	doneChan       chan struct{} // Channel to signal task completion
-	doneOnce       sync.Once     // Ensure done channel is closed only once
 	dependencies   []*Task       // Tasks that must complete before this task can start
-	completed      atomic.Bool   // Atomic flag for completion status
-	priority       int           // Priority for queue ordering (lower = higher priority)
-	enqueuedAt     time.Time     // Time when task was added to queue
-	identity       string        // Unique identifier for task deduplication
+	result         interface{}
+	resultType     reflect.Type
 
-	// Generic result storage
-	result     interface{}
-	resultType reflect.Type
+	// Slices (24 bytes each on 64-bit)
+	logs []LogEntry
+
+	// Structs
+	mu          sync.Mutex
+	doneOnce    sync.Once // Ensure done channel is closed only once
+	retryConfig RetryConfig
+
+	// 8-byte aligned types
+	startTime   time.Time
+	endTime     time.Time
+	timeout     time.Duration
+	taskTimeout time.Duration // Individual task timeout applied at execution time
+	enqueuedAt  time.Time     // Time when task was added to queue
+	dirty       atomic.Bool   // Indicates if the task has been modified since last render
+	completed   atomic.Bool   // Atomic flag for completion status
+
+	// Strings (16 bytes each on 64-bit)
+	name      string
+	modelName string
+	prompt    string
+	identity  string // Unique identifier for task deduplication
+
+	// 4-byte types
+	progress   int
+	maxValue   int
+	retryCount int
+	priority   int // Priority for queue ordering (lower = higher priority)
+
+	// Smaller types
+	status Status
 }
 
 // TypedTask provides typed access to task results
@@ -197,10 +218,12 @@ type TypedTask[T any] struct {
 	*Task
 }
 
+// Taskable represents objects that can return a Task
 type Taskable interface {
 	GetTask() *Task
 }
 
+// GetTask returns the task itself
 func (t *Task) GetTask() *Task {
 	return t
 }
@@ -275,9 +298,9 @@ func (t *Task) Debugf(format string, args ...interface{}) {
 		Message: message,
 		Time:    time.Now(),
 	})
-
 }
 
+// PopDirty checks and clears the dirty flag atomically
 func (t *Task) PopDirty() bool {
 	// Atomically check and reset dirty flag
 	b := t.dirty.Load()
@@ -293,19 +316,16 @@ func (t *Task) Infof(format string, args ...interface{}) {
 		Message: message,
 		Time:    time.Now(),
 	})
-
 }
 
 // Errorf logs an error message
 func (t *Task) Errorf(format string, args ...interface{}) {
-
 	message := fmt.Sprintf(format, args...)
 	t.logs = append(t.logs, LogEntry{
 		Level:   logger.Error,
 		Message: message,
 		Time:    time.Now(),
 	})
-
 }
 
 // Warnf logs a warning message
@@ -316,9 +336,9 @@ func (t *Task) Warnf(format string, args ...interface{}) {
 		Message: message,
 		Time:    time.Now(),
 	})
-
 }
 
+// SetName sets the task name
 func (t *Task) SetName(name string) {
 	t.name = name
 	t.dirty.Store(true) // Mark task as modified
@@ -333,16 +353,17 @@ func (t *Task) SetStatus(status Status) {
 			t.cancel()
 			t.cancel = nil
 		}
+	case StatusPending, StatusRunning, StatusWarning, StatusPASS, StatusFAIL, StatusERR, StatusSKIP:
+		// These statuses don't require special cleanup
 	}
 	t.status = status
 	t.dirty.Store(true) // Mark task as modified
-
 }
 
 // SetProgress updates the task's progress
-func (t *Task) SetProgress(value, max int) {
+func (t *Task) SetProgress(value, maximum int) {
 	t.progress = value
-	t.maxValue = max
+	t.maxValue = maximum
 }
 
 // Success marks the task as successfully completed
@@ -423,6 +444,7 @@ func (t *Task) Status() Status {
 	return t.status
 }
 
+// WaitTime returns how long the task waited before starting
 func (t *Task) WaitTime() time.Duration {
 	if t.endTime.IsZero() {
 		return time.Since(t.startTime)
@@ -430,6 +452,7 @@ func (t *Task) WaitTime() time.Duration {
 	return t.endTime.Sub(t.startTime)
 }
 
+// StartTime returns when the task started execution
 func (t *Task) StartTime() time.Time {
 	return t.startTime
 }
@@ -449,7 +472,7 @@ func (t *Task) WaitFor() *WaitResult {
 	for !t.completed.Load() {
 		select {
 		case <-t.ctx.Done():
-			// Task was cancelled externally
+			// Task was canceled externally
 			t.mu.Lock()
 			if t.status == StatusRunning || t.status == StatusPending {
 				t.status = StatusCancelled
@@ -494,6 +517,8 @@ done:
 		result.FailureCount = 1
 	case StatusWarning:
 		result.WarningCount = 1
+	case StatusPending, StatusRunning, StatusCancelled, StatusPASS, StatusFAIL, StatusERR, StatusSKIP:
+		// These statuses don't contribute to specific counts
 	}
 
 	return result
@@ -568,7 +593,6 @@ func (t *Task) IsGroup() bool {
 
 // getDuration returns formatted duration string
 func (t *Task) getDuration() string {
-
 	if t.status == StatusPending || t.startTime.IsZero() {
 		return ""
 	}
@@ -585,7 +609,6 @@ func (t *Task) getDuration() string {
 
 // Pretty returns a formatted text representation of the task
 func (t *Task) Pretty() api.Text {
-
 	if pretty, ok := t.result.(formatters.PrettyMixin); ok {
 		return pretty.Pretty()
 	}
@@ -599,7 +622,7 @@ func (t *Task) Pretty() api.Text {
 	}
 	if t.prompt != "" {
 		truncatedPrompt := t.prompt
-		displayName += fmt.Sprintf(" \"%s\"", truncatedPrompt)
+		displayName += fmt.Sprintf(" %q", truncatedPrompt)
 	}
 
 	text.Content = fmt.Sprintf("%s %-10s", lo.Ellipsis(displayName, api.GetTerminalWidth()-10), duration)

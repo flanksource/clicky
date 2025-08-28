@@ -4,8 +4,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/flanksource/clicky/api"
 	"github.com/playwright-community/playwright-go"
+
+	"github.com/flanksource/clicky/api"
 )
 
 // PDFFormatter handles PDF formatting using HTML-to-PDF conversion via Playwright/Chromium

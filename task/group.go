@@ -12,9 +12,7 @@ import (
 type Group struct {
 	name      string
 	Items     []Taskable // Can contain Tasks or nested Groups
-	status    Status
 	startTime time.Time
-	endTime   time.Time
 	manager   *Manager
 	ctx       context.Context
 	cancel    context.CancelFunc
@@ -57,7 +55,6 @@ func (g TypedGroup[T]) GetResults() (map[TypedTask[T]]T, error) {
 	results := make(map[TypedTask[T]]T)
 	for _, item := range g.Group.Items {
 		switch v := item.(type) {
-
 		case TypedTask[T]:
 			v.WaitFor()
 			r, err := v.GetResult()
@@ -119,26 +116,72 @@ func (g *Group) Status() Status {
 }
 
 // WaitFor waits for all child items to complete and returns aggregate results
+// This version handles dynamically added tasks by continuously checking for new tasks
 func (g *TypedGroup[T]) WaitFor() *WaitResult {
 	result := &WaitResult{}
+	
+	// Keep track of the last known task count
+	lastCount := -1
+	stableIterations := 0
+	const requiredStableIterations = 3 // Number of iterations with no new tasks before considering complete
+	
+	for {
+		// Get current count of tasks
+		g.mu.RLock()
+		currentCount := len(g.Group.Items)
+		g.mu.RUnlock()
+		
+		// Check if we have new tasks
+		if currentCount != lastCount {
+			lastCount = currentCount
+			stableIterations = 0
+			// Small delay to allow more tasks to be queued
+			time.Sleep(10 * time.Millisecond)
+			continue
+		}
+		
+		// Check if all current tasks are complete
+		allComplete := true
+		hasRunning := false
+		
+		g.mu.RLock()
+		for _, item := range g.Group.Items {
+			status := item.GetTask().Status()
+			if status == StatusPending || status == StatusRunning {
+				allComplete = false
+				if status == StatusRunning {
+					hasRunning = true
+				}
+				break
+			}
+		}
+		g.mu.RUnlock()
+		
+		if allComplete {
+			stableIterations++
+			if stableIterations >= requiredStableIterations {
+				// All tasks are complete and no new tasks have been added
+				break
+			}
+			// Small delay to check for any last-moment additions
+			time.Sleep(10 * time.Millisecond)
+		} else if hasRunning {
+			// Tasks are still running, wait a bit before checking again
+			time.Sleep(50 * time.Millisecond)
+			stableIterations = 0
+		} else {
+			// Tasks are pending but not running yet
+			time.Sleep(10 * time.Millisecond)
+			stableIterations = 0
+		}
+	}
 
+	// Now get the final results
 	_, err := g.GetResults()
 	if err != nil {
 		result.Error = err
 		return result
 	}
-
-	// for _, childResult := range items {
-	// 	result.TaskCount += childResult.TaskCount
-	// 	result.SuccessCount += childResult.SuccessCount
-	// 	result.FailureCount += childResult.FailureCount
-	// 	result.WarningCount += childResult.WarningCount
-
-	// 	// Keep the first error encountered
-	// 	if result.Error == nil && childResult.Error != nil {
-	// 		result.Error = childResult.Error
-	// 	}
-	// }
 
 	result.Status = g.Status()
 	result.Duration = g.Duration()
@@ -168,7 +211,6 @@ func (g *Group) Cancel() {
 
 // Duration returns the total duration from first start to last completion
 func (g *TypedGroup[T]) Duration() time.Duration {
-
 	if g.startTime.IsZero() {
 		return 0
 	}

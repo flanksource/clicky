@@ -211,7 +211,7 @@ func (f *MarkdownFormatter) formatImageMarkdown(fieldValue api.FieldValue, field
 }
 
 // formatTableData formats table data as Markdown table
-func (f *MarkdownFormatter) formatTableData(tableData []api.PrettyDataRow, field api.PrettyField) (string, error) {
+func (f *MarkdownFormatter) formatTableData(tableData []api.PrettyDataRow, _ api.PrettyField) (string, error) {
 	if len(tableData) == 0 {
 		return "*No data*", nil
 	}

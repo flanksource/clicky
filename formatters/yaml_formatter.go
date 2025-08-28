@@ -26,12 +26,16 @@ func (f *YAMLFormatter) Format(data interface{}) (string, error) {
 		return "", err
 	}
 	return f.FormatPrettyData(prettyData)
-
 }
 
 // FormatPrettyData formats PrettyData as YAML using the original data if available
 func (f *YAMLFormatter) FormatPrettyData(data *api.PrettyData) (string, error) {
-	if b, err := yaml.Marshal(data.Original); err != nil {
+	return f.FormatValue(data.Original)
+}
+
+// FormatValue is a helper to format any value as YAML
+func (f *YAMLFormatter) FormatValue(data interface{}) (string, error) {
+	if b, err := yaml.Marshal(data); err != nil {
 		return "", err
 	} else {
 		return string(b), nil

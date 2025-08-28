@@ -1,4 +1,4 @@
-package clicky
+package formatters
 
 import (
 	"encoding/json"
@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"github.com/flanksource/clicky/api"
-	"github.com/flanksource/clicky/formatters"
 	"gopkg.in/yaml.v3"
 )
 
@@ -80,7 +79,7 @@ func TestFormatterMatrix(t *testing.T) {
 	}
 
 	// Parse data
-	parser := NewStructParser()
+	parser := api.NewStructParser()
 	prettyData, err := parser.ParseDataWithSchema(testData, schema)
 	if err != nil {
 		t.Fatalf("Failed to parse data: %v", err)
@@ -95,8 +94,8 @@ func TestFormatterMatrix(t *testing.T) {
 		{
 			name: "PrettyFormatter",
 			formatter: func() (string, error) {
-				f := formatters.NewPrettyFormatter()
-				return f.Format(prettyData)
+				f := NewPrettyFormatter()
+				return f.FormatPrettyData(prettyData)
 			},
 			validate: func(t *testing.T, output string) {
 				// Basic field presence
@@ -129,7 +128,7 @@ func TestFormatterMatrix(t *testing.T) {
 			name: "JSONFormatter",
 			formatter: func() (string, error) {
 				sf := &SchemaFormatter{Schema: schema, Parser: parser}
-				return sf.formatWithPrettyData(prettyData, formatters.FormatOptions{Format: "json"})
+				return sf.formatWithPrettyData(prettyData, FormatOptions{Format: "json"})
 			},
 			validate: func(t *testing.T, output string) {
 				var result map[string]interface{}
@@ -150,13 +149,16 @@ func TestFormatterMatrix(t *testing.T) {
 				}
 				// Check deeply nested structure
 				if address, ok := result["address"].(map[string]interface{}); ok {
-					// Location is formatted as a string because deeply nested maps are formatted
-					if location, ok := address["location"].(string); ok {
-						if !strings.Contains(location, "37.7749") {
-							t.Error("Should contain latitude value in formatted location")
+					// Location should be a nested map with proper structure
+					if location, ok := address["location"].(map[string]interface{}); ok {
+						if location["latitude"] == nil || !strings.Contains(location["latitude"].(string), "37.7749") {
+							t.Error("Should contain latitude value in nested location")
+						}
+						if location["longitude"] == nil || !strings.Contains(location["longitude"].(string), "-122.419") {
+							t.Error("Should contain longitude value in nested location")
 						}
 					} else {
-						t.Error("Location should be formatted as string")
+						t.Error("Location should be a nested map")
 					}
 				} else {
 					t.Error("Address should be a map")
@@ -167,7 +169,7 @@ func TestFormatterMatrix(t *testing.T) {
 			name: "YAMLFormatter",
 			formatter: func() (string, error) {
 				sf := &SchemaFormatter{Schema: schema, Parser: parser}
-				return sf.formatWithPrettyData(prettyData, formatters.FormatOptions{Format: "yaml"})
+				return sf.formatWithPrettyData(prettyData, FormatOptions{Format: "yaml"})
 			},
 			validate: func(t *testing.T, output string) {
 				var result map[string]interface{}
@@ -189,7 +191,7 @@ func TestFormatterMatrix(t *testing.T) {
 		{
 			name: "HTMLFormatter",
 			formatter: func() (string, error) {
-				f := formatters.NewHTMLFormatter()
+				f := NewHTMLFormatter()
 				return f.Format(prettyData)
 			},
 			validate: func(t *testing.T, output string) {
@@ -211,7 +213,7 @@ func TestFormatterMatrix(t *testing.T) {
 			name: "CSVFormatter",
 			formatter: func() (string, error) {
 				sf := &SchemaFormatter{Schema: schema, Parser: parser}
-				return sf.formatWithPrettyData(prettyData, formatters.FormatOptions{Format: "csv"})
+				return sf.formatWithPrettyData(prettyData, FormatOptions{Format: "csv"})
 			},
 			validate: func(t *testing.T, output string) {
 				lines := strings.Split(strings.TrimSpace(output), "\n")
@@ -330,15 +332,15 @@ func TestNestedMaps(t *testing.T) {
 		},
 	}
 
-	parser := NewStructParser()
+	parser := api.NewStructParser()
 	prettyData, err := parser.ParseDataWithSchema(deeplyNestedData, schema)
 	if err != nil {
 		t.Fatalf("Failed to parse nested data: %v", err)
 	}
 
 	// Test pretty formatting
-	formatter := formatters.NewPrettyFormatter()
-	output, err := formatter.Format(prettyData)
+	formatter := NewPrettyFormatter()
+	output, err := formatter.FormatPrettyData(prettyData)
 	if err != nil {
 		t.Fatalf("Failed to format: %v", err)
 	}

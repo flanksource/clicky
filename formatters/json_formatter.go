@@ -35,11 +35,11 @@ func (f *JSONFormatter) FormatPrettyData(data *api.PrettyData) (string, error) {
 		return "null", nil
 	}
 
-	return f.formatValue(data.Original)
+	return f.FormatValue(data.Original)
 }
 
-// formatValue is a helper to format any value as JSON
-func (f *JSONFormatter) formatValue(data interface{}) (string, error) {
+// FormatValue is a helper to format any value as JSON
+func (f *JSONFormatter) FormatValue(data interface{}) (string, error) {
 	if b, err := json.MarshalIndent(data, "", f.Indent); err != nil {
 		return "", err
 	} else {

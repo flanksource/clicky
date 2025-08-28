@@ -8,8 +8,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/flanksource/clicky"
 	flanksourceContext "github.com/flanksource/commons/context"
+
+	"github.com/flanksource/clicky"
 )
 
 // ClaudeOptions contains configuration for Claude API calls
@@ -62,7 +63,7 @@ func (ce *ClaudeExecutor) GetTaskManager() *clicky.TaskManager {
 }
 
 // ExecutePrompt executes a single Claude prompt with progress tracking
-func (ce *ClaudeExecutor) ExecutePrompt(ctx context.Context, name string, prompt string) (*ClaudeResponse, error) {
+func (ce *ClaudeExecutor) ExecutePrompt(_ context.Context, name, prompt string) (*ClaudeResponse, error) {
 	t := clicky.StartTask[*ClaudeResponse](name, func(ctx flanksourceContext.Context, t *clicky.Task) (*ClaudeResponse, error) {
 		t.Infof("Starting Claude API call")
 		t.SetProgress(10, 100)
@@ -185,7 +186,7 @@ func (ce *ClaudeExecutor) executeClaudeCLI(ctx context.Context, prompt string, t
 
 	if err != nil {
 		if ctx.Err() != nil {
-			return nil, fmt.Errorf("claude CLI cancelled: %w", ctx.Err())
+			return nil, fmt.Errorf("claude CLI canceled: %w", ctx.Err())
 		}
 		return nil, fmt.Errorf("claude CLI failed: %w\nOutput: %s", err, string(output))
 	}

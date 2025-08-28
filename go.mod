@@ -1,6 +1,8 @@
 module github.com/flanksource/clicky
 
-go 1.24.5
+go 1.24.1
+
+toolchain go1.24.5
 
 require (
 	github.com/ajstarks/svgo v0.0.0-20211024235047-1546f124cd8b

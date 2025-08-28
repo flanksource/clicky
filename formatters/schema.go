@@ -1,4 +1,4 @@
-package clicky
+package formatters
 
 import (
 	"encoding/json"
@@ -10,18 +10,17 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/flanksource/clicky/api"
-	"github.com/flanksource/clicky/formatters"
 )
 
 // SchemaFormatter handles schema-based formatting operations
 type SchemaFormatter struct {
 	Schema *api.PrettyObject
-	Parser *StructParser
+	Parser *api.StructParser
 }
 
 // NewSchemaFormatter creates a new schema formatter with the given schema file
 func NewSchemaFormatter(schemaFile string) (*SchemaFormatter, error) {
-	parser := NewStructParser()
+	parser := api.NewStructParser()
 	schema, err := parser.LoadSchemaFromYAML(schemaFile)
 	if err != nil {
 		return nil, fmt.Errorf("failed to load schema: %w", err)
@@ -39,7 +38,7 @@ func LoadSchemaFromYAML(schemaFile string) (*SchemaFormatter, error) {
 }
 
 // FormatFile formats a single data file using the schema
-func (sf *SchemaFormatter) FormatFile(dataFile string, options formatters.FormatOptions) (string, error) {
+func (sf *SchemaFormatter) FormatFile(dataFile string, options FormatOptions) (string, error) {
 	// Load and parse data
 	data, err := sf.loadDataFile(dataFile)
 	if err != nil {
@@ -57,7 +56,7 @@ func (sf *SchemaFormatter) FormatFile(dataFile string, options formatters.Format
 }
 
 // FormatFiles formats multiple data files using the schema
-func (sf *SchemaFormatter) FormatFiles(dataFiles []string, options formatters.FormatOptions) error {
+func (sf *SchemaFormatter) FormatFiles(dataFiles []string, options FormatOptions) error {
 	// Dump schema to stderr if requested
 	if options.DumpSchema {
 		schemaYAML, err := yaml.Marshal(sf.Schema)
@@ -71,7 +70,6 @@ func (sf *SchemaFormatter) FormatFiles(dataFiles []string, options formatters.Fo
 	}
 
 	for _, dataFile := range dataFiles {
-
 		result, err := sf.FormatFile(dataFile, options)
 		if err != nil {
 			if options.Verbose {
@@ -144,15 +142,14 @@ func (sf *SchemaFormatter) convertMapToStruct(data map[string]interface{}) inter
 }
 
 // formatWithPrettyData formats PrettyData using the specified format
-func (sf *SchemaFormatter) formatWithPrettyData(data *api.PrettyData, options formatters.FormatOptions) (string, error) {
-
+func (sf *SchemaFormatter) formatWithPrettyData(data *api.PrettyData, options FormatOptions) (string, error) {
 	// Convert PrettyData to the appropriate format for the FormatManager
 	output := sf.formatPrettyDataToMap(data)
 
 	// For JSON/YAML/CSV, use direct formatting to avoid the struct requirement
 	switch strings.ToLower(options.Format) {
 	case "json":
-		jsonFormatter := formatters.NewJSONFormatter()
+		jsonFormatter := NewJSONFormatter()
 		b, err := json.MarshalIndent(output, "", jsonFormatter.Indent)
 		if err != nil {
 			return "", err
@@ -165,12 +162,12 @@ func (sf *SchemaFormatter) formatWithPrettyData(data *api.PrettyData, options fo
 		}
 		return string(b), nil
 	case "csv":
-		csvFormatter := formatters.NewCSVFormatter()
+		csvFormatter := NewCSVFormatter()
 		// Use the original PrettyData directly for CSV formatting
 		return csvFormatter.FormatPrettyData(data)
 	default:
 		// For other formats, delegate to the format manager
-		manager := formatters.NewFormatManager()
+		manager := NewFormatManager()
 		return manager.Format(options.Format, output)
 	}
 }
@@ -183,11 +180,7 @@ func (sf *SchemaFormatter) formatPrettyDataToMap(data *api.PrettyData) map[strin
 	for key, fieldValue := range data.Values {
 		if len(fieldValue.NestedFields) > 0 {
 			// Handle nested fields recursively
-			nestedOutput := make(map[string]interface{})
-			for nestedKey, nestedFieldValue := range fieldValue.NestedFields {
-				nestedOutput[nestedKey] = nestedFieldValue.Formatted()
-			}
-			output[key] = nestedOutput
+			output[key] = sf.convertNestedFieldsToMap(fieldValue)
 		} else {
 			output[key] = fieldValue.Formatted()
 		}
@@ -209,16 +202,24 @@ func (sf *SchemaFormatter) formatPrettyDataToMap(data *api.PrettyData) map[strin
 	return output
 }
 
-// prettifyFieldName converts field names to human-readable format
-func (sf *SchemaFormatter) prettifyFieldName(name string) string {
-	// Convert snake_case to Title Case
-	parts := strings.Split(name, "_")
-	for i, part := range parts {
-		if len(part) > 0 {
-			parts[i] = strings.ToUpper(part[:1]) + part[1:]
+// convertNestedFieldsToMap recursively converts nested FieldValue structures to nested maps
+func (sf *SchemaFormatter) convertNestedFieldsToMap(fieldValue api.FieldValue) interface{} {
+	if len(fieldValue.NestedFields) > 0 {
+		nestedOutput := make(map[string]interface{})
+		for nestedKey, nestedFieldValue := range fieldValue.NestedFields {
+			if len(nestedFieldValue.NestedFields) > 0 {
+				// Recursive case - convert nested fields to map
+				nestedOutput[nestedKey] = sf.convertNestedFieldsToMap(nestedFieldValue)
+			} else {
+				// Base case - format the value
+				nestedOutput[nestedKey] = nestedFieldValue.Formatted()
+			}
 		}
+		return nestedOutput
+	} else {
+		// No nested fields - just format the value
+		return fieldValue.Formatted()
 	}
-	return strings.Join(parts, " ")
 }
 
 // generateOutputFilename generates output filename based on pattern
@@ -262,10 +263,10 @@ func (sf *SchemaFormatter) getExtensionForFormat(format string) string {
 }
 
 // writeToFile writes content to a file
-func (sf *SchemaFormatter) writeToFile(filename string, content string) error {
+func (sf *SchemaFormatter) writeToFile(filename, content string) error {
 	// Create directory if it doesn't exist
 	dir := filepath.Dir(filename)
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return err
 	}
 

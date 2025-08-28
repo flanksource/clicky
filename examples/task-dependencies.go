@@ -12,7 +12,6 @@ import (
 )
 
 func main() {
-
 	flags := clicky.BindAllFlags(pflag.CommandLine)
 	showDependencyGraph := pflag.Bool("show-graph", true, "Show dependency graph")
 	pflag.Parse()

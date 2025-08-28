@@ -1,4 +1,4 @@
-package clicky
+package formatters
 
 import (
 	"testing"

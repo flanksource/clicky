@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -13,50 +14,67 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 )
 
+var (
+	// ErrCacheDisabled indicates caching is disabled
+	ErrCacheDisabled = errors.New("caching is disabled")
+	// ErrNotFound indicates the entry was not found in cache
+	ErrNotFound = errors.New("cache entry not found")
+)
+
 // Config holds cache configuration
 type Config struct {
+	DBPath  string        // Database file path (default: ~/.cache/clicky-ai.db)
 	TTL     time.Duration // Cache time-to-live
 	NoCache bool          // Disable caching
-	DBPath  string        // Database file path (default: ~/.cache/clicky-ai.db)
 	Debug   bool          // Enable debug output
 }
 
 // Entry represents a cached AI response
 type Entry struct {
-	ID               int64
-	CacheKey         string
-	PromptHash       string
-	Model            string
-	Prompt           string
-	Response         string
-	Error            string
+	// Pointer (8 bytes)
+	ExpiresAt *time.Time
+
+	// Strings (16 bytes each on 64-bit)
+	CacheKey    string
+	PromptHash  string
+	Model       string
+	Prompt      string
+	Response    string
+	Error       string
+	ProjectName string
+	TaskName    string
+	SessionID   string
+
+	// 8-byte types
+	ID          int64
+	DurationMS  int64
+	CostUSD     float64
+	Temperature float64
+	CreatedAt   time.Time
+	AccessedAt  time.Time
+
+	// 4-byte types
 	TokensInput      int
 	TokensOutput     int
 	TokensCacheRead  int
 	TokensCacheWrite int
 	TokensTotal      int
-	CostUSD          float64
-	DurationMS       int64
-	ProjectName      string
-	TaskName         string
-	Temperature      float64
 	MaxTokens        int
-	CreatedAt        time.Time
-	AccessedAt       time.Time
-	ExpiresAt        *time.Time
-	SessionID        string
 }
 
 // StatsEntry represents aggregated statistics
 type StatsEntry struct {
-	Model              string
-	ProjectName        string
+	// Strings (16 bytes each)
+	Model       string
+	ProjectName string
+
+	// 8-byte types
 	TotalRequests      int64
 	SuccessfulRequests int64
 	FailedRequests     int64
 	TotalTokens        int64
-	TotalCost          float64
 	AvgDurationMS      int64
+	TotalCost          float64
 	FirstRequest       time.Time
 	LastRequest        time.Time
 }
@@ -79,7 +97,7 @@ func New(config Config) (*Cache, error) {
 
 	// Ensure cache directory exists
 	cacheDir := filepath.Dir(config.DBPath)
-	if err := os.MkdirAll(cacheDir, 0755); err != nil {
+	if err := os.MkdirAll(cacheDir, 0o750); err != nil {
 		return nil, fmt.Errorf("failed to create cache directory: %w", err)
 	}
 
@@ -122,7 +140,10 @@ func New(config Config) (*Cache, error) {
 
 // Close closes the database connection
 func (c *Cache) Close() error {
-	return c.db.Close()
+	if err := c.db.Close(); err != nil {
+		return fmt.Errorf("failed to close database: %w", err)
+	}
+	return nil
 }
 
 // generateCacheKey creates a unique key for cache lookup
@@ -141,7 +162,7 @@ func (c *Cache) generatePromptHash(prompt string) string {
 // Get retrieves a cached response
 func (c *Cache) Get(prompt, model string, temperature float64, maxTokens int) (*Entry, error) {
 	if c.config.NoCache {
-		return nil, nil
+		return nil, ErrCacheDisabled
 	}
 
 	cacheKey := c.generateCacheKey(prompt, model, temperature, maxTokens)
@@ -170,7 +191,7 @@ func (c *Cache) Get(prompt, model string, temperature float64, maxTokens int) (*
 	)
 
 	if err == sql.ErrNoRows {
-		return nil, nil
+		return nil, ErrNotFound
 	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to get cache entry: %w", err)
@@ -223,7 +244,6 @@ func (c *Cache) Set(entry *Entry) error {
 		entry.ProjectName, entry.TaskName, entry.Temperature, entry.MaxTokens,
 		expiresAt, entry.SessionID,
 	)
-
 	if err != nil {
 		return fmt.Errorf("failed to set cache entry: %w", err)
 	}

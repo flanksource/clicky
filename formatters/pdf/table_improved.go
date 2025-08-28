@@ -3,7 +3,6 @@ package pdf
 import (
 	"fmt"
 
-	"github.com/flanksource/clicky/api"
 	"github.com/johnfercher/maroto/v2/pkg/components/col"
 	"github.com/johnfercher/maroto/v2/pkg/components/line"
 	"github.com/johnfercher/maroto/v2/pkg/components/row"
@@ -11,6 +10,8 @@ import (
 	"github.com/johnfercher/maroto/v2/pkg/consts/align"
 	"github.com/johnfercher/maroto/v2/pkg/core"
 	"github.com/johnfercher/maroto/v2/pkg/props"
+
+	"github.com/flanksource/clicky/api"
 )
 
 // TableImproved widget for rendering tables in PDF with dynamic columns
@@ -243,7 +244,7 @@ func (ti TableImproved) drawDataRows(b *Builder, colWidths []int, baseHeight flo
 }
 
 // drawHorizontalLine draws a horizontal line
-func (ti TableImproved) drawHorizontalLine(b *Builder, thickness float64, grayLevel int, totalColumns int) {
+func (ti TableImproved) drawHorizontalLine(b *Builder, thickness float64, grayLevel, totalColumns int) {
 	b.maroto.AddRow(0.5, col.New(totalColumns).Add(line.New(props.Line{
 		Color:     &props.Color{Red: grayLevel, Green: grayLevel, Blue: grayLevel},
 		Thickness: thickness,
