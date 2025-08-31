@@ -1,6 +1,8 @@
 package api
 
-// TreeNode represents a node in a hierarchical tree structure
+// TreeNode defines the interface for hierarchical tree structures with visual metadata.
+// Implementations provide display labels, child relationships, and styling information
+// for consistent tree rendering across different output formats.
 type TreeNode interface {
 	GetLabel() string
 	GetChildren() []TreeNode
@@ -9,12 +11,13 @@ type TreeNode interface {
 	IsLeaf() bool
 }
 
-// PrettyNode interface for nodes that can format themselves with rich text
+// PrettyNode extends TreeNode with rich text formatting capabilities.
 type PrettyNode interface {
 	Pretty() Text
 }
 
-// TreeOptions configures how trees are rendered
+// TreeOptions controls tree rendering behavior including visual styling,
+// depth limits, and character sets for drawing tree connections.
 type TreeOptions struct {
 	ShowIcons      bool            `json:"show_icons,omitempty" yaml:"show_icons,omitempty"`
 	IndentSize     int             `json:"indent_size,omitempty" yaml:"indent_size,omitempty"`
@@ -29,7 +32,8 @@ type TreeOptions struct {
 	ContinuePrefix string `json:"continue_prefix,omitempty" yaml:"continue_prefix,omitempty"`
 }
 
-// DefaultTreeOptions returns default tree rendering options
+// DefaultTreeOptions creates configuration for Unicode tree rendering
+// with standard indentation and unlimited depth.
 func DefaultTreeOptions() *TreeOptions {
 	return &TreeOptions{
 		ShowIcons:      true,
@@ -46,7 +50,8 @@ func DefaultTreeOptions() *TreeOptions {
 	}
 }
 
-// ASCIITreeOptions returns tree options using ASCII characters
+// ASCIITreeOptions creates configuration for ASCII-only tree rendering,
+// suitable for environments without Unicode support.
 func ASCIITreeOptions() *TreeOptions {
 	opts := DefaultTreeOptions()
 	opts.UseUnicode = false
@@ -57,7 +62,8 @@ func ASCIITreeOptions() *TreeOptions {
 	return opts
 }
 
-// SimpleTreeNode provides a basic tree node implementation
+// SimpleTreeNode provides a straightforward TreeNode implementation
+// with support for labels, icons, styling, and arbitrary metadata.
 type SimpleTreeNode struct {
 	Label    string                 `json:"label" yaml:"label"`
 	Icon     string                 `json:"icon,omitempty" yaml:"icon,omitempty"`
@@ -66,32 +72,28 @@ type SimpleTreeNode struct {
 	Metadata map[string]interface{} `json:"metadata,omitempty" yaml:"metadata,omitempty"`
 }
 
-// GetLabel returns the node's label
 func (n *SimpleTreeNode) GetLabel() string {
 	return n.Label
 }
 
-// GetChildren returns the node's children
 func (n *SimpleTreeNode) GetChildren() []TreeNode {
 	return n.Children
 }
 
-// GetIcon returns the node's icon
 func (n *SimpleTreeNode) GetIcon() string {
 	return n.Icon
 }
 
-// GetStyle returns the node's style
 func (n *SimpleTreeNode) GetStyle() string {
 	return n.Style
 }
 
-// IsLeaf returns true if the node has no children
 func (n *SimpleTreeNode) IsLeaf() bool {
 	return len(n.Children) == 0
 }
 
-// CompactListNode represents a node that renders its children as a compact list
+// CompactListNode renders multiple items inline rather than as nested children,
+// useful for displaying arrays or lists within tree structures.
 type CompactListNode struct {
 	Label    string                 `json:"label" yaml:"label"`
 	Icon     string                 `json:"icon,omitempty" yaml:"icon,omitempty"`
@@ -100,32 +102,26 @@ type CompactListNode struct {
 	Metadata map[string]interface{} `json:"metadata,omitempty" yaml:"metadata,omitempty"`
 }
 
-// GetLabel returns the node's label
 func (n *CompactListNode) GetLabel() string {
 	return n.Label
 }
 
-// GetChildren returns empty slice as items are rendered inline
 func (n *CompactListNode) GetChildren() []TreeNode {
 	return nil
 }
 
-// GetIcon returns the node's icon
 func (n *CompactListNode) GetIcon() string {
 	return n.Icon
 }
 
-// GetStyle returns the node's style
 func (n *CompactListNode) GetStyle() string {
 	return n.Style
 }
 
-// IsLeaf returns true as compact lists are treated as leaf nodes
 func (n *CompactListNode) IsLeaf() bool {
 	return true
 }
 
-// GetItems returns the compact list items
 func (n *CompactListNode) GetItems() []string {
 	return n.Items
 }

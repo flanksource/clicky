@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/flanksource/clicky/task"
 	flanksourceContext "github.com/flanksource/commons/context"
 	"github.com/spf13/cobra"
 
@@ -22,7 +23,6 @@ type MCPServer struct {
 	registry       *ToolRegistry
 	promptRegistry *PromptRegistry
 	rootCmd        *cobra.Command
-	taskManager    *clicky.TaskManager
 	verbose        bool
 }
 
@@ -53,12 +53,12 @@ func (s *MCPServer) Initialize() error {
 
 // Start starts the MCP server using the configured transport
 func (s *MCPServer) Start(ctx context.Context) error {
-	// Create a new TaskManager for this session
-	s.taskManager = clicky.NewTaskManagerWithConcurrency(5) // Limit concurrent tool executions
-	s.taskManager.SetVerbose(s.verbose)
+	// Configure global task manager for this session
+	clicky.SetGlobalMaxConcurrency(5) // Limit concurrent tool executions
+	clicky.SetGlobalVerbose(s.verbose)
 
 	// Configure retry for tool executions
-	s.taskManager.SetRetryConfig(clicky.RetryConfig{
+	task.SetRetryConfig(clicky.RetryConfig{
 		MaxRetries:      2,
 		BaseDelay:       1 * time.Second,
 		MaxDelay:        10 * time.Second,
@@ -80,14 +80,6 @@ func (s *MCPServer) Start(ctx context.Context) error {
 // startStdioServer starts the server using stdio transport
 func (s *MCPServer) startStdioServer(ctx context.Context) error {
 	scanner := bufio.NewScanner(os.Stdin)
-
-	// Handle shutdown gracefully
-	go func() {
-		<-ctx.Done()
-		if s.taskManager != nil {
-			s.taskManager.CancelAll()
-		}
-	}()
 
 	for {
 		select {
@@ -340,19 +332,17 @@ func (s *MCPServer) executeToolWithTaskManager(ctx context.Context, tool *ToolDe
 	var errorOutput strings.Builder
 
 	// Create a task for the tool execution
-	task := s.taskManager.Start(
-		fmt.Sprintf("MCP: %s", tool.Name),
-		clicky.WithTimeout(timeout),
-		clicky.WithFunc(func(ctx flanksourceContext.Context, t *clicky.Task) error {
+	task := clicky.StartTask(fmt.Sprintf("MCP: %s", tool.Name),
+		func(ctx flanksourceContext.Context, t *clicky.Task) (interface{}, error) {
 			// Set up command arguments
 			if tool.Command == nil {
-				return fmt.Errorf("tool command not available")
+				return nil, fmt.Errorf("tool command not available")
 			}
 
 			// Apply arguments to command flags
 			if err := s.applyArgsToCommand(tool.Command, args); err != nil {
 				t.Errorf("Failed to apply arguments: %v", err)
-				return err
+				return nil, err
 			}
 
 			// Capture output by redirecting stdout and stderr
@@ -424,12 +414,13 @@ func (s *MCPServer) executeToolWithTaskManager(ctx context.Context, tool *ToolDe
 
 			if cmdErr != nil {
 				t.FailedWithError(cmdErr)
-				return cmdErr
+				return nil, cmdErr
 			}
 
 			t.Success()
-			return nil
-		}),
+			return nil, nil
+		},
+		clicky.WithTimeout(timeout),
 	)
 
 	// Wait for task completion

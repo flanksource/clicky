@@ -8,11 +8,14 @@ import (
 	"golang.org/x/term"
 )
 
+// Color represents a color with hex value and optional transparency.
 type Color struct {
 	Hex     string
 	Opacity float64
 }
 
+// Font contains typography styling information including weight,
+// size, colors, and text decorations.
 type Font struct {
 	Name          string
 	Weight        string
@@ -58,6 +61,7 @@ type Circle struct {
 	Diameter float64
 }
 
+// Padding defines spacing around content in CSS box model format.
 type Padding struct {
 	Top    float64
 	Right  float64
@@ -65,6 +69,7 @@ type Padding struct {
 	Left   float64
 }
 
+// Box represents a styled rectangular container with fill, borders, and padding.
 type Box struct {
 	Rectangle
 	Fill    Color
@@ -96,6 +101,8 @@ func (p Position) RelativeTo(other Position) Position {
 	}
 }
 
+// Class groups styling properties that can be applied to text elements,
+// similar to CSS classes but with structured property access.
 type Class struct {
 	Name       string
 	Background *Color
@@ -105,7 +112,8 @@ type Class struct {
 	Border     *Borders
 }
 
-// Theme defines color schemes and styles
+// Theme provides a consistent color palette for semantic styling
+// across different UI states (success, error, warning, etc.).
 type Theme struct {
 	Primary   lipgloss.Color
 	Secondary lipgloss.Color
@@ -116,7 +124,6 @@ type Theme struct {
 	Muted     lipgloss.Color
 }
 
-// DefaultTheme returns the default color theme
 func DefaultTheme() Theme {
 	return Theme{
 		Primary:   lipgloss.Color("#8A2BE2"), // BlueViolet
@@ -129,7 +136,6 @@ func DefaultTheme() Theme {
 	}
 }
 
-// DarkTheme returns a dark color theme
 func DarkTheme() Theme {
 	return Theme{
 		Primary:   lipgloss.Color("#BB86FC"), // Purple
@@ -142,7 +148,6 @@ func DarkTheme() Theme {
 	}
 }
 
-// LightTheme returns a light color theme
 func LightTheme() Theme {
 	return Theme{
 		Primary:   lipgloss.Color("#6200EA"), // Deep Purple
@@ -155,7 +160,7 @@ func LightTheme() Theme {
 	}
 }
 
-// NoTTYTheme returns a theme for non-terminal output (no colors)
+// NoTTYTheme provides colorless output suitable for pipes and non-interactive contexts.
 func NoTTYTheme() Theme {
 	noColor := lipgloss.Color("")
 	return Theme{
@@ -169,9 +174,9 @@ func NoTTYTheme() Theme {
 	}
 }
 
-// AutoTheme automatically selects a theme based on the terminal environment
+// AutoTheme selects an appropriate theme by detecting terminal capabilities
+// and background color, falling back to NoTTYTheme for non-interactive output.
 func AutoTheme() Theme {
-	// Check if output is a terminal
 	if !isTerminal() {
 		return NoTTYTheme()
 	}
@@ -197,7 +202,6 @@ func GetTerminalWidth() int {
 	return width
 }
 
-// isTerminal checks if stdout is a terminal
 func isTerminal() bool {
 	return term.IsTerminal(int(os.Stdout.Fd()))
 }

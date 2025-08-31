@@ -93,7 +93,7 @@ func (tm *Manager) gracefulShutdown(sig os.Signal, gracefulDone chan bool) {
 	tm.shutdownOnce.Do(func() {
 		fmt.Fprintf(os.Stderr, "\n🛑 Received %v - initiating graceful shutdown...\n", sig)
 		fmt.Fprintf(os.Stderr, "   Press Ctrl+C again to force immediate exit\n\n")
-		fmt.Fprint(os.Stderr, tm.Debug())
+		fmt.Fprint(os.Stderr, Debug())
 
 		// Call user-defined interrupt handler if provided
 		if tm.onInterrupt != nil {
@@ -101,7 +101,7 @@ func (tm *Manager) gracefulShutdown(sig os.Signal, gracefulDone chan bool) {
 		}
 
 		// Cancel all running tasks
-		tm.CancelAll()
+		CancelAll()
 
 		// Wait for tasks to complete with a shorter internal timeout
 		done := make(chan bool, 1)
@@ -133,7 +133,7 @@ func (tm *Manager) hardExit(reason string) {
 
 	fmt.Fprint(os.Stderr, tm.Pretty().String())
 	// Cancel all tasks immediately (best effort)
-	tm.CancelAll()
+	CancelAll()
 
 	os.Exit(130) // Standard exit code for interrupted process
 }
@@ -144,7 +144,7 @@ func (tm *Manager) forceExitWithStack() {
 	fmt.Fprintf(os.Stderr, "=====================================\n")
 
 	// Cancel all tasks immediately
-	tm.CancelAll()
+	CancelAll()
 
 	// Get goroutine count first
 	numGoroutines := runtime.NumGoroutine()

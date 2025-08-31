@@ -126,17 +126,17 @@ func DefaultManagerOptions() *ManagerOptions {
 }
 
 // Apply configures a TaskManager with these options
-func (opts *ManagerOptions) Apply(tm *Manager) {
-	tm.SetNoColor(opts.NoColor)
-	tm.SetNoProgress(opts.NoProgress)
-	tm.SetMaxConcurrent(opts.MaxConcurrent)
-	tm.SetGracefulTimeout(opts.GracefulTimeout)
+func (opts *ManagerOptions) Apply() {
+	SetNoColor(opts.NoColor)
+	SetNoProgress(opts.NoProgress)
+	SetMaxConcurrent(opts.MaxConcurrent)
+	SetGracefulTimeout(opts.GracefulTimeout)
 
 	if opts.MaxRetries > 0 {
-		config := tm.retryConfig
+		config := global.retryConfig
 		config.MaxRetries = opts.MaxRetries
 		config.BaseDelay = opts.RetryDelay
-		tm.SetRetryConfig(config)
+		SetRetryConfig(config)
 	}
 }
 
@@ -170,11 +170,4 @@ func BindManagerPFlags(flags *pflag.FlagSet, options *ManagerOptions) {
 		"Maximum retry attempts for failed tasks")
 	flags.DurationVar(&options.RetryDelay, "retry-delay", options.RetryDelay,
 		"Base delay between retry attempts")
-}
-
-// NewManagerWithOptions creates a TaskManager with the given options
-func NewManagerWithOptions(options *ManagerOptions) *Manager {
-	tm := NewManagerWithConcurrency(options.MaxConcurrent)
-	options.Apply(tm)
-	return tm
 }

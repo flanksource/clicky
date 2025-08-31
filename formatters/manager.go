@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/flanksource/clicky/api"
+	"github.com/flanksource/commons/logger"
 )
 
 type FormatManager struct {
@@ -114,6 +115,7 @@ func (f FormatManager) FormatWithOptions(options FormatOptions, data interface{}
 		return "", err
 	}
 
+	logger.Tracef("Formatting with %s", options.Format)
 	// If schema is provided, delegate to external handler
 	// (the calling code should handle ParseDataWithSchema and call FormatWithSchema directly)
 
@@ -165,6 +167,7 @@ func (f FormatManager) FormatWithOptions(options FormatOptions, data interface{}
 		// Force tree formatting by setting format hint
 		prettyData, err := f.ToPrettyDataWithFormatHint(data, "tree")
 		if err != nil {
+			logger.Debugf("Failed to convert to PrettyData for tree format: %v", err)
 			// Fallback to direct formatting if PrettyData conversion fails
 			return f.prettyFormatter.Format(data)
 		}

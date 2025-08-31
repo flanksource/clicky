@@ -7,17 +7,25 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/samber/lo"
 )
 
-// Pretty interface allows objects to provide rich formatting
+// Pretty enables objects to provide rich text formatting with styling and structure.
+// Types implementing this interface can control their visual representation across
+// different output formats (terminal, HTML, PDF, etc.).
 type Pretty interface {
 	Pretty() Text
 }
 
-// RenderFunc is a custom rendering function type
+// RenderFunc provides custom rendering logic for field values.
+// It receives the raw value, field configuration, and current theme,
+// allowing complete control over how a field is displayed.
 type RenderFunc func(value interface{}, field PrettyField, theme Theme) string
 
-// PrettyField represents field formatting configuration
+// PrettyField configures how a data field should be formatted and displayed.
+// It supports schema-driven formatting with type inference, custom styling,
+// nested field definitions, and conditional coloring based on field values.
 type PrettyField struct {
 	Name          string            `json:"name" yaml:"name"`
 	Type          string            `json:"type,omitempty" yaml:"type,omitempty"`
@@ -41,7 +49,8 @@ type PrettyField struct {
 	CompactItems bool       `json:"compact_items,omitempty" yaml:"compact_items,omitempty"`
 }
 
-// PrettyTable represents table configuration
+// PrettyTable configures tabular data presentation including column definitions,
+// sorting behavior, and styling options for headers and rows.
 type PrettyTable struct {
 	Title         string                   `json:"title,omitempty" yaml:"title,omitempty"`
 	Fields        []PrettyField            `json:"fields" yaml:"fields"`
@@ -52,12 +61,15 @@ type PrettyTable struct {
 	RowStyle      string                   `json:"row_style,omitempty" yaml:"row_style,omitempty"`
 }
 
-// PrettyObject represents a collection of fields
+// PrettyObject defines the schema for formatting structured data,
+// containing field definitions that control how each property is displayed.
 type PrettyObject struct {
 	Fields []PrettyField `json:"fields" yaml:"fields"`
 }
 
-// FieldValue represents a parsed field value with type-safe accessors
+// FieldValue wraps a raw value with type-safe accessors and formatting metadata.
+// It provides strongly-typed access to primitive values (string, int, float, bool, time)
+// while maintaining the original value and supporting rich text output.
 type FieldValue struct {
 	Field        PrettyField
 	Value        interface{}
@@ -72,7 +84,6 @@ type FieldValue struct {
 	Text         *Text
 }
 
-// Formatted returns the formatted string representation of the value
 func (v FieldValue) Formatted() string {
 	// Use Text object if available
 	if v.Text != nil {
@@ -83,7 +94,6 @@ func (v FieldValue) Formatted() string {
 	return fmt.Sprintf("%v", v.Value)
 }
 
-// Pretty returns the Text object for rich formatting
 func (v FieldValue) Pretty() Text {
 	if v.Text != nil {
 		return *v.Text
@@ -95,7 +105,6 @@ func (v FieldValue) Pretty() Text {
 	}
 }
 
-// Plain returns plain text without styling
 func (v FieldValue) Plain() string {
 	if v.Text != nil {
 		return v.Text.String()
@@ -103,7 +112,6 @@ func (v FieldValue) Plain() string {
 	return fmt.Sprintf("%v", v.Value)
 }
 
-// ANSI returns ANSI-formatted text for terminal output
 func (v FieldValue) ANSI() string {
 	if v.Text != nil {
 		return v.Text.ANSI()
@@ -111,7 +119,6 @@ func (v FieldValue) ANSI() string {
 	return fmt.Sprintf("%v", v.Value)
 }
 
-// HTML returns HTML-formatted text
 func (v FieldValue) HTML() string {
 	if v.Text != nil {
 		return v.Text.HTML()
@@ -119,12 +126,63 @@ func (v FieldValue) HTML() string {
 	return fmt.Sprintf("%v", v.Value)
 }
 
-// Markdown returns Markdown-formatted text
 func (v FieldValue) Markdown() string {
 	if v.Text != nil {
 		return v.Text.Markdown()
 	}
 	return fmt.Sprintf("%v", v.Value)
+}
+
+func (v FieldValue) DateTimeFormat() string {
+	var format = v.Field.DateFormat
+	if format == "" {
+		if f, ok := v.Field.FormatOptions["format"]; ok {
+			format = f
+		}
+	}
+	if format == "epoch" {
+		return time.RFC3339
+	}
+	if format == "" {
+		return time.RFC3339
+	}
+	return format
+}
+
+func (v FieldValue) Time() *time.Time {
+	// Try to parse from Value
+	switch val := v.Value.(type) {
+	case time.Time:
+		return &val
+	case string:
+		if t, err := time.Parse(v.DateTimeFormat(), val); err == nil {
+			return &t
+		} else if t, err := time.Parse(time.RFC3339, val); err == nil {
+			return &t
+		} else if t, err := time.Parse("2006-01-02 15:04:05", val); err == nil {
+			return &t
+		} else if t, err := time.Parse("2006-01-02", val); err == nil {
+			return &t
+		}
+	}
+
+	if n := v.Float(); n != nil {
+		now := time.Now()
+		// value is too large to be millisecond, must be nanosecond
+
+		if *n > float64(now.UnixMilli())*10.0 {
+			nanos := int64(*n)
+			// Calculate seconds and remaining nanoseconds
+			seconds := nanos / int64(time.Second)
+			nanosRemainder := nanos % int64(time.Second)
+
+			// Create a time.Time object
+			return lo.ToPtr(time.Unix(seconds, nanosRemainder))
+		}
+		return lo.ToPtr(time.UnixMilli(int64(*n)))
+	}
+
+	return nil
 }
 
 // formatNestedFields formats nested fields as struct-like fields (no braces)
@@ -165,6 +223,43 @@ func (v FieldValue) formatNestedFields() string {
 	return strings.Join(lines, "\n")
 }
 
+func (v FieldValue) Float() *float64 {
+
+	if v.FloatValue != nil {
+		return v.FloatValue
+	}
+
+	if v.IntValue != nil {
+		return lo.ToPtr(float64(*v.IntValue))
+	}
+
+	switch val := v.Value.(type) {
+	case float64:
+		return lo.ToPtr(val)
+	case int64:
+		return lo.ToPtr(float64(val))
+	case int32:
+		return lo.ToPtr(float64(int64(val)))
+	case int:
+		return lo.ToPtr(float64(int64(val)))
+	case string:
+		if i, err := strconv.ParseFloat(val, 64); err == nil {
+			return lo.ToPtr(i)
+		}
+	}
+
+	return nil
+}
+
+func (v FieldValue) Int() *int64 {
+	if v.IntValue != nil {
+		return v.IntValue
+	}
+
+	i := v.Float()
+	return lo.ToPtr(int64(*i))
+}
+
 // formatCurrency formats a value as currency
 func (v FieldValue) formatCurrency() string {
 	// Get currency symbol from format options or default to $
@@ -193,51 +288,11 @@ func (v FieldValue) formatCurrency() string {
 
 // formatDate formats a value as a date
 func (v FieldValue) formatDate() string {
-	format := DateTimeFormat
-	if v.Field.DateFormat != "" {
-		format = v.Field.DateFormat
-	} else if f, ok := v.Field.FormatOptions["format"]; ok {
-		format = f
-	}
 
-	// Handle special "epoch" format
-	if format == "epoch" {
-		format = DateTimeFormat
+	if t := v.Time(); t != nil {
+		return t.Format(v.DateTimeFormat())
 	}
-
-	if v.TimeValue != nil {
-		return v.TimeValue.Format(format)
-	}
-
-	// Try to parse from Value
-	switch val := v.Value.(type) {
-	case time.Time:
-		return val.Format(format)
-	case string:
-		// Try parsing as Unix timestamp first
-		if ts, err := strconv.ParseInt(val, 10, 64); err == nil {
-			return time.Unix(ts, 0).Format(format)
-		}
-		// Try to parse as time
-		if t, err := time.Parse(time.RFC3339, val); err == nil {
-			return t.Format(format)
-		} else if t, err := time.Parse("2006-01-02", val); err == nil {
-			return t.Format(format)
-		} else if t, err := time.Parse(DateTimeFormat, val); err == nil {
-			return t.Format(format)
-		}
-		return val
-	case int64:
-		// Treat as Unix timestamp (seconds)
-		return time.Unix(val, 0).Format(format)
-	case float64:
-		// Treat as Unix timestamp (possibly with milliseconds)
-		sec := int64(val)
-		nsec := int64((val - float64(sec)) * 1e9)
-		return time.Unix(sec, nsec).Format(format)
-	}
-
-	return fmt.Sprintf("%v", v.Value)
+	return ""
 }
 
 // formatFloat formats a float value
@@ -251,16 +306,10 @@ func (v FieldValue) formatFloat() string {
 
 	format := fmt.Sprintf("%%.%df", digits)
 
-	if v.FloatValue != nil {
-		return fmt.Sprintf(format, *v.FloatValue)
+	if v.Float() != nil {
+		return fmt.Sprintf(format, *v.Float())
 	}
-
-	// Try to parse from Value
-	if val, ok := v.Value.(float64); ok {
-		return fmt.Sprintf(format, val)
-	}
-
-	return fmt.Sprintf("%v", v.Value)
+	return ""
 }
 
 // formatDuration formats a duration value
@@ -300,7 +349,8 @@ func (v FieldValue) formatArray() string {
 	return fmt.Sprintf("%v", v.Value)
 }
 
-// Color returns the color to use for this value based on ColorOptions
+// Color determines the display color by matching the field value against
+// ColorOptions patterns, supporting exact matches and numeric comparisons.
 func (v FieldValue) Color() string {
 	if v.Field.Color != "" {
 		return v.Field.Color
@@ -392,7 +442,8 @@ func (v FieldValue) matchesNumericPattern(value, pattern string) bool {
 	return false
 }
 
-// Primitive returns the primitive value (string, int, float, bool, time)
+// Primitive extracts the underlying typed value, returning the most specific
+// type available (string, int64, float64, bool, time.Time) or the raw value.
 func (v FieldValue) Primitive() interface{} {
 	if v.StringValue != nil {
 		return *v.StringValue
@@ -412,7 +463,9 @@ func (v FieldValue) Primitive() interface{} {
 	return v.Value
 }
 
-// Parse creates a FieldValue from a raw value
+// Parse converts a raw value into a FieldValue with type inference and validation.
+// It performs type conversion based on the field's configured type, handles nested
+// structures, and creates appropriate Text objects for rich formatting.
 func (f PrettyField) Parse(value interface{}) (FieldValue, error) {
 	v := FieldValue{
 		Field: f,
@@ -500,14 +553,11 @@ func (f PrettyField) Parse(value interface{}) (FieldValue, error) {
 			v.TimeValue = &val
 		case string:
 			// Try parsing as Unix timestamp first
-			if ts, err := strconv.ParseInt(val, 10, 64); err == nil {
-				t := time.Unix(ts, 0)
+			if t, err := time.Parse(DateTimeFormat, val); err == nil {
 				v.TimeValue = &t
 			} else if t, err := time.Parse(time.RFC3339, val); err == nil {
 				v.TimeValue = &t
 			} else if t, err := time.Parse("2006-01-02", val); err == nil {
-				v.TimeValue = &t
-			} else if t, err := time.Parse(DateTimeFormat, val); err == nil {
 				v.TimeValue = &t
 			}
 		case int:
@@ -645,7 +695,8 @@ func (v FieldValue) createText() *Text {
 	}
 }
 
-// InferValueType infers the type from a value
+// InferValueType determines the appropriate field type for a given value
+// using reflection and type assertions, returning standard type constants.
 func InferValueType(value interface{}) string {
 	if value == nil {
 		return "nil"
@@ -889,17 +940,20 @@ func (v FieldValue) GetFieldType() string {
 // RenderFuncRegistry stores named custom render functions
 var RenderFuncRegistry = map[string]RenderFunc{}
 
-// RegisterRenderFunc registers a custom render function
+// RegisterRenderFunc adds a named custom render function to the global registry.
+// These functions can be referenced in field configurations for specialized formatting.
 func RegisterRenderFunc(name string, fn RenderFunc) {
 	RenderFuncRegistry[name] = fn
 }
 
-// ParsePrettyTag parses a pretty tag string into a PrettyField
+// ParsePrettyTag converts a struct tag string into field configuration.
+// Supports format options, styling, colors, and tree/table settings.
 func ParsePrettyTag(tag string) PrettyField {
 	return ParsePrettyTagWithName("", tag)
 }
 
-// ParsePrettyTagWithName parses a pretty tag string into a PrettyField with a field name
+// ParsePrettyTagWithName creates field configuration from a struct tag,
+// using the provided field name as the default label and identifier.
 func ParsePrettyTagWithName(fieldName, tag string) PrettyField {
 	field := PrettyField{
 		Name:          fieldName,
@@ -1009,7 +1063,9 @@ func ParsePrettyTagWithName(fieldName, tag string) PrettyField {
 	return field
 }
 
-// PrettyData represents parsed data with schema and values
+// PrettyData contains structured data processed through schema-driven formatting.
+// It separates regular field values from tabular and tree data, maintaining
+// the original data for serialization while providing formatted access.
 type PrettyData struct {
 	Schema *PrettyObject
 	Values map[string]FieldValue
@@ -1023,10 +1079,9 @@ type PrettyTree struct {
 	Children []PrettyTree
 }
 
-// PrettyDataRow represents a single row in a table
+// PrettyDataRow maps column names to their formatted values within a table.
 type PrettyDataRow map[string]FieldValue
 
-// GetTableNames returns sorted table names
 func (d *PrettyData) GetTableNames() []string {
 	if len(d.Tables) == 0 {
 		return nil
@@ -1040,13 +1095,11 @@ func (d *PrettyData) GetTableNames() []string {
 	return names
 }
 
-// GetTable returns table data by name
 func (d *PrettyData) GetTable(name string) ([]PrettyDataRow, bool) {
 	table, exists := d.Tables[name]
 	return table, exists
 }
 
-// GetValueKeys returns sorted value keys
 func (d *PrettyData) GetValueKeys() []string {
 	if len(d.Values) == 0 {
 		return nil
@@ -1060,13 +1113,14 @@ func (d *PrettyData) GetValueKeys() []string {
 	return keys
 }
 
-// GetValue returns a value by key
 func (d *PrettyData) GetValue(key string) (FieldValue, bool) {
 	value, exists := d.Values[key]
 	return value, exists
 }
 
-// FormatManager provides formatting capabilities
+// FormatManager defines the interface for converting data to various output formats.
+// Implementations handle the complete pipeline from raw data to formatted output
+// across multiple formats (JSON, YAML, CSV, Markdown, HTML, etc.).
 type FormatManager interface {
 	ToPrettyData(data interface{}) (*PrettyData, error)
 	Pretty(data interface{}) (string, error)

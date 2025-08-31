@@ -39,21 +39,18 @@ const (
 
 // Function aliases for backward compatibility
 var (
-	NewTaskManager                = task.NewManager
-	NewTaskManagerWithConcurrency = task.NewManagerWithConcurrency
-	NewTaskManagerWithOptions     = task.NewManagerWithOptions
-	DefaultRetryConfig            = task.DefaultRetryConfig
-	DefaultTaskManagerOptions     = task.DefaultManagerOptions
-	WithTimeout                   = task.WithTimeout
-	WithTaskTimeout               = task.WithTaskTimeout
-	WithDependencies              = task.WithDependencies
-	WithFunc                      = task.WithFunc
-	WithModel                     = task.WithModel
-	WithPrompt                    = task.WithPrompt
-	WithRetryConfig               = task.WithRetryConfig
-	WithPriority                  = task.WithPriority
-	BindTaskManagerFlags          = task.BindManagerFlags
-	BindTaskManagerPFlags         = task.BindManagerPFlags
+	DefaultRetryConfig        = task.DefaultRetryConfig
+	DefaultTaskManagerOptions = task.DefaultManagerOptions
+	WithTimeout               = task.WithTimeout
+	WithTaskTimeout           = task.WithTaskTimeout
+	WithDependencies          = task.WithDependencies
+	WithFunc                  = task.WithFunc
+	WithModel                 = task.WithModel
+	WithPrompt                = task.WithPrompt
+	WithRetryConfig           = task.WithRetryConfig
+	WithPriority              = task.WithPriority
+	BindTaskManagerFlags      = task.BindManagerFlags
+	BindTaskManagerPFlags     = task.BindManagerPFlags
 )
 
 // StartWithResultTyped creates and starts tracking a new task with generic typed result handling

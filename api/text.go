@@ -11,6 +11,9 @@ import (
 	"github.com/flanksource/clicky/api/tailwind"
 )
 
+// Text represents styled content that can be rendered to multiple output formats.
+// It supports hierarchical structure through Children, CSS-compatible styling,
+// and format-specific rendering (ANSI, HTML, Markdown).
 type Text struct {
 	Content  string
 	Class    Class
@@ -61,7 +64,8 @@ func (t Text) Append(text string, styles ...string) Text {
 	return t
 }
 
-// Indent add spaces before every line in content, apply recursively to children
+// Indent adds spaces before every line in content and recursively indents children
+// with additional spacing, creating proper hierarchical indentation.
 func (t Text) Indent(spaces int) Text {
 	indentation := strings.Repeat(" ", spaces)
 	t.Content = indentation + strings.ReplaceAll(t.Content, "\n", "\n"+indentation)
@@ -71,7 +75,8 @@ func (t Text) Indent(spaces int) Text {
 	return t
 }
 
-// Printf is like fmt.Printf, but prints floats and durations to 2 decimal places
+// PrintfWithStyle formats arguments with special handling for float64 (2 decimal places)
+// and time.Duration (human-readable format), appending the result as a styled child.
 func (t Text) PrintfWithStyle(format, style string, args ...interface{}) Text {
 	for i := range args {
 		switch v := args[i].(type) {
@@ -373,9 +378,9 @@ func ResolveStyles(styles ...string) Class {
 	return resolved
 }
 
-// ApplyTailwindStyle applies tailwind styles to text - wrapper around tailwind.ApplyStyle
+// ApplyTailwindStyle processes Tailwind CSS classes and applies text transformations,
+// returning both the transformed text and parsed style information.
 func ApplyTailwindStyle(text, styleStr string) (string, TailwindStyle) {
-	// Import the tailwind package functions
 	transformedText, twStyle := tailwind.ApplyStyle(text, styleStr)
 
 	// Convert to our TailwindStyle struct
@@ -393,7 +398,6 @@ func ApplyTailwindStyle(text, styleStr string) (string, TailwindStyle) {
 	return transformedText, style
 }
 
-// classToTailwindStyle converts a Class to TailwindStyle for rendering
 func classToTailwindStyle(class Class) TailwindStyle {
 	style := TailwindStyle{}
 
@@ -417,7 +421,7 @@ func classToTailwindStyle(class Class) TailwindStyle {
 	return style
 }
 
-// TailwindStyle represents parsed tailwind styles
+// TailwindStyle contains parsed CSS styling information extracted from Tailwind classes.
 type TailwindStyle struct {
 	Foreground    string
 	Background    string
@@ -430,13 +434,10 @@ type TailwindStyle struct {
 	TextTransform string
 }
 
-// formatANSI formats text with ANSI escape codes
 func formatANSI(text string, style TailwindStyle) string {
 	if text == "" {
 		return ""
 	}
-
-	// Force termenv to use ANSI mode for consistent output in tests
 	output := termenv.NewOutput(termenv.DefaultOutput().Writer(), termenv.WithProfile(termenv.ANSI))
 	termStyle := output.String(text)
 
@@ -483,7 +484,6 @@ func formatANSI(text string, style TailwindStyle) string {
 	return result
 }
 
-// hexToTermenvColor converts hex color to termenv Color
 func hexToTermenvColor(hex string) termenv.Color {
 	if hex == "" {
 		return nil
@@ -505,7 +505,8 @@ func hexToTermenvColor(hex string) termenv.Color {
 	return nil
 }
 
-// formatHTML formats text with HTML tags and styles
+// formatHTML generates HTML with both semantic tags and CSS styling for maximum
+// compatibility across different HTML renderers and Tailwind CSS environments.
 func formatHTML(text string, style TailwindStyle, originalStyle string) string {
 	if text == "" {
 		return ""

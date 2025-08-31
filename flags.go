@@ -94,6 +94,6 @@ func (a AllFlags) String() string {
 func (a AllFlags) UseFlags() {
 	logger.Configure(a.Flags)
 	logger.Debugf("Using logger flags: %s", a)
-	UseGlobalTaskManager(a.TaskManagerOptions)
+	a.TaskManagerOptions.Apply()
 	UseFormatter(a.FormatOptions)
 }

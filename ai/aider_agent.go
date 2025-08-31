@@ -75,11 +75,8 @@ func (aa *AiderAgent) ListModels(ctx context.Context) ([]Model, error) {
 func (aa *AiderAgent) ExecutePrompt(ctx context.Context, request PromptRequest) (*PromptResponse, error) {
 	var response *PromptResponse
 
-	task := clicky.StartGlobalTask(request.Name,
-		clicky.WithTimeout(10*time.Minute), // Aider might need more time
-		clicky.WithModel(aa.config.Model),
-		clicky.WithPrompt(request.Prompt),
-		clicky.WithFunc(func(ctx flanksourcecontext.Context, t *clicky.Task) error {
+	task := clicky.StartTask(request.Name, 
+		func(ctx flanksourcecontext.Context, t *clicky.Task) (interface{}, error) {
 			t.Infof("Starting Aider request")
 			// Start with unknown progress (infinite spinner)
 			t.SetProgress(0, 0)
@@ -87,14 +84,16 @@ func (aa *AiderAgent) ExecutePrompt(ctx context.Context, request PromptRequest) 
 			resp, execErr := aa.executeAider(ctx, request, t)
 			if execErr != nil {
 				t.Errorf("Aider request failed: %v", execErr)
-				return execErr
+				return nil, execErr
 			}
 
 			t.Infof("Completed")
-
 			response = resp
-			return nil
-		}))
+			return resp, nil
+		},
+		clicky.WithTimeout(10*time.Minute), // Aider might need more time
+		clicky.WithModel(aa.config.Model),
+		clicky.WithPrompt(request.Prompt))
 
 	// Wait for task completion
 	for task.Status() == clicky.StatusPending || task.Status() == clicky.StatusRunning {
@@ -129,11 +128,8 @@ func (aa *AiderAgent) ExecuteBatch(ctx context.Context, requests []PromptRequest
 	for _, request := range requests {
 		req := request // Capture for closure
 
-		task := clicky.StartGlobalTask(req.Name,
-			clicky.WithTimeout(10*time.Minute),
-			clicky.WithModel(aa.config.Model),
-			clicky.WithPrompt(req.Prompt),
-			clicky.WithFunc(func(ctx flanksourcecontext.Context, t *clicky.Task) error {
+		task := clicky.StartTask(req.Name,
+			func(ctx flanksourcecontext.Context, t *clicky.Task) (interface{}, error) {
 				t.Infof("Processing request")
 				// Start with unknown progress (infinite spinner)
 				t.SetProgress(0, 0)
@@ -152,20 +148,23 @@ func (aa *AiderAgent) ExecuteBatch(ctx context.Context, requests []PromptRequest
 					name:     req.Name,
 				}:
 				case <-t.Context().Done():
-					return fmt.Errorf("batch task canceled: %w", t.Context().Err())
+					return nil, fmt.Errorf("batch task canceled: %w", t.Context().Err())
 				}
 
 				if err != nil {
 					// Log error but don't fail the task - let it complete as a warning
 					t.Warnf("Failed: %v", err)
-					return nil // Return nil so task shows as completed with warning
+					return nil, nil // Return nil so task shows as completed with warning
 				}
 
 				t.Infof("Completed")
-				return nil
-			}))
+				return response, nil
+			},
+			clicky.WithTimeout(10*time.Minute),
+			clicky.WithModel(aa.config.Model),
+			clicky.WithPrompt(req.Prompt))
 
-		tasks = append(tasks, task)
+		tasks = append(tasks, task.Task)
 	}
 
 	// Wait for all tasks to complete and collect results concurrently

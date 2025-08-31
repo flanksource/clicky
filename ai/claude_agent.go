@@ -132,11 +132,8 @@ func (ca *ClaudeAgent) ListModels(ctx context.Context) ([]Model, error) {
 func (ca *ClaudeAgent) ExecutePrompt(ctx context.Context, request PromptRequest) (*PromptResponse, error) {
 	var response *PromptResponse
 
-	task := clicky.StartGlobalTask(request.Name,
-		clicky.WithTimeout(5*time.Minute),
-		clicky.WithModel(ca.config.Model),
-		clicky.WithPrompt(request.Prompt),
-		clicky.WithFunc(func(ctx flanksourcecontext.Context, t *clicky.Task) error {
+	task := clicky.StartTask(request.Name,
+		func(ctx flanksourcecontext.Context, t *clicky.Task) (interface{}, error) {
 			t.Infof("Starting Claude request")
 			// Start with unknown progress (infinite spinner)
 			t.SetProgress(0, 0)
@@ -144,14 +141,17 @@ func (ca *ClaudeAgent) ExecutePrompt(ctx context.Context, request PromptRequest)
 			resp, execErr := ca.executeClaude(ctx, request, t)
 			if execErr != nil {
 				t.Errorf("Claude request failed: %v", execErr)
-				return execErr
+				return nil, execErr
 			}
 
 			t.Infof("Completed (%d tokens, $%.6f)", resp.TokensUsed, resp.CostUSD)
 
 			response = resp
-			return nil
-		}))
+			return resp, nil
+		},
+		clicky.WithTimeout(5*time.Minute),
+		clicky.WithModel(ca.config.Model),
+		clicky.WithPrompt(request.Prompt))
 
 	// Wait for task completion
 	for task.Status() == clicky.StatusPending || task.Status() == clicky.StatusRunning {
@@ -186,11 +186,8 @@ func (ca *ClaudeAgent) ExecuteBatch(ctx context.Context, requests []PromptReques
 	for _, request := range requests {
 		req := request // Capture for closure
 
-		task := clicky.StartGlobalTask(req.Name,
-			clicky.WithTimeout(5*time.Minute),
-			clicky.WithModel(ca.config.Model),
-			clicky.WithPrompt(req.Prompt),
-			clicky.WithFunc(func(ctx flanksourcecontext.Context, t *clicky.Task) error {
+		task := clicky.StartTask(req.Name,
+			func(ctx flanksourcecontext.Context, t *clicky.Task) (interface{}, error) {
 				t.Infof("Processing request")
 				// Start with unknown progress (infinite spinner)
 				t.SetProgress(0, 0)
@@ -209,20 +206,23 @@ func (ca *ClaudeAgent) ExecuteBatch(ctx context.Context, requests []PromptReques
 					err:      err,
 				}:
 				case <-t.Context().Done():
-					return fmt.Errorf("claude batch task canceled: %w", t.Context().Err())
+					return nil, fmt.Errorf("claude batch task canceled: %w", t.Context().Err())
 				}
 
 				if err != nil {
 					// Log error but don't fail the task - let it complete as a warning
 					t.Warnf("Failed: %v", err)
-					return nil // Return nil so task shows as completed with warning
+					return nil, nil // Return nil so task shows as completed with warning
 				}
 
 				t.Infof("Completed (%d tokens)", response.TokensUsed)
-				return nil
-			}))
+				return response, nil
+			},
+			clicky.WithTimeout(5*time.Minute),
+			clicky.WithModel(ca.config.Model),
+			clicky.WithPrompt(req.Prompt))
 
-		tasks = append(tasks, task)
+		tasks = append(tasks, task.Task)
 	}
 
 	// Wait for all tasks to complete and collect results concurrently

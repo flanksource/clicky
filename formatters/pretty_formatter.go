@@ -10,6 +10,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/flanksource/clicky/api"
+	"github.com/flanksource/commons/logger"
 )
 
 // PrettyFormatter handles formatting of structs with pretty tags
@@ -1041,12 +1042,16 @@ func (p *PrettyFormatter) formatAsTree(val reflect.Value, field api.PrettyField)
 		if treeNode, ok := val.Interface().(api.TreeNode); ok {
 			node = treeNode
 		} else {
+			logger.Debugf("Value does not implement TreeNode: %T", val.Interface())
 			// Try to convert to tree node
 			node = ConvertToTreeNode(val.Interface())
 		}
+	} else {
+		logger.Debugf("Value is not interface{}: %T", val.Interface())
 	}
 
 	if node == nil {
+		logger.Debugf("Failed to convert to TreeNode: %v", val)
 		return p.formatDefault(val)
 	}
 

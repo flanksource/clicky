@@ -40,26 +40,24 @@ type ClaudeResponse struct {
 
 // ClaudeExecutor manages Claude API calls with TaskManager integration
 type ClaudeExecutor struct {
-	options     ClaudeOptions
-	taskManager *clicky.TaskManager
+	options ClaudeOptions
 }
 
 // NewClaudeExecutor creates a new Claude executor
 func NewClaudeExecutor(options ClaudeOptions) *ClaudeExecutor {
-	tm := clicky.NewTaskManagerWithConcurrency(options.MaxConcurrent)
+	clicky.SetGlobalMaxConcurrency(options.MaxConcurrent)
 	if options.Debug {
-		tm.SetVerbose(true)
+		clicky.SetGlobalVerbose(true)
 	}
 
 	return &ClaudeExecutor{
-		options:     options,
-		taskManager: tm,
+		options: options,
 	}
 }
 
-// GetTaskManager returns the underlying task manager
+// GetTaskManager returns the global task manager
 func (ce *ClaudeExecutor) GetTaskManager() *clicky.TaskManager {
-	return ce.taskManager
+	return nil // Global task manager doesn't expose instance
 }
 
 // ExecutePrompt executes a single Claude prompt with progress tracking
@@ -99,9 +97,8 @@ func (ce *ClaudeExecutor) ExecutePromptBatch(ctx context.Context, prompts map[st
 	for name, prompt := range prompts {
 		taskName := name
 
-		ce.taskManager.Start(taskName,
-			clicky.WithTimeout(5*time.Minute),
-			clicky.WithFunc(func(ctx flanksourceContext.Context, t *clicky.Task) error {
+		clicky.StartTask(taskName,
+			func(ctx flanksourceContext.Context, t *clicky.Task) (interface{}, error) {
 				t.Infof("Processing prompt")
 				t.SetProgress(0, 100)
 
@@ -119,13 +116,14 @@ func (ce *ClaudeExecutor) ExecutePromptBatch(ctx context.Context, prompts map[st
 
 				if err != nil {
 					t.Errorf("Failed: %v", err)
-					return err
+					return nil, err
 				}
 
 				t.SetProgress(100, 100)
 				t.Infof("Completed (%d tokens)", response.GetTotalTokens())
-				return nil
-			}))
+				return response, nil
+			},
+			clicky.WithTimeout(5*time.Minute))
 	}
 
 	// Collect results
@@ -137,14 +135,14 @@ func (ce *ClaudeExecutor) ExecutePromptBatch(ctx context.Context, prompts map[st
 					results[result.name] = result.response
 				}
 			case <-ctx.Done():
-				ce.taskManager.CancelAll()
+				clicky.CancelAllGlobalTasks()
 				return
 			}
 		}
 	}()
 
 	// Wait for all tasks to complete
-	exitCode := ce.taskManager.Wait()
+	exitCode := clicky.WaitForGlobalCompletion()
 	if exitCode != 0 {
 		return results, fmt.Errorf("some tasks failed (exit code %d)", exitCode)
 	}

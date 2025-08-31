@@ -52,7 +52,7 @@ type Manager struct {
 	tasksByIdentity sync.Map // map[string]*Task
 }
 
-var Global *Manager
+var global *Manager
 
 type styleSet struct {
 	success  lipgloss.Style
@@ -66,13 +66,17 @@ type styleSet struct {
 	pending  lipgloss.Style
 }
 
+func init() {
+	global = newManager()
+}
+
 // NewManager creates a new TaskManager instance
-func NewManager() *Manager {
-	return NewManagerWithConcurrency(0) // 0 means unlimited
+func newManager() *Manager {
+	return newManagerWithConcurrency(0) // 0 means unlimited
 }
 
 // NewManagerWithConcurrency creates a new TaskManager with concurrency limit
-func NewManagerWithConcurrency(maxConcurrent int) *Manager {
+func newManagerWithConcurrency(maxConcurrent int) *Manager {
 	// Check stderr for terminal size since we output there
 	width, _, err := term.GetSize(int(os.Stderr.Fd()))
 	if err != nil {
@@ -156,10 +160,7 @@ func NewManagerWithConcurrency(maxConcurrent int) *Manager {
 		taskQueue:       taskQueue,
 		workers:         make([]*worker, 0, maxConcurrent),
 		shutdown:        make(chan struct{}),
-	}
-
-	if maxConcurrent > 0 {
-		tm.semaphore = make(chan struct{}, maxConcurrent)
+		semaphore:       make(chan struct{}, maxConcurrent),
 	}
 
 	// Use the stderr renderer for creating styles
@@ -191,72 +192,60 @@ func NewManagerWithConcurrency(maxConcurrent int) *Manager {
 }
 
 // SetVerbose enables or disables verbose logging
-func (tm *Manager) SetVerbose(verbose bool) {
-	tm.mu.Lock()
-	defer tm.mu.Unlock()
-	tm.verbose = verbose
+func SetVerbose(verbose bool) {
+	global.verbose = verbose
 }
 
 // SetNoColor enables or disables colored output
-func (tm *Manager) SetNoColor(noColor bool) {
-	tm.mu.Lock()
-	defer tm.mu.Unlock()
-	tm.noColor = noColor
+func SetNoColor(noColor bool) {
+	global.noColor = noColor
 }
 
 // SetNoProgress enables or disables progress display
-func (tm *Manager) SetNoProgress(noProgress bool) {
-	tm.mu.Lock()
-	defer tm.mu.Unlock()
-	tm.noProgress = noProgress
+func SetNoProgress(noProgress bool) {
+	global.noProgress = noProgress
 }
 
 // SetMaxConcurrent sets the maximum number of concurrent tasks
-func (tm *Manager) SetMaxConcurrent(max int) {
-	tm.mu.Lock()
-	defer tm.mu.Unlock()
+func SetMaxConcurrent(max int) {
+	global.mu.Lock()
+	defer global.mu.Unlock()
 
-	if tm.maxConcurrent == max {
+	if global.maxConcurrent == max {
 		return
 	}
 
-	tm.maxConcurrent = max
+	global.maxConcurrent = max
 	if max > 0 {
 		// Create new semaphore with new size
 		newSem := make(chan struct{}, max)
 		// Transfer existing permits if any
-		if tm.semaphore != nil {
-			close(tm.semaphore)
+		if global.semaphore != nil {
+			close(global.semaphore)
 		}
-		tm.semaphore = newSem
+		global.semaphore = newSem
 	} else {
 		// Unlimited concurrency
-		if tm.semaphore != nil {
-			close(tm.semaphore)
-			tm.semaphore = nil
+		if global.semaphore != nil {
+			close(global.semaphore)
+			global.semaphore = nil
 		}
 	}
 }
 
 // SetRetryConfig sets the default retry configuration for new tasks
-func (tm *Manager) SetRetryConfig(config RetryConfig) {
-	tm.mu.Lock()
-	defer tm.mu.Unlock()
-	tm.retryConfig = config
+func SetRetryConfig(config RetryConfig) {
+	global.retryConfig = config
 }
 
 // SetGracefulTimeout sets the timeout for graceful shutdown
-func (tm *Manager) SetGracefulTimeout(timeout time.Duration) {
-	tm.signalMu.Lock()
-	defer tm.signalMu.Unlock()
-	tm.gracefulTimeout = timeout
+func SetGracefulTimeout(timeout time.Duration) {
+	global.gracefulTimeout = timeout
 }
 
 // SetInterruptHandler sets a custom callback to be called on interrupt
-func (tm *Manager) SetInterruptHandler(fn func()) {
-	tm.signalMu.Lock()
-	defer tm.signalMu.Unlock()
-	tm.onInterrupt = fn
+func SetInterruptHandler(fn func()) {
+	global.onInterrupt = fn
 }
 
 func (tm *Manager) newTask(name string, opts ...Option) *Task {
@@ -341,7 +330,7 @@ func StartTask[T any](name string, taskFunc func(flanksourceContext.Context, *Ta
 		result, err := taskFunc(ctx, t)
 		return result, err
 	}
-	t := Global.StartWithResult(name, wrappedFunc, opts...)
+	t := global.StartWithResult(name, wrappedFunc, opts...)
 	return TypedTask[T]{t}
 }
 
@@ -375,24 +364,24 @@ func StartGroup[T any](name string) TypedGroup[T] {
 	group := &Group{
 		name:    name,
 		Items:   make([]Taskable, 0),
-		manager: Global,
+		manager: global,
 		ctx:     ctx,
 		cancel:  cancel,
 	}
 
 	// Add to groups list for tracking
-	Global.groups = append(Global.groups, group)
+	global.groups = append(global.groups, group)
 
 	return TypedGroup[T]{group}
 }
 
 // Run starts all tasks and waits for completion
 func (tm *Manager) Run() error {
-	tm.Wait()
+	Wait()
 
 	// Check if any tasks failed
-	tm.mu.RLock()
-	defer tm.mu.RUnlock()
+	global.mu.RLock()
+	defer global.mu.RUnlock()
 
 	for _, task := range tm.tasks {
 		if task.err != nil {
@@ -403,26 +392,25 @@ func (tm *Manager) Run() error {
 }
 
 // CancelAll cancels all running tasks and groups
-func (tm *Manager) CancelAll() {
+func CancelAll() {
 	// Cancel all tasks
-	for _, task := range tm.tasks {
+	for _, task := range global.tasks {
 		task.Cancel()
 	}
 
 	// Cancel all groups
-	for _, group := range tm.groups {
+	for _, group := range global.groups {
 		group.Cancel()
 	}
 }
 
 // ClearTasks removes all completed tasks from the task list
-func (tm *Manager) ClearTasks() {
-	tm.mu.Lock()
-	defer tm.mu.Unlock()
-
+func ClearTasks() {
+	global.mu.Lock()
+	defer global.mu.Unlock()
 	// Only keep running or pending tasks
 	var activeTasks []*Task
-	for _, task := range tm.tasks {
+	for _, task := range global.tasks {
 		task.mu.Lock()
 		status := task.status
 		task.mu.Unlock()
@@ -432,28 +420,28 @@ func (tm *Manager) ClearTasks() {
 		}
 	}
 
-	tm.tasks = activeTasks
+	global.tasks = activeTasks
 }
 
 // WaitSilent waits for all tasks to complete without displaying results
-func (tm *Manager) WaitSilent() int {
+func WaitSilent() int {
 	// Wait for queue to be empty and all workers to be idle
 	ticker := time.NewTicker(10 * time.Millisecond)
 	defer ticker.Stop()
 
 	for {
 		// Check if queue is empty and no workers are active
-		if tm.taskQueue.Empty() && tm.workersActive.Load() == 0 {
+		if global.taskQueue.Empty() && global.workersActive.Load() == 0 {
 			// Also check all tasks are completed
 			allComplete := true
-			tm.mu.RLock()
-			for _, task := range tm.tasks {
+			global.mu.RLock()
+			for _, task := range global.tasks {
 				if !task.completed.Load() {
 					allComplete = false
 					break
 				}
 			}
-			tm.mu.RUnlock()
+			global.mu.RUnlock()
 
 			if allComplete {
 				break
@@ -463,11 +451,11 @@ func (tm *Manager) WaitSilent() int {
 		<-ticker.C
 	}
 
-	tm.stopRender <- true
+	global.stopRender <- true
 
-	tm.mu.RLock()
-	tasks := tm.tasks
-	tm.mu.RUnlock()
+	global.mu.RLock()
+	tasks := global.tasks
+	global.mu.RUnlock()
 
 	// Calculate exit code based on task status
 	for _, task := range tasks {
@@ -485,24 +473,24 @@ func (tm *Manager) WaitSilent() int {
 }
 
 // Wait waits for all tasks to complete and returns the appropriate exit code
-func (tm *Manager) Wait() int {
+func Wait() int {
 	// Wait for queue to be empty and all workers to be idle
 	ticker := time.NewTicker(10 * time.Millisecond)
 	defer ticker.Stop()
 
 	for {
 		// Check if queue is empty and no workers are active
-		if tm.taskQueue.Empty() && tm.workersActive.Load() == 0 {
+		if global.taskQueue.Empty() && global.workersActive.Load() == 0 {
 			// Also check all tasks are completed
 			allComplete := true
-			tm.mu.RLock()
-			for _, task := range tm.tasks {
+			global.mu.RLock()
+			for _, task := range global.tasks {
 				if !task.completed.Load() {
 					allComplete = false
 					break
 				}
 			}
-			tm.mu.RUnlock()
+			global.mu.RUnlock()
 
 			if allComplete {
 				break
@@ -512,11 +500,11 @@ func (tm *Manager) Wait() int {
 		<-ticker.C
 	}
 
-	tm.stopRender <- true
+	global.stopRender <- true
 
 	var failed, canceled int
 
-	for _, task := range tm.tasks {
+	for _, task := range global.tasks {
 		task.mu.Lock()
 		status := task.status
 		task.mu.Unlock()
@@ -536,13 +524,13 @@ func (tm *Manager) Wait() int {
 }
 
 // Debug returns debug information about the task manager
-func (tm *Manager) Debug() string {
+func Debug() string {
 	var result string
-	result += fmt.Sprintf("Task Manager: {no-color=%v, no-progress=%v, workers=%v}\n", tm.noColor, tm.noProgress, tm.workersActive.Load())
-	result += fmt.Sprintf("  Total Tasks: %d\n", len(tm.tasks))
-	result += fmt.Sprintf("  Active Workers: %d\n", tm.workersActive.Load())
+	result += fmt.Sprintf("Task Manager: {no-color=%v, no-progress=%v, workers=%v}\n", global.noColor, global.noProgress, global.workersActive.Load())
+	result += fmt.Sprintf("  Total Tasks: %d\n", len(global.tasks))
+	result += fmt.Sprintf("  Active Workers: %d\n", global.workersActive.Load())
 	result += "  Task Details:\n"
-	for _, task := range tm.tasks {
+	for _, task := range global.tasks {
 		task.mu.Lock()
 		result += fmt.Sprintf("    - %s: %v\n", task.name, task.status)
 		task.mu.Unlock()
