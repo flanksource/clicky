@@ -13,6 +13,7 @@ import (
 	"github.com/flanksource/commons/collections"
 	flanksourceContext "github.com/flanksource/commons/context"
 	"github.com/flanksource/commons/logger"
+	"golang.org/x/sync/semaphore"
 	"golang.org/x/term"
 )
 
@@ -359,7 +360,7 @@ func (tm *Manager) StartWithResult(name string, taskFunc func(flanksourceContext
 }
 
 // StartGroup creates and starts tracking a new task group
-func StartGroup[T any](name string) TypedGroup[T] {
+func StartGroup[T any](name string, opts ...TaskGroupOption) TypedGroup[T] {
 	ctx, cancel := context.WithCancel(context.Background())
 	group := &Group{
 		name:    name,
@@ -371,6 +372,16 @@ func StartGroup[T any](name string) TypedGroup[T] {
 
 	// Add to groups list for tracking
 	global.groups = append(global.groups, group)
+
+	// Apply options first
+	for _, opt := range opts {
+		opt(group)
+	}
+
+	// Initialize semaphore if concurrency limit is set
+	if group.concurrency > 0 {
+		group.sem = semaphore.NewWeighted(int64(group.concurrency))
+	}
 
 	return TypedGroup[T]{group}
 }

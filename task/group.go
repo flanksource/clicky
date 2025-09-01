@@ -6,21 +6,28 @@ import (
 	"time"
 
 	flanksourceContext "github.com/flanksource/commons/context"
+	"golang.org/x/sync/semaphore"
 )
 
 // Group represents a group of tasks that can be managed collectively
 type Group struct {
-	name      string
-	Items     []Taskable // Can contain Tasks or nested Groups
-	startTime time.Time
-	manager   *Manager
-	ctx       context.Context
-	cancel    context.CancelFunc
-	mu        sync.RWMutex
+	name        string
+	Items       []Taskable // Can contain Tasks or nested Groups
+	startTime   time.Time
+	manager     *Manager
+	ctx         context.Context
+	cancel      context.CancelFunc
+	mu          sync.RWMutex
+	concurrency int
+	sem         *semaphore.Weighted // Semaphore for concurrency control
 }
 
-type TaskGroup interface {
-	GetTasks() []Taskable
+type TaskGroupOption func(group *Group)
+
+func WithConcurrency(concurrency int) TaskGroupOption {
+	return func(group *Group) {
+		group.concurrency = concurrency
+	}
 }
 
 func (g *Group) GetTasks() []Taskable {
@@ -36,8 +43,24 @@ func (g TypedGroup[T]) Add(name string, taskFunc func(flanksourceContext.Context
 	g.mu.Lock()
 	defer g.mu.Unlock()
 
-	// Create the task using the group's manager
-	task := StartTask(name, taskFunc, opts...)
+	// Wrap the task function with semaphore acquire/release if concurrency is limited
+	wrappedTaskFunc := taskFunc
+	if g.Group.sem != nil {
+		wrappedTaskFunc = func(ctx flanksourceContext.Context, t *Task) (T, error) {
+			// Acquire semaphore permit
+			if err := g.Group.sem.Acquire(ctx, 1); err != nil {
+				var zero T
+				return zero, err
+			}
+			defer g.Group.sem.Release(1)
+
+			// Execute the original task function
+			return taskFunc(ctx, t)
+		}
+	}
+
+	// Create the task using the group's manager with wrapped function
+	task := StartTask(name, wrappedTaskFunc, opts...)
 
 	// Add to the group's items
 	g.Group.Items = append(g.Group.Items, task)
@@ -119,18 +142,18 @@ func (g *Group) Status() Status {
 // This version handles dynamically added tasks by continuously checking for new tasks
 func (g *TypedGroup[T]) WaitFor() *WaitResult {
 	result := &WaitResult{}
-	
+
 	// Keep track of the last known task count
 	lastCount := -1
 	stableIterations := 0
 	const requiredStableIterations = 3 // Number of iterations with no new tasks before considering complete
-	
+
 	for {
 		// Get current count of tasks
 		g.mu.RLock()
 		currentCount := len(g.Group.Items)
 		g.mu.RUnlock()
-		
+
 		// Check if we have new tasks
 		if currentCount != lastCount {
 			lastCount = currentCount
@@ -139,11 +162,11 @@ func (g *TypedGroup[T]) WaitFor() *WaitResult {
 			time.Sleep(10 * time.Millisecond)
 			continue
 		}
-		
+
 		// Check if all current tasks are complete
 		allComplete := true
 		hasRunning := false
-		
+
 		g.mu.RLock()
 		for _, item := range g.Group.Items {
 			status := item.GetTask().Status()
@@ -156,7 +179,7 @@ func (g *TypedGroup[T]) WaitFor() *WaitResult {
 			}
 		}
 		g.mu.RUnlock()
-		
+
 		if allComplete {
 			stableIterations++
 			if stableIterations >= requiredStableIterations {
