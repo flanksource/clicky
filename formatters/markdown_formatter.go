@@ -297,23 +297,12 @@ func (f *MarkdownFormatter) formatTreeNode(node api.TreeNode, depth int) string 
 	// Create indentation based on depth
 	indent := strings.Repeat("  ", depth)
 
-	// Format current node - check if it implements Pretty interface
-	var nodeContent string
-	if prettyNode, ok := node.(api.Pretty); ok {
-		// Use Pretty() method for rich formatting
-		text := prettyNode.Pretty()
-		nodeContent = text.Markdown()
-	} else {
-		// Fallback to GetLabel()
-		nodeContent = node.GetLabel()
-	}
-
 	if depth == 0 {
 		// Root node - use bold
-		result.WriteString(fmt.Sprintf("**%s**\n", nodeContent))
+		result.WriteString(fmt.Sprintf("**%s**\n", node.Pretty().Markdown()))
 	} else {
 		// Child nodes - use bullet points with indentation
-		result.WriteString(fmt.Sprintf("%s- %s\n", indent, nodeContent))
+		result.WriteString(fmt.Sprintf("%s- %s\n", indent, node.Pretty().Markdown()))
 	}
 
 	// Format children recursively

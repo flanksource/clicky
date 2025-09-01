@@ -1,14 +1,16 @@
 package api
 
-// TreeNode defines the interface for hierarchical tree structures with visual metadata.
-// Implementations provide display labels, child relationships, and styling information
-// for consistent tree rendering across different output formats.
+// TreeNode defines the interface for hierarchical tree structures.
+// Implementations provide formatted content and child relationships for tree rendering.
 type TreeNode interface {
-	GetLabel() string
+	Pretty() Text
 	GetChildren() []TreeNode
-	GetIcon() string
-	GetStyle() string
-	IsLeaf() bool
+}
+
+// TreeMixin allows types to provide tree representation without being TreeNodes themselves.
+// This is useful for data types that need tree formatting but aren't primarily tree structures.
+type TreeMixin interface {
+	Tree() TreeNode
 }
 
 // PrettyNode extends TreeNode with rich text formatting capabilities.
@@ -72,24 +74,24 @@ type SimpleTreeNode struct {
 	Metadata map[string]interface{} `json:"metadata,omitempty" yaml:"metadata,omitempty"`
 }
 
-func (n *SimpleTreeNode) GetLabel() string {
-	return n.Label
+func (n *SimpleTreeNode) Pretty() Text {
+	text := Text{Content: n.Label}
+	
+	// Add icon if present
+	if n.Icon != "" {
+		text.Content = n.Icon + " " + text.Content
+	}
+	
+	// Apply style if present
+	if n.Style != "" {
+		text.Style = n.Style
+	}
+	
+	return text
 }
 
 func (n *SimpleTreeNode) GetChildren() []TreeNode {
 	return n.Children
-}
-
-func (n *SimpleTreeNode) GetIcon() string {
-	return n.Icon
-}
-
-func (n *SimpleTreeNode) GetStyle() string {
-	return n.Style
-}
-
-func (n *SimpleTreeNode) IsLeaf() bool {
-	return len(n.Children) == 0
 }
 
 // CompactListNode renders multiple items inline rather than as nested children,
@@ -102,24 +104,24 @@ type CompactListNode struct {
 	Metadata map[string]interface{} `json:"metadata,omitempty" yaml:"metadata,omitempty"`
 }
 
-func (n *CompactListNode) GetLabel() string {
-	return n.Label
+func (n *CompactListNode) Pretty() Text {
+	text := Text{Content: n.Label}
+	
+	// Add icon if present
+	if n.Icon != "" {
+		text.Content = n.Icon + " " + text.Content
+	}
+	
+	// Apply style if present
+	if n.Style != "" {
+		text.Style = n.Style
+	}
+	
+	return text
 }
 
 func (n *CompactListNode) GetChildren() []TreeNode {
 	return nil
-}
-
-func (n *CompactListNode) GetIcon() string {
-	return n.Icon
-}
-
-func (n *CompactListNode) GetStyle() string {
-	return n.Style
-}
-
-func (n *CompactListNode) IsLeaf() bool {
-	return true
 }
 
 func (n *CompactListNode) GetItems() []string {

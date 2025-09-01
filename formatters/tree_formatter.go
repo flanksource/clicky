@@ -28,6 +28,57 @@ func NewTreeFormatter(theme api.Theme, noColor bool, options *api.TreeOptions) *
 	}
 }
 
+// Format formats data as a tree structure
+func (f *TreeFormatter) Format(data interface{}) (string, error) {
+	// Check if data implements Pretty interface first
+	if pretty, ok := data.(api.Pretty); ok {
+		text := pretty.Pretty()
+		if f.NoColor {
+			return text.String(), nil
+		} else {
+			return text.ANSI(), nil
+		}
+	}
+
+	// Check if data is directly a TreeNode
+	if treeNode, ok := data.(api.TreeNode); ok {
+		return f.FormatTreeFromRoot(treeNode), nil
+	}
+
+	// Convert to PrettyData
+	prettyData, err := ToPrettyData(data)
+	if err != nil {
+		return "", fmt.Errorf("failed to convert to PrettyData: %w", err)
+	}
+
+	if prettyData == nil || prettyData.Schema == nil {
+		return "", nil
+	}
+
+	return f.FormatPrettyData(prettyData)
+}
+
+// FormatPrettyData formats PrettyData as a tree structure
+func (f *TreeFormatter) FormatPrettyData(data *api.PrettyData) (string, error) {
+	if data == nil || data.Schema == nil {
+		return "", nil
+	}
+
+	// Look for tree fields
+	for _, field := range data.Schema.Fields {
+		if field.Format == api.FormatTree {
+			if fieldValue, exists := data.Values[field.Name]; exists {
+				if treeNode, ok := fieldValue.Value.(api.TreeNode); ok {
+					return f.FormatTreeFromRoot(treeNode), nil
+				}
+			}
+		}
+	}
+
+	// No tree fields found - fall back to a simple representation
+	return fmt.Sprintf("No tree data found in: %v", data), nil
+}
+
 // FormatTree formats a tree node and its children recursively
 func (f *TreeFormatter) FormatTree(node api.TreeNode, depth int, prefix string, isLast bool) string {
 	if node == nil {
@@ -51,30 +102,13 @@ func (f *TreeFormatter) FormatTree(node api.TreeNode, depth int, prefix string, 
 		}
 	}
 
-	// Check if node implements PrettyNode for custom formatting
-	if prettyNode, ok := node.(api.PrettyNode); ok {
-		// Use custom Pretty() formatting
-		prettyText := prettyNode.Pretty()
-		// Convert Text to string with appropriate formatting
-		if f.NoColor {
-			result.WriteString(prettyText.String())
-		} else {
-			result.WriteString(prettyText.ANSI())
-		}
+	// All TreeNodes now implement Pretty(), so use it for formatting
+	prettyText := node.Pretty()
+	// Convert Text to string with appropriate formatting
+	if f.NoColor {
+		result.WriteString(prettyText.String())
 	} else {
-		// Default formatting with icon and label
-		// Add icon if enabled
-		if f.Options.ShowIcons && node.GetIcon() != "" {
-			result.WriteString(node.GetIcon())
-			result.WriteString(" ")
-		}
-
-		// Format and style the label
-		label := node.GetLabel()
-		if styleStr := node.GetStyle(); styleStr != "" && !f.NoColor {
-			label = f.applyTailwindStyle(label, styleStr)
-		}
-		result.WriteString(label)
+		result.WriteString(prettyText.ANSI())
 	}
 
 	// Handle compact list node specially
@@ -88,8 +122,8 @@ func (f *TreeFormatter) FormatTree(node api.TreeNode, depth int, prefix string, 
 
 	result.WriteString("\n")
 
-	// Check if node is collapsed
-	if f.Options.CollapsedNodes != nil && f.Options.CollapsedNodes[node.GetLabel()] {
+	// Check if node is collapsed (using pretty text as key)
+	if f.Options.CollapsedNodes != nil && f.Options.CollapsedNodes[prettyText.String()] {
 		return result.String()
 	}
 
@@ -178,14 +212,12 @@ func (f *TreeFormatter) FormatInlineTree(nodes []api.TreeNode, separator string)
 
 	var parts []string
 	for _, node := range nodes {
-		label := node.GetLabel()
-		if f.Options.ShowIcons && node.GetIcon() != "" {
-			label = node.GetIcon() + " " + label
+		prettyText := node.Pretty()
+		if f.NoColor {
+			parts = append(parts, prettyText.String())
+		} else {
+			parts = append(parts, prettyText.ANSI())
 		}
-		if styleStr := node.GetStyle(); styleStr != "" && !f.NoColor {
-			label = f.applyTailwindStyle(label, styleStr)
-		}
-		parts = append(parts, label)
 	}
 
 	return strings.Join(parts, separator)

@@ -140,11 +140,8 @@ func (v FieldValue) DateTimeFormat() string {
 			format = f
 		}
 	}
-	if format == "epoch" {
-		return time.RFC3339
-	}
-	if format == "" {
-		return time.RFC3339
+	if format == "" || format == "epoch" {
+		return "2006-01-02 15:04:05"
 	}
 	return format
 }
@@ -166,20 +163,20 @@ func (v FieldValue) Time() *time.Time {
 		}
 	}
 
-	if n := v.Float(); n != nil {
-		now := time.Now()
-		// value is too large to be millisecond, must be nanosecond
+	if f := v.Float(); f != nil {
+		n := int64(*f)
+		epoch := time.Now().Add(50 * 365 * 24 * time.Hour)
 
-		if *n > float64(now.UnixMilli())*10.0 {
-			nanos := int64(*n)
-			// Calculate seconds and remaining nanoseconds
-			seconds := nanos / int64(time.Second)
-			nanosRemainder := nanos % int64(time.Second)
+		if n > epoch.UnixNano() {
+			seconds := n / int64(time.Second)
+			nanosRemainder := n % int64(time.Second)
 
 			// Create a time.Time object
 			return lo.ToPtr(time.Unix(seconds, nanosRemainder))
+		} else if n > epoch.UnixMilli() {
+			return lo.ToPtr(time.UnixMilli(n))
 		}
-		return lo.ToPtr(time.UnixMilli(int64(*n)))
+		return lo.ToPtr(time.Unix(n, 0))
 	}
 
 	return nil

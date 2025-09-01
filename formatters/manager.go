@@ -16,6 +16,7 @@ type FormatManager struct {
 	markdownFormatter *MarkdownFormatter
 	htmlFormatter     *HTMLFormatter
 	prettyFormatter   *PrettyFormatter
+	treeFormatter     *TreeFormatter
 }
 
 // NewFormatManager creates a new format manager with all formatters initialized
@@ -27,6 +28,7 @@ func NewFormatManager() *FormatManager {
 		markdownFormatter: NewMarkdownFormatter(),
 		htmlFormatter:     NewHTMLFormatter(),
 		prettyFormatter:   NewPrettyFormatter(),
+		treeFormatter:     NewTreeFormatter(api.DefaultTheme(), false, nil),
 	}
 }
 
@@ -88,6 +90,14 @@ func (f FormatManager) HTML(data interface{}) (string, error) {
 	return f.htmlFormatter.Format(data)
 }
 
+// Tree formats data as a tree structure
+func (f FormatManager) Tree(data interface{}) (string, error) {
+	if f.treeFormatter == nil {
+		f.treeFormatter = NewTreeFormatter(api.DefaultTheme(), false, nil)
+	}
+	return f.treeFormatter.Format(data)
+}
+
 // Format implements a generic format method that delegates to specific formatters
 func (f FormatManager) Format(format string, data interface{}) (string, error) {
 	switch format {
@@ -103,6 +113,8 @@ func (f FormatManager) Format(format string, data interface{}) (string, error) {
 		return f.HTML(data)
 	case "pretty":
 		return f.Pretty(data)
+	case "tree":
+		return f.Tree(data)
 	default:
 		return "", fmt.Errorf("unsupported format: %s", format)
 	}

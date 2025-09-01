@@ -253,7 +253,36 @@ func ToPrettyData(data interface{}) (*api.PrettyData, error) {
 		return pd, nil
 	}
 
-	// Check if data implements TreeNode interface first (more specific than Pretty)
+	// Check if data implements TreeMixin interface first (most specific)
+	if treeMixin, ok := data.(api.TreeMixin); ok {
+		treeNode := treeMixin.Tree()
+		// Create a PrettyData representation for TreeMixin objects
+		return &api.PrettyData{
+			Schema: &api.PrettyObject{
+				Fields: []api.PrettyField{
+					{
+						Name:   "tree",
+						Format: api.FormatTree,
+						Label:  "Tree",
+					},
+				},
+			},
+			Values: map[string]api.FieldValue{
+				"tree": {
+					Value: treeNode, // Store the TreeNode object
+					Field: api.PrettyField{
+						Name:   "tree",
+						Format: api.FormatTree,
+						Label:  "Tree",
+					},
+				},
+			},
+			Tables:   make(map[string][]api.PrettyDataRow),
+			Original: data,
+		}, nil
+	}
+
+	// Check if data implements TreeNode interface (direct tree node)
 	if treeNode, ok := data.(api.TreeNode); ok {
 		// Create a PrettyData representation for TreeNode objects
 		return &api.PrettyData{

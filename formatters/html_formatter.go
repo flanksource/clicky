@@ -374,27 +374,6 @@ func (f *HTMLFormatter) formatTreeNodeHTML(node api.TreeNode, depth int) string 
 
 	var result strings.Builder
 
-	// Format current node
-	var nodeContent string
-	if prettyNode, ok := node.(api.Pretty); ok {
-		// Use Pretty() method for rich HTML formatting
-		text := prettyNode.Pretty()
-		nodeContent = text.HTML()
-	} else {
-		// Fallback to GetLabel() with HTML escaping
-		label := node.GetLabel()
-		// Add icon if present
-		if icon := node.GetIcon(); icon != "" {
-			nodeContent = html.EscapeString(icon) + " " + html.EscapeString(label)
-		} else {
-			nodeContent = html.EscapeString(label)
-		}
-		// Apply style if present
-		if style := node.GetStyle(); style != "" {
-			nodeContent = fmt.Sprintf(`<span class="%s">%s</span>`, style, nodeContent)
-		}
-	}
-
 	// Get children
 	children := node.GetChildren()
 
@@ -402,7 +381,7 @@ func (f *HTMLFormatter) formatTreeNodeHTML(node api.TreeNode, depth int) string 
 		// Root node - start the tree
 		result.WriteString(`<div class="tree-view">`)
 		result.WriteString(`<div class="tree-node font-semibold text-lg mb-2">`)
-		result.WriteString(nodeContent)
+		result.WriteString(node.Pretty().HTML())
 		result.WriteString(`</div>`)
 
 		if len(children) > 0 {
@@ -427,7 +406,7 @@ func (f *HTMLFormatter) formatTreeNodeHTML(node api.TreeNode, depth int) string 
 		result.WriteString(`</span>`)
 		result.WriteString(`<div class="flex-1">`)
 		result.WriteString(`<div class="tree-node">`)
-		result.WriteString(nodeContent)
+		result.WriteString(node.Pretty().HTML())
 		result.WriteString(`</div>`)
 
 		if len(children) > 0 {

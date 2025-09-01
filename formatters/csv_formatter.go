@@ -185,7 +185,7 @@ func (f *CSVFormatter) flattenTree(node api.TreeNode, depth int) [][]string {
 		nodeContent = text.String()
 	} else {
 		// Fallback to GetLabel()
-		nodeContent = node.GetLabel()
+		nodeContent = node.Pretty().String()
 	}
 
 	// Create indentation based on depth
