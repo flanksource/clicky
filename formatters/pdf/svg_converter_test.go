@@ -1,4 +1,4 @@
-package pdf
+package pdf_test
 
 import (
 	"context"
@@ -7,13 +7,13 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	. "github.com/flanksource/clicky/formatters/pdf"
 )
 
 func TestSVGConverterManager(t *testing.T) {
-	manager := NewSVGConverterManager()
 
-	// Test auto-detection
-	converters := manager.GetAvailableConverters()
+	converters := GetAvailableConverters()
 	t.Logf("Available converters: %v", converters)
 
 	if len(converters) == 0 {
@@ -21,7 +21,7 @@ func TestSVGConverterManager(t *testing.T) {
 	}
 
 	// Test getting supported formats
-	formats := manager.GetSupportedFormats()
+	formats := GetSupportedFormats()
 	t.Logf("Supported formats: %v", formats)
 
 	if len(formats) == 0 {
@@ -174,8 +174,8 @@ func testConversion(t *testing.T, converter SVGConverter) {
 	t.Helper()
 
 	// Create test SVG
-	svgContent := CreateTestSVG()
-	svgPath := WriteTestSVG(t, svgContent)
+	svgContent := createTestSVG()
+	svgPath := writeTestSVG(t, svgContent)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -197,8 +197,8 @@ func testConversion(t *testing.T, converter SVGConverter) {
 			t.Fatalf("PNG conversion failed: %v", err)
 		}
 
-		AssertFileExists(t, outputPath)
-		AssertFileNotEmpty(t, outputPath)
+		assertFileExists(t, outputPath)
+		assertFileNotEmpty(t, outputPath)
 	})
 
 	// Test conversion with different options
@@ -223,8 +223,8 @@ func testConversion(t *testing.T, converter SVGConverter) {
 			t.Fatalf("Conversion with options failed: %v", err)
 		}
 
-		AssertFileExists(t, outputPath)
-		AssertFileNotEmpty(t, outputPath)
+		assertFileExists(t, outputPath)
+		assertFileNotEmpty(t, outputPath)
 	})
 
 	// Test ConvertToFormat convenience method if available
@@ -236,24 +236,24 @@ func testConversion(t *testing.T, converter SVGConverter) {
 				t.Fatalf("ConvertToFormat failed: %v", err)
 			}
 			defer os.Remove(outputPath)
-			AssertFileExists(t, outputPath)
-			AssertFileNotEmpty(t, outputPath)
+			assertFileExists(t, outputPath)
+			assertFileNotEmpty(t, outputPath)
 		case *RSVGConverter:
 			outputPath, err := c.ConvertToFormat(ctx, svgPath, "png", nil)
 			if err != nil {
 				t.Fatalf("ConvertToFormat failed: %v", err)
 			}
 			defer os.Remove(outputPath)
-			AssertFileExists(t, outputPath)
-			AssertFileNotEmpty(t, outputPath)
+			assertFileExists(t, outputPath)
+			assertFileNotEmpty(t, outputPath)
 		case *PlaywrightConverter:
 			outputPath, err := c.ConvertToFormat(ctx, svgPath, "png", nil)
 			if err != nil {
 				t.Fatalf("ConvertToFormat failed: %v", err)
 			}
 			defer os.Remove(outputPath)
-			AssertFileExists(t, outputPath)
-			AssertFileNotEmpty(t, outputPath)
+			assertFileExists(t, outputPath)
+			assertFileNotEmpty(t, outputPath)
 		default:
 			t.Skip("ConvertToFormat not implemented for this converter")
 		}
@@ -261,15 +261,14 @@ func testConversion(t *testing.T, converter SVGConverter) {
 }
 
 func TestManagerConversion(t *testing.T) {
-	manager := NewSVGConverterManager()
 
-	if len(manager.GetAvailableConverters()) == 0 {
+	if len(GetAvailableConverters()) == 0 {
 		t.Skip("No converters available")
 	}
 
 	// Create test SVG
-	svgContent := CreateTestSVG()
-	svgPath := WriteTestSVG(t, svgContent)
+	svgContent := createTestSVG()
+	svgPath := writeTestSVG(t, svgContent)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
@@ -284,13 +283,13 @@ func TestManagerConversion(t *testing.T) {
 			Height: 150,
 		}
 
-		err := manager.Convert(ctx, svgPath, outputPath, options)
+		err := Convert(ctx, svgPath, outputPath, options)
 		if err != nil {
 			t.Fatalf("Manager conversion failed: %v", err)
 		}
 
-		AssertFileExists(t, outputPath)
-		AssertFileNotEmpty(t, outputPath)
+		assertFileExists(t, outputPath)
+		assertFileNotEmpty(t, outputPath)
 	})
 
 	t.Run("ConvertWithFallback", func(t *testing.T) {
@@ -301,37 +300,36 @@ func TestManagerConversion(t *testing.T) {
 			Format: "png",
 		}
 
-		err := manager.ConvertWithFallback(ctx, svgPath, outputPath, options)
+		err := ConvertWithFallback(ctx, svgPath, outputPath, options)
 		if err != nil {
 			t.Fatalf("Manager fallback conversion failed: %v", err)
 		}
 
-		AssertFileExists(t, outputPath)
-		AssertFileNotEmpty(t, outputPath)
+		assertFileExists(t, outputPath)
+		assertFileNotEmpty(t, outputPath)
 	})
 }
 
 func TestManagerPreferences(t *testing.T) {
-	manager := NewSVGConverterManager()
 
-	availableConverters := manager.GetAvailableConverters()
+	availableConverters := GetAvailableConverters()
 	if len(availableConverters) == 0 {
 		t.Skip("No converters available")
 	}
 
 	// Test setting preferred converter
 	preferredName := availableConverters[0]
-	err := manager.SetPreferred(preferredName)
+	err := SetPreferred(preferredName)
 	if err != nil {
 		t.Fatalf("Failed to set preferred converter: %v", err)
 	}
 
-	if manager.GetPreferred() != preferredName {
-		t.Errorf("Expected preferred converter '%s', got '%s'", preferredName, manager.GetPreferred())
+	if GetPreferred() != preferredName {
+		t.Errorf("Expected preferred converter '%s', got '%s'", preferredName, GetPreferred())
 	}
 
 	// Test setting invalid preferred converter
-	err = manager.SetPreferred("nonexistent")
+	err = SetPreferred("nonexistent")
 	if err == nil {
 		t.Error("Expected error when setting nonexistent converter as preferred")
 	}

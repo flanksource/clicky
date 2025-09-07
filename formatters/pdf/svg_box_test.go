@@ -1,4 +1,4 @@
-package pdf
+package pdf_test
 
 import (
 	"fmt"
@@ -6,6 +6,8 @@ import (
 	"testing"
 
 	"github.com/flanksource/clicky/api"
+
+	. "github.com/flanksource/clicky/formatters/pdf"
 )
 
 // TestAllLabelPositions tests every possible label position

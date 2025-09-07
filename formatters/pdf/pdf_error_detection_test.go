@@ -1,4 +1,4 @@
-package pdf
+package pdf_test
 
 import (
 	"fmt"
@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/flanksource/clicky/api"
+	. "github.com/flanksource/clicky/formatters/pdf"
 )
 
 // TestPDFTextExtraction tests the basic text extraction functionality
@@ -79,18 +80,13 @@ func TestPDFErrorDetection_NoErrors(t *testing.T) {
 	}
 
 	// Should detect no errors
-	AssertPDFDoesNotContainErrors(t, pdfData)
-	AssertNoImageLoadErrors(t, pdfData)
-	AssertNoSVGRenderingErrors(t, pdfData)
+	assertPDFDoesNotContainErrors(t, pdfData)
+	assertNoImageLoadErrors(t, pdfData)
+	assertNoSVGRenderingErrors(t, pdfData)
 }
 
 // TestPDFErrorDetection_SVGConversion tests SVG conversion with proper error detection
 func TestPDFErrorDetection_SVGConversion(t *testing.T) {
-	// Skip if no converters available
-	manager := NewSVGConverterManager()
-	if len(manager.GetAvailableConverters()) == 0 {
-		t.Skip("No SVG converters available")
-	}
 
 	// Create a PDF with SVG content
 	builder := NewBuilder()
@@ -105,7 +101,7 @@ func TestPDFErrorDetection_SVGConversion(t *testing.T) {
 	titleWidget.Draw(builder)
 
 	// Create a test SVG file
-	svgContent := CreateTestSVG()
+	svgContent := createTestSVG()
 	tempDir := t.TempDir()
 	svgPath := filepath.Join(tempDir, "test.svg")
 
@@ -135,7 +131,7 @@ func TestPDFErrorDetection_SVGConversion(t *testing.T) {
 	}
 
 	// Should not contain SVG errors if conversion succeeded
-	AssertNoSVGRenderingErrors(t, pdfData)
+	assertNoSVGRenderingErrors(t, pdfData)
 
 	// Should contain the alt text
 	extractedText, _ := ExtractTextFromPDF(pdfData)
@@ -175,8 +171,8 @@ func TestPDFErrorDetection_ImageWidget(t *testing.T) {
 	}
 
 	// Should not contain image errors
-	AssertNoImageLoadErrors(t, pdfData)
-	AssertPDFDoesNotContainErrors(t, pdfData)
+	assertNoImageLoadErrors(t, pdfData)
+	assertPDFDoesNotContainErrors(t, pdfData)
 }
 
 // TestPDFErrorDetection_MissingImage tests handling of missing images
@@ -238,7 +234,7 @@ func TestPDFTextOrder(t *testing.T) {
 	}
 
 	// Verify text order
-	AssertPDFTextOrder(t, pdfData, texts)
+	assertPDFTextOrder(t, pdfData, texts)
 }
 
 // TestExtractTextFromPage tests page-specific text extraction

@@ -2,23 +2,19 @@ package pdf
 
 import (
 	"bytes"
+	"context"
 	"fmt"
-	"image"
-	"image/png"
+	"os"
 	"strconv"
 	"strings"
 
-	"github.com/johnfercher/maroto/v2/pkg/components/col"
-	marotoimages "github.com/johnfercher/maroto/v2/pkg/components/image"
-	"github.com/johnfercher/maroto/v2/pkg/components/text"
-	"github.com/johnfercher/maroto/v2/pkg/consts/align"
-	"github.com/johnfercher/maroto/v2/pkg/consts/extension"
-	"github.com/johnfercher/maroto/v2/pkg/consts/fontstyle"
-	"github.com/johnfercher/maroto/v2/pkg/props"
-	"github.com/srwiley/oksvg"
-	"github.com/srwiley/rasterx"
-
-	"github.com/flanksource/clicky/api"
+	"github.com/flanksource/maroto/v2/pkg/components/col"
+	marotoimages "github.com/flanksource/maroto/v2/pkg/components/image"
+	"github.com/flanksource/maroto/v2/pkg/components/text"
+	"github.com/flanksource/maroto/v2/pkg/consts/align"
+	"github.com/flanksource/maroto/v2/pkg/consts/extension"
+	"github.com/flanksource/maroto/v2/pkg/consts/fontstyle"
+	"github.com/flanksource/maroto/v2/pkg/props"
 )
 
 // SVGWidget renders an SVGBox as a widget in the PDF
@@ -50,7 +46,7 @@ func (w SVGWidget) Draw(b *Builder) error {
 
 	// Convert SVG to PNG for embedding in PDF
 	// Since maroto doesn't support SVG directly, we need to convert to a raster format
-	pngBytes, err := w.convertSVGToPNG(svgBytes)
+	pngBytes, err := ConvertSVGToPNG(svgBytes)
 	if err != nil {
 		return fmt.Errorf("failed to convert SVG to PNG: %w", err)
 	}
@@ -69,75 +65,47 @@ func (w SVGWidget) Draw(b *Builder) error {
 	return nil
 }
 
-// convertSVGToPNG converts SVG bytes to PNG bytes with aspect ratio preservation
-func (w SVGWidget) convertSVGToPNG(svgBytes []byte) ([]byte, error) {
-	// Parse SVG using oksvg
-	icon, err := oksvg.ReadIconStream(bytes.NewReader(svgBytes), oksvg.StrictErrorMode)
+// ConvertSVGToPNG converts SVG bytes to PNG bytes with aspect ratio preservation
+func ConvertSVGToPNG(svgBytes []byte) ([]byte, error) {
+
+	tmp, err := os.CreateTemp("", "svg_*.svg")
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse SVG: %w", err)
+		return nil, fmt.Errorf("failed to create temp file: %w", err)
 	}
+	defer os.Remove(tmp.Name()) // Clean up
 
-	// Extract viewBox or use default dimensions
-	svgWidth, svgHeight, err := w.extractSVGDimensions(svgBytes)
+	// Write SVG bytes to temp file
+	if _, err := tmp.Write(svgBytes); err != nil {
+		return nil, fmt.Errorf("failed to write SVG to temp file: %w", err)
+	}
+	tmp.Close()
+
+	if err := Convert(context.Background(), tmp.Name(), tmp.Name()+".png", DefaultConvertOptions()); err != nil {
+		return nil, fmt.Errorf("failed to convert SVG to PNG: %w", err)
+	}
+	pngFile, err := os.Open(tmp.Name() + ".png")
 	if err != nil {
-		// Fall back to default square aspect ratio
-		svgWidth, svgHeight = 100, 100
+		return nil, fmt.Errorf("failed to open PNG file: %w", err)
 	}
+	defer pngFile.Close()
 
-	// Calculate aspect ratio
-	aspectRatio := float64(svgWidth) / float64(svgHeight)
-
-	// Determine target dimensions (default to 400px width)
-	var targetWidth, targetHeight int
-	defaultSize := 400
-
-	if aspectRatio >= 1.0 {
-		// Landscape or square: fix width, calculate height
-		targetWidth = defaultSize
-		targetHeight = int(float64(defaultSize) / aspectRatio)
-	} else {
-		// Portrait: fix height, calculate width
-		targetHeight = defaultSize
-		targetWidth = int(float64(defaultSize) * aspectRatio)
-	}
-
-	// Set the target size on the icon
-	icon.SetTarget(0, 0, float64(targetWidth), float64(targetHeight))
-
-	// Create RGBA image
-	rgba := image.NewRGBA(image.Rect(0, 0, targetWidth, targetHeight))
-
-	// Create scanner and rasterizer
-	scanner := rasterx.NewScannerGV(targetWidth, targetHeight, rgba, rgba.Bounds())
-	raster := rasterx.NewDasher(targetWidth, targetHeight, scanner)
-
-	// Render SVG to image
-	icon.Draw(raster, 1.0)
-
-	// Encode to PNG
-	var pngBuf bytes.Buffer
-	err = png.Encode(&pngBuf, rgba)
-	if err != nil {
-		return nil, fmt.Errorf("failed to encode PNG: %w", err)
-	}
-
-	return pngBuf.Bytes(), nil
+	return os.ReadFile(tmp.Name() + ".png")
 }
 
-// extractSVGDimensions parses SVG content to extract width and height
-func (w SVGWidget) extractSVGDimensions(svgBytes []byte) (float64, float64, error) {
+// ExtractSVGDimensions parses SVG content to extract width and height
+func ExtractSVGDimensions(svgBytes []byte) (float64, float64, error) {
 	svgContent := string(svgBytes)
 
 	// Look for width and height attributes
-	width, widthOk := w.extractAttribute(svgContent, "width")
-	height, heightOk := w.extractAttribute(svgContent, "height")
+	width, widthOk := extractAttribute(svgContent, "width")
+	height, heightOk := extractAttribute(svgContent, "height")
 
 	if widthOk && heightOk {
 		return width, height, nil
 	}
 
 	// Look for viewBox attribute as fallback
-	if viewBox := w.extractViewBox(svgContent); len(viewBox) == 4 {
+	if viewBox := extractViewBox(svgContent); len(viewBox) == 4 {
 		return viewBox[2], viewBox[3], nil // width and height from viewBox
 	}
 
@@ -145,7 +113,7 @@ func (w SVGWidget) extractSVGDimensions(svgBytes []byte) (float64, float64, erro
 }
 
 // extractAttribute extracts a numeric attribute value from SVG content
-func (w SVGWidget) extractAttribute(svgContent, attrName string) (float64, bool) {
+func extractAttribute(svgContent, attrName string) (float64, bool) {
 	// Simple regex-like parsing to find attribute="value"
 	attrPattern := attrName + `="`
 	start := strings.Index(svgContent, attrPattern)
@@ -177,7 +145,7 @@ func (w SVGWidget) extractAttribute(svgContent, attrName string) (float64, bool)
 }
 
 // extractViewBox extracts viewBox values [x, y, width, height] from SVG content
-func (w SVGWidget) extractViewBox(svgContent string) []float64 {
+func extractViewBox(svgContent string) []float64 {
 	viewBoxPattern := `viewBox="`
 	start := strings.Index(svgContent, viewBoxPattern)
 	if start == -1 {
@@ -296,21 +264,4 @@ func (w SVGWidget) drawSVGDescription(b *Builder) error {
 	b.maroto.AddRow(30, descCol) // 30mm height for description
 
 	return nil
-}
-
-// FromSVGContent creates an SVGWidget from raw SVG content string
-func FromSVGContent(svgContent string, box api.Box) (*SVGWidget, error) {
-	// Create base SVGBox
-	svgBox := SVGBox{
-		Box:                      box,
-		EnableCollisionAvoidance: true,
-	}
-
-	// Import elements from SVG content
-	err := svgBox.ImportFromSVG(svgContent)
-	if err != nil {
-		return nil, fmt.Errorf("failed to import SVG content: %w", err)
-	}
-
-	return NewSVGWidget(svgBox), nil
 }

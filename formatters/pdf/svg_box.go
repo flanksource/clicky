@@ -3,27 +3,46 @@ package pdf
 import (
 	"bytes"
 	"fmt"
+	"strings"
 
 	svg "github.com/ajstarks/svgo"
 
 	"github.com/flanksource/clicky/api"
 )
 
+// ChildBox represents a box positioned within another box
+type ChildBox struct {
+	Box SVGBox  // The child box
+	X   float64 // X position on parent
+	Y   float64 // Y position on parent
+}
+
+// SVGLine represents a geometric line with coordinates and styling
+type SVGLine struct {
+	X1   float64  // Start X coordinate
+	Y1   float64  // Start Y coordinate
+	X2   float64  // End X coordinate
+	Y2   float64  // End Y coordinate
+	Line api.Line // Styling information
+}
+
 // SVGBox generates an SVG representation of a box with labels and borders
 type SVGBox struct {
 	api.Box                  // Inherits Rectangle, Fill, Border, Padding
 	Labels                   []Label
-	Lines                    []Line
+	Lines                    []SVGLine
 	Circles                  []CircleShape
 	Cuts                     []Cut
 	EdgeCuts                 []EdgeCut
 	MeasureLines             []MeasureLine
+	ChildBoxes               []ChildBox // Nested boxes positioned on this box
 	ShowDimensions           bool
 	DimensionUnit            string
 	ActualWidth              float64
 	ActualHeight             float64
 	SVGPadding               float64 // Padding for the SVG canvas
 	EnableCollisionAvoidance bool    // Enable automatic collision avoidance
+	YAxisUp                  bool    // True for bottom-up (CNC/CAD), false for top-down (SVG default)
 }
 
 // CircleShape represents a circular shape in the box
@@ -244,6 +263,30 @@ func (b SVGBox) GenerateSVG() ([]byte, error) {
 		// Arrows
 		canvas.Line(x-3, boxY, x+3, boxY, "stroke:#333;stroke-width:0.5")
 		canvas.Line(x-3, boxY+int(height), x+3, boxY+int(height), "stroke:#333;stroke-width:0.5")
+	}
+
+	// Draw child boxes
+	for _, child := range b.ChildBoxes {
+		childX := boxX + int(child.X)
+		childY := boxY + int(child.Y)
+
+		// Transform Y coordinate if using bottom-up system
+		if b.YAxisUp {
+			// Convert from bottom-up to SVG's top-down coordinate system
+			// In bottom-up: Y=0 is at bottom, increasing upward
+			// In SVG: Y=0 is at top, increasing downward
+			childBoxHeight := child.Box.Rectangle.Height
+			if child.Box.ActualHeight > 0 {
+				childBoxHeight = int(child.Box.ActualHeight)
+			}
+			childY = boxY + int(height) - int(child.Y) - childBoxHeight
+		}
+
+		// Render child box nodes at the translated position
+		canvas.Group(fmt.Sprintf("transform=\"translate(%d,%d)\"", childX, childY))
+		childNodes := child.Box.Nodes()
+		fmt.Fprint(canvas.Writer, childNodes)
+		canvas.Gend()
 	}
 
 	canvas.End()
@@ -861,23 +904,6 @@ func max(a, b float64) float64 {
 	return b
 }
 
-// ImportFromSVG parses SVG content and adds elements to this SVGBox
-func (b *SVGBox) ImportFromSVG(svgContent string) error {
-	importer := NewSVGImporter()
-	elements, err := importer.ImportSVG(svgContent)
-	if err != nil {
-		return fmt.Errorf("failed to import SVG: %w", err)
-	}
-
-	// Add imported elements to the SVGBox
-	b.Circles = append(b.Circles, elements.Circles...)
-	b.Cuts = append(b.Cuts, elements.Cuts...)
-	b.EdgeCuts = append(b.EdgeCuts, elements.EdgeCuts...)
-	b.Labels = append(b.Labels, elements.Labels...)
-
-	return nil
-}
-
 // colorToHex converts an api.Color to a hex string
 func (b SVGBox) colorToHex(color api.Color) string {
 	if color.Hex != "" {
@@ -889,4 +915,269 @@ func (b SVGBox) colorToHex(color api.Color) string {
 
 	// Default to black if no color specified
 	return "#000000"
+}
+
+// Nodes generates the SVG nodes without the outer <svg> wrapper
+func (b SVGBox) Nodes() string {
+	var buf strings.Builder
+
+	// Get box dimensions
+	width := float64(b.Rectangle.Width)
+	height := float64(b.Rectangle.Height)
+
+	// We don't call canvas.Start() because we want just the inner content
+
+	// Draw main rectangle with fill
+	fillColor := b.colorToHex(b.Fill)
+	style := fmt.Sprintf("fill:%s;stroke:none", fillColor)
+	fmt.Fprintf(&buf, `<rect x="0" y="0" width="%.0f" height="%.0f" style="%s"/>`, width, height, style)
+
+	// Draw borders
+	b.drawBordersToBuffer(&buf, 0, 0, int(width), int(height))
+
+	// Draw circles
+	for _, circle := range b.Circles {
+		cx := int(circle.X)
+		cy := int(circle.Y)
+		r := int(circle.Diameter / 2)
+		fmt.Fprintf(&buf, `<circle cx="%d" cy="%d" r="%d" style="fill:rgba(0,0,0,0.2);stroke:black;stroke-width:0.5"/>`, cx, cy, r)
+
+		if circle.Label != "" {
+			labelY := cy + r + 12
+			fmt.Fprintf(&buf, `<text x="%d" y="%d" style="text-anchor:middle;font-size:10px;fill:#666">%s</text>`, cx, labelY, circle.Label)
+		}
+	}
+
+	// Draw cuts
+	for _, cut := range b.Cuts {
+		var dx, dy, dw, dh int
+
+		if cut.Orientation == "vertical" {
+			dx = int(cut.Position - cut.Width/2)
+			dy = 0
+			dw = int(cut.Width)
+			dh = int(height)
+		} else {
+			dx = 0
+			dy = int(cut.Position - cut.Width/2)
+			dw = int(width)
+			dh = int(cut.Width)
+		}
+
+		fmt.Fprintf(&buf, `<rect x="%d" y="%d" width="%d" height="%d" style="fill:rgba(255,0,0,0.3);stroke:red;stroke-width:0.5"/>`, dx, dy, dw, dh)
+
+		if cut.Label != "" {
+			labelX := dx + dw/2
+			labelY := dy + dh/2 + 4
+			fmt.Fprintf(&buf, `<text x="%d" y="%d" style="text-anchor:middle;font-size:8px;fill:#800">%s</text>`, labelX, labelY, cut.Label)
+		}
+	}
+
+	// Draw edge cuts
+	for _, edgeCut := range b.EdgeCuts {
+		var dx, dy, dw, dh int
+
+		switch edgeCut.Edge {
+		case "left":
+			dx, dy, dw, dh = 0, 0, int(edgeCut.Width), int(height)
+		case "right":
+			dx, dy, dw, dh = int(width)-int(edgeCut.Width), 0, int(edgeCut.Width), int(height)
+		case "top":
+			dx, dy, dw, dh = 0, 0, int(width), int(edgeCut.Width)
+		case "bottom":
+			dx, dy, dw, dh = 0, int(height)-int(edgeCut.Width), int(width), int(edgeCut.Width)
+		}
+
+		fmt.Fprintf(&buf, `<rect x="%d" y="%d" width="%d" height="%d" style="fill:rgba(255,165,0,0.4);stroke:orange;stroke-width:0.5"/>`, dx, dy, dw, dh)
+
+		if edgeCut.Label != "" {
+			labelX := dx + dw/2
+			labelY := dy + dh/2 + 4
+			fmt.Fprintf(&buf, `<text x="%d" y="%d" style="text-anchor:middle;font-size:8px;fill:#cc6600">%s</text>`, labelX, labelY, edgeCut.Label)
+		}
+	}
+
+	// Draw lines
+	for _, line := range b.Lines {
+		strokeColor := b.colorToHex(line.Line.Color)
+		strokeWidth := line.Line.Width
+		if strokeWidth == 0 {
+			strokeWidth = 1.0
+		}
+
+		style := fmt.Sprintf("stroke:%s;stroke-width:%.1f", strokeColor, strokeWidth)
+		if line.Line.Style == api.Dashed {
+			style += ";stroke-dasharray:5,5"
+		}
+
+		fmt.Fprintf(&buf, `<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" style="%s"/>`,
+			line.X1, line.Y1, line.X2, line.Y2, style)
+	}
+
+	// Draw measure lines
+	for _, ml := range b.MeasureLines {
+		b.drawMeasureLineToBuffer(&buf, ml)
+	}
+
+	// Draw labels
+	for _, label := range b.Labels {
+		b.drawLabelToBuffer(&buf, label, 0, 0, int(width), int(height))
+	}
+
+	// Draw child boxes recursively
+	for _, child := range b.ChildBoxes {
+		childX := child.X
+		childY := child.Y
+
+		// Transform Y coordinate if using bottom-up system
+		if b.YAxisUp {
+			childBoxHeight := child.Box.Rectangle.Height
+			if child.Box.ActualHeight > 0 {
+				childBoxHeight = int(child.Box.ActualHeight)
+			}
+			childY = height - child.Y - float64(childBoxHeight)
+		}
+
+		// Create a group for the child box at its position
+		fmt.Fprintf(&buf, `<g transform="translate(%.1f,%.1f)">`, childX, childY)
+		childNodes := child.Box.Nodes()
+		buf.WriteString(childNodes)
+		buf.WriteString("</g>")
+	}
+
+	return buf.String()
+}
+
+// drawBordersToBuffer draws borders to a string buffer
+func (b SVGBox) drawBordersToBuffer(buf *strings.Builder, x, y, w, h int) {
+	// Left border
+	if b.Border.Left.Width > 0 {
+		color := b.colorToHex(b.Border.Left.Color)
+		width := b.Border.Left.Width
+		style := fmt.Sprintf("stroke:%s;stroke-width:%.1f", color, width)
+		if b.Border.Left.Style == api.Dashed {
+			style += ";stroke-dasharray:5,5"
+		}
+		fmt.Fprintf(buf, `<line x1="%d" y1="%d" x2="%d" y2="%d" style="%s"/>`, x, y, x, y+h, style)
+	}
+
+	// Right border
+	if b.Border.Right.Width > 0 {
+		color := b.colorToHex(b.Border.Right.Color)
+		width := b.Border.Right.Width
+		style := fmt.Sprintf("stroke:%s;stroke-width:%.1f", color, width)
+		if b.Border.Right.Style == api.Dashed {
+			style += ";stroke-dasharray:5,5"
+		}
+		fmt.Fprintf(buf, `<line x1="%d" y1="%d" x2="%d" y2="%d" style="%s"/>`, x+w, y, x+w, y+h, style)
+	}
+
+	// Top border
+	if b.Border.Top.Width > 0 {
+		color := b.colorToHex(b.Border.Top.Color)
+		width := b.Border.Top.Width
+		style := fmt.Sprintf("stroke:%s;stroke-width:%.1f", color, width)
+		if b.Border.Top.Style == api.Dashed {
+			style += ";stroke-dasharray:5,5"
+		}
+		fmt.Fprintf(buf, `<line x1="%d" y1="%d" x2="%d" y2="%d" style="%s"/>`, x, y, x+w, y, style)
+	}
+
+	// Bottom border
+	if b.Border.Bottom.Width > 0 {
+		color := b.colorToHex(b.Border.Bottom.Color)
+		width := b.Border.Bottom.Width
+		style := fmt.Sprintf("stroke:%s;stroke-width:%.1f", color, width)
+		if b.Border.Bottom.Style == api.Dashed {
+			style += ";stroke-dasharray:5,5"
+		}
+		fmt.Fprintf(buf, `<line x1="%d" y1="%d" x2="%d" y2="%d" style="%s"/>`, x, y+h, x+w, y+h, style)
+	}
+}
+
+// drawMeasureLineToBuffer draws a measure line to a string buffer
+func (b SVGBox) drawMeasureLineToBuffer(buf *strings.Builder, ml MeasureLine) {
+	// Draw main line
+	style := "stroke:#333;stroke-width:0.5"
+	if ml.Style == "dashed" {
+		style += ";stroke-dasharray:3,3"
+	}
+
+	fmt.Fprintf(buf, `<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" style="%s"/>`,
+		ml.X1, ml.Y1, ml.X2, ml.Y2, style)
+
+	// Draw arrows if enabled
+	if ml.ShowArrows {
+		// Simple arrow heads as small lines
+		dx := ml.X2 - ml.X1
+		dy := ml.Y2 - ml.Y1
+		length := fmt.Sprintf("%.1f", dx*dx+dy*dy) // Simplified
+
+		// Arrow at start
+		fmt.Fprintf(buf, `<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" style="%s"/>`,
+			ml.X1-3, ml.Y1-3, ml.X1+3, ml.Y1+3, style)
+
+		// Arrow at end
+		fmt.Fprintf(buf, `<line x1="%.1f" y1="%.1f" x2="%.1f" y2="%.1f" style="%s"/>`,
+			ml.X2-3, ml.Y2-3, ml.X2+3, ml.Y2+3, style)
+
+		_ = length // Use length if needed
+	}
+
+	// Draw label
+	if ml.Label != "" {
+		centerX := (ml.X1 + ml.X2) / 2
+		centerY := (ml.Y1 + ml.Y2) / 2
+		fmt.Fprintf(buf, `<text x="%.1f" y="%.1f" style="text-anchor:middle;font-size:10px;fill:#333">%s</text>`,
+			centerX, centerY-5, ml.Label)
+	}
+}
+
+// drawLabelToBuffer draws a label to a string buffer
+func (b SVGBox) drawLabelToBuffer(buf *strings.Builder, label Label, boxX, boxY, boxW, boxH int) {
+	text := label.Text.Content
+	if text == "" {
+		return
+	}
+
+	// Calculate position based on label position
+	var x, y int
+
+	if label.Position != nil {
+		// Use specific positioning
+		switch label.Position.Horizontal {
+		case HorizontalLeft:
+			x = boxX + 10
+		case HorizontalCenter:
+			x = boxX + boxW/2
+		case HorizontalRight:
+			x = boxX + boxW - 10
+		default:
+			x = boxX + boxW/2
+		}
+
+		switch label.Position.Vertical {
+		case VerticalTop:
+			y = boxY + 20
+		case VerticalCenter:
+			y = boxY + boxH/2
+		case VerticalBottom:
+			y = boxY + boxH - 10
+		default:
+			y = boxY + boxH/2
+		}
+	} else if label.Absolute != nil {
+		// Use absolute positioning
+		x = label.Absolute.X
+		y = label.Absolute.Y
+	} else {
+		// Default to center
+		x = boxX + boxW/2
+		y = boxY + boxH/2
+	}
+
+	// Basic text styling
+	style := "text-anchor:middle;font-size:12px;fill:#000"
+
+	fmt.Fprintf(buf, `<text x="%d" y="%d" style="%s">%s</text>`, x, y, style, text)
 }

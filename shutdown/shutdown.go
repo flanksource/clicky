@@ -79,6 +79,7 @@ func AddHookWithPriority(label string, priority int, fn func()) {
 
 // Shutdown executes all registered hooks in priority order
 func Shutdown() {
+	logger.Infof("Starting graceful shutdown with %d hooks", len(hooks))
 	hooksMux.Lock()
 	defer hooksMux.Unlock()
 
@@ -109,18 +110,17 @@ func Shutdown() {
 // WaitForSignal waits for interrupt signals and triggers shutdown
 func WaitForSignal() {
 	once.Do(func() {
-		sigChan := make(chan os.Signal, 1)
-		signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
-
+		sigChan := make(chan os.Signal, 100)
+		signal.Notify(sigChan, os.Interrupt, os.Kill, syscall.SIGTERM, syscall.SIGHUP)
 		sig := <-sigChan
-		fmt.Fprintf(os.Stderr, "\n🛑 Received %s - initiating graceful shutdown...\n", sig)
+		fmt.Fprintf(os.Stderr, "\n🛑 Received %s - initiating graceful shutdown..., %d hooks\n", sig, len(hooks))
 		fmt.Fprintf(os.Stderr, "   Press Ctrl+C again to force immediate exit\n\n")
 
 		// Set up force exit on second signal
 		go func() {
 			<-sigChan
 			fmt.Fprintf(os.Stderr, "\n⚠️  Force exit\n")
-			os.Exit(1)
+			// os.Exit(1)
 		}()
 
 		Shutdown()

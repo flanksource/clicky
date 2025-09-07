@@ -123,16 +123,14 @@ func (f FormatManager) Format(format string, data interface{}) (string, error) {
 // FormatWithOptions formats data using the specified format options
 func (f FormatManager) FormatWithOptions(options FormatOptions, data interface{}) (string, error) {
 	// Resolve format from boolean flags
-	if err := options.ResolveFormat(); err != nil {
-		return "", err
-	}
+	format := options.ResolveFormat()
 
-	logger.Tracef("Formatting with %s", options.Format)
+	logger.Tracef("Formatting with %s", format)
 	// If schema is provided, delegate to external handler
 	// (the calling code should handle ParseDataWithSchema and call FormatWithSchema directly)
 
 	// Handle format-specific options
-	switch strings.ToLower(options.Format) {
+	switch strings.ToLower(format) {
 	case "json":
 		return f.JSON(data)
 
@@ -172,18 +170,10 @@ func (f FormatManager) FormatWithOptions(options FormatOptions, data interface{}
 		return f.prettyFormatter.FormatPrettyData(prettyData)
 
 	case "tree":
-		if f.prettyFormatter == nil {
-			f.prettyFormatter = NewPrettyFormatter()
+		if f.treeFormatter == nil {
+			f.treeFormatter = NewTreeFormatter(api.DefaultTheme(), options.NoColor, nil)
 		}
-		f.prettyFormatter.NoColor = options.NoColor
-		// Force tree formatting by setting format hint
-		prettyData, err := f.ToPrettyDataWithFormatHint(data, "tree")
-		if err != nil {
-			logger.Debugf("Failed to convert to PrettyData for tree format: %v", err)
-			// Fallback to direct formatting if PrettyData conversion fails
-			return f.prettyFormatter.Format(data)
-		}
-		return f.prettyFormatter.FormatPrettyData(prettyData)
+		return f.treeFormatter.Format(data)
 
 	case "pretty":
 		if f.prettyFormatter == nil {

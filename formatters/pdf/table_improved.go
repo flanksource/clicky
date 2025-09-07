@@ -3,13 +3,13 @@ package pdf
 import (
 	"fmt"
 
-	"github.com/johnfercher/maroto/v2/pkg/components/col"
-	"github.com/johnfercher/maroto/v2/pkg/components/line"
-	"github.com/johnfercher/maroto/v2/pkg/components/row"
-	"github.com/johnfercher/maroto/v2/pkg/components/text"
-	"github.com/johnfercher/maroto/v2/pkg/consts/align"
-	"github.com/johnfercher/maroto/v2/pkg/core"
-	"github.com/johnfercher/maroto/v2/pkg/props"
+	"github.com/flanksource/maroto/v2/pkg/components/col"
+	"github.com/flanksource/maroto/v2/pkg/components/line"
+	"github.com/flanksource/maroto/v2/pkg/components/row"
+	"github.com/flanksource/maroto/v2/pkg/components/text"
+	"github.com/flanksource/maroto/v2/pkg/consts/align"
+	"github.com/flanksource/maroto/v2/pkg/core"
+	"github.com/flanksource/maroto/v2/pkg/props"
 
 	"github.com/flanksource/clicky/api"
 )

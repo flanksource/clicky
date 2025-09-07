@@ -9,9 +9,7 @@
 // - Basic PDF metadata extraction (page count, file size)
 // - Infrastructure for future text content verification
 // - Comprehensive test helpers for PDF widget validation
-//
-// TODO: Implement actual text extraction once pdfcpu text extraction APIs are integrated.
-package pdf
+package pdf_test
 
 import (
 	"bytes"
@@ -94,8 +92,8 @@ func ExtractTextFromPage(pdfData []byte, pageNum int) (string, error) {
 	return textContent, nil
 }
 
-// AssertPDFContainsText verifies that a PDF contains all expected text content
-func AssertPDFContainsText(t *testing.T, pdfData []byte, expectedTexts []string) {
+// assertPDFContainsText verifies that a PDF contains all expected text content
+func assertPDFContainsText(t *testing.T, pdfData []byte, expectedTexts []string) {
 	t.Helper()
 
 	// Extract text from the PDF
@@ -118,8 +116,8 @@ func AssertPDFContainsText(t *testing.T, pdfData []byte, expectedTexts []string)
 	}
 }
 
-// AssertPDFTextOrder verifies that text appears in the PDF in the expected order
-func AssertPDFTextOrder(t *testing.T, pdfData []byte, orderedTexts []string) {
+// assertPDFTextOrder verifies that text appears in the PDF in the expected order
+func assertPDFTextOrder(t *testing.T, pdfData []byte, orderedTexts []string) {
 	t.Helper()
 
 	// Extract text from the PDF
@@ -148,10 +146,10 @@ func AssertPDFTextOrder(t *testing.T, pdfData []byte, orderedTexts []string) {
 	}
 }
 
-// AssertPDFPageCount verifies that the PDF has the expected number of pages
+// assertPDFPageCount verifies that the PDF has the expected number of pages
 // NOTE: Currently there seems to be a discrepancy between fpdf page generation and pdfcpu page counting.
 // For now, we focus on ensuring the PDF is valid rather than exact page counts.
-func AssertPDFPageCount(t *testing.T, pdfData []byte, expectedPages int) {
+func assertPDFPageCount(t *testing.T, pdfData []byte, expectedPages int) {
 	t.Helper()
 
 	reader := bytes.NewReader(pdfData)
@@ -171,8 +169,8 @@ func AssertPDFPageCount(t *testing.T, pdfData []byte, expectedPages int) {
 	}
 }
 
-// AssertPDFBasicStructure performs basic PDF structure validation
-func AssertPDFBasicStructure(t *testing.T, pdfData []byte) {
+// assertPDFBasicStructure performs basic PDF structure validation
+func assertPDFBasicStructure(t *testing.T, pdfData []byte) {
 	t.Helper()
 
 	// Verify PDF header
@@ -208,8 +206,8 @@ func GetPDFInfo(pdfData []byte) (pages, size int, err error) {
 
 // SVG Test Utilities
 
-// CreateTestSVG creates a simple test SVG for testing purposes
-func CreateTestSVG() string {
+// createTestSVG creates a simple test SVG for testing purposes
+func createTestSVG() string {
 	return `<svg width="100" height="100" xmlns="http://www.w3.org/2000/svg">
   <rect x="10" y="10" width="80" height="80" fill="blue" />
   <circle cx="50" cy="50" r="20" fill="red" />
@@ -217,8 +215,8 @@ func CreateTestSVG() string {
 </svg>`
 }
 
-// CreateTestSVGWithSize creates a test SVG with specific dimensions
-func CreateTestSVGWithSize(width, height int) string {
+// createTestSVGWithSize creates a test SVG with specific dimensions
+func createTestSVGWithSize(width, height int) string {
 	return fmt.Sprintf(`<svg width="%d" height="%d" xmlns="http://www.w3.org/2000/svg">
   <rect x="5" y="5" width="%d" height="%d" fill="blue" stroke="black" stroke-width="2"/>
   <circle cx="%d" cy="%d" r="15" fill="red" />
@@ -226,8 +224,8 @@ func CreateTestSVGWithSize(width, height int) string {
 </svg>`, width, height, width-10, height-10, width/2, height/2, width/2, height/2-5, width, height)
 }
 
-// CreateComplexTestSVG creates a more complex test SVG with various elements
-func CreateComplexTestSVG() string {
+// createComplexTestSVG creates a more complex test SVG with various elements
+func createComplexTestSVG() string {
 	return `<svg width="200" height="150" xmlns="http://www.w3.org/2000/svg">
   <defs>
     <linearGradient id="grad1" x1="0%" y1="0%" x2="100%" y2="0%">
@@ -244,8 +242,8 @@ func CreateComplexTestSVG() string {
 </svg>`
 }
 
-// WriteTestSVG writes test SVG content to a temporary file and returns the path
-func WriteTestSVG(t *testing.T, svgContent string) string {
+// writeTestSVG writes test SVG content to a temporary file and returns the path
+func writeTestSVG(t *testing.T, svgContent string) string {
 	t.Helper()
 
 	tmpFile := t.TempDir() + "/test.svg"
@@ -269,8 +267,8 @@ func writeToFile(path, content string) error {
 	return err
 }
 
-// AssertFileExists checks if a file exists at the given path
-func AssertFileExists(t *testing.T, path string) {
+// assertFileExists checks if a file exists at the given path
+func assertFileExists(t *testing.T, path string) {
 	t.Helper()
 
 	if _, err := os.Stat(path); os.IsNotExist(err) {
@@ -278,8 +276,8 @@ func AssertFileExists(t *testing.T, path string) {
 	}
 }
 
-// AssertFileNotEmpty checks if a file exists and is not empty
-func AssertFileNotEmpty(t *testing.T, path string) {
+// assertFileNotEmpty checks if a file exists and is not empty
+func assertFileNotEmpty(t *testing.T, path string) {
 	t.Helper()
 
 	info, err := os.Stat(path)
@@ -299,8 +297,8 @@ func AssertFileNotEmpty(t *testing.T, path string) {
 
 // Error Detection Functions
 
-// AssertPDFDoesNotContainErrors checks that the PDF doesn't contain any error messages
-func AssertPDFDoesNotContainErrors(t *testing.T, pdfData []byte) {
+// assertPDFDoesNotContainErrors checks that the PDF doesn't contain any error messages
+func assertPDFDoesNotContainErrors(t *testing.T, pdfData []byte) {
 	t.Helper()
 
 	// Extract text from the PDF
@@ -335,8 +333,8 @@ func AssertPDFDoesNotContainErrors(t *testing.T, pdfData []byte) {
 	t.Logf("✓ PDF contains no error messages")
 }
 
-// AssertNoImageLoadErrors checks specifically for image loading errors
-func AssertNoImageLoadErrors(t *testing.T, pdfData []byte) {
+// assertNoImageLoadErrors checks specifically for image loading errors
+func assertNoImageLoadErrors(t *testing.T, pdfData []byte) {
 	t.Helper()
 
 	// Extract text from the PDF
@@ -367,8 +365,8 @@ func AssertNoImageLoadErrors(t *testing.T, pdfData []byte) {
 	}
 }
 
-// AssertNoSVGRenderingErrors checks specifically for SVG rendering errors
-func AssertNoSVGRenderingErrors(t *testing.T, pdfData []byte) {
+// assertNoSVGRenderingErrors checks specifically for SVG rendering errors
+func assertNoSVGRenderingErrors(t *testing.T, pdfData []byte) {
 	t.Helper()
 
 	// Extract text from the PDF

@@ -14,15 +14,15 @@ import (
 
 	_ "image/jpeg" // Register JPEG format
 
-	"github.com/johnfercher/maroto/v2/pkg/components/col"
-	marotoimagecomponent "github.com/johnfercher/maroto/v2/pkg/components/image"
-	"github.com/johnfercher/maroto/v2/pkg/components/row"
-	"github.com/johnfercher/maroto/v2/pkg/components/text"
-	"github.com/johnfercher/maroto/v2/pkg/consts/align"
-	"github.com/johnfercher/maroto/v2/pkg/consts/border"
-	"github.com/johnfercher/maroto/v2/pkg/consts/extension"
-	"github.com/johnfercher/maroto/v2/pkg/consts/fontstyle"
-	"github.com/johnfercher/maroto/v2/pkg/props"
+	"github.com/flanksource/maroto/v2/pkg/components/col"
+	marotoimagecomponent "github.com/flanksource/maroto/v2/pkg/components/image"
+	"github.com/flanksource/maroto/v2/pkg/components/row"
+	"github.com/flanksource/maroto/v2/pkg/components/text"
+	"github.com/flanksource/maroto/v2/pkg/consts/align"
+	"github.com/flanksource/maroto/v2/pkg/consts/border"
+	"github.com/flanksource/maroto/v2/pkg/consts/extension"
+	"github.com/flanksource/maroto/v2/pkg/consts/fontstyle"
+	"github.com/flanksource/maroto/v2/pkg/props"
 )
 
 // Image widget for rendering images in PDF
@@ -254,8 +254,6 @@ func isSVGFile(path string) bool {
 // convertSVGWithMetadata converts an SVG file to PNG using the converter manager and returns metadata
 func (i *Image) convertSVGWithMetadata(b *Builder, svgPath string) (string, *ConversionMetadata, error) {
 	startTime := time.Now()
-	// Get the converter manager
-	manager := b.GetConverterManager()
 
 	// Prepare conversion options
 	options := i.ConverterOptions
@@ -287,15 +285,15 @@ func (i *Image) convertSVGWithMetadata(b *Builder, svgPath string) (string, *Con
 	// Set preferred converter if specified
 	converterUsed := "default"
 	if i.PreferredConverter != "" {
-		manager.SetPreferred(i.PreferredConverter)
+		SetPreferred(i.PreferredConverter)
 		converterUsed = i.PreferredConverter
-	} else if available := manager.GetAvailableConverters(); len(available) > 0 {
+	} else if available := GetAvailableConverters(); len(available) > 0 {
 		converterUsed = available[0] // First available converter
 	}
 
 	// Convert with fallback
 	ctx := context.Background()
-	err = manager.ConvertWithFallback(ctx, svgPath, outputPath, options)
+	err = ConvertWithFallback(ctx, svgPath, outputPath, options)
 	conversionDuration := time.Since(startTime)
 
 	if err != nil {
@@ -315,7 +313,7 @@ func (i *Image) convertSVGWithMetadata(b *Builder, svgPath string) (string, *Con
 
 	// Validate that the converted PNG is actually loadable by image libraries
 	// This prevents Maroto from embedding "could not load image" error text
-	if err := validatePNGFile(outputPath); err != nil {
+	if err := ValidatePNGFile(outputPath); err != nil {
 		os.Remove(outputPath)
 		return "", nil, fmt.Errorf("SVG conversion produced invalid PNG: %w", err)
 	}
@@ -340,9 +338,9 @@ func (i *Image) GetLastConversionMetadata() *ConversionMetadata {
 	return i.lastConversionMetadata
 }
 
-// validatePNGFile validates that a PNG file can be properly decoded
+// ValidatePNGFile validates that a PNG file can be properly decoded
 // This prevents Maroto from embedding "could not load image" error text
-func validatePNGFile(pngPath string) error {
+func ValidatePNGFile(pngPath string) error {
 	file, err := os.Open(pngPath)
 	if err != nil {
 		return fmt.Errorf("cannot open PNG file: %w", err)

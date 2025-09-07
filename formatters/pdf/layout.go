@@ -1,7 +1,7 @@
 package pdf
 
 import (
-	"github.com/johnfercher/maroto/v2/pkg/components/row"
+	"github.com/flanksource/maroto/v2/pkg/components/row"
 
 	"github.com/flanksource/clicky/api"
 )

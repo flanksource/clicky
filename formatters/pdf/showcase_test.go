@@ -1,6 +1,7 @@
-package pdf
+package pdf_test
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -9,6 +10,10 @@ import (
 	"time"
 
 	"github.com/flanksource/clicky/api"
+	. "github.com/flanksource/clicky/formatters/pdf"
+	"github.com/flanksource/maroto/v2/pkg/components/col"
+	marotoimagecomponent "github.com/flanksource/maroto/v2/pkg/components/image"
+	"github.com/flanksource/maroto/v2/pkg/props"
 )
 
 // TestGenerateShowcasePDF generates a comprehensive PDF showcasing all widgets
@@ -59,7 +64,12 @@ func TestGenerateShowcasePDF(t *testing.T) {
 				t.Fatalf("Failed to add label positions gallery page: %v", err)
 			}
 
-			// Page 8: Combined Examples
+			// Page 8: Two-Column Layout with Image and Table
+			if err := addTwoColumnLayoutPage(builder); err != nil {
+				t.Fatalf("Failed to add two-column layout page: %v", err)
+			}
+
+			// Page 9: Combined Examples
 			addCombinedExamplesPage(builder)
 
 			// Generate PDF
@@ -69,9 +79,9 @@ func TestGenerateShowcasePDF(t *testing.T) {
 			}
 
 			// Verify no errors in the generated PDF
-			AssertPDFDoesNotContainErrors(t, pdfData)
-			AssertNoImageLoadErrors(t, pdfData)
-			AssertNoSVGRenderingErrors(t, pdfData)
+			assertPDFDoesNotContainErrors(t, pdfData)
+			assertNoImageLoadErrors(t, pdfData)
+			assertNoSVGRenderingErrors(t, pdfData)
 
 			// Save PDF
 			saveShowcasePDF(t, name, pdfData)
@@ -611,6 +621,7 @@ func addCombinedExamplesPage(b *Builder) {
 			Class:   api.ResolveStyles("text-2xl font-bold text-center mb-4"),
 		},
 	}
+	b.AddPage()
 	pageTitle.Draw(b)
 
 	// Invoice-like example
@@ -743,8 +754,6 @@ func saveShowcasePDF(t *testing.T, name string, pdfData []byte) {
 
 // addImageFeaturesPage adds the image features page
 func addImageFeaturesPage(builder *Builder) {
-	// Skip image features entirely to avoid conversion issues (fail fast)
-	return
 	// Page header
 	pageHeader := Text{
 		Text: api.Text{
@@ -976,36 +985,6 @@ func addSVGFeaturesPage(builder *Builder) error {
 	}
 	sectionHeader.Draw(builder)
 
-	// Create SVG from external content
-	externalSVGContent := `<?xml version="1.0"?>
-<svg width="300" height="200" xmlns="http://www.w3.org/2000/svg">
-    <circle cx="75" cy="75" r="35" fill="rgba(255,0,0,0.3)" id="red-circle"/>
-    <circle cx="225" cy="75" r="40" fill="rgba(0,255,0,0.3)" id="green-circle"/>
-    <circle cx="150" cy="125" r="30" fill="rgba(0,0,255,0.3)" id="blue-circle"/>
-    <rect width="50" height="10" id="horizontal-cut"/>
-    <rect width="8" height="80" id="vertical-cut"/>
-</svg>`
-
-	importedBox := api.Box{
-		Rectangle: api.Rectangle{Width: 300, Height: 200},
-		Fill:      api.Color{Hex: "ffffff"},
-		Border: api.Borders{
-			Top:    api.Line{Width: 1, Color: api.Color{Hex: "888888"}},
-			Right:  api.Line{Width: 1, Color: api.Color{Hex: "888888"}},
-			Bottom: api.Line{Width: 1, Color: api.Color{Hex: "888888"}},
-			Left:   api.Line{Width: 1, Color: api.Color{Hex: "888888"}},
-		},
-	}
-
-	importedSVGWidget, err := FromSVGContent(externalSVGContent, importedBox)
-	if err != nil {
-		// Import failed - skip this section
-		// Don't draw error to PDF, just skip
-	} else {
-		// Try to draw, but if it fails, skip
-		_ = importedSVGWidget.WithHeight(60).Draw(builder)
-	}
-
 	// Section 3: Aspect Ratio Preservation Demo
 	sectionHeader = Text{
 		Text: api.Text{
@@ -1108,9 +1087,7 @@ func addSVGConverterDemo(builder *Builder) error {
 	}
 	sectionHeader.Draw(builder)
 
-	// Get available converters
-	manager := NewSVGConverterManager()
-	availableConverters := manager.GetAvailableConverters()
+	availableConverters := GetAvailableConverters()
 
 	if len(availableConverters) == 0 {
 		noConvertersText := Text{
@@ -1133,7 +1110,7 @@ func addSVGConverterDemo(builder *Builder) error {
 	convertersText.Draw(builder)
 
 	// Show supported formats
-	supportedFormats := manager.GetSupportedFormats()
+	supportedFormats := GetSupportedFormats()
 	formatsText := Text{
 		Text: api.Text{
 			Content: fmt.Sprintf("Supported Output Formats: %s", strings.Join(supportedFormats, ", ")),
@@ -1143,11 +1120,11 @@ func addSVGConverterDemo(builder *Builder) error {
 	formatsText.Draw(builder)
 
 	// Demo converter functionality
-	return demoConverterFunctionality(builder, manager)
+	return demoConverterFunctionality(builder)
 }
 
 // demoConverterFunctionality creates a live demo of SVG conversion
-func demoConverterFunctionality(builder *Builder, manager *SVGConverterManager) error {
+func demoConverterFunctionality(builder *Builder) error {
 	// Create a test SVG using SVGBox for consistent results
 	testSVGBox := SVGBox{
 		Box: api.Box{
@@ -1256,8 +1233,7 @@ func demoConverterFunctionality(builder *Builder, manager *SVGConverterManager) 
 
 // addSVGConverterPages creates dedicated pages for each available converter
 func addSVGConverterPages(builder *Builder) error {
-	manager := NewSVGConverterManager()
-	availableConverters := manager.GetAvailableConverters()
+	availableConverters := GetAvailableConverters()
 
 	if len(availableConverters) == 0 {
 		return nil // No converters available
@@ -1699,6 +1675,166 @@ func getConverterNotes(converterName string) string {
 	default:
 		return fmt.Sprintf("%s: SVG to raster/vector converter.", converterName)
 	}
+}
+
+// addTwoColumnLayoutPage creates a strict 60%/40% two-column layout with image and table
+func addTwoColumnLayoutPage(builder *Builder) error {
+	builder.AddPage()
+
+	// Page title
+	titleWidget := Text{
+		Text: api.Text{
+			Content: "Two-Column Layout: Image (60%) + Table (40%)",
+			Class:   api.ResolveStyles("text-2xl font-bold text-center mb-4"),
+		},
+	}
+	titleWidget.Draw(builder)
+
+	// Description
+	descWidget := Text{
+		Text: api.Text{
+			Content: "This layout demonstrates strict column proportions: 60% for image content, 40% for tabular data",
+			Class:   api.ResolveStyles("text-md text-center text-gray-600 mb-6"),
+		},
+	}
+	descWidget.Draw(builder)
+
+	// Create a demo SVG box for the image column
+	demoSVGBox := SVGBox{
+		Box: api.Box{
+			Rectangle: api.Rectangle{Width: 300, Height: 200},
+			Fill:      api.Color{Hex: "#e3f2fd"},
+			Border: api.Borders{
+				Top:    api.Line{Width: 3, Color: api.Color{Hex: "#1976d2"}},
+				Right:  api.Line{Width: 3, Color: api.Color{Hex: "#1976d2"}},
+				Bottom: api.Line{Width: 3, Color: api.Color{Hex: "#1976d2"}},
+				Left:   api.Line{Width: 3, Color: api.Color{Hex: "#1976d2"}},
+			},
+		},
+		Circles: []CircleShape{
+			{X: 75, Y: 50, Diameter: 25, Label: "A"},
+			{X: 225, Y: 50, Diameter: 25, Label: "B"},
+			{X: 150, Y: 150, Diameter: 30, Label: "C"},
+		},
+		Labels: []Label{
+			{
+				Positionable: Positionable{
+					Position: &LabelPosition{Vertical: VerticalTop, Horizontal: HorizontalCenter},
+				},
+				Text: api.Text{
+					Content: "Sample Diagram",
+					Class:   api.Class{Font: &api.Font{Bold: true, Size: 1.1}},
+				},
+			},
+		},
+		ShowDimensions: true,
+		ActualWidth:    300,
+		ActualHeight:   200,
+		DimensionUnit:  "mm",
+	}
+
+	// Generate temporary SVG file
+	svgBytes, err := demoSVGBox.GenerateSVG()
+	if err != nil {
+		return fmt.Errorf("failed to generate demo SVG: %w", err)
+	}
+
+	tempFile, err := os.CreateTemp("", "two_column_demo_*.svg")
+	if err != nil {
+		return fmt.Errorf("failed to create temp SVG file: %w", err)
+	}
+	defer os.Remove(tempFile.Name())
+
+	if _, err := tempFile.Write(svgBytes); err != nil {
+		tempFile.Close()
+		return fmt.Errorf("failed to write SVG data: %w", err)
+	}
+	tempFile.Close()
+
+	// Create TRUE side-by-side layout with exact 60%/40% proportions
+	// We need to implement this at the maroto level for precise control
+
+	return addTrueTwoColumnLayout(builder, tempFile.Name())
+}
+
+// addTrueTwoColumnLayout creates a true side-by-side layout with real image and table components
+func addTrueTwoColumnLayout(builder *Builder, svgPath string) error {
+	// Convert SVG to PNG using the existing conversion system
+	ctx := context.Background()
+	// Use a unique PNG path in the out directory to avoid cleanup issues
+	pngPath := "out/two_column_demo.png"
+
+	convertOptions := &ConvertOptions{
+		Format: "png",
+		DPI:    288, // High resolution
+	}
+
+	// Check if SVG file exists before conversion
+	if _, err := os.Stat(svgPath); err != nil {
+		return fmt.Errorf("SVG file not found: %w", err)
+	}
+
+	// Try to convert SVG to PNG
+	if err := ConvertWithFallback(ctx, svgPath, pngPath, convertOptions); err != nil {
+		return fmt.Errorf("SVG conversion failed: %w", err)
+	}
+
+	// Verify the PNG file was created and is valid
+	if err := ValidatePNGFile(pngPath); err != nil {
+		return fmt.Errorf("converted PNG is invalid: %w", err)
+	}
+
+	// Create the actual side-by-side row using maroto's column system
+	// 60% = 7.2 columns ≈ 7 columns (7/12 = 58.33%)
+	// 40% = 4.8 columns ≈ 5 columns (5/12 = 41.67%)
+
+	// Left column: Real image component (7 columns ≈ 58.33%) aligned to top
+	imageComponent := marotoimagecomponent.NewFromFile(pngPath, props.Rect{
+		Top:     0,     // Align to top of cell
+		Left:    0,     // Align to left of cell
+		Percent: 95,    // Use 95% of available space
+		Center:  false, // Don't center, use Top/Left positioning
+	})
+	leftCol := col.New(7).Add(imageComponent)
+
+	// Right column: Real table component (5 columns ≈ 41.67%)
+	tableComponent := NewTableComponent(
+		[]string{"Property", "Value"},
+		[][]string{
+			{"Width", "300mm"},
+			{"Height", "200mm"},
+			{"Circles", "3"},
+			{"Area", "60cm²"},
+			{"Border", "3px"},
+			{"Ratio", "3:2"},
+			{"Scale", "1:1"},
+			{"Status", "Valid"},
+		},
+	).WithColors(
+		&props.Color{Red: 70, Green: 130, Blue: 180},  // Header background (steel blue)
+		&props.Color{Red: 255, Green: 255, Blue: 255}, // Row background (white)
+		&props.Color{Red: 248, Green: 248, Blue: 248}, // Alt row background (light gray)
+		&props.Color{Red: 128, Green: 128, Blue: 128}, // Border color (gray)
+	)
+
+	rightCol := col.New(5).Add(tableComponent)
+
+	// Add the side-by-side row to the builder
+	rowHeight := 70.0 // Height in mm
+	builder.GetMaroto().AddRow(rowHeight, leftCol, rightCol)
+
+	// Add explanation text
+	explanation := Text{
+		Text: api.Text{
+			Content: "Above: Real image (60%) and table (40%) in side-by-side layout",
+			Class:   api.ResolveStyles("text-sm text-center text-gray-600 italic mt-2"),
+		},
+	}
+	explanation.Draw(builder)
+
+	// PNG file will remain in out/ directory for inspection
+
+	return nil
 }
 
 // floatPtr is a helper to create a pointer to a float64

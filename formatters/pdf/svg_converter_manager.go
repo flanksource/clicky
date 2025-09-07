@@ -6,6 +6,8 @@ import (
 	"sync"
 )
 
+var m = NewSVGConverterManager()
+
 // SVGConverterManager manages multiple SVG converters with fallback support
 type SVGConverterManager struct {
 	converters []SVGConverter
@@ -42,7 +44,7 @@ func (m *SVGConverterManager) autoDetectConverters() {
 }
 
 // SetPreferred sets the preferred converter by name
-func (m *SVGConverterManager) SetPreferred(name string) error {
+func SetPreferred(name string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -58,14 +60,14 @@ func (m *SVGConverterManager) SetPreferred(name string) error {
 }
 
 // GetPreferred returns the preferred converter name
-func (m *SVGConverterManager) GetPreferred() string {
+func GetPreferred() string {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return m.preferred
 }
 
 // GetAvailableConverters returns a list of available converter names
-func (m *SVGConverterManager) GetAvailableConverters() []string {
+func GetAvailableConverters() []string {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
@@ -77,7 +79,7 @@ func (m *SVGConverterManager) GetAvailableConverters() []string {
 }
 
 // GetConverter returns a converter by name
-func (m *SVGConverterManager) GetConverter(name string) (SVGConverter, error) {
+func GetConverter(name string) (SVGConverter, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
@@ -130,7 +132,7 @@ func (m *SVGConverterManager) supportsFormat(converter SVGConverter, format stri
 }
 
 // Convert converts an SVG file using the best available converter
-func (m *SVGConverterManager) Convert(ctx context.Context, svgPath, outputPath string, options *ConvertOptions) error {
+func Convert(ctx context.Context, svgPath, outputPath string, options *ConvertOptions) error {
 	if options == nil {
 		options = DefaultConvertOptions()
 	}
@@ -144,7 +146,7 @@ func (m *SVGConverterManager) Convert(ctx context.Context, svgPath, outputPath s
 }
 
 // ConvertWithFallback attempts conversion with fallback to other converters
-func (m *SVGConverterManager) ConvertWithFallback(ctx context.Context, svgPath, outputPath string, options *ConvertOptions) error {
+func ConvertWithFallback(ctx context.Context, svgPath, outputPath string, options *ConvertOptions) error {
 	m.mu.RLock()
 	converters := make([]SVGConverter, len(m.converters))
 	copy(converters, m.converters)
@@ -177,31 +179,8 @@ func (m *SVGConverterManager) ConvertWithFallback(ctx context.Context, svgPath, 
 	return fmt.Errorf("all converters failed, last error: %w", lastErr)
 }
 
-// RefreshConverters re-detects available converters
-func (m *SVGConverterManager) RefreshConverters() {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	m.converters = []SVGConverter{}
-	m.autoDetectConverters()
-
-	// Reset preferred if it's no longer available
-	if m.preferred != "" {
-		found := false
-		for _, converter := range m.converters {
-			if converter.Name() == m.preferred {
-				found = true
-				break
-			}
-		}
-		if !found {
-			m.preferred = ""
-		}
-	}
-}
-
 // GetSupportedFormats returns all formats supported by at least one converter
-func (m *SVGConverterManager) GetSupportedFormats() []string {
+func GetSupportedFormats() []string {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
@@ -221,7 +200,7 @@ func (m *SVGConverterManager) GetSupportedFormats() []string {
 }
 
 // Close closes any converters that need cleanup (like Playwright)
-func (m *SVGConverterManager) Close() error {
+func Close() error {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 

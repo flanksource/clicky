@@ -1,4 +1,4 @@
-package pdf
+package pdf_test
 
 import (
 	"context"
@@ -6,20 +6,20 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/flanksource/clicky/api"
+	. "github.com/flanksource/clicky/formatters/pdf"
 	"github.com/stretchr/testify/assert"
+
 	"github.com/stretchr/testify/require"
 )
 
 func TestSVGWidget_ConvertSVGToPNG_BasicSVG(t *testing.T) {
-	widget := SVGWidget{}
 
 	svgContent := `<?xml version="1.0"?>
 <svg width="100" height="100" xmlns="http://www.w3.org/2000/svg">
     <circle cx="50" cy="50" r="20" fill="red"/>
 </svg>`
 
-	pngBytes, err := widget.convertSVGToPNG([]byte(svgContent))
+	pngBytes, err := ConvertSVGToPNG([]byte(svgContent))
 	require.NoError(t, err)
 	require.NotEmpty(t, pngBytes)
 
@@ -28,7 +28,6 @@ func TestSVGWidget_ConvertSVGToPNG_BasicSVG(t *testing.T) {
 }
 
 func TestSVGWidget_ConvertSVGToPNG_AspectRatioLandscape(t *testing.T) {
-	widget := SVGWidget{}
 
 	// Landscape SVG (2:1 aspect ratio)
 	svgContent := `<?xml version="1.0"?>
@@ -36,7 +35,7 @@ func TestSVGWidget_ConvertSVGToPNG_AspectRatioLandscape(t *testing.T) {
     <rect width="200" height="100" fill="blue"/>
 </svg>`
 
-	pngBytes, err := widget.convertSVGToPNG([]byte(svgContent))
+	pngBytes, err := ConvertSVGToPNG([]byte(svgContent))
 	require.NoError(t, err)
 	require.NotEmpty(t, pngBytes)
 
@@ -46,15 +45,13 @@ func TestSVGWidget_ConvertSVGToPNG_AspectRatioLandscape(t *testing.T) {
 }
 
 func TestSVGWidget_ConvertSVGToPNG_AspectRatioPortrait(t *testing.T) {
-	widget := SVGWidget{}
-
 	// Portrait SVG (1:2 aspect ratio)
 	svgContent := `<?xml version="1.0"?>
 <svg width="100" height="200" xmlns="http://www.w3.org/2000/svg">
     <rect width="100" height="200" fill="green"/>
 </svg>`
 
-	pngBytes, err := widget.convertSVGToPNG([]byte(svgContent))
+	pngBytes, err := ConvertSVGToPNG([]byte(svgContent))
 	require.NoError(t, err)
 	require.NotEmpty(t, pngBytes)
 
@@ -63,7 +60,6 @@ func TestSVGWidget_ConvertSVGToPNG_AspectRatioPortrait(t *testing.T) {
 }
 
 func TestSVGWidget_ConvertSVGToPNG_ViewBoxOnly(t *testing.T) {
-	widget := SVGWidget{}
 
 	// SVG with viewBox but no width/height
 	svgContent := `<?xml version="1.0"?>
@@ -71,7 +67,7 @@ func TestSVGWidget_ConvertSVGToPNG_ViewBoxOnly(t *testing.T) {
     <ellipse cx="150" cy="75" rx="120" ry="60" fill="purple"/>
 </svg>`
 
-	pngBytes, err := widget.convertSVGToPNG([]byte(svgContent))
+	pngBytes, err := ConvertSVGToPNG([]byte(svgContent))
 	require.NoError(t, err)
 	require.NotEmpty(t, pngBytes)
 
@@ -80,17 +76,15 @@ func TestSVGWidget_ConvertSVGToPNG_ViewBoxOnly(t *testing.T) {
 }
 
 func TestSVGWidget_ConvertSVGToPNG_InvalidSVG(t *testing.T) {
-	widget := SVGWidget{}
 
 	invalidSVG := `<not-svg>invalid content</not-svg>`
 
-	_, err := widget.convertSVGToPNG([]byte(invalidSVG))
+	_, err := ConvertSVGToPNG([]byte(invalidSVG))
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to parse SVG")
 }
 
 func TestSVGWidget_ExtractSVGDimensions(t *testing.T) {
-	widget := SVGWidget{}
 
 	tests := []struct {
 		name         string
@@ -129,7 +123,7 @@ func TestSVGWidget_ExtractSVGDimensions(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			width, height, err := widget.extractSVGDimensions([]byte(tt.svg))
+			width, height, err := ExtractSVGDimensions([]byte(tt.svg))
 
 			if tt.expectError {
 				assert.Error(t, err)
@@ -142,62 +136,18 @@ func TestSVGWidget_ExtractSVGDimensions(t *testing.T) {
 	}
 }
 
-func TestSVGWidget_FromSVGContent(t *testing.T) {
-	svgContent := `<?xml version="1.0"?>
-<svg width="100" height="100" xmlns="http://www.w3.org/2000/svg">
-    <circle cx="50" cy="50" r="20"/>
-    <rect width="30" height="10"/>
-</svg>`
-
-	box := api.Box{
-		Rectangle: api.Rectangle{Width: 200, Height: 200},
-		Fill:      api.Color{Hex: "ffffff"},
-	}
-
-	widget, err := FromSVGContent(svgContent, box)
-	require.NoError(t, err)
-	require.NotNil(t, widget)
-
-	// Should have imported elements from SVG
-	assert.Len(t, widget.SVGBox.Circles, 1)
-	assert.Len(t, widget.SVGBox.Cuts, 1)
-
-	// Should have collision avoidance enabled
-	assert.True(t, widget.SVGBox.EnableCollisionAvoidance)
-}
-
-func TestSVGWidget_FromSVGContent_InvalidSVG(t *testing.T) {
-	invalidSVG := `<invalid>content</invalid>`
-
-	box := api.Box{
-		Rectangle: api.Rectangle{Width: 100, Height: 100},
-	}
-
-	_, err := FromSVGContent(invalidSVG, box)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "failed to import SVG content")
-}
-
 // Test SVG converter integration with SVGWidget
 func TestSVGWidget_ConverterIntegration(t *testing.T) {
-	manager := NewSVGConverterManager()
-	availableConverters := manager.GetAvailableConverters()
-
-	if len(availableConverters) == 0 {
-		t.Skip("No SVG converters available, skipping integration tests")
-	}
-
-	t.Logf("Testing with available converters: %v", availableConverters)
 
 	// Create test SVG
-	svgContent := CreateTestSVG()
-	svgPath := WriteTestSVG(t, svgContent)
+	svgContent := createTestSVG()
+	svgPath := writeTestSVG(t, svgContent)
 
 	ctx := context.Background()
 
-	for _, converterName := range availableConverters {
+	for _, converterName := range GetAvailableConverters() {
 		t.Run("Converter_"+converterName, func(t *testing.T) {
-			converter, err := manager.GetConverter(converterName)
+			converter, err := GetConverter(converterName)
 			require.NoError(t, err)
 
 			// Test PNG conversion (supported by all converters)
@@ -215,8 +165,8 @@ func TestSVGWidget_ConverterIntegration(t *testing.T) {
 				assert.NoError(t, err, "PNG conversion should succeed for %s", converterName)
 
 				if err == nil {
-					AssertFileExists(t, outputPath)
-					AssertFileNotEmpty(t, outputPath)
+					assertFileExists(t, outputPath)
+					assertFileNotEmpty(t, outputPath)
 				}
 			}
 		})
@@ -224,15 +174,10 @@ func TestSVGWidget_ConverterIntegration(t *testing.T) {
 }
 
 func TestSVGWidget_ManagerFallback(t *testing.T) {
-	manager := NewSVGConverterManager()
-
-	if len(manager.GetAvailableConverters()) == 0 {
-		t.Skip("No converters available")
-	}
 
 	// Create test SVG
-	svgContent := CreateComplexTestSVG()
-	svgPath := WriteTestSVG(t, svgContent)
+	svgContent := createComplexTestSVG()
+	svgPath := writeTestSVG(t, svgContent)
 
 	ctx := context.Background()
 
@@ -246,12 +191,12 @@ func TestSVGWidget_ManagerFallback(t *testing.T) {
 			Height: 150,
 		}
 
-		err := manager.ConvertWithFallback(ctx, svgPath, outputPath, options)
+		err := ConvertWithFallback(ctx, svgPath, outputPath, options)
 		assert.NoError(t, err, "Fallback conversion should succeed")
 
 		if err == nil {
-			AssertFileExists(t, outputPath)
-			AssertFileNotEmpty(t, outputPath)
+			assertFileExists(t, outputPath)
+			assertFileNotEmpty(t, outputPath)
 		}
 	})
 }

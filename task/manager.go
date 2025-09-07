@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/flanksource/clicky/shutdown"
 	"github.com/flanksource/commons/collections"
 	flanksourceContext "github.com/flanksource/commons/context"
 	"github.com/flanksource/commons/logger"
@@ -33,15 +34,10 @@ type Manager struct {
 	renderer      *lipgloss.Renderer
 	styles        styleSet
 
-	// Signal management
-	signalChan       chan os.Signal
-	signalRegistered bool
-	gracefulTimeout  time.Duration
-	onInterrupt      func() // optional cleanup callback
-	signalMu         sync.Mutex
-	shutdownOnce     sync.Once
-	noColor          bool // Disable colored output
-	noProgress       bool // Disable progress display
+	gracefulTimeout time.Duration
+	onInterrupt     func() // optional cleanup callback
+	noColor         bool   // Disable colored output
+	noProgress      bool   // Disable progress display
 
 	// Priority queue for task scheduling
 	taskQueue     *collections.Queue[*Task]
@@ -93,9 +89,9 @@ func newManagerWithConcurrency(maxConcurrent int) *Manager {
 	// Create a renderer that outputs to stderr for proper color detection
 	renderer := lipgloss.NewRenderer(os.Stderr)
 
-	// Default to single worker if not specified
+	// Default to 4 workers if not specified to prevent deadlock in nested task execution
 	if maxConcurrent <= 0 {
-		maxConcurrent = 1
+		maxConcurrent = 4
 	}
 
 	// Create priority queue for tasks
@@ -185,8 +181,25 @@ func newManagerWithConcurrency(maxConcurrent int) *Manager {
 		go w.run()
 	}
 
-	// Register signal handling by default
-	tm.registerSignalHandling()
+	// Register shutdown hook to cancel all tasks on interrupt
+	shutdown.AddHookWithPriority("TaskManager", shutdown.PriorityWorkers, func() {
+		// Cancel all running tasks
+		CancelAll()
+		
+		// Wait for tasks to complete with timeout
+		done := make(chan bool, 1)
+		go func() {
+			tm.wg.Wait()
+			done <- true
+		}()
+		
+		select {
+		case <-done:
+			fmt.Fprintf(os.Stderr, "✅ All tasks completed gracefully\n")
+		case <-time.After(tm.gracefulTimeout):
+			fmt.Fprintf(os.Stderr, "⏰ Task shutdown timeout reached\n")
+		}
+	})
 
 	go tm.render()
 	return tm
@@ -547,4 +560,36 @@ func Debug() string {
 		task.mu.Unlock()
 	}
 	return result
+}
+
+// WaitForAllTasks waits for all global tasks to complete and forces a final render
+func WaitForAllTasks() {
+	// Wait for queue to be empty and all workers to be idle
+	ticker := time.NewTicker(10 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		// Check if queue is empty and no workers are active
+		if global.taskQueue.Empty() && global.workersActive.Load() == 0 {
+			// Also check all tasks are completed
+			allComplete := true
+			global.mu.RLock()
+			for _, task := range global.tasks {
+				if !task.completed.Load() {
+					allComplete = false
+					break
+				}
+			}
+			global.mu.RUnlock()
+
+			if allComplete {
+				break
+			}
+		}
+
+		<-ticker.C
+	}
+
+	// Force a final render to ensure all task status is displayed
+	global.Render()
 }

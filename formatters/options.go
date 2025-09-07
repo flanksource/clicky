@@ -122,7 +122,7 @@ func BindPFlags(flags *pflag.FlagSet, options *FormatOptions) {
 }
 
 // ResolveFormat resolves the output format from format-specific flags
-func (options *FormatOptions) ResolveFormat() error {
+func (options *FormatOptions) ResolveFormat() string {
 	logger.Debugf("%+v", *options)
 	// Count how many format flags are set
 	selectedFormat := []string{}
@@ -154,5 +154,5 @@ func (options *FormatOptions) ResolveFormat() error {
 
 	logger.Tracef("Using format: %s", options.Format)
 
-	return nil
+	return options.Format
 }

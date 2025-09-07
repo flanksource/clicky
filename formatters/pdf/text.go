@@ -5,11 +5,11 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/johnfercher/maroto/v2/pkg/components/col"
-	"github.com/johnfercher/maroto/v2/pkg/components/row"
-	"github.com/johnfercher/maroto/v2/pkg/components/text"
-	"github.com/johnfercher/maroto/v2/pkg/consts/align"
-	"github.com/johnfercher/maroto/v2/pkg/consts/breakline"
+	"github.com/flanksource/maroto/v2/pkg/components/col"
+	"github.com/flanksource/maroto/v2/pkg/components/row"
+	"github.com/flanksource/maroto/v2/pkg/components/text"
+	"github.com/flanksource/maroto/v2/pkg/consts/align"
+	"github.com/flanksource/maroto/v2/pkg/consts/breakline"
 
 	"github.com/flanksource/clicky/api"
 )
