@@ -7,7 +7,7 @@ toolchain go1.24.5
 require (
 	github.com/ajstarks/svgo v0.0.0-20211024235047-1546f124cd8b
 	github.com/charmbracelet/lipgloss v0.13.1
-	github.com/flanksource/commons v1.41.1
+	github.com/flanksource/commons v1.41.2
 	github.com/flanksource/maroto/v2 v2.4.2
 	github.com/johnfercher/go-tree v1.0.5
 	github.com/ledongthuc/pdf v0.0.0-20250511090121-5959a4027728
@@ -38,7 +38,7 @@ require (
 	github.com/f-amaral/go-async v0.3.0 // indirect
 	github.com/fatih/color v1.18.0 // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
-	github.com/go-jose/go-jose/v3 v3.0.3 // indirect
+	github.com/go-jose/go-jose/v3 v3.0.4 // indirect
 	github.com/go-logr/logr v1.4.2 // indirect
 	github.com/go-stack/stack v1.8.1 // indirect
 	github.com/go-task/slim-sprig/v3 v3.0.0 // indirect
