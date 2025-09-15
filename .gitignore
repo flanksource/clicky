@@ -60,3 +60,9 @@ test-*
 *.db
 clicky
 .task
+*.pdf
+*.html
+*.md
+*.json
+*.csv
+*.yaml

@@ -12,6 +12,7 @@ import (
 // HTMLFormatter handles HTML formatting
 type HTMLFormatter struct {
 	IncludeCSS bool
+	IsPDFMode  bool
 }
 
 // NewHTMLFormatter creates a new HTML formatter
@@ -28,17 +29,144 @@ func (f *HTMLFormatter) ToPrettyData(data interface{}) (*api.PrettyData, error) 
 
 // getCSS returns Tailwind CSS CDN and custom styling
 func (f *HTMLFormatter) getCSS() string {
-	return `<!DOCTYPE html>
+	css := `<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Clicky Output</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.tailwindcss.com"></script>`
+
+    if f.IsPDFMode {
+        css += f.getPDFCSS()
+    }
+
+    css += `
 </head>
 <body class="bg-gray-100 min-h-screen p-6">
     <div class="max-w-7xl mx-auto space-y-8">
 `
+	return css
+}
+
+// getPDFCSS returns PDF-specific style overrides
+func (f *HTMLFormatter) getPDFCSS() string {
+	return `
+    <style>
+        /* PDF-specific overrides */
+        @media print, screen {
+            body {
+                font-size: 12px !important;
+                line-height: 1.4 !important;
+                margin: 0 !important;
+                padding: 20px !important;
+                min-height: auto !important;
+                background: white !important;
+            }
+
+            .max-w-7xl {
+                max-width: 100% !important;
+                margin: 0 !important;
+            }
+
+            /* Reduce all font sizes by ~15% */
+            .text-xl { font-size: 16px !important; }
+            .text-lg { font-size: 14px !important; }
+            .text-base { font-size: 12px !important; }
+            .text-sm { font-size: 11px !important; }
+            .text-xs { font-size: 10px !important; }
+
+            /* Compact spacing - reduce by ~40% */
+            .p-6 { padding: 12px !important; }
+            .px-6 { padding-left: 12px !important; padding-right: 12px !important; }
+            .py-4 { padding-top: 8px !important; padding-bottom: 8px !important; }
+            .py-3 { padding-top: 6px !important; padding-bottom: 6px !important; }
+            .px-4 { padding-left: 8px !important; padding-right: 8px !important; }
+            .space-y-8 > * + * { margin-top: 16px !important; }
+            .space-y-4 > * + * { margin-top: 8px !important; }
+            .space-y-1 > * + * { margin-top: 2px !important; }
+            .gap-4 { gap: 8px !important; }
+            .mt-1 { margin-top: 2px !important; }
+            .mb-2 { margin-bottom: 4px !important; }
+            .ml-4 { margin-left: 8px !important; }
+            .mr-2 { margin-right: 4px !important; }
+
+            /* Remove responsive grid - always use 2 columns for better space usage */
+            .md\\:grid-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+            .grid-cols-1 { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+
+            /* No overflow scrolling - tables should fit */
+            .overflow-x-auto { overflow: visible !important; }
+
+            /* Ensure tables fit and are compact */
+            table {
+                width: 100% !important;
+                font-size: 11px !important;
+                table-layout: fixed !important;
+            }
+
+            table th {
+                padding: 4px 8px !important;
+                font-size: 10px !important;
+            }
+
+            table td {
+                padding: 4px 8px !important;
+                font-size: 11px !important;
+                word-wrap: break-word !important;
+            }
+
+            .whitespace-nowrap {
+                white-space: normal !important;
+            }
+
+            /* Remove hover states */
+            .hover\\:bg-gray-50:hover { background: transparent !important; }
+
+            /* Remove shadows and use simple borders for cleaner print */
+            .shadow {
+                box-shadow: none !important;
+                border: 1px solid #e5e7eb !important;
+            }
+            .rounded-lg { border-radius: 4px !important; }
+
+            /* Page break handling */
+            .bg-white.rounded-lg {
+                page-break-inside: avoid;
+                margin-bottom: 8px !important;
+            }
+
+            /* Tree view adjustments */
+            .tree-view {
+                font-size: 11px !important;
+            }
+
+            .tree-node {
+                font-size: 11px !important;
+            }
+
+            /* Header adjustments */
+            h2 {
+                font-size: 14px !important;
+                margin-bottom: 4px !important;
+            }
+
+            /* Definition list adjustments */
+            dl {
+                font-size: 11px !important;
+            }
+
+            dt {
+                font-size: 10px !important;
+                margin-bottom: 1px !important;
+            }
+
+            dd {
+                font-size: 11px !important;
+                margin-bottom: 4px !important;
+            }
+        }
+    </style>`
 }
 
 // Format formats PrettyData into HTML output
@@ -70,6 +198,107 @@ func (f *HTMLFormatter) Format(in interface{}) (string, error) {
 	if data == nil || data.Schema == nil {
 		return "", nil
 	}
+	if data == nil || data.Schema == nil {
+		return "", nil
+	}
+
+	var result strings.Builder
+
+	if f.IncludeCSS {
+		result.WriteString(f.getCSS())
+	}
+
+	// Summary first - add non-table fields as a summary card
+	result.WriteString("        <div class=\"bg-white rounded-lg shadow\">\n")
+	result.WriteString("            <div class=\"px-6 py-4 border-b border-gray-200\">\n")
+	result.WriteString("                <h2 class=\"text-xl font-semibold text-gray-900\">Summary</h2>\n")
+	result.WriteString("            </div>\n")
+	result.WriteString("            <div class=\"px-6 py-4\">\n")
+	result.WriteString("                <dl class=\"grid grid-cols-1 md:grid-cols-2 gap-4\">\n")
+
+	// Process summary fields (non-table, non-tree, non-hidden)
+	for _, field := range data.Schema.Fields {
+		// Skip table and tree fields (they get special handling)
+		if field.Format == api.FormatTable || field.Format == api.FormatTree {
+			continue
+		}
+
+		fieldValue, exists := data.GetValue(field.Name)
+		if !exists {
+			continue
+		}
+
+		prettyFieldName := f.prettifyFieldName(field.Name)
+
+		// Format field value with styling
+		fieldHTML := f.formatFieldValueHTMLWithStyle(fieldValue, field)
+
+		// Apply label styling
+		var labelHTML string
+		if field.LabelStyle != "" {
+			labelHTML = f.applyTailwindStyleToHTML(prettyFieldName, field.LabelStyle)
+		} else {
+			labelHTML = fmt.Sprintf("<span class=\"text-sm font-medium text-gray-500\">%s</span>", html.EscapeString(prettyFieldName))
+		}
+
+		result.WriteString("                    <div>\n")
+		result.WriteString(fmt.Sprintf("                        <dt>%s</dt>\n", labelHTML))
+		result.WriteString(fmt.Sprintf("                        <dd class=\"mt-1 text-sm\">%s</dd>\n", fieldHTML))
+		result.WriteString("                    </div>\n")
+	}
+	result.WriteString("                </dl>\n")
+	result.WriteString("            </div>\n")
+	result.WriteString("        </div>\n")
+
+	// Then handle tables
+	for _, field := range data.Schema.Fields {
+		// Check for table format
+		if field.Format == api.FormatTable {
+			tableData, exists := data.GetTable(field.Name)
+			if exists && len(tableData) > 0 {
+				// Add section title
+				result.WriteString("        <div class=\"bg-white rounded-lg shadow\">\n")
+				result.WriteString("            <div class=\"px-6 py-4 border-b border-gray-200\">\n")
+				result.WriteString(fmt.Sprintf("                <h2 class=\"text-xl font-semibold text-gray-900\">%s</h2>\n",
+					f.prettifyFieldName(field.Name)))
+				result.WriteString("            </div>\n")
+
+				// Format as table with Tailwind styling
+				tableHTML := f.formatTableDataHTML(tableData, field)
+				result.WriteString(tableHTML)
+				result.WriteString("        </div>\n")
+			}
+		} else if field.Format == api.FormatTree {
+			// Handle tree format
+			fieldValue, exists := data.GetValue(field.Name)
+			if exists {
+				// Add section title
+				result.WriteString("        <div class=\"bg-white rounded-lg shadow\">\n")
+				result.WriteString("            <div class=\"px-6 py-4 border-b border-gray-200\">\n")
+				result.WriteString(fmt.Sprintf("                <h2 class=\"text-xl font-semibold text-gray-900\">%s</h2>\n",
+					f.prettifyFieldName(field.Name)))
+				result.WriteString("            </div>\n")
+				result.WriteString("            <div class=\"px-6 py-4\">\n")
+
+				// Format as tree with HTML styling
+				treeHTML := f.formatTreeFieldHTML(fieldValue, field)
+				result.WriteString(treeHTML)
+
+				result.WriteString("            </div>\n")
+				result.WriteString("        </div>\n")
+			}
+		}
+	}
+
+	if f.IncludeCSS {
+		result.WriteString("    </div>\n</body>\n</html>")
+	}
+
+	return result.String(), nil
+}
+
+// FormatPrettyData formats PrettyData directly as HTML
+func (f *HTMLFormatter) FormatPrettyData(data *api.PrettyData) (string, error) {
 	if data == nil || data.Schema == nil {
 		return "", nil
 	}
@@ -303,11 +532,17 @@ func (f *HTMLFormatter) formatTableDataHTML(rows []api.PrettyDataRow, field api.
 	result.WriteString("                    <thead class=\"bg-gray-50\">\n")
 	result.WriteString("                        <tr>\n")
 	for _, tableField := range field.TableOptions.Fields {
+		// Use Label for display, fallback to Name if Label is empty
+		headerLabel := tableField.Label
+		if headerLabel == "" {
+			headerLabel = tableField.Name
+		}
+
 		var headerHTML string
 		if field.TableOptions.HeaderStyle != "" {
-			headerHTML = f.applyTailwindStyleToHTML(tableField.Name, field.TableOptions.HeaderStyle)
+			headerHTML = f.applyTailwindStyleToHTML(headerLabel, field.TableOptions.HeaderStyle)
 		} else {
-			headerHTML = fmt.Sprintf("<span class=\"text-xs font-medium text-gray-500 uppercase tracking-wider\">%s</span>", html.EscapeString(tableField.Name))
+			headerHTML = fmt.Sprintf("<span class=\"text-xs font-medium text-gray-500 uppercase tracking-wider\">%s</span>", html.EscapeString(headerLabel))
 		}
 		result.WriteString(fmt.Sprintf("                            <th class=\"px-6 py-3 text-left\">%s</th>\n", headerHTML))
 	}

@@ -1,8 +1,6 @@
 module github.com/flanksource/clicky
 
-go 1.24.1
-
-toolchain go1.24.5
+go 1.25.1
 
 require (
 	github.com/ajstarks/svgo v0.0.0-20211024235047-1546f124cd8b
@@ -10,6 +8,7 @@ require (
 	github.com/flanksource/commons v1.41.1
 	github.com/flanksource/maroto/v2 v2.4.2
 	github.com/johnfercher/go-tree v1.0.5
+	github.com/jung-kurt/gofpdf v1.16.2
 	github.com/ledongthuc/pdf v0.0.0-20250511090121-5959a4027728
 	github.com/mattn/go-sqlite3 v1.14.30
 	github.com/muesli/termenv v0.15.3-0.20240618155329-98d742f6907a
@@ -51,7 +50,6 @@ require (
 	github.com/hhrutter/pkcs7 v0.2.0 // indirect
 	github.com/hhrutter/tiff v1.0.2 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
-	github.com/jung-kurt/gofpdf v1.16.2 // indirect
 	github.com/kr/pretty v0.3.1 // indirect
 	github.com/kr/text v0.2.0 // indirect
 	github.com/lmittmann/tint v1.1.2 // indirect

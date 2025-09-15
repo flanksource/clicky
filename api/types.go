@@ -28,6 +28,7 @@ type RenderFunc func(value interface{}, field PrettyField, theme Theme) string
 // nested field definitions, and conditional coloring based on field values.
 type PrettyField struct {
 	Name          string            `json:"name" yaml:"name"`
+	Aliases       []string          `json:"aliases,omitempty" yaml:"aliases,omitempty"`
 	Type          string            `json:"type,omitempty" yaml:"type,omitempty"`
 	Format        string            `json:"format,omitempty" yaml:"format,omitempty"`
 	Label         string            `json:"label,omitempty" yaml:"label,omitempty"`
@@ -133,6 +134,35 @@ func (v FieldValue) Markdown() string {
 	return fmt.Sprintf("%v", v.Value)
 }
 
+var epoch = time.Now().Add(-50 * 365 * 24 * time.Hour)
+var centuryEnd = time.Date(2100, 1, 1, 0, 0, 0, 0, time.UTC)
+
+func isValidTimeOrNil(t time.Time) *time.Time {
+	if t.IsZero() {
+		return nil
+	}
+	if t.Before(epoch) || t.After(centuryEnd) {
+		return nil
+	}
+	return &t
+}
+
+func ParseEpoch(e any) *time.Time {
+	v := FieldValue{Value: e}
+	if f := v.Float(); f != nil {
+		n := int64(*f)
+
+		if n > epoch.UnixNano() {
+			seconds := n / int64(time.Second)
+			nanosRemainder := n % int64(time.Second)
+			return isValidTimeOrNil(time.Unix(seconds, nanosRemainder))
+		} else if n > epoch.UnixMilli() {
+			return isValidTimeOrNil(time.UnixMilli(n))
+		}
+	}
+	return nil
+}
+
 func (v FieldValue) DateTimeFormat() string {
 	var format = v.Field.DateFormat
 	if format == "" {
@@ -152,6 +182,11 @@ func (v FieldValue) Time() *time.Time {
 	case time.Time:
 		return &val
 	case string:
+		e := ParseEpoch(val)
+		if e != nil {
+			return e
+		}
+
 		if t, err := time.Parse(v.DateTimeFormat(), val); err == nil {
 			return &t
 		} else if t, err := time.Parse(time.RFC3339, val); err == nil {
@@ -163,20 +198,8 @@ func (v FieldValue) Time() *time.Time {
 		}
 	}
 
-	if f := v.Float(); f != nil {
-		n := int64(*f)
-		epoch := time.Now().Add(50 * 365 * 24 * time.Hour)
-
-		if n > epoch.UnixNano() {
-			seconds := n / int64(time.Second)
-			nanosRemainder := n % int64(time.Second)
-
-			// Create a time.Time object
-			return lo.ToPtr(time.Unix(seconds, nanosRemainder))
-		} else if n > epoch.UnixMilli() {
-			return lo.ToPtr(time.UnixMilli(n))
-		}
-		return lo.ToPtr(time.Unix(n, 0))
+	if f := ParseEpoch(v.Value); f != nil {
+		return f
 	}
 
 	return nil

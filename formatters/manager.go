@@ -15,6 +15,7 @@ type FormatManager struct {
 	csvFormatter      *CSVFormatter
 	markdownFormatter *MarkdownFormatter
 	htmlFormatter     *HTMLFormatter
+	htmlPDFFormatter  *HTMLPDFFormatter
 	prettyFormatter   *PrettyFormatter
 	treeFormatter     *TreeFormatter
 }
@@ -111,6 +112,11 @@ func (f FormatManager) Format(format string, data interface{}) (string, error) {
 		return f.Markdown(data)
 	case "html":
 		return f.HTML(data)
+	case "html-pdf":
+		if f.htmlPDFFormatter == nil {
+			f.htmlPDFFormatter = NewHTMLPDFFormatter()
+		}
+		return f.htmlPDFFormatter.Format(data)
 	case "pretty":
 		return f.Pretty(data)
 	case "tree":
@@ -155,6 +161,12 @@ func (f FormatManager) FormatWithOptions(options FormatOptions, data interface{}
 
 	case "html":
 		return f.HTML(data)
+
+	case "html-pdf":
+		if f.htmlPDFFormatter == nil {
+			f.htmlPDFFormatter = NewHTMLPDFFormatter()
+		}
+		return f.htmlPDFFormatter.Format(data)
 
 	case "table":
 		if f.prettyFormatter == nil {
@@ -289,7 +301,12 @@ func (f FormatManager) FormatWithSchema(prettyData *api.PrettyData, options Form
 		if f.htmlFormatter == nil {
 			f.htmlFormatter = NewHTMLFormatter()
 		}
-		return f.htmlFormatter.Format(prettyData)
+		return f.htmlFormatter.FormatPrettyData(prettyData)
+	case "html-pdf":
+		if f.htmlPDFFormatter == nil {
+			f.htmlPDFFormatter = NewHTMLPDFFormatter()
+		}
+		return f.htmlPDFFormatter.FormatPrettyData(prettyData)
 	default:
 		// Default to pretty format
 		if f.prettyFormatter == nil {

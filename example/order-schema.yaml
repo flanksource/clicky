@@ -64,7 +64,7 @@ fields:
       fields:
         - name: "name"
           type: "string"
-          style: "text-white-800 font-medium"
+          style: "text-white-800 font-medium text-no-wrap"
         - name: "category"
           type: "string"
           style: "italic"
@@ -88,9 +88,10 @@ fields:
         - name: "line_total"
           type: "float"
           format: "currency"
-          style: "text-green-600 font-bold"
+          style: "text-green-600 font-bold width-[2ch]"
         - name: "warranty_months"
           type: "int"
+          label: "War"
           style: "font-mono title"
           color_options:
             green: ">=36"

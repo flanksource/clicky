@@ -312,9 +312,9 @@ func (p *StructParser) ParseWithSchema(data interface{}, schema *PrettyObject) (
 		var fieldVal reflect.Value
 
 		if val.Kind() == reflect.Map {
-			fieldVal = p.getMapValue(val, field.Name)
+			fieldVal = p.getMapValueWithAliases(val, field)
 		} else {
-			fieldVal = p.getFieldValueByName(val, field.Name)
+			fieldVal = p.getFieldValueByNameWithAliases(val, field)
 		}
 
 		if fieldVal.IsValid() {
@@ -356,9 +356,9 @@ func (p *StructParser) ParseDataWithSchema(data interface{}, schema *PrettyObjec
 		var fieldVal reflect.Value
 
 		if val.Kind() == reflect.Map {
-			fieldVal = p.getMapValue(val, field.Name)
+			fieldVal = p.getMapValueWithAliases(val, field)
 		} else {
-			fieldVal = p.getFieldValueByName(val, field.Name)
+			fieldVal = p.getFieldValueByNameWithAliases(val, field)
 		}
 
 		if !fieldVal.IsValid() {
@@ -907,10 +907,23 @@ func (p *StructParser) StructToRow(val reflect.Value) (PrettyDataRow, error) {
 
 // GetFieldValue gets a field value by name from a struct
 func (p *StructParser) GetFieldValue(val reflect.Value, fieldName string) reflect.Value {
-	if val.Kind() != reflect.Struct {
+	switch val.Kind() {
+	case reflect.Struct:
+		return p.getStructFieldValue(val, fieldName)
+	case reflect.Map:
+		return p.getMapFieldValue(val, fieldName)
+	case reflect.Interface:
+		// Handle interface{} by checking the underlying value
+		if !val.IsNil() {
+			return p.GetFieldValue(val.Elem(), fieldName)
+		}
+		return reflect.Value{}
+	default:
 		return reflect.Value{}
 	}
+}
 
+func (p *StructParser) getStructFieldValue(val reflect.Value, fieldName string) reflect.Value {
 	typ := val.Type()
 
 	for i := 0; i < val.NumField(); i++ {
@@ -930,6 +943,17 @@ func (p *StructParser) GetFieldValue(val reflect.Value, fieldName string) reflec
 		}
 	}
 
+	// Return zero value if not found
+	return reflect.Value{}
+}
+
+func (p *StructParser) getMapFieldValue(val reflect.Value, fieldName string) reflect.Value {
+	// For maps, try to get the value by key
+	mapValue := val.MapIndex(reflect.ValueOf(fieldName))
+	if mapValue.IsValid() {
+		return mapValue
+	}
+	
 	// Return zero value if not found
 	return reflect.Value{}
 }
@@ -993,4 +1017,58 @@ func (p *StructParser) ProcessFieldValue(fieldVal reflect.Value) interface{} {
 	}
 
 	return nil
+}
+
+// getMapValueWithAliases tries to get a map value using aliases first, then the field name
+func (p *StructParser) getMapValueWithAliases(val reflect.Value, field PrettyField) reflect.Value {
+	if val.Kind() != reflect.Map {
+		return reflect.Value{}
+	}
+
+	// Try aliases first
+	if len(field.Aliases) > 0 {
+		for _, alias := range field.Aliases {
+			fieldVal := p.getMapValue(val, alias)
+			if fieldVal.IsValid() && !p.isEmptyValue(fieldVal) {
+				return fieldVal
+			}
+		}
+	}
+
+	// Fall back to the field name
+	return p.getMapValue(val, field.Name)
+}
+
+// getFieldValueByNameWithAliases tries to get a field value using aliases first, then the field name
+func (p *StructParser) getFieldValueByNameWithAliases(val reflect.Value, field PrettyField) reflect.Value {
+	// Try aliases first
+	if len(field.Aliases) > 0 {
+		for _, alias := range field.Aliases {
+			fieldVal := p.getFieldValueByName(val, alias)
+			if fieldVal.IsValid() && !p.isEmptyValue(fieldVal) {
+				return fieldVal
+			}
+		}
+	}
+
+	// Fall back to the field name
+	return p.getFieldValueByName(val, field.Name)
+}
+
+// isEmptyValue checks if a reflect.Value is considered empty
+func (p *StructParser) isEmptyValue(v reflect.Value) bool {
+	if !v.IsValid() {
+		return true
+	}
+
+	switch v.Kind() {
+	case reflect.String:
+		return v.String() == ""
+	case reflect.Slice, reflect.Array, reflect.Map, reflect.Chan:
+		return v.Len() == 0
+	case reflect.Interface, reflect.Ptr:
+		return v.IsNil()
+	default:
+		return false
+	}
 }

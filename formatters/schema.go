@@ -165,6 +165,12 @@ func (sf *SchemaFormatter) formatWithPrettyData(data *api.PrettyData, options Fo
 		csvFormatter := NewCSVFormatter()
 		// Use the original PrettyData directly for CSV formatting
 		return csvFormatter.FormatPrettyData(data)
+	case "html":
+		htmlFormatter := NewHTMLFormatter()
+		return htmlFormatter.FormatPrettyData(data)
+	case "html-pdf":
+		htmlPDFFormatter := NewHTMLPDFFormatter()
+		return htmlPDFFormatter.FormatPrettyData(data)
 	default:
 		// For other formats, delegate to the format manager
 		manager := NewFormatManager()
@@ -254,6 +260,8 @@ func (sf *SchemaFormatter) getExtensionForFormat(format string) string {
 	case "html":
 		return "html"
 	case "pdf":
+		return "pdf"
+	case "html-pdf":
 		return "pdf"
 	case "markdown":
 		return "md"

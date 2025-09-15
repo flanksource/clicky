@@ -113,6 +113,52 @@ func GetFieldValue(val reflect.Value, fieldName string) reflect.Value {
 	return parser.GetFieldValue(val, fieldName)
 }
 
+// GetFieldValueWithAliases tries to get a field value using aliases first, then the field name
+func GetFieldValueWithAliases(val reflect.Value, field api.PrettyField) reflect.Value {
+	// Try aliases first
+	if len(field.Aliases) > 0 {
+		for _, alias := range field.Aliases {
+			fieldVal := GetFieldValue(val, alias)
+			if fieldVal.IsValid() && !isEmptyValue(fieldVal) {
+				return fieldVal
+			}
+		}
+	}
+	
+	// Fall back to the field name
+	fieldVal := GetFieldValue(val, field.Name)
+	if !fieldVal.IsValid() {
+		// Try with different casing
+		fieldVal = GetFieldValueCaseInsensitive(val, field.Name)
+	}
+	
+	return fieldVal
+}
+
+// isEmptyValue checks if a reflect.Value is considered empty
+func isEmptyValue(v reflect.Value) bool {
+	if !v.IsValid() {
+		return true
+	}
+	
+	switch v.Kind() {
+	case reflect.String:
+		return v.String() == ""
+	case reflect.Slice, reflect.Array, reflect.Map, reflect.Chan:
+		return v.Len() == 0
+	case reflect.Interface:
+		if v.IsNil() {
+			return true
+		}
+		// For interface{}, check the underlying value
+		return isEmptyValue(v.Elem())
+	case reflect.Ptr:
+		return v.IsNil()
+	default:
+		return false
+	}
+}
+
 // GetFieldValueCaseInsensitive tries to find a field by name with different casing
 func GetFieldValueCaseInsensitive(val reflect.Value, name string) reflect.Value {
 	if val.Kind() != reflect.Struct {
@@ -410,14 +456,10 @@ func ToPrettyData(data interface{}) (*api.PrettyData, error) {
 
 	// Process each field
 	for _, field := range schema.Fields {
-		// Try both the field name as-is and with title case
-		fieldVal := GetFieldValue(val, field.Name)
+		// Try aliases first, then the field name
+		fieldVal := GetFieldValueWithAliases(val, field)
 		if !fieldVal.IsValid() {
-			// Try with different casing
-			fieldVal = GetFieldValueCaseInsensitive(val, field.Name)
-			if !fieldVal.IsValid() {
-				continue
-			}
+			continue
 		}
 
 		// Handle table fields
