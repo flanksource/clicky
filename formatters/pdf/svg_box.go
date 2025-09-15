@@ -3,6 +3,8 @@ package pdf
 import (
 	"bytes"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
 	svg "github.com/ajstarks/svgo"
@@ -99,6 +101,18 @@ type PositionedLabel struct {
 	Y      int
 	Anchor string
 	Bounds LabelBounds
+}
+
+func (b SVGBox) SaveTo(path string) error {
+	svgData, err := b.GenerateSVG()
+	if err != nil {
+		return err
+	}
+	parentDir := filepath.Dir(path)
+	if err := os.MkdirAll(parentDir, 0755); err != nil {
+		return err
+	}
+	return os.WriteFile(path, svgData, 0644)
 }
 
 // GenerateSVG creates an SVG representation of the box

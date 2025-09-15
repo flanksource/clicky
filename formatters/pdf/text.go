@@ -41,6 +41,12 @@ func (t Text) Draw(b *Builder) error {
 
 // drawTextWithChildren recursively draws text and its children
 func (t Text) drawTextWithChildren(b *Builder, apiText api.Text) {
+	// Apply Tailwind classes if specified in Style field
+	if apiText.Style != "" {
+		resolvedClass := api.ResolveStyles(apiText.Style)
+		apiText.Class = mergeClasses(apiText.Class, resolvedClass)
+	}
+
 	// Calculate height for this text
 	height := b.style.CalculateTextHeight(apiText.Class)
 

@@ -9,75 +9,79 @@ import (
 	"github.com/flanksource/maroto/v2/pkg/fpdf"
 	"github.com/flanksource/maroto/v2/pkg/props"
 	"github.com/johnfercher/go-tree/node"
+
+	"github.com/flanksource/clicky/api"
 )
 
 // TableComponent implements core.Component interface for embedding tables in columns
 type TableComponent struct {
-	Headers       []string
-	Rows          [][]string
-	HeaderStyle   props.Text
-	RowStyle      props.Text
-	ShowBorders   bool
-	HeaderBgColor *props.Color
-	RowBgColor    *props.Color
-	AltRowBgColor *props.Color
-	BorderColor   *props.Color
-	TopAlign      bool // Force top alignment within cell
-	config        *entity.Config
+	Headers           []string
+	Rows              [][]string
+	ShowBorders       bool
+	TopAlign          bool // Force top alignment within cell
+	CompactMode       bool // Use smaller fonts and tighter spacing
+	HeaderClass       string
+	CellClass         string
+	PrimaryRowClass   string
+	AlternateRowClass string
+	styleConverter    *StyleConverter
+	config            *entity.Config
+
+	// Cached resolved styles to avoid repeated api.ResolveStyles() calls
+	resolvedHeaderClass    api.Class
+	resolvedCellClass      api.Class
+	resolvedPrimaryClass   api.Class
+	resolvedAlternateClass api.Class
 }
 
-// NewTableComponent creates a new table component with default styling
+// NewTableComponent creates a new table component with default Tailwind styling
 func NewTableComponent(headers []string, rows [][]string) *TableComponent {
-	return &TableComponent{
-		Headers:     headers,
-		Rows:        rows,
-		ShowBorders: true,
-		TopAlign:    true, // Default to top alignment
-		HeaderStyle: props.Text{
-			Size:  8,
-			Style: fontstyle.Bold,
-			Align: align.Center,
-			Color: &props.Color{Red: 0, Green: 0, Blue: 0}, // Explicit black text
-		},
-		RowStyle: props.Text{
-			Size:  7,
-			Style: fontstyle.Normal,
-			Align: align.Left,
-			Color: &props.Color{Red: 0, Green: 0, Blue: 0}, // Explicit black text
-		},
-		HeaderBgColor: &props.Color{Red: 70, Green: 130, Blue: 180},  // Steel blue
-		RowBgColor:    &props.Color{Red: 255, Green: 255, Blue: 255}, // White
-		AltRowBgColor: &props.Color{Red: 248, Green: 248, Blue: 248}, // Light gray
-		BorderColor:   &props.Color{Red: 128, Green: 128, Blue: 128}, // Gray
+	tc := &TableComponent{
+		Headers:           headers,
+		Rows:              rows,
+		ShowBorders:       true,
+		TopAlign:          true,
+		HeaderClass:       "font-bold text-white bg-blue-600 text-center text-sm",
+		CellClass:         "text-sm text-gray-800",
+		PrimaryRowClass:   "bg-white",
+		AlternateRowClass: "bg-gray-50",
+		styleConverter:    NewStyleConverter(),
 	}
-}
 
-// WithHeaderStyle sets the header text styling
-func (tc *TableComponent) WithHeaderStyle(style props.Text) *TableComponent {
-	// Preserve black text color if not explicitly set
-	if style.Color == nil {
-		style.Color = &props.Color{Red: 0, Green: 0, Blue: 0}
-	}
-	tc.HeaderStyle = style
+	// Pre-resolve all styles to avoid repeated calls during rendering
+	tc.resolvedHeaderClass = api.ResolveStyles(tc.HeaderClass)
+	tc.resolvedCellClass = api.ResolveStyles(tc.CellClass)
+	tc.resolvedPrimaryClass = api.ResolveStyles(tc.PrimaryRowClass)
+	tc.resolvedAlternateClass = api.ResolveStyles(tc.AlternateRowClass)
+
 	return tc
 }
 
-// WithRowStyle sets the row text styling
-func (tc *TableComponent) WithRowStyle(style props.Text) *TableComponent {
-	// Preserve black text color if not explicitly set
-	if style.Color == nil {
-		style.Color = &props.Color{Red: 0, Green: 0, Blue: 0}
-	}
-	tc.RowStyle = style
+// WithHeaderClass sets the Tailwind classes for header styling
+func (tc *TableComponent) WithHeaderClass(class string) *TableComponent {
+	tc.HeaderClass = class
+	tc.resolvedHeaderClass = api.ResolveStyles(class)
 	return tc
 }
 
-// WithColors sets the color scheme
-func (tc *TableComponent) WithColors(headerBg, rowBg, altRowBg, border *props.Color) *TableComponent {
-	tc.HeaderBgColor = headerBg
-	tc.RowBgColor = rowBg
-	tc.AltRowBgColor = altRowBg
-	tc.BorderColor = border
+// WithCellClass sets the Tailwind classes for general cell styling
+func (tc *TableComponent) WithCellClass(class string) *TableComponent {
+	tc.CellClass = class
+	tc.resolvedCellClass = api.ResolveStyles(class)
+	return tc
+}
+
+// WithPrimaryRowClass sets the Tailwind classes for primary row styling
+func (tc *TableComponent) WithPrimaryRowClass(class string) *TableComponent {
+	tc.PrimaryRowClass = class
+	tc.resolvedPrimaryClass = api.ResolveStyles(class)
+	return tc
+}
+
+// WithAlternateRowClass sets the Tailwind classes for alternate row styling
+func (tc *TableComponent) WithAlternateRowClass(class string) *TableComponent {
+	tc.AlternateRowClass = class
+	tc.resolvedAlternateClass = api.ResolveStyles(class)
 	return tc
 }
 
@@ -90,6 +94,17 @@ func (tc *TableComponent) WithBorders(enabled bool) *TableComponent {
 // WithTopAlign configures whether the table should align to the top of its cell
 func (tc *TableComponent) WithTopAlign(topAlign bool) *TableComponent {
 	tc.TopAlign = topAlign
+	return tc
+}
+
+// WithCompactMode enables compact mode with smaller fonts and tighter spacing
+func (tc *TableComponent) WithCompactMode(enabled bool) *TableComponent {
+	tc.CompactMode = enabled
+	if enabled {
+		// Override classes with compact versions
+		tc.HeaderClass = "font-bold text-white bg-blue-600 text-center text-xs"
+		tc.CellClass = "text-xs text-gray-800"
+	}
 	return tc
 }
 
@@ -139,11 +154,14 @@ func (tc *TableComponent) GetHeight(provider core.Provider, cell *entity.Cell) f
 		numRows++ // Add header row
 	}
 
-	// Simple calculation based on font size
-	baseHeight := float64(tc.RowStyle.Size) * 0.5 // mm per row
-	if baseHeight == 0 {
-		baseHeight = 4.0 // default row height
+	// Calculate height based on resolved cell styles
+	baseHeight := 4.0 // Default row height in mm
+
+	if tc.styleConverter != nil {
+		// Use cached resolved cell class styling
+		baseHeight = tc.styleConverter.CalculateTextHeight(tc.resolvedCellClass)
 	}
+
 	return float64(numRows) * baseHeight
 }
 
@@ -168,21 +186,29 @@ func (tc *TableComponent) GetStructure() *node.Node[core.Structure] {
 
 // getRowHeight calculates the height needed for each row
 func (tc *TableComponent) getRowHeight() float64 {
-	// Base height on font size with padding
-	headerSize := float64(tc.HeaderStyle.Size)
-	rowSize := float64(tc.RowStyle.Size)
+	// Use style converter to calculate height from Tailwind classes
+	if tc.styleConverter != nil {
+		// Use cached resolved styles for height calculation
+		headerHeight := tc.styleConverter.CalculateTextHeight(tc.resolvedHeaderClass)
+		cellHeight := tc.styleConverter.CalculateTextHeight(tc.resolvedCellClass)
 
-	maxSize := headerSize
-	if rowSize > maxSize {
-		maxSize = rowSize
+		// Use the larger of the two
+		if headerHeight > cellHeight {
+			return headerHeight
+		}
+		return cellHeight
 	}
 
-	// Convert font size to height with padding (rough calculation)
-	return (maxSize * 0.35) + 4 // 0.35mm per point + 4mm padding
+	// Fallback to default height
+	return 8.0 // 8mm default row height
 }
 
-// renderHeaderRow renders the header row with backgrounds and borders
+// renderHeaderRow renders the header row with Tailwind-resolved backgrounds and borders
 func (tc *TableComponent) renderHeaderRow(provider core.Provider, drawingHelper *fpdf.DrawingHelper, x, y, colWidth, rowHeight float64, useAdvancedDrawing bool) {
+	// Use cached resolved header classes
+	headerTextProps := tc.styleConverter.ConvertToTextProps(tc.resolvedHeaderClass)
+	headerBgColor := tc.styleConverter.ConvertToTableBackgroundColor(tc.resolvedHeaderClass)
+
 	for i, header := range tc.Headers {
 		cellX := x + float64(i)*colWidth
 
@@ -196,25 +222,33 @@ func (tc *TableComponent) renderHeaderRow(provider core.Provider, drawingHelper 
 
 		// Draw advanced graphics if available
 		if useAdvancedDrawing {
-			tc.drawCellBackground(drawingHelper, headerCell, tc.HeaderBgColor)
+			tc.drawCellBackground(drawingHelper, headerCell, headerBgColor)
 			tc.drawCellBorders(drawingHelper, headerCell)
 
 			// Draw text directly for proper Z-order
-			tc.drawCellText(drawingHelper, header, headerCell, tc.HeaderStyle)
+			tc.drawCellText(drawingHelper, header, headerCell, *headerTextProps)
 		} else {
 			// Fallback to standard Maroto text rendering
-			textComponent := text.New(header, tc.HeaderStyle)
+			textComponent := text.New(header, *headerTextProps)
 			textComponent.Render(provider, headerCell)
 		}
 	}
 }
 
-// renderDataRow renders a data row with alternating backgrounds and borders
+// renderDataRow renders a data row with alternating backgrounds and borders using Tailwind styles
 func (tc *TableComponent) renderDataRow(provider core.Provider, drawingHelper *fpdf.DrawingHelper, x, y, colWidth, rowHeight float64, row []string, isAltRow, useAdvancedDrawing bool) {
-	bgColor := tc.RowBgColor
-	if isAltRow && tc.AltRowBgColor != nil {
-		bgColor = tc.AltRowBgColor
+	// Use cached resolved row classes
+	var rowClass api.Class
+	if isAltRow {
+		rowClass = tc.resolvedAlternateClass
+	} else {
+		rowClass = tc.resolvedPrimaryClass
 	}
+
+	// For cell text, we'll use the cell class styles combined with row-specific styles
+	// Since combining classes is complex, we'll use resolved cell class primarily
+	cellTextProps := tc.styleConverter.ConvertToTextProps(tc.resolvedCellClass)
+	bgColor := tc.styleConverter.ConvertToTableBackgroundColor(rowClass)
 
 	for i, cellData := range row {
 		if i >= len(tc.Headers) && len(tc.Headers) > 0 {
@@ -237,10 +271,10 @@ func (tc *TableComponent) renderDataRow(provider core.Provider, drawingHelper *f
 			tc.drawCellBorders(drawingHelper, dataCell)
 
 			// Draw text directly for proper Z-order
-			tc.drawCellText(drawingHelper, cellData, dataCell, tc.RowStyle)
+			tc.drawCellText(drawingHelper, cellData, dataCell, *cellTextProps)
 		} else {
 			// Fallback to standard Maroto text rendering
-			textComponent := text.New(cellData, tc.RowStyle)
+			textComponent := text.New(cellData, *cellTextProps)
 			textComponent.Render(provider, dataCell)
 		}
 	}
@@ -257,14 +291,14 @@ func (tc *TableComponent) drawCellBackground(drawingHelper *fpdf.DrawingHelper, 
 	drawingHelper.DrawRect(cell.X, cell.Y, cell.Width, cell.Height, "F")
 }
 
-// drawCellBorders draws borders around a cell using Fpdf
+// drawCellBorders draws borders around a cell using Fpdf with default border color
 func (tc *TableComponent) drawCellBorders(drawingHelper *fpdf.DrawingHelper, cell *entity.Cell) {
-	if drawingHelper == nil || tc.BorderColor == nil {
+	if drawingHelper == nil {
 		return
 	}
 
-	// Set border color and draw rectangle border
-	drawingHelper.SetDrawColor(tc.BorderColor.Red, tc.BorderColor.Green, tc.BorderColor.Blue)
+	// Use default gray border color (matching Tailwind's default table border)
+	drawingHelper.SetDrawColor(128, 128, 128) // Gray
 	drawingHelper.DrawRect(cell.X, cell.Y, cell.Width, cell.Height, "D")
 }
 

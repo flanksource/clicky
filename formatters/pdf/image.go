@@ -95,17 +95,35 @@ func (i *Image) drawImage(b *Builder, height float64) error {
 		// Check if it's an SVG file that needs conversion
 		imagePath := i.Source
 		if isSVGFile(i.Source) {
-			// Convert SVG to PNG using the converter manager
+			// Convert SVG to PDF using the converter manager
 			convertedPath, metadata, err := i.convertSVGWithMetadata(b, i.Source)
 			if err != nil {
 				return fmt.Errorf("failed to convert SVG: %w", err)
 			}
-			imagePath = convertedPath
-			// Note: We don't delete the temp file here because Maroto needs it during PDF generation
-			// Temp files will be cleaned up by the OS automatically
 
 			// Store metadata for potential future use (used by showcase for reporting)
 			i.lastConversionMetadata = metadata
+
+			// Since we converted to PDF, we need to embed it as a PDF file
+			// PDF streams are now automatically decompressed by converters for gofpdi compatibility
+			if metadata != nil && strings.HasSuffix(convertedPath, ".pdf") {
+				embedWidget := NewPDFEmbedWidget(convertedPath)
+				if i.Width != nil && i.Height != nil {
+					embedWidget = embedWidget.WithSize(*i.Width, *i.Height)
+				}
+				return embedWidget.Draw(b)
+			}
+
+			imagePath = convertedPath
+			// Note: We don't delete the temp file here because Maroto needs it during PDF generation
+			// Temp files will be cleaned up by the OS automatically
+		} else if isPDFFile(i.Source) {
+			// Handle PDF files - embed directly using PDF embed widget
+			embedWidget := NewPDFEmbedWidget(i.Source)
+			if i.Width != nil && i.Height != nil {
+				embedWidget = embedWidget.WithSize(*i.Width, *i.Height)
+			}
+			return embedWidget.Draw(b)
 		}
 
 		// Create image component from file and add to row
@@ -251,6 +269,95 @@ func isSVGFile(path string) bool {
 	return ext == ".svg"
 }
 
+// isPDFFile checks if a file path points to a PDF file
+func isPDFFile(path string) bool {
+	ext := strings.ToLower(filepath.Ext(path))
+	return ext == ".pdf"
+}
+
+// validatePDFFile validates that a PDF file is valid and can be imported
+func validatePDFFile(path string) error {
+	// Check file exists
+	info, err := os.Stat(path)
+	if err != nil {
+		return fmt.Errorf("PDF file not found: %w", err)
+	}
+
+	// Check file is not empty
+	if info.Size() == 0 {
+		return fmt.Errorf("PDF file is empty")
+	}
+
+	// Check PDF header
+	file, err := os.Open(path)
+	if err != nil {
+		return fmt.Errorf("cannot open PDF file: %w", err)
+	}
+	defer file.Close()
+
+	header := make([]byte, 4)
+	_, err = file.Read(header)
+	if err != nil {
+		return fmt.Errorf("cannot read PDF header: %w", err)
+	}
+
+	if string(header) != "%PDF" {
+		return fmt.Errorf("invalid PDF file: missing PDF header")
+	}
+
+	// More comprehensive PDF structure validation
+	file.Seek(0, 0) // Reset to beginning
+
+	// Read entire file content for structure validation
+	// Since we need to check for XRef streams which are typically at the end
+	readSize := int(info.Size())
+	content := make([]byte, readSize)
+	n, err := file.Read(content)
+	if err != nil {
+		return fmt.Errorf("cannot read PDF content for validation: %w", err)
+	}
+
+	contentStr := string(content[:n])
+
+	// Check for essential PDF structure elements
+	requiredElements := []string{
+		"obj",       // Object start
+		"endobj",    // Object end
+		"startxref", // Start of xref table (present in both traditional and compressed)
+	}
+
+	for _, element := range requiredElements {
+		if !strings.Contains(contentStr, element) {
+			return fmt.Errorf("invalid PDF file: missing required element '%s'", element)
+		}
+	}
+
+	// Check for cross-reference structure - accept either traditional or compressed
+	hasTraditionalXref := strings.Contains(contentStr, "xref") && strings.Contains(contentStr, "trailer")
+	hasCompressedXref := strings.Contains(contentStr, "/Type /XRef")
+
+	if !hasTraditionalXref && !hasCompressedXref {
+		return fmt.Errorf("invalid PDF file: missing cross-reference structure (neither traditional xref nor compressed XRef stream found)")
+	}
+
+	// Additional check: ensure the file doesn't contain obvious error markers
+	errorMarkers := []string{
+		"ERROR",
+		"Failed",
+		"Unable to",
+		"could not",
+		"<html>", // Sometimes converters return HTML error pages
+	}
+
+	for _, marker := range errorMarkers {
+		if strings.Contains(contentStr, marker) {
+			return fmt.Errorf("invalid PDF file: contains error marker '%s'", marker)
+		}
+	}
+
+	return nil
+}
+
 // convertSVGWithMetadata converts an SVG file to PNG using the converter manager and returns metadata
 func (i *Image) convertSVGWithMetadata(b *Builder, svgPath string) (string, *ConversionMetadata, error) {
 	startTime := time.Now()
@@ -259,8 +366,8 @@ func (i *Image) convertSVGWithMetadata(b *Builder, svgPath string) (string, *Con
 	options := i.ConverterOptions
 	if options == nil {
 		options = &ConvertOptions{
-			Format: "png",
-			DPI:    288, // 3x resolution for higher quality images
+			Format: "pdf", // Use PDF for better quality
+			DPI:    288,   // 3x resolution for higher quality images
 		}
 	}
 
@@ -274,13 +381,20 @@ func (i *Image) convertSVGWithMetadata(b *Builder, svgPath string) (string, *Con
 		options.Height = int(*i.Height * pixelsPerMM)
 	}
 
-	// Create temporary output file
-	tempFile, err := os.CreateTemp("", "converted_*.png")
+	// Create temporary output file with appropriate extension
+	var tempFile *os.File
+	var outputPath string
+	var err error
+	if options.Format == "pdf" {
+		tempFile, err = os.CreateTemp("", "converted_*.pdf")
+	} else {
+		tempFile, err = os.CreateTemp("", "converted_*.png")
+	}
 	if err != nil {
 		return "", nil, fmt.Errorf("failed to create temp file: %w", err)
 	}
 	tempFile.Close()
-	outputPath := tempFile.Name()
+	outputPath = tempFile.Name()
 
 	// Set preferred converter if specified
 	converterUsed := "default"
@@ -311,11 +425,19 @@ func (i *Image) convertSVGWithMetadata(b *Builder, svgPath string) (string, *Con
 		return "", nil, fmt.Errorf("conversion produced empty file")
 	}
 
-	// Validate that the converted PNG is actually loadable by image libraries
-	// This prevents Maroto from embedding "could not load image" error text
-	if err := ValidatePNGFile(outputPath); err != nil {
-		os.Remove(outputPath)
-		return "", nil, fmt.Errorf("SVG conversion produced invalid PNG: %w", err)
+	// Validate the converted file
+	if options.Format == "pdf" {
+		// Validate the converted PDF
+		if err := validatePDFFile(outputPath); err != nil {
+			os.Remove(outputPath)
+			return "", nil, fmt.Errorf("converted PDF validation failed: %w", err)
+		}
+	} else {
+		// Validate that the converted PNG is actually loadable by image libraries
+		if err := ValidatePNGFile(outputPath); err != nil {
+			os.Remove(outputPath)
+			return "", nil, fmt.Errorf("SVG conversion produced invalid PNG: %w", err)
+		}
 	}
 
 	// Create metadata object
@@ -377,4 +499,23 @@ func validateImageFile(imagePath string) error {
 	}
 
 	return nil
+}
+
+// getFileSize returns the size of a file, or 0 if there's an error
+func getFileSize(path string) int64 {
+	if stat, err := os.Stat(path); err == nil {
+		return stat.Size()
+	}
+	return 0
+}
+
+// formatFileSize formats a file size in bytes to a human-readable string
+func formatFileSize(size int64) string {
+	if size < 1024 {
+		return fmt.Sprintf("%d bytes", size)
+	} else if size < 1024*1024 {
+		return fmt.Sprintf("%.1f KB", float64(size)/1024)
+	} else {
+		return fmt.Sprintf("%.1f MB", float64(size)/(1024*1024))
+	}
 }

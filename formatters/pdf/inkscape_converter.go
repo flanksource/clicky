@@ -89,6 +89,13 @@ func (c *InkscapeConverter) Convert(ctx context.Context, svgPath, outputPath str
 		return NewConverterError(c.Name(), "convert", fmt.Errorf("command failed: %w, output: %s", err, string(output)))
 	}
 
+	// If we generated a PDF, decompress its streams for better compatibility
+	if format == "pdf" {
+		if err := uncompressPDFStreams(outputPath); err != nil {
+			return NewConverterError(c.Name(), "decompress PDF streams", fmt.Errorf("failed to decompress PDF streams: %w", err))
+		}
+	}
+
 	return nil
 }
 

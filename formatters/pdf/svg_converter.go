@@ -44,10 +44,10 @@ type ConvertOptions struct {
 // DefaultConvertOptions returns default conversion options
 func DefaultConvertOptions() *ConvertOptions {
 	return &ConvertOptions{
-		Format:  "png",
+		Format:  "pdf", // Changed from PNG to PDF for better quality
 		Width:   0,
 		Height:  0,
-		DPI:     96,
+		DPI:     288,
 		Quality: 90,
 	}
 }
@@ -58,6 +58,7 @@ type ConverterType string
 const (
 	ConverterTypeInkscape   ConverterType = "inkscape"
 	ConverterTypeRSVG       ConverterType = "rsvg"
+	ConverterTypeChromium   ConverterType = "chromium"
 	ConverterTypePlaywright ConverterType = "playwright"
 )
 

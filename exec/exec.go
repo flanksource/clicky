@@ -10,12 +10,15 @@ import (
 
 	"github.com/flanksource/clicky/api"
 	"github.com/flanksource/clicky/shutdown"
+	"github.com/flanksource/clicky/task"
+	"github.com/flanksource/commons/context"
 	"github.com/flanksource/commons/logger"
 )
 
 type Process struct {
 	Started *time.Time
 	cmd     *exec.Cmd
+	task    *task.Task
 	Env     map[string]string
 	Cwd     string
 	Err     error
@@ -50,7 +53,10 @@ func (p Process) WithLogger(log logger.Logger) Process {
 }
 
 func (p Process) Name() string {
-	return p.cmd.Path
+	if p.cmd != nil {
+		return p.cmd.Path
+	}
+	return p.Cmd
 }
 
 // Start runs the process in the background
@@ -78,6 +84,9 @@ func (p Process) Stop() error {
 }
 
 func (p Process) Kill() error {
+	if p.cmd == nil || p.cmd.Process == nil {
+		return nil
+	}
 	return p.cmd.Process.Kill()
 }
 
@@ -88,7 +97,7 @@ func (p Process) Runf(sh string, args ...interface{}) Process {
 }
 
 func (p Process) Run() Process {
-	cmd := exec.Command("bash", "-c", p.Cmd)
+	cmd := exec.Command(p.Cmd, p.Args...)
 	cmd.Dir = p.Cwd
 	cmd.Stderr = io.MultiWriter(&p.Stderr, os.Stderr)
 	cmd.Stdout = io.MultiWriter(&p.Stdout, os.Stdout)
@@ -98,20 +107,31 @@ func (p Process) Run() Process {
 		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, v))
 	}
 
+	p.cmd = cmd
 	p.Err = cmd.Run()
 
 	return p
 }
 
+func (p Process) IsRunning() bool {
+	return p.cmd != nil && p.cmd.Process != nil && p.cmd.ProcessState.Exited() == false
+}
+
 func (p Process) IsOK() bool {
-	return p.Err == nil && p.cmd.ProcessState != nil && p.cmd.ProcessState.Success()
+	return p.Err == nil && p.cmd != nil && p.cmd.ProcessState != nil && p.cmd.ProcessState.Success()
 }
 
 func (p Process) Wait() error {
+	if p.cmd == nil {
+		return nil
+	}
 	return p.cmd.Wait()
 }
 
 func (p Process) Terminate() error {
+	if p.cmd == nil || p.cmd.Process == nil {
+		return nil
+	}
 	if err := p.cmd.Process.Signal(os.Interrupt); err != nil {
 		return err
 	}
@@ -120,5 +140,83 @@ func (p Process) Terminate() error {
 }
 
 func (p Process) ForceKill() error {
+	if p.cmd == nil || p.cmd.Process == nil {
+		return nil
+	}
 	return p.cmd.Process.Kill()
+}
+
+// GetTask implements the Taskable interface
+func (p *Process) GetTask() *task.Task {
+	return p.task
+}
+
+// AsTask converts the Process into a Task that can be managed by TaskManager
+func (p *Process) AsTask(name string, opts ...task.Option) *task.Task {
+	taskFunc := func(ctx context.Context, t *task.Task) (*Process, error) {
+		// Store the task reference immediately
+		p.task = t
+
+		// Run the process
+		result := p.Run()
+
+		// Log the output if there's any
+		if output := result.Out(); output != "" {
+			t.Infof("Process output: %s", output)
+		}
+
+		// Update the original process with results while preserving task reference
+		p.Started = result.Started
+		p.cmd = result.cmd
+		p.Env = result.Env
+		p.Cwd = result.Cwd
+		p.Err = result.Err
+		p.Log = result.Log
+		p.Stderr = result.Stderr
+		p.Stdout = result.Stdout
+		p.Cmd = result.Cmd
+		p.Args = result.Args
+		// Keep p.task as it is
+
+		// Return the result and error
+		return p, result.Err
+	}
+
+	// Use StartTask and return the underlying Task
+	typedTask := task.StartTask(name, taskFunc, opts...)
+	return typedTask.GetTask()
+}
+
+// StartAsTask creates and starts a Task for this Process with typed result handling
+func (p *Process) StartAsTask(name string, opts ...task.Option) task.TypedTask[Process] {
+	taskFunc := func(ctx context.Context, t *task.Task) (Process, error) {
+		// Store the task reference
+		p.task = t
+
+		// Run the process
+		result := p.Run()
+
+		// Log the output if there's any
+		if output := result.Out(); output != "" {
+			t.Infof("Process output: %s", output)
+		}
+
+		// Update the original process with results while preserving task reference
+		p.Started = result.Started
+		p.cmd = result.cmd
+		p.Env = result.Env
+		p.Cwd = result.Cwd
+		p.Err = result.Err
+		p.Log = result.Log
+		p.Stderr = result.Stderr
+		p.Stdout = result.Stdout
+		p.Cmd = result.Cmd
+		p.Args = result.Args
+		// Keep p.task as it is
+
+		// Return the result and error
+		return result, result.Err
+	}
+
+	return task.StartTask(name, taskFunc, opts...)
 }

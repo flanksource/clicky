@@ -27,7 +27,7 @@ func (d DependencyScannerOptions) GetEffectiveTTL() time.Duration {
 	return d.CacheTTL
 }
 
-var Flags AllFlags = AllFlags{
+var Flags *AllFlags = &AllFlags{
 	FormatOptions:      FormatOptions{},
 	TaskManagerOptions: *DefaultTaskManagerOptions(),
 	DependencyScannerOptions: DependencyScannerOptions{
@@ -44,7 +44,7 @@ var Flags AllFlags = AllFlags{
 }
 
 // BindTaskManagerPFlags adds TaskManager flags to pflag set (for Cobra)
-func BindAllFlags(flags *pflag.FlagSet) AllFlags {
+func BindAllFlags(flags *pflag.FlagSet) *AllFlags {
 	flags.CountVarP(&Flags.Flags.LevelCount, "loglevel", "v", "Increase logging level")
 	flags.StringVar(&Flags.Flags.Level, "log-level", "info", "Set the default log level")
 	flags.BoolVar(&Flags.Flags.JsonLogs, "json-logs", false, "Print logs in json format to stderr")
@@ -86,12 +86,12 @@ func BindAllFlags(flags *pflag.FlagSet) AllFlags {
 	return Flags
 }
 
-func (a AllFlags) String() string {
+func (a *AllFlags) String() string {
 	s, _ := Format(a, FormatOptions{YAML: true})
 	return s
 }
 
-func (a AllFlags) UseFlags() {
+func (a *AllFlags) UseFlags() {
 	logger.Configure(a.Flags)
 	logger.Debugf("Using logger flags: %s", a)
 	a.TaskManagerOptions.Apply()

@@ -30,7 +30,12 @@ func NewTreeFormatter(theme api.Theme, noColor bool, options *api.TreeOptions) *
 
 // Format formats data as a tree structure
 func (f *TreeFormatter) Format(data interface{}) (string, error) {
-	// Check if data implements Pretty interface first
+	// Check if data is directly a TreeNode first (more specific than Pretty)
+	if treeNode, ok := data.(api.TreeNode); ok {
+		return f.FormatTreeFromRoot(treeNode), nil
+	}
+
+	// Check if data implements Pretty interface
 	if pretty, ok := data.(api.Pretty); ok {
 		text := pretty.Pretty()
 		if f.NoColor {
@@ -38,11 +43,6 @@ func (f *TreeFormatter) Format(data interface{}) (string, error) {
 		} else {
 			return text.ANSI(), nil
 		}
-	}
-
-	// Check if data is directly a TreeNode
-	if treeNode, ok := data.(api.TreeNode); ok {
-		return f.FormatTreeFromRoot(treeNode), nil
 	}
 
 	// Convert to PrettyData

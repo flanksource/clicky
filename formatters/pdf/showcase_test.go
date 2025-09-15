@@ -13,6 +13,10 @@ import (
 	. "github.com/flanksource/clicky/formatters/pdf"
 	"github.com/flanksource/maroto/v2/pkg/components/col"
 	marotoimagecomponent "github.com/flanksource/maroto/v2/pkg/components/image"
+	"github.com/flanksource/maroto/v2/pkg/components/text"
+	"github.com/flanksource/maroto/v2/pkg/consts/align"
+	"github.com/flanksource/maroto/v2/pkg/consts/fontstyle"
+	"github.com/flanksource/maroto/v2/pkg/core"
 	"github.com/flanksource/maroto/v2/pkg/props"
 )
 
@@ -1119,6 +1123,11 @@ func addSVGConverterDemo(builder *Builder) error {
 	}
 	formatsText.Draw(builder)
 
+	// Add SVG to all formats conversion grid
+	if err := addSVGFormatConversionGrid(builder); err != nil {
+		return fmt.Errorf("failed to add SVG format conversion grid: %w", err)
+	}
+
 	// Demo converter functionality
 	return demoConverterFunctionality(builder)
 }
@@ -1810,11 +1819,6 @@ func addTrueTwoColumnLayout(builder *Builder, svgPath string) error {
 			{"Scale", "1:1"},
 			{"Status", "Valid"},
 		},
-	).WithColors(
-		&props.Color{Red: 70, Green: 130, Blue: 180},  // Header background (steel blue)
-		&props.Color{Red: 255, Green: 255, Blue: 255}, // Row background (white)
-		&props.Color{Red: 248, Green: 248, Blue: 248}, // Alt row background (light gray)
-		&props.Color{Red: 128, Green: 128, Blue: 128}, // Border color (gray)
 	)
 
 	rightCol := col.New(5).Add(tableComponent)
@@ -1835,6 +1839,213 @@ func addTrueTwoColumnLayout(builder *Builder, svgPath string) error {
 	// PNG file will remain in out/ directory for inspection
 
 	return nil
+}
+
+// addSVGFormatConversionGrid adds a section showing SVG conversion to all supported formats
+func addSVGFormatConversionGrid(builder *Builder) error {
+	// Section title
+	titleText := Text{
+		Text: api.Text{
+			Content: "SVG to Multiple Format Conversions (No Fallback)",
+			Class:   api.ResolveStyles("text-xl font-semibold mt-6 mb-2"),
+		},
+	}
+	titleText.Draw(builder)
+
+	// Subtitle
+	subtitleText := Text{
+		Text: api.Text{
+			Content: "Shows actual converter availability and errors",
+			Class:   api.ResolveStyles("text-sm text-gray-600 mb-4"),
+		},
+	}
+	subtitleText.Draw(builder)
+
+	// Create test SVG
+	testSVGBox := SVGBox{
+		Box: api.Box{
+			Rectangle: api.Rectangle{Width: 80, Height: 60},
+			Fill:      api.Color{Hex: "e6f3ff"},
+			Border: api.Borders{
+				Top:    api.Line{Width: 1, Color: api.Color{Hex: "1e88e5"}},
+				Right:  api.Line{Width: 1, Color: api.Color{Hex: "1e88e5"}},
+				Bottom: api.Line{Width: 1, Color: api.Color{Hex: "1e88e5"}},
+				Left:   api.Line{Width: 1, Color: api.Color{Hex: "1e88e5"}},
+			},
+		},
+		Circles: []CircleShape{
+			{X: 25, Y: 20, Diameter: 15, Label: "A"},
+			{X: 55, Y: 20, Diameter: 12, Label: "B"},
+		},
+		Cuts: []Cut{
+			{Orientation: "horizontal", Position: 40, Width: 4, Label: "H1"},
+		},
+		Labels: []Label{
+			{
+				Positionable: Positionable{
+					Position: &LabelPosition{Vertical: VerticalBottom, Horizontal: HorizontalCenter},
+				},
+				Text: api.Text{Content: "Grid Test"},
+			},
+		},
+	}
+
+	// Generate SVG content
+	svgBytes, err := testSVGBox.GenerateSVG()
+	if err != nil {
+		return fmt.Errorf("failed to generate test SVG: %w", err)
+	}
+
+	// Create temporary SVG file
+	tempSVG, err := os.CreateTemp("", "grid_test_*.svg")
+	if err != nil {
+		return fmt.Errorf("failed to create temp SVG file: %w", err)
+	}
+	defer os.Remove(tempSVG.Name())
+
+	if _, err := tempSVG.Write(svgBytes); err != nil {
+		tempSVG.Close()
+		return fmt.Errorf("failed to write SVG data: %w", err)
+	}
+	tempSVG.Close()
+
+	// Get all supported formats
+	supportedFormats := GetSupportedFormats()
+
+	// Process formats in groups of 3 for 3-column layout
+	for i := 0; i < len(supportedFormats); i += 3 {
+		// Get up to 3 formats for this row
+		rowFormats := supportedFormats[i:]
+		if len(rowFormats) > 3 {
+			rowFormats = rowFormats[:3]
+		}
+
+		// Create columns for this row
+		var columns []core.Col
+
+		for j, format := range rowFormats {
+			column := createFormatGridCell(tempSVG.Name(), format, j)
+			columns = append(columns, column)
+		}
+
+		// Fill remaining columns if needed (for last row)
+		for len(columns) < 3 {
+			emptyCol := col.New(4)
+			columns = append(columns, emptyCol)
+		}
+
+		// Add row with fixed height
+		rowHeight := 50.0 // mm
+		builder.GetMaroto().AddRow(rowHeight, columns[0], columns[1], columns[2])
+	}
+
+	return nil
+}
+
+// createFormatGridCell creates a single cell in the format grid
+func createFormatGridCell(svgPath, format string, columnIndex int) core.Col {
+	// Create temporary output file
+	outputPath := fmt.Sprintf("out/grid_%s.%s", format, format)
+
+	// Try conversion without fallback
+	ctx := context.Background()
+	options := &ConvertOptions{
+		Format: format,
+		DPI:    288,
+		Width:  200, // Small size for grid
+		Height: 150,
+	}
+
+	// Perform conversion
+	convertErr := Convert(ctx, svgPath, outputPath, options)
+
+	// Create column content based on conversion result
+	gridCell := col.New(4)
+
+	if convertErr != nil {
+		// Show error in red box
+		errorWidget := createErrorWidget(format, convertErr)
+		gridCell.Add(errorWidget)
+	} else {
+		// For PDF format, we won't try to embed here since it requires Draw() method
+		// Instead, we'll show a simple success message and let PDF embedding fail elsewhere if needed
+		successWidget := createSuccessWidget(format, outputPath)
+		gridCell.Add(successWidget)
+	}
+
+	return gridCell
+}
+
+// createErrorWidget creates a widget showing conversion error
+func createErrorWidget(format string, err error) core.Component {
+	errorText := fmt.Sprintf("❌ %s\nConversion Failed\n%v",
+		strings.ToUpper(format),
+		err.Error())
+
+	// Truncate long error messages
+	if len(errorText) > 100 {
+		errorText = errorText[:97] + "..."
+	}
+
+	return text.New(errorText, props.Text{
+		Size:  8,
+		Style: fontstyle.Normal,
+		Align: align.Center,
+		Color: &props.Color{Red: 200, Green: 0, Blue: 0}, // Red text
+	})
+}
+
+// createSuccessWidget creates a widget showing successful conversion
+func createSuccessWidget(format, outputPath string) core.Component {
+	// For PDF format, show success but note that embedding will fail elsewhere
+	if format == "pdf" {
+		var fileSize string
+		if stat, err := os.Stat(outputPath); err == nil {
+			fileSize = formatFileSize(stat.Size())
+		} else {
+			fileSize = "Unknown size"
+		}
+
+		successText := fmt.Sprintf("✓ %s\nPDF Created\n%s",
+			strings.ToUpper(format),
+			fileSize)
+
+		return text.New(successText, props.Text{
+			Size:  8,
+			Style: fontstyle.Normal,
+			Align: align.Center,
+			Color: &props.Color{Red: 0, Green: 150, Blue: 0}, // Green text
+		})
+	}
+
+	// For raster formats, embed the actual converted image
+	if _, err := os.Stat(outputPath); err == nil {
+		// Try to embed the actual image
+		imageComponent := marotoimagecomponent.NewFromFile(outputPath, props.Rect{
+			Center:  true,
+			Percent: 80, // Use 80% of available space
+		})
+		return imageComponent
+	}
+
+	// Fallback to text if image file doesn't exist
+	var fileSize string
+	if stat, err := os.Stat(outputPath); err == nil {
+		fileSize = formatFileSize(stat.Size())
+	} else {
+		fileSize = "File not found"
+	}
+
+	successText := fmt.Sprintf("✓ %s\nRaster Format\n%s",
+		strings.ToUpper(format),
+		fileSize)
+
+	return text.New(successText, props.Text{
+		Size:  8,
+		Style: fontstyle.Normal,
+		Align: align.Center,
+		Color: &props.Color{Red: 0, Green: 150, Blue: 0}, // Green text
+	})
 }
 
 // floatPtr is a helper to create a pointer to a float64

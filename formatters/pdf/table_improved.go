@@ -25,6 +25,7 @@ type TableImproved struct {
 	ShowBorders       bool        `json:"show_borders,omitempty"`
 	ColumnAlignments  []string    `json:"column_alignments,omitempty"` // left, center, right for each column
 	ColumnWidths      []int       `json:"column_widths,omitempty"`     // Custom column widths (sum should be 12)
+	CompactMode       bool        `json:"compact_mode,omitempty"`      // Use smaller fonts and reduced spacing
 }
 
 // Draw implements the Widget interface
@@ -48,6 +49,9 @@ func (ti TableImproved) Draw(b *Builder) error {
 
 	// Calculate row height
 	baseHeight := 8.0 // Default row height in mm
+	if ti.CompactMode {
+		baseHeight = 6.0 // Reduced height for compact mode
+	}
 	if ti.CellPadding.Top > 0 || ti.CellPadding.Bottom > 0 {
 		baseHeight += (ti.CellPadding.Top + ti.CellPadding.Bottom) * 4
 	}
@@ -116,8 +120,13 @@ func (ti TableImproved) drawHeaderRow(b *Builder, colWidths []int, baseHeight fl
 	// Apply default header styling if not specified
 	headerStyle := ti.HeaderStyle
 	if headerStyle.Name == "" {
-		// Use Tailwind classes for default styling
-		headerStyle = api.ResolveStyles("font-bold bg-gray-100")
+		if ti.CompactMode {
+			// Use compact Tailwind styling
+			headerStyle = api.ResolveStyles("text-sm font-bold bg-gray-100 p-1")
+		} else {
+			// Use default Tailwind classes for styling
+			headerStyle = api.ResolveStyles("font-bold bg-gray-100")
+		}
 	} else {
 		// Resolve Tailwind classes
 		headerStyle = api.ResolveStyles(headerStyle.Name)
@@ -186,14 +195,18 @@ func (ti TableImproved) drawDataRows(b *Builder, colWidths []int, baseHeight flo
 	rowStyle := ti.RowStyle
 	if rowStyle.Name != "" {
 		rowStyle = api.ResolveStyles(rowStyle.Name)
-	}
-
-	// Default row style
-	if rowStyle.Font == nil {
-		rowStyle.Font = &api.Font{Size: 0.9}
+	} else {
+		// Apply default styling based on compact mode
+		if ti.CompactMode {
+			rowStyle = api.ResolveStyles("text-xs p-1")
+		} else {
+			// Use default row style (text-base)
+			rowStyle.Font = &api.Font{Size: 0.9}
+		}
 	}
 
 	rowTextProps := b.style.ConvertToTextProps(rowStyle)
+
 	rowTextProps.Left = ti.CellPadding.Left * 4
 	rowTextProps.Top = ti.CellPadding.Top * 4
 

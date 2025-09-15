@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"github.com/flanksource/commons/logger"
 )
 
 // RSVGConverter implements SVGConverter using rsvg-convert
@@ -43,6 +45,8 @@ func (c *RSVGConverter) Convert(ctx context.Context, svgPath, outputPath string,
 		options = DefaultConvertOptions()
 	}
 
+	logger.Infof("[%s] converting %s to %s", c.Name(), svgPath, options.Format)
+
 	args := []string{}
 
 	// Set output format
@@ -52,7 +56,7 @@ func (c *RSVGConverter) Convert(ctx context.Context, svgPath, outputPath string,
 		args = append(args, "--format=png")
 
 	case "pdf":
-		args = append(args, "--format=pdf")
+		args = append(args, "--format=pdf1.4")
 
 	case "ps":
 		args = append(args, "--format=ps")
@@ -96,6 +100,13 @@ func (c *RSVGConverter) Convert(ctx context.Context, svgPath, outputPath string,
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return NewConverterError(c.Name(), "convert", fmt.Errorf("command failed: %w, output: %s", err, string(output)))
+	}
+
+	// If we generated a PDF, decompress its streams for better compatibility
+	if format == "pdf" {
+		if err := uncompressPDFStreams(outputPath); err != nil {
+			return NewConverterError(c.Name(), "decompress PDF streams", fmt.Errorf("failed to decompress PDF streams: %w", err))
+		}
 	}
 
 	return nil

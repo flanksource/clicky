@@ -29,8 +29,9 @@ func NewSVGConverterManager() *SVGConverterManager {
 
 // autoDetectConverters discovers available converters on the system
 func (m *SVGConverterManager) autoDetectConverters() {
-	// Try converters in order of preference: Inkscape -> RSVG -> Playwright
+	// Try converters in order of preference: Inkscape -> RSVG -> Chromium -> Playwright
 	converters := []SVGConverter{
+		NewChromiumConverter(),
 		NewInkscapeConverter(),
 		NewRSVGConverter(),
 		NewPlaywrightConverter(),

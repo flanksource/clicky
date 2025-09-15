@@ -2,6 +2,8 @@ package pdf
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 
 	"github.com/flanksource/maroto/v2"
 	"github.com/flanksource/maroto/v2/pkg/components/col"
@@ -73,10 +75,10 @@ func NewBuilder(opts ...BuilderOption) *Builder {
 	// Create Maroto configuration
 	cfg := config.NewBuilder().
 		WithPageSize(pagesize.A4).
-		WithLeftMargin(10).
-		WithRightMargin(10).
-		WithTopMargin(10).
-		WithBottomMargin(10).
+		WithLeftMargin(5).
+		WithRightMargin(5).
+		WithTopMargin(5).
+		WithBottomMargin(5).
 		WithDebug(b.debugMode). // Enable debug mode if requested
 		Build()
 
@@ -86,11 +88,29 @@ func NewBuilder(opts ...BuilderOption) *Builder {
 	b.maroto = m
 	b.config = &PageSize{
 		Rectangle: api.Rectangle{Width: 210, Height: 297}, // A4 in mm
-		Margins:   api.Padding{Top: 10, Right: 10, Bottom: 10, Left: 10},
+		Margins:   api.Padding{Top: 5, Right: 5, Bottom: 5, Left: 5},
 	}
 	b.pageNumbers = false
 
 	return b
+}
+
+func (b *Builder) SaveTo(path string) error {
+	if b.maroto == nil {
+		return fmt.Errorf("builder not initialized: maroto instance is nil (use NewBuilder() to create a proper builder)")
+	}
+
+	data, err := b.Output()
+	if err != nil {
+		return err
+	}
+
+	parentDir := filepath.Dir(path)
+	if err := os.MkdirAll(parentDir, 0755); err != nil {
+		return err
+	}
+
+	return os.WriteFile(path, data, 0644)
 }
 
 // SetHeader sets the header text for all pages
@@ -229,8 +249,22 @@ func (b *Builder) GetConverterManager() *SVGConverterManager {
 	return b.converterManager
 }
 
+// GetFpdf returns the underlying gofpdf instance for advanced operations like PDF imports
+func (b *Builder) GetFpdf() interface{} {
+	provider := b.maroto.GetProvider()
+
+	// The provider is a gofpdf provider that wraps a gofpdf.Fpdf instance
+	// We need to use reflection or a type assertion to access it
+	// For now, return the provider itself which implements the Fpdf interface
+	return provider
+}
+
 // Output generates the final PDF content
 func (b *Builder) Output() ([]byte, error) {
+	if b.maroto == nil {
+		return nil, fmt.Errorf("builder not initialized: maroto instance is nil (use NewBuilder() to create a proper builder)")
+	}
+
 	// Generate the PDF document
 	document, err := b.maroto.Generate()
 	if err != nil {

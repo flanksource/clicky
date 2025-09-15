@@ -9,10 +9,8 @@ import (
 	"strings"
 
 	"github.com/flanksource/maroto/v2/pkg/components/col"
-	marotoimages "github.com/flanksource/maroto/v2/pkg/components/image"
 	"github.com/flanksource/maroto/v2/pkg/components/text"
 	"github.com/flanksource/maroto/v2/pkg/consts/align"
-	"github.com/flanksource/maroto/v2/pkg/consts/extension"
 	"github.com/flanksource/maroto/v2/pkg/consts/fontstyle"
 	"github.com/flanksource/maroto/v2/pkg/props"
 )
@@ -44,25 +42,41 @@ func (w SVGWidget) Draw(b *Builder) error {
 		return fmt.Errorf("failed to generate SVG: %w", err)
 	}
 
-	// Convert SVG to PNG for embedding in PDF
-	// Since maroto doesn't support SVG directly, we need to convert to a raster format
-	pngBytes, err := ConvertSVGToPNG(svgBytes)
+	// Convert SVG to PDF for embedding in PDF
+	// PDF format provides better quality and smaller file sizes than raster formats
+	pdfBytes, err := ConvertSVGToPDF(svgBytes)
 	if err != nil {
-		return fmt.Errorf("failed to convert SVG to PNG: %w", err)
+		return fmt.Errorf("failed to convert SVG to PDF: %w", err)
 	}
 
-	// Calculate height
+	// Calculate height for the widget
 	height := 100.0 // Default height in mm
 	if w.Height != nil {
 		height = *w.Height
 	}
 
-	// Create image component from PNG bytes
-	imageComponent := marotoimages.NewFromBytes(pngBytes, extension.Png)
-	imageCol := col.New(12).Add(imageComponent)
-	b.maroto.AddRow(height, imageCol)
+	// Embed the converted PDF directly
+	// Create a temporary file for the PDF bytes
+	tempFile, err := os.CreateTemp("", "svg_converted_*.pdf")
+	if err != nil {
+		return fmt.Errorf("failed to create temp file for PDF: %w", err)
+	}
+	defer tempFile.Close()
+	defer os.Remove(tempFile.Name())
 
-	return nil
+	// Write PDF bytes to temp file
+	_, err = tempFile.Write(pdfBytes)
+	if err != nil {
+		return fmt.Errorf("failed to write PDF bytes: %w", err)
+	}
+	tempFile.Close()
+
+	// Use PDF embed widget to embed the converted SVG
+	embedWidget := NewPDFEmbedWidget(tempFile.Name())
+	if w.Height != nil {
+		embedWidget = embedWidget.WithSize(float64(w.SVGBox.Rectangle.Width)*0.264583, height) // Convert pixels to mm (96 DPI)
+	}
+	return embedWidget.Draw(b)
 }
 
 // ConvertSVGToPNG converts SVG bytes to PNG bytes with aspect ratio preservation
@@ -80,7 +94,9 @@ func ConvertSVGToPNG(svgBytes []byte) ([]byte, error) {
 	}
 	tmp.Close()
 
-	if err := Convert(context.Background(), tmp.Name(), tmp.Name()+".png", DefaultConvertOptions()); err != nil {
+	options := DefaultConvertOptions()
+	options.Format = "png"
+	if err := Convert(context.Background(), tmp.Name(), tmp.Name()+".png", options); err != nil {
 		return nil, fmt.Errorf("failed to convert SVG to PNG: %w", err)
 	}
 	pngFile, err := os.Open(tmp.Name() + ".png")
@@ -90,6 +106,35 @@ func ConvertSVGToPNG(svgBytes []byte) ([]byte, error) {
 	defer pngFile.Close()
 
 	return os.ReadFile(tmp.Name() + ".png")
+}
+
+// ConvertSVGToPDF converts SVG bytes to PDF bytes
+func ConvertSVGToPDF(svgBytes []byte) ([]byte, error) {
+	tmp, err := os.CreateTemp("", "svg_*.svg")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create temp file: %w", err)
+	}
+	defer os.Remove(tmp.Name()) // Clean up
+
+	// Write SVG bytes to temp file
+	if _, err := tmp.Write(svgBytes); err != nil {
+		return nil, fmt.Errorf("failed to write SVG to temp file: %w", err)
+	}
+	tmp.Close()
+
+	// Create options for PDF conversion
+	options := &ConvertOptions{
+		Format: "pdf",
+	}
+
+	outputPath := tmp.Name() + ".pdf"
+	defer os.Remove(outputPath)
+
+	if err := ConvertWithFallback(context.Background(), tmp.Name(), outputPath, options); err != nil {
+		return nil, fmt.Errorf("failed to convert SVG to PDF: %w", err)
+	}
+
+	return os.ReadFile(outputPath)
 }
 
 // ExtractSVGDimensions parses SVG content to extract width and height
@@ -175,9 +220,6 @@ func extractViewBox(svgContent string) []float64 {
 
 	return values
 }
-
-// Removed drawError method - errors should be returned, not drawn in the PDF
-// Errors are now properly returned to the caller for handling
 
 // drawSVGDescription draws a text description of the SVG contents
 func (w SVGWidget) drawSVGDescription(b *Builder) error {

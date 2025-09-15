@@ -12,17 +12,17 @@ import (
 
 // LayoutAnalysisResult contains the results of analyzing a PDF layout
 type LayoutAnalysisResult struct {
-	PageWidth          int     `json:"page_width"`
-	PageHeight         int     `json:"page_height"`
-	LeftColumnBounds   *Bounds `json:"left_column_bounds"`
-	RightColumnBounds  *Bounds `json:"right_column_bounds"`
-	LeftColumnWidth    int     `json:"left_column_width"`
-	RightColumnWidth   int     `json:"right_column_width"`
-	LeftColumnRatio    float64 `json:"left_column_ratio"`
-	RightColumnRatio   float64 `json:"right_column_ratio"`
-	HasSideBySideLayout bool    `json:"has_side_by_side_layout"`
-	LayoutValid        bool    `json:"layout_valid"`
-	ValidationErrors   []string `json:"validation_errors"`
+	PageWidth           int      `json:"page_width"`
+	PageHeight          int      `json:"page_height"`
+	LeftColumnBounds    *Bounds  `json:"left_column_bounds"`
+	RightColumnBounds   *Bounds  `json:"right_column_bounds"`
+	LeftColumnWidth     int      `json:"left_column_width"`
+	RightColumnWidth    int      `json:"right_column_width"`
+	LeftColumnRatio     float64  `json:"left_column_ratio"`
+	RightColumnRatio    float64  `json:"right_column_ratio"`
+	HasSideBySideLayout bool     `json:"has_side_by_side_layout"`
+	LayoutValid         bool     `json:"layout_valid"`
+	ValidationErrors    []string `json:"validation_errors"`
 }
 
 // Bounds represents a rectangular area
@@ -177,8 +177,8 @@ func AnalyzeImageLayout(imagePath string, targetLeftRatio, targetRightRatio floa
 	height := bounds.Dy()
 
 	result := &LayoutAnalysisResult{
-		PageWidth:  width,
-		PageHeight: height,
+		PageWidth:        width,
+		PageHeight:       height,
 		ValidationErrors: []string{},
 	}
 
@@ -206,16 +206,16 @@ func AnalyzeImageLayout(imagePath string, targetLeftRatio, targetRightRatio floa
 		rightRatioError := abs(result.RightColumnRatio - targetRightRatio)
 
 		const tolerance = 0.15 // 15% tolerance for content-based analysis
-		
+
 		if leftRatioError > tolerance {
-			result.ValidationErrors = append(result.ValidationErrors, 
-				fmt.Sprintf("Left column ratio %.3f differs from target %.3f by %.3f (exceeds tolerance %.3f)", 
+			result.ValidationErrors = append(result.ValidationErrors,
+				fmt.Sprintf("Left column ratio %.3f differs from target %.3f by %.3f (exceeds tolerance %.3f)",
 					result.LeftColumnRatio, targetLeftRatio, leftRatioError, tolerance))
 		}
-		
+
 		if rightRatioError > tolerance {
-			result.ValidationErrors = append(result.ValidationErrors, 
-				fmt.Sprintf("Right column ratio %.3f differs from target %.3f by %.3f (exceeds tolerance %.3f)", 
+			result.ValidationErrors = append(result.ValidationErrors,
+				fmt.Sprintf("Right column ratio %.3f differs from target %.3f by %.3f (exceeds tolerance %.3f)",
 					result.RightColumnRatio, targetRightRatio, rightRatioError, tolerance))
 		}
 
@@ -236,7 +236,7 @@ func detectColumnBounds(img image.Image) (*Bounds, *Bounds, error) {
 	// Create a simple content density map
 	// We'll scan horizontal strips to find content distribution
 	contentMap := make([]int, width)
-	
+
 	// Sample vertical strips to detect content
 	sampleHeight := height / 10 // Sample every 10th row
 	if sampleHeight < 1 {
@@ -246,10 +246,10 @@ func detectColumnBounds(img image.Image) (*Bounds, *Bounds, error) {
 	for y := bounds.Min.Y; y < bounds.Max.Y; y += sampleHeight {
 		for x := bounds.Min.X; x < bounds.Max.X; x++ {
 			r, g, b, _ := img.At(x, y).RGBA()
-			
+
 			// Convert to grayscale (0-65535 range)
 			gray := (r + g + b) / 3
-			
+
 			// Content detection: anything that's not close to white
 			const whiteThreshold = 60000 // Adjust this threshold as needed
 			if gray < whiteThreshold {
@@ -262,14 +262,14 @@ func detectColumnBounds(img image.Image) (*Bounds, *Bounds, error) {
 	// Look for a gap in the middle that separates two content areas
 	leftContentEnd := -1
 	rightContentStart := -1
-	
+
 	// Find the end of left content (scanning from left)
 	for i := 0; i < width/2; i++ {
 		if contentMap[i] > 0 {
 			leftContentEnd = i
 		}
 	}
-	
+
 	// Find the start of right content (scanning from right)
 	for i := width - 1; i >= width/2; i-- {
 		if contentMap[i] > 0 {
@@ -318,7 +318,7 @@ func abs(x float64) float64 {
 func SaveAnalysisDebugImage(imagePath, outputPath string, result *LayoutAnalysisResult) error {
 	// This is a simplified version - in a full implementation, you would
 	// draw rectangles around the detected columns
-	
+
 	// For now, just copy the original image and add text annotations
 	input, err := os.Open(imagePath)
 	if err != nil {

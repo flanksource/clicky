@@ -3,12 +3,19 @@ package api
 import (
 	"fmt"
 	"strings"
+	"sync"
 	"time"
 
 	commonsText "github.com/flanksource/commons/text"
 	"github.com/muesli/termenv"
 
 	"github.com/flanksource/clicky/api/tailwind"
+)
+
+// Global cache for ResolveStyles to avoid repeated parsing
+var (
+	styleCache     = make(map[string]Class)
+	styleCacheLock sync.RWMutex
 )
 
 // Text represents styled content that can be rendered to multiple output formats.
@@ -36,6 +43,7 @@ func (t Text) Suffix(suffix string) Text {
 	return t
 }
 
+// Text adds a new child Text with the specified content and styles.
 func (t Text) Text(text string, styles ...string) Text {
 	return t.Add(Text{Content: text, Style: strings.Join(styles, " ")})
 }
@@ -50,15 +58,18 @@ func (t Text) Styles(classes ...string) Text {
 	return t
 }
 
+// WrapSpace adds a space before and after the content
 func (t Text) WrapSpace() Text {
 	return t.Wrap(" ", " ")
 }
 
+// Wrap adds a prefix and suffix to the content
 func (t Text) Wrap(prefix, suffix string) Text {
 	t.Content = prefix + t.Content + suffix
 	return t
 }
 
+// Append adds a new child Text with the specified content and styles.
 func (t Text) Append(text string, styles ...string) Text {
 	t.Children = append(t.Children, Text{Content: text, Style: strings.Join(styles, " ")})
 	return t
@@ -272,6 +283,17 @@ func (t Text) HTML() string {
 }
 
 func ResolveStyles(styles ...string) Class {
+	// Create cache key from all style strings
+	cacheKey := strings.Join(styles, "|")
+
+	// Check cache first
+	styleCacheLock.RLock()
+	if cached, ok := styleCache[cacheKey]; ok {
+		styleCacheLock.RUnlock()
+		return cached
+	}
+	styleCacheLock.RUnlock()
+
 	var resolved Class
 
 	// Process each style string
@@ -374,6 +396,11 @@ func ResolveStyles(styles ...string) Class {
 			}
 		}
 	}
+
+	// Store in cache before returning
+	styleCacheLock.Lock()
+	styleCache[cacheKey] = resolved
+	styleCacheLock.Unlock()
 
 	return resolved
 }

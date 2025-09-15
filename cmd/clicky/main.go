@@ -64,10 +64,7 @@ For backward compatibility, you can use the root command directly, or use the
 				return fmt.Errorf("--schema flag is required when using data files")
 			}
 
-			// Resolve format from format-specific flags
-			if err := options.ResolveFormat(); err != nil {
-				return err
-			}
+			options.Format = options.ResolveFormat()
 
 			// Load schema directly into options
 			parser := api.NewStructParser()
@@ -126,10 +123,7 @@ raw data into beautifully formatted output using customizable schemas.`,
 				return fmt.Errorf("--schema flag is required")
 			}
 
-			// Resolve format from format-specific flags
-			if err := options.ResolveFormat(); err != nil {
-				return err
-			}
+			options.Format = options.ResolveFormat()
 
 			// Load schema directly into options
 			parser := api.NewStructParser()

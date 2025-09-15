@@ -173,6 +173,11 @@ func (c *PlaywrightConverter) convertToPDF(page playwright.Page, outputPath stri
 		return NewConverterError(c.Name(), "generate PDF", err)
 	}
 
+	// Decompress PDF streams for better compatibility with gofpdi
+	if err := uncompressPDFStreams(outputPath); err != nil {
+		return NewConverterError(c.Name(), "decompress PDF streams", fmt.Errorf("failed to decompress PDF streams: %w", err))
+	}
+
 	return nil
 }
 
