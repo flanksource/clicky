@@ -94,7 +94,9 @@ func (w *worker) checkDependencies(task *Task) bool {
 
 // executeTask runs a single task
 func (w *worker) executeTask(task *Task) {
+	task.mu.Lock()
 	task.startTime = time.Now()
+	task.mu.Unlock()
 
 	task.SetStatus(StatusRunning)
 
@@ -153,6 +155,7 @@ func (w *worker) executeWithRetry(task *Task) {
 
 			if shouldRetry && task.retryCount < task.retryConfig.MaxRetries {
 				task.retryCount++
+				task.mu.Lock()
 				task.logs = append(task.logs, LogEntry{
 					Level:   logger.Warn,
 					Message: fmt.Sprintf("Attempt %d failed, retrying: %v", task.retryCount, err),
@@ -174,11 +177,13 @@ func (w *worker) executeWithRetry(task *Task) {
 			} else {
 				if _, failErr := task.FailedWithError(err); failErr != nil {
 					// Log error but continue - task is already in failed state
+					task.mu.Lock()
 					task.logs = append(task.logs, LogEntry{
 						Level:   logger.Error,
 						Message: fmt.Sprintf("Failed to set error status: %v", failErr),
 						Time:    time.Now(),
 					})
+					task.mu.Unlock()
 				}
 				return
 			}

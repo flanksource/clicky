@@ -67,8 +67,12 @@ func (g TypedGroup[T]) Add(name string, taskFunc func(flanksourceContext.Context
 	task.parent = g.Group
 
 	// Update start time if this is the first item or it started earlier
-	if g.startTime.IsZero() || task.startTime.Before(g.startTime) {
-		g.startTime = task.startTime
+	task.mu.Lock()
+	taskStartTime := task.startTime
+	task.mu.Unlock()
+
+	if g.startTime.IsZero() || taskStartTime.Before(g.startTime) {
+		g.startTime = taskStartTime
 	}
 	return task
 }

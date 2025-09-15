@@ -555,7 +555,9 @@ func convertSliceToPrettyData(val reflect.Value) (*api.PrettyData, error) {
 					Name:   "data",
 					Format: api.FormatTable,
 					Label:  "Data",
-					Fields: tableFields,
+					TableOptions: api.PrettyTable{
+						Fields: tableFields,
+					},
 				},
 			},
 		},

@@ -3,7 +3,6 @@ package formatters
 import (
 	"encoding/csv"
 	"fmt"
-	"sort"
 	"strings"
 
 	"github.com/flanksource/clicky/api"
@@ -103,25 +102,30 @@ func (f *CSVFormatter) FormatPrettyData(data *api.PrettyData) (string, error) {
 	} else if tableField != nil && len(nonTableFields) == 0 {
 		// If we have table data and it's the primary data, format it as CSV rows
 		if tableData, exists := data.Tables[tableField.Name]; exists && len(tableData) > 0 {
-			// Get headers from the first row
+			// Use TableOptions.Fields to determine headers and order
 			var headers []string
-			for key := range tableData[0] {
-				headers = append(headers, key)
-			}
+			var fieldNames []string
 
-			// Sort headers for consistent output
-			sort.Strings(headers)
+			for _, field := range tableField.TableOptions.Fields {
+				// Use Label for display, fallback to Name
+				header := field.Label
+				if header == "" {
+					header = field.Name
+				}
+				headers = append(headers, header)
+				fieldNames = append(fieldNames, field.Name)
+			}
 
 			// Write headers
 			if err := writer.Write(headers); err != nil {
 				return "", err
 			}
 
-			// Write data rows
+			// Write data rows using field names for extraction
 			for _, row := range tableData {
 				var values []string
-				for _, header := range headers {
-					if fieldValue, exists := row[header]; exists {
+				for _, fieldName := range fieldNames {
+					if fieldValue, exists := row[fieldName]; exists {
 						values = append(values, fieldValue.Plain())
 					} else {
 						values = append(values, "")

@@ -327,7 +327,12 @@ func (tm *Manager) enqueue(task *Task) *Task {
 	}
 
 	task.enqueuedAt = time.Now()
+
+	// Protect tasks slice modification
+	tm.mu.Lock()
 	tm.tasks = append(tm.tasks, task)
+	tm.mu.Unlock()
+
 	tm.taskQueue.Enqueue(task)
 
 	return task

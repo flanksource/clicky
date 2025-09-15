@@ -53,8 +53,8 @@ func TestFormatManager(t *testing.T) {
 		if err != nil {
 			t.Fatalf("CSV format failed: %v", err)
 		}
-		if !strings.Contains(result, "name") {
-			t.Error("CSV output should contain name header")
+		if !strings.Contains(result, "Name") {
+			t.Error("CSV output should contain Name header (using Label from struct tag)")
 		}
 		if !strings.Contains(result, "John Doe") {
 			t.Error("CSV output should contain John Doe")

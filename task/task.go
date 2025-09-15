@@ -293,11 +293,13 @@ func (t *Task) signalDone() {
 // Debugf logs a debug message (only shown in verbose mode)
 func (t *Task) Debugf(format string, args ...interface{}) {
 	message := fmt.Sprintf(format, args...)
+	t.mu.Lock()
 	t.logs = append(t.logs, LogEntry{
 		Level:   logger.Debug,
 		Message: message,
 		Time:    time.Now(),
 	})
+	t.mu.Unlock()
 }
 
 // PopDirty checks and clears the dirty flag atomically
@@ -311,31 +313,37 @@ func (t *Task) PopDirty() bool {
 // Infof logs an info message (only shown in verbose mode)
 func (t *Task) Infof(format string, args ...interface{}) {
 	message := fmt.Sprintf(format, args...)
+	t.mu.Lock()
 	t.logs = append(t.logs, LogEntry{
 		Level:   logger.Info,
 		Message: message,
 		Time:    time.Now(),
 	})
+	t.mu.Unlock()
 }
 
 // Errorf logs an error message
 func (t *Task) Errorf(format string, args ...interface{}) {
 	message := fmt.Sprintf(format, args...)
+	t.mu.Lock()
 	t.logs = append(t.logs, LogEntry{
 		Level:   logger.Error,
 		Message: message,
 		Time:    time.Now(),
 	})
+	t.mu.Unlock()
 }
 
 // Warnf logs a warning message
 func (t *Task) Warnf(format string, args ...interface{}) {
 	message := fmt.Sprintf(format, args...)
+	t.mu.Lock()
 	t.logs = append(t.logs, LogEntry{
 		Level:   logger.Warn,
 		Message: message,
 		Time:    time.Now(),
 	})
+	t.mu.Unlock()
 }
 
 // SetName sets the task name
@@ -346,6 +354,9 @@ func (t *Task) SetName(name string) {
 
 // SetStatus updates the task's display name/status message
 func (t *Task) SetStatus(status Status) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
 	switch status {
 	case StatusSuccess, StatusCancelled, StatusFailed:
 		t.endTime = time.Now()
@@ -380,11 +391,13 @@ func (t *Task) Failed() *Task {
 
 // FailedWithError marks the task as failed with an error
 func (t *Task) FailedWithError(err error) (*Task, error) {
+	t.mu.Lock()
 	t.logs = append(t.logs, LogEntry{
 		Level:   logger.Error,
 		Message: err.Error(),
 		Time:    time.Now(),
 	})
+	t.mu.Unlock()
 
 	t.SetStatus(StatusFailed)
 	return t, err
@@ -429,6 +442,9 @@ func (t *Task) IsOk() bool {
 
 // Status returns the current task status
 func (t *Task) Status() Status {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
 	if health, ok := t.result.(HealthMixin); ok {
 		switch health.Health() {
 		case HealthOK:
@@ -502,9 +518,19 @@ done:
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
+	// Calculate duration without acquiring mutex (already held)
+	var duration time.Duration
+	if t.status != StatusPending && !t.enqueuedAt.IsZero() {
+		endTime := t.endTime
+		if t.status == StatusRunning {
+			endTime = time.Now()
+		}
+		duration = endTime.Sub(t.startTime)
+	}
+
 	result := &WaitResult{
 		Status:    t.status,
-		Duration:  t.Duration(),
+		Duration:  duration,
 		Error:     t.err,
 		TaskCount: 1, // Single task
 	}
@@ -574,6 +600,9 @@ func (t *Task) GetTypedResult(target interface{}) error {
 
 // Duration returns the task duration
 func (t *Task) Duration() time.Duration {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
 	if t.status == StatusPending || t.enqueuedAt.IsZero() {
 		return 0
 	}
@@ -609,6 +638,9 @@ func (t *Task) getDuration() string {
 
 // Pretty returns a formatted text representation of the task
 func (t *Task) Pretty() api.Text {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
 	if pretty, ok := t.result.(formatters.PrettyMixin); ok {
 		return pretty.Pretty()
 	}
@@ -627,7 +659,21 @@ func (t *Task) Pretty() api.Text {
 
 	text.Content = fmt.Sprintf("%s %-10s", lo.Ellipsis(displayName, api.GetTerminalWidth()-10), duration)
 
-	text = t.Status().Apply(text)
+	// Note: We can't call t.Status() here since it would try to acquire the same mutex
+	// So we directly access t.status and handle the health check inline
+	if health, ok := t.result.(HealthMixin); ok {
+		switch health.Health() {
+		case HealthOK:
+			t.status = StatusSuccess
+		case HealthWarning:
+			t.status = StatusWarning
+		case HealthError:
+			t.status = StatusFailed
+		case HealthPending:
+			t.status = StatusPending
+		}
+	}
+	text = t.status.Apply(text)
 
 	level := t.ctx.Logger.GetLevel()
 	// Add logs as children if present

@@ -45,6 +45,7 @@ func (c *InkscapeConverter) Convert(ctx context.Context, svgPath, outputPath str
 
 	args := []string{
 		svgPath,
+		"--without-gui",
 		"--export-filename=" + outputPath,
 	}
 
