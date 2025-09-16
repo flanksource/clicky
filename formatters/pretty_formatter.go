@@ -462,19 +462,38 @@ func (p *PrettyFormatter) formatDate(val reflect.Value, format string) string {
 	switch val.Kind() {
 	case reflect.String:
 		str := val.String()
-		// Try parsing as Unix timestamp
+		// Try parsing as Unix timestamp (integer)
 		if timestamp, err := strconv.ParseInt(str, 10, 64); err == nil {
 			t = time.Unix(timestamp, 0)
+		} else if timestamp, err := strconv.ParseFloat(str, 64); err == nil {
+			// Try parsing as Unix timestamp (float)
+			t = time.Unix(int64(timestamp), 0)
 		} else {
-			// Try parsing as RFC3339
-			parsed, err := time.Parse(time.RFC3339, str)
-			if err != nil {
-				return str
+			// Try various date string formats
+			dateFormats := []string{
+				time.RFC3339,
+				"2006-01-02 15:04:05",
+				"2006-01-02",
+				time.RFC3339Nano,
+				"2006-01-02T15:04:05",
 			}
-			t = parsed
+
+			var parsed time.Time
+			var parseErr error
+			for _, format := range dateFormats {
+				if parsed, parseErr = time.Parse(format, str); parseErr == nil {
+					t = parsed
+					break
+				}
+			}
+			if parseErr != nil {
+				return str // Return original string if parsing fails
+			}
 		}
 	case reflect.Int, reflect.Int64:
 		t = time.Unix(val.Int(), 0)
+	case reflect.Float32, reflect.Float64:
+		t = time.Unix(int64(val.Float()), 0)
 	default:
 		if val.Type() == reflect.TypeOf(time.Time{}) {
 			t = val.Interface().(time.Time)

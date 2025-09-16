@@ -422,9 +422,7 @@ func (t *Task) Fatal(err error) {
 	t.mu.Unlock()
 
 	if t.manager != nil {
-		t.manager.mu.Lock()
-		t.manager.stopRender <- true
-		t.manager.mu.Unlock()
+		t.manager.stopRenderAndWait()
 	}
 
 	logger.Fatalf("Fatal: %s: %v", name, err)

@@ -177,6 +177,11 @@ func (v FieldValue) DateTimeFormat() string {
 }
 
 func (v FieldValue) Time() *time.Time {
+	// Return already parsed time if available
+	if v.TimeValue != nil {
+		return v.TimeValue
+	}
+
 	// Try to parse from Value
 	switch val := v.Value.(type) {
 	case time.Time:
@@ -572,13 +577,33 @@ func (f PrettyField) Parse(value interface{}) (FieldValue, error) {
 		case time.Time:
 			v.TimeValue = &val
 		case string:
-			// Try parsing as Unix timestamp first
-			if t, err := time.Parse(DateTimeFormat, val); err == nil {
+			// Try parsing as Unix timestamp (integer)
+			if timestamp, err := strconv.ParseInt(val, 10, 64); err == nil {
+				t := time.Unix(timestamp, 0)
 				v.TimeValue = &t
-			} else if t, err := time.Parse(time.RFC3339, val); err == nil {
+			} else if timestamp, err := strconv.ParseFloat(val, 64); err == nil {
+				// Try parsing as Unix timestamp (float)
+				t := time.Unix(int64(timestamp), 0)
 				v.TimeValue = &t
-			} else if t, err := time.Parse("2006-01-02", val); err == nil {
-				v.TimeValue = &t
+			} else {
+				// Try various date string formats
+				dateFormats := []string{
+					time.RFC3339,
+					DateTimeFormat,
+					"2006-01-02",
+					time.RFC3339Nano,
+					"2006-01-02T15:04:05",
+				}
+
+				var parsed time.Time
+				var parseErr error
+				for _, format := range dateFormats {
+					if parsed, parseErr = time.Parse(format, val); parseErr == nil {
+						v.TimeValue = &parsed
+						break
+					}
+				}
+				// If parsing fails, TimeValue remains nil
 			}
 		case int:
 			// Unix timestamp as int

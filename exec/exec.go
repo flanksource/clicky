@@ -3,7 +3,6 @@ package exec
 import (
 	"bytes"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"time"
@@ -97,16 +96,27 @@ func (p Process) Runf(sh string, args ...interface{}) Process {
 }
 
 func (p Process) Run() Process {
-	cmd := exec.Command(p.Cmd, p.Args...)
-	cmd.Dir = p.Cwd
-	cmd.Stderr = io.MultiWriter(&p.Stderr, os.Stderr)
-	cmd.Stdout = io.MultiWriter(&p.Stdout, os.Stdout)
-	cmd.Stdin = os.Stdin
+	var cmd *exec.Cmd
 
+	// If Args is empty, treat Cmd as a shell command
+	if len(p.Args) == 0 {
+		cmd = exec.Command("/bin/sh", "-c", p.Cmd)
+	} else {
+		cmd = exec.Command(p.Cmd, p.Args...)
+	}
+
+	cmd.Dir = p.Cwd
+	cmd.Stderr = &p.Stderr
+	cmd.Stdout = &p.Stdout
+
+	// Set environment variables
+	cmd.Env = os.Environ() // Start with current environment
 	for k, v := range p.Env {
 		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, v))
 	}
 
+	now := time.Now()
+	p.Started = &now
 	p.cmd = cmd
 	p.Err = cmd.Run()
 

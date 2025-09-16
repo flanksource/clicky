@@ -81,6 +81,11 @@ func (w SVGWidget) Draw(b *Builder) error {
 
 // ConvertSVGToPNG converts SVG bytes to PNG bytes with aspect ratio preservation
 func ConvertSVGToPNG(svgBytes []byte) ([]byte, error) {
+	// Basic SVG validation
+	svgContent := string(svgBytes)
+	if !strings.Contains(svgContent, "<svg") {
+		return nil, fmt.Errorf("failed to parse SVG: content does not appear to be valid SVG")
+	}
 
 	tmp, err := os.CreateTemp("", "svg_*.svg")
 	if err != nil {

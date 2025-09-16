@@ -91,7 +91,7 @@ fields:
           style: "text-green-600 font-bold width-[2ch]"
         - name: "warranty_months"
           type: "int"
-          label: "War"
+          label: "Warranty"
           style: "font-mono title"
           color_options:
             green: ">=36"

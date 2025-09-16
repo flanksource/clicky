@@ -48,6 +48,7 @@ func (tm *Manager) Render() {
 
 // render is the main rendering loop for interactive display
 func (tm *Manager) render() {
+	defer tm.renderDone.Store(true)
 	ticker := time.NewTicker(250 * time.Millisecond)
 	defer ticker.Stop()
 

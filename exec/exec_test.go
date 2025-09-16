@@ -1,6 +1,7 @@
 package exec_test
 
 import (
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -126,7 +127,12 @@ var _ = Describe("Process", func() {
 			tempDir := "/tmp"
 			p := exec.Process{Cmd: "pwd"}.WithCwd(tempDir).Run()
 			Expect(p.IsOK()).To(BeTrue())
-			Expect(strings.TrimSpace(p.Stdout.String())).To(Equal(tempDir))
+
+			actualPath := strings.TrimSpace(p.Stdout.String())
+			expectedPath, _ := filepath.EvalSymlinks(tempDir)
+			resolvedActual, _ := filepath.EvalSymlinks(actualPath)
+
+			Expect(resolvedActual).To(Equal(expectedPath))
 		})
 
 		It("should fail with invalid working directory", func() {
@@ -439,18 +445,24 @@ echo line3`
 		})
 
 		It("should work with working directory in tasks", func() {
+			tempDir := "/tmp"
 			p := (&exec.Process{
 				Cmd: "pwd",
-			}).WithCwd("/tmp")
-			
+			}).WithCwd(tempDir)
+
 			typedTask := (&p).StartAsTask("Cwd Task")
 			result := typedTask.WaitFor()
-			
+
 			Expect(result.Status).To(Equal(task.StatusSuccess))
-			
+
 			processResult, err := typedTask.GetResult()
 			Expect(err).To(BeNil())
-			Expect(strings.TrimSpace(processResult.Stdout.String())).To(Equal("/tmp"))
+
+			actualPath := strings.TrimSpace(processResult.Stdout.String())
+			expectedPath, _ := filepath.EvalSymlinks(tempDir)
+			resolvedActual, _ := filepath.EvalSymlinks(actualPath)
+
+			Expect(resolvedActual).To(Equal(expectedPath))
 		})
 
 		It("should preserve task reference in GetTask() after AsTask()", func() {

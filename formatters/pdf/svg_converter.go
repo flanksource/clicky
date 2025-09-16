@@ -44,10 +44,10 @@ type ConvertOptions struct {
 // DefaultConvertOptions returns default conversion options
 func DefaultConvertOptions() *ConvertOptions {
 	return &ConvertOptions{
-		Format:  "pdf", // Changed from PNG to PDF for better quality
+		Format:  "png", // Default to PNG for compatibility
 		Width:   0,
 		Height:  0,
-		DPI:     288,
+		DPI:     96,    // Standard web DPI
 		Quality: 90,
 	}
 }

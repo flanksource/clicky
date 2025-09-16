@@ -44,6 +44,7 @@ type Manager struct {
 	workers       []*worker
 	shutdown      chan struct{}
 	workersActive atomic.Int32
+	renderDone    atomic.Bool
 
 	// Task identity tracking for deduplication
 	tasksByIdentity sync.Map // map[string]*Task
@@ -255,6 +256,21 @@ func SetRetryConfig(config RetryConfig) {
 // SetGracefulTimeout sets the timeout for graceful shutdown
 func SetGracefulTimeout(timeout time.Duration) {
 	global.gracefulTimeout = timeout
+}
+
+// stopRenderAndWait signals the render loop to stop and waits for it to complete
+func (tm *Manager) stopRenderAndWait() {
+	// Signal render loop to stop
+	select {
+	case tm.stopRender <- true:
+	default:
+		// Channel might already have a signal, that's ok
+	}
+
+	// Wait for render loop to complete by polling the atomic bool
+	for !tm.renderDone.Load() {
+		time.Sleep(10 * time.Millisecond)
+	}
 }
 
 // SetInterruptHandler sets a custom callback to be called on interrupt
@@ -480,7 +496,7 @@ func WaitSilent() int {
 		<-ticker.C
 	}
 
-	global.stopRender <- true
+	global.stopRenderAndWait()
 
 	global.mu.RLock()
 	tasks := global.tasks
@@ -529,7 +545,7 @@ func Wait() int {
 		<-ticker.C
 	}
 
-	global.stopRender <- true
+	global.stopRenderAndWait()
 
 	var failed, canceled int
 
