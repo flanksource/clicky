@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.1](https://github.com/flanksource/clicky/compare/v1.1.0...v1.1.1) (2025-09-16)
+
+
+### 🐛 Bug Fixes
+
+* html table labels ([27cefa6](https://github.com/flanksource/clicky/commit/27cefa6317380ca48d111a318556c3dd9de7d348))
+
+
+### 🔧 Maintenance
+
+* fix race conditions ([91a4cc4](https://github.com/flanksource/clicky/commit/91a4cc406802fbe209f8854f2bd0a9c54157130e))
+* fix tests ([8a61fe7](https://github.com/flanksource/clicky/commit/8a61fe783e53350f87875ebf03dab524790db903))
+* pdf builder improvements ([39e9004](https://github.com/flanksource/clicky/commit/39e90044874181ec9a728c836cc60cf633a6cab6))
+
 ## [1.1.0](https://github.com/flanksource/clicky/compare/v1.0.0...v1.1.0) (2025-09-01)
 
 
