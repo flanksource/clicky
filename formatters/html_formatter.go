@@ -1,6 +1,7 @@
 package formatters
 
 import (
+	"encoding/json"
 	"fmt"
 	"html"
 	"strings"
@@ -11,8 +12,9 @@ import (
 
 // HTMLFormatter handles HTML formatting
 type HTMLFormatter struct {
-	IncludeCSS bool
-	IsPDFMode  bool
+	IncludeCSS   bool
+	IsPDFMode    bool
+	tableCounter int // Counter for generating unique table IDs
 }
 
 // NewHTMLFormatter creates a new HTML formatter
@@ -35,16 +37,108 @@ func (f *HTMLFormatter) getCSS() string {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Clicky Output</title>
-    <script src="https://cdn.tailwindcss.com"></script>`
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://unpkg.com/gridjs/dist/theme/mermaid.min.css" rel="stylesheet" />
+    <script src="https://unpkg.com/gridjs/dist/gridjs.umd.js"></script>
+    <style>
+        /* Grid.js theme customizations to match Tailwind */
+        .gridjs-wrapper {
+            border: 1px solid #e5e7eb;
+            border-radius: 0.5rem;
+            overflow: hidden;
+            box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+        }
+        .gridjs-head {
+            background: #f9fafb;
+            border-bottom: 1px solid #e5e7eb;
+        }
+        .gridjs-th {
+            background: #f9fafb;
+            color: #6b7280;
+            font-weight: 500;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            padding: 0.75rem 1.5rem;
+            border-right: 1px solid #f3f4f6;
+        }
+        .gridjs-th:last-child {
+            border-right: none;
+        }
+        .gridjs-td {
+            padding: 1rem 1.5rem;
+            font-size: 0.875rem;
+            color: #111827;
+            border-right: 1px solid #f9fafb;
+            vertical-align: top;
+        }
+        .gridjs-td:last-child {
+            border-right: none;
+        }
+        .gridjs-tr:nth-child(even) .gridjs-td {
+            background-color: #fafafa;
+        }
+        .gridjs-tr:hover .gridjs-td {
+            background: #f3f4f6;
+        }
+        .gridjs-search {
+            margin-bottom: 1rem;
+        }
+        .gridjs-search-input {
+            border: 1px solid #d1d5db;
+            border-radius: 0.375rem;
+            padding: 0.5rem 0.75rem;
+            font-size: 0.875rem;
+            width: 300px;
+            transition: border-color 0.15s ease-in-out;
+        }
+        .gridjs-search-input:focus {
+            outline: none;
+            border-color: #3b82f6;
+            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        }
+        .gridjs-pagination {
+            margin-top: 1rem;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .gridjs-pagination .gridjs-pages {
+            margin: 0 0.5rem;
+        }
+        .gridjs-pagination button {
+            padding: 0.5rem 0.75rem;
+            margin: 0 0.25rem;
+            border: 1px solid #d1d5db;
+            border-radius: 0.375rem;
+            background: white;
+            color: #6b7280;
+            font-size: 0.875rem;
+            transition: all 0.15s ease-in-out;
+        }
+        .gridjs-pagination button:hover:not(:disabled) {
+            background: #f9fafb;
+            border-color: #9ca3af;
+        }
+        .gridjs-pagination button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .gridjs-pagination .gridjs-currentPage {
+            background: #3b82f6;
+            color: white;
+            border-color: #3b82f6;
+        }
+    </style>`
 
-    if f.IsPDFMode {
-        css += f.getPDFCSS()
-    }
+	if f.IsPDFMode {
+		css += f.getPDFCSS()
+	}
 
-    css += `
+	css += `
 </head>
 <body class="bg-gray-100 min-h-screen p-6">
-    <div class="max-w-7xl mx-auto space-y-8">
+    <div class="mx-auto px-4 space-y-8">
 `
 	return css
 }
@@ -208,47 +302,60 @@ func (f *HTMLFormatter) Format(in interface{}) (string, error) {
 		result.WriteString(f.getCSS())
 	}
 
-	// Summary first - add non-table fields as a summary card
-	result.WriteString("        <div class=\"bg-white rounded-lg shadow\">\n")
-	result.WriteString("            <div class=\"px-6 py-4 border-b border-gray-200\">\n")
-	result.WriteString("                <h2 class=\"text-xl font-semibold text-gray-900\">Summary</h2>\n")
-	result.WriteString("            </div>\n")
-	result.WriteString("            <div class=\"px-6 py-4\">\n")
-	result.WriteString("                <dl class=\"grid grid-cols-1 md:grid-cols-2 gap-4\">\n")
-
-	// Process summary fields (non-table, non-tree, non-hidden)
+	// Count non-table/non-tree fields first
+	summaryFieldCount := 0
 	for _, field := range data.Schema.Fields {
-		// Skip table and tree fields (they get special handling)
-		if field.Format == api.FormatTable || field.Format == api.FormatTree {
-			continue
+		if field.Format != api.FormatTable && field.Format != api.FormatTree {
+			if _, exists := data.GetValue(field.Name); exists {
+				summaryFieldCount++
+			}
 		}
-
-		fieldValue, exists := data.GetValue(field.Name)
-		if !exists {
-			continue
-		}
-
-		prettyFieldName := f.prettifyFieldName(field.Name)
-
-		// Format field value with styling
-		fieldHTML := f.formatFieldValueHTMLWithStyle(fieldValue, field)
-
-		// Apply label styling
-		var labelHTML string
-		if field.LabelStyle != "" {
-			labelHTML = f.applyTailwindStyleToHTML(prettyFieldName, field.LabelStyle)
-		} else {
-			labelHTML = fmt.Sprintf("<span class=\"text-sm font-medium text-gray-500\">%s</span>", html.EscapeString(prettyFieldName))
-		}
-
-		result.WriteString("                    <div>\n")
-		result.WriteString(fmt.Sprintf("                        <dt>%s</dt>\n", labelHTML))
-		result.WriteString(fmt.Sprintf("                        <dd class=\"mt-1 text-sm\">%s</dd>\n", fieldHTML))
-		result.WriteString("                    </div>\n")
 	}
-	result.WriteString("                </dl>\n")
-	result.WriteString("            </div>\n")
-	result.WriteString("        </div>\n")
+
+	// Only render Summary section if there are non-table/non-tree fields
+	if summaryFieldCount > 0 {
+		// Summary first - add non-table fields as a summary card
+		result.WriteString("        <div class=\"bg-white rounded-lg shadow\">\n")
+		result.WriteString("            <div class=\"px-6 py-4 border-b border-gray-200\">\n")
+		result.WriteString("                <h2 class=\"text-xl font-semibold text-gray-900\">Summary</h2>\n")
+		result.WriteString("            </div>\n")
+		result.WriteString("            <div class=\"px-6 py-4\">\n")
+		result.WriteString("                <dl class=\"grid grid-cols-1 md:grid-cols-2 gap-4\">\n")
+
+		// Process summary fields (non-table, non-tree, non-hidden)
+		for _, field := range data.Schema.Fields {
+			// Skip table and tree fields (they get special handling)
+			if field.Format == api.FormatTable || field.Format == api.FormatTree {
+				continue
+			}
+
+			fieldValue, exists := data.GetValue(field.Name)
+			if !exists {
+				continue
+			}
+
+			prettyFieldName := f.prettifyFieldName(field.Name)
+
+			// Format field value with styling
+			fieldHTML := f.formatFieldValueHTMLWithStyle(fieldValue, field)
+
+			// Apply label styling
+			var labelHTML string
+			if field.LabelStyle != "" {
+				labelHTML = f.applyTailwindStyleToHTML(prettyFieldName, field.LabelStyle)
+			} else {
+				labelHTML = fmt.Sprintf("<span class=\"text-sm font-medium text-gray-500\">%s</span>", html.EscapeString(prettyFieldName))
+			}
+
+			result.WriteString("                    <div>\n")
+			result.WriteString(fmt.Sprintf("                        <dt>%s</dt>\n", labelHTML))
+			result.WriteString(fmt.Sprintf("                        <dd class=\"mt-1 text-sm\">%s</dd>\n", fieldHTML))
+			result.WriteString("                    </div>\n")
+		}
+		result.WriteString("                </dl>\n")
+		result.WriteString("            </div>\n")
+		result.WriteString("        </div>\n")
+	}
 
 	// Then handle tables
 	for _, field := range data.Schema.Fields {
@@ -263,8 +370,16 @@ func (f *HTMLFormatter) Format(in interface{}) (string, error) {
 					f.prettifyFieldName(field.Name)))
 				result.WriteString("            </div>\n")
 
-				// Format as table with Tailwind styling
-				tableHTML := f.formatTableDataHTML(tableData, field)
+				// Format as table - use Grid.js unless in PDF mode
+				var tableHTML string
+				if f.IsPDFMode {
+					// Use static HTML table for PDF generation
+					tableHTML = f.formatTableDataHTML(tableData, field)
+				} else {
+					// Use Grid.js for interactive features
+					tableID := f.generateTableID()
+					tableHTML = f.formatTableDataHTMLWithGridJS(tableData, field, tableID)
+				}
 				result.WriteString(tableHTML)
 				result.WriteString("        </div>\n")
 			}
@@ -309,47 +424,60 @@ func (f *HTMLFormatter) FormatPrettyData(data *api.PrettyData) (string, error) {
 		result.WriteString(f.getCSS())
 	}
 
-	// Summary first - add non-table fields as a summary card
-	result.WriteString("        <div class=\"bg-white rounded-lg shadow\">\n")
-	result.WriteString("            <div class=\"px-6 py-4 border-b border-gray-200\">\n")
-	result.WriteString("                <h2 class=\"text-xl font-semibold text-gray-900\">Summary</h2>\n")
-	result.WriteString("            </div>\n")
-	result.WriteString("            <div class=\"px-6 py-4\">\n")
-	result.WriteString("                <dl class=\"grid grid-cols-1 md:grid-cols-2 gap-4\">\n")
-
-	// Process summary fields (non-table, non-tree, non-hidden)
+	// Count non-table/non-tree fields first
+	summaryFieldCount := 0
 	for _, field := range data.Schema.Fields {
-		// Skip table and tree fields (they get special handling)
-		if field.Format == api.FormatTable || field.Format == api.FormatTree {
-			continue
+		if field.Format != api.FormatTable && field.Format != api.FormatTree {
+			if _, exists := data.GetValue(field.Name); exists {
+				summaryFieldCount++
+			}
 		}
-
-		fieldValue, exists := data.GetValue(field.Name)
-		if !exists {
-			continue
-		}
-
-		prettyFieldName := f.prettifyFieldName(field.Name)
-
-		// Format field value with styling
-		fieldHTML := f.formatFieldValueHTMLWithStyle(fieldValue, field)
-
-		// Apply label styling
-		var labelHTML string
-		if field.LabelStyle != "" {
-			labelHTML = f.applyTailwindStyleToHTML(prettyFieldName, field.LabelStyle)
-		} else {
-			labelHTML = fmt.Sprintf("<span class=\"text-sm font-medium text-gray-500\">%s</span>", html.EscapeString(prettyFieldName))
-		}
-
-		result.WriteString("                    <div>\n")
-		result.WriteString(fmt.Sprintf("                        <dt>%s</dt>\n", labelHTML))
-		result.WriteString(fmt.Sprintf("                        <dd class=\"mt-1 text-sm\">%s</dd>\n", fieldHTML))
-		result.WriteString("                    </div>\n")
 	}
-	result.WriteString("                </dl>\n")
-	result.WriteString("            </div>\n")
-	result.WriteString("        </div>\n")
+
+	// Only render Summary section if there are non-table/non-tree fields
+	if summaryFieldCount > 0 {
+		// Summary first - add non-table fields as a summary card
+		result.WriteString("        <div class=\"bg-white rounded-lg shadow\">\n")
+		result.WriteString("            <div class=\"px-6 py-4 border-b border-gray-200\">\n")
+		result.WriteString("                <h2 class=\"text-xl font-semibold text-gray-900\">Summary</h2>\n")
+		result.WriteString("            </div>\n")
+		result.WriteString("            <div class=\"px-6 py-4\">\n")
+		result.WriteString("                <dl class=\"grid grid-cols-1 md:grid-cols-2 gap-4\">\n")
+
+		// Process summary fields (non-table, non-tree, non-hidden)
+		for _, field := range data.Schema.Fields {
+			// Skip table and tree fields (they get special handling)
+			if field.Format == api.FormatTable || field.Format == api.FormatTree {
+				continue
+			}
+
+			fieldValue, exists := data.GetValue(field.Name)
+			if !exists {
+				continue
+			}
+
+			prettyFieldName := f.prettifyFieldName(field.Name)
+
+			// Format field value with styling
+			fieldHTML := f.formatFieldValueHTMLWithStyle(fieldValue, field)
+
+			// Apply label styling
+			var labelHTML string
+			if field.LabelStyle != "" {
+				labelHTML = f.applyTailwindStyleToHTML(prettyFieldName, field.LabelStyle)
+			} else {
+				labelHTML = fmt.Sprintf("<span class=\"text-sm font-medium text-gray-500\">%s</span>", html.EscapeString(prettyFieldName))
+			}
+
+			result.WriteString("                    <div>\n")
+			result.WriteString(fmt.Sprintf("                        <dt>%s</dt>\n", labelHTML))
+			result.WriteString(fmt.Sprintf("                        <dd class=\"mt-1 text-sm\">%s</dd>\n", fieldHTML))
+			result.WriteString("                    </div>\n")
+		}
+		result.WriteString("                </dl>\n")
+		result.WriteString("            </div>\n")
+		result.WriteString("        </div>\n")
+	}
 
 	// Then handle tables
 	for _, field := range data.Schema.Fields {
@@ -364,8 +492,16 @@ func (f *HTMLFormatter) FormatPrettyData(data *api.PrettyData) (string, error) {
 					f.prettifyFieldName(field.Name)))
 				result.WriteString("            </div>\n")
 
-				// Format as table with Tailwind styling
-				tableHTML := f.formatTableDataHTML(tableData, field)
+				// Format as table - use Grid.js unless in PDF mode
+				var tableHTML string
+				if f.IsPDFMode {
+					// Use static HTML table for PDF generation
+					tableHTML = f.formatTableDataHTML(tableData, field)
+				} else {
+					// Use Grid.js for interactive features
+					tableID := f.generateTableID()
+					tableHTML = f.formatTableDataHTMLWithGridJS(tableData, field, tableID)
+				}
 				result.WriteString(tableHTML)
 				result.WriteString("        </div>\n")
 			}
@@ -532,10 +668,10 @@ func (f *HTMLFormatter) formatTableDataHTML(rows []api.PrettyDataRow, field api.
 	result.WriteString("                    <thead class=\"bg-gray-50\">\n")
 	result.WriteString("                        <tr>\n")
 	for _, tableField := range field.TableOptions.Fields {
-		// Use Label for display, fallback to Name if Label is empty
+		// Use Label for display, fallback to prettified Name if Label is empty
 		headerLabel := tableField.Label
 		if headerLabel == "" {
-			headerLabel = tableField.Name
+			headerLabel = f.prettifyFieldName(tableField.Name)
 		}
 
 		var headerHTML string
@@ -579,6 +715,102 @@ func (f *HTMLFormatter) formatTableDataHTML(rows []api.PrettyDataRow, field api.
 	result.WriteString("            </div>\n")
 
 	return result.String()
+}
+
+// formatTableDataHTMLWithGridJS formats table data using Grid.js for interactive features
+func (f *HTMLFormatter) formatTableDataHTMLWithGridJS(rows []api.PrettyDataRow, field api.PrettyField, tableID string) string {
+	if len(rows) == 0 {
+		return "            <p class=\"text-gray-500 text-center py-8\">No data available</p>"
+	}
+
+	var result strings.Builder
+
+	// Create a div for Grid.js to mount
+	result.WriteString(fmt.Sprintf("            <div id=\"%s\"></div>\n", tableID))
+
+	// Generate JavaScript to initialize Grid.js
+	result.WriteString("            <script>\n")
+	result.WriteString("                document.addEventListener('DOMContentLoaded', function() {\n")
+	result.WriteString(fmt.Sprintf("                    new gridjs.Grid({\n"))
+
+	// Configure columns
+	result.WriteString("                        columns: [\n")
+	for i, tableField := range field.TableOptions.Fields {
+		headerLabel := tableField.Label
+		if headerLabel == "" {
+			headerLabel = f.prettifyFieldName(tableField.Name)
+		}
+
+		if i > 0 {
+			result.WriteString(",\n")
+		}
+
+		// Format column definition with sorting and HTML rendering enabled
+		result.WriteString(fmt.Sprintf("                            { name: %s, sort: true, formatter: (cell) => gridjs.html(cell) }",
+			f.jsonEscape(headerLabel)))
+	}
+	result.WriteString("\n                        ],\n")
+
+	// Configure data
+	result.WriteString("                        data: [\n")
+	for i, row := range rows {
+		if i > 0 {
+			result.WriteString(",\n")
+		}
+		result.WriteString("                            [")
+
+		for j, tableField := range field.TableOptions.Fields {
+			if j > 0 {
+				result.WriteString(", ")
+			}
+
+			fieldValue, exists := row[tableField.Name]
+			var cellContent string
+			if exists {
+				// Apply styling with HTML content for Grid.js
+				if tableField.Style != "" {
+					cellContent = f.formatFieldValueHTMLWithStyle(fieldValue, tableField)
+				} else {
+					cellContent = fieldValue.HTML()
+				}
+			} else {
+				cellContent = ""
+			}
+			result.WriteString(f.jsonEscape(cellContent))
+		}
+		result.WriteString("]")
+	}
+	result.WriteString("\n                        ],\n")
+
+	// Configure Grid.js options
+	result.WriteString("                        search: true,\n")
+
+	result.WriteString("                        sort: true,\n")
+	result.WriteString("                        resizable: true,\n")
+	result.WriteString("                        className: {\n")
+	result.WriteString("                            table: 'gridjs-table',\n")
+	result.WriteString("                            th: 'gridjs-th',\n")
+	result.WriteString("                            td: 'gridjs-td'\n")
+	result.WriteString("                        }\n")
+
+	result.WriteString(fmt.Sprintf("                    }).render(document.getElementById('%s'));\n", tableID))
+	result.WriteString("                });\n")
+	result.WriteString("            </script>\n")
+
+	return result.String()
+}
+
+// jsonEscape properly escapes a string for use in JSON
+func (f *HTMLFormatter) jsonEscape(s string) string {
+	// Use Go's JSON marshaling to properly escape the string
+	escaped, _ := json.Marshal(s)
+	return string(escaped)
+}
+
+// generateTableID generates a unique table ID for Grid.js
+func (f *HTMLFormatter) generateTableID() string {
+	f.tableCounter++
+	return fmt.Sprintf("gridjs-table-%d", f.tableCounter)
 }
 
 // formatTreeFieldHTML formats a tree field for HTML output

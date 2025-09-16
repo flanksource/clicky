@@ -420,8 +420,9 @@ func TestHTMLTableColumnLabels(t *testing.T) {
 		t.Fatalf("Failed to parse table data: %v", err)
 	}
 
-	// Test HTML formatter
+	// Test HTML formatter in PDF mode for static table headers
 	htmlFormatter := NewHTMLFormatter()
+	htmlFormatter.IsPDFMode = true  // Use static HTML tables for testing headers
 	htmlOutput, err := htmlFormatter.FormatPrettyData(prettyData)
 	if err != nil {
 		t.Fatalf("Failed to format HTML: %v", err)
@@ -504,7 +505,9 @@ func TestHTMLTableMixedLabels(t *testing.T) {
 		t.Fatalf("Failed to parse table data: %v", err)
 	}
 
+	// Test with PDF mode to check static HTML table headers
 	htmlFormatter := NewHTMLFormatter()
+	htmlFormatter.IsPDFMode = true  // Use static HTML tables for testing headers
 	htmlOutput, err := htmlFormatter.FormatPrettyData(prettyData)
 	if err != nil {
 		t.Fatalf("Failed to format HTML: %v", err)
@@ -518,8 +521,8 @@ func TestHTMLTableMixedLabels(t *testing.T) {
 		t.Errorf("HTML should contain 'Current Status' label")
 	}
 
-	// Should use Name where Label is not defined
-	if !strings.Contains(htmlOutput, ">name<") {
-		t.Errorf("HTML should contain 'name' field name as header (no label defined)")
+	// Should use prettified Name where Label is not defined
+	if !strings.Contains(htmlOutput, ">Name<") {
+		t.Errorf("HTML should contain 'Name' prettified field name as header (no label defined)")
 	}
 }
