@@ -5,14 +5,15 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/flanksource/clicky/rpc"
 	"github.com/spf13/cobra"
-	"github.com/spf13/pflag"
 )
 
 // ToolRegistry manages the mapping between cobra commands and MCP tools
 type ToolRegistry struct {
-	config *Config
-	tools  map[string]*ToolDefinition
+	config       *Config
+	tools        map[string]*ToolDefinition
+	rpcConverter *rpc.Converter
 }
 
 // ToolDefinition represents an MCP tool definition
@@ -40,26 +41,81 @@ type Property struct {
 	Default     interface{} `json:"default,omitempty"`
 }
 
+// NewMcpTool creates an MCP ToolDefinition from a generic RPC operation
+func NewMcpTool(rpcOp *rpc.RPCOperation) *ToolDefinition {
+	// Convert RPC schema to MCP schema
+	inputSchema := Schema{
+		Type:       rpcOp.Schema.Type,
+		Properties: make(map[string]Property),
+		Required:   rpcOp.Schema.Required,
+	}
+
+	// Convert RPC properties to MCP properties
+	for name, rpcProp := range rpcOp.Schema.Properties {
+		inputSchema.Properties[name] = Property{
+			Type:        rpcProp.Type,
+			Description: rpcProp.Description,
+			Enum:        rpcProp.Enum,
+			Default:     rpcProp.Default,
+		}
+	}
+
+	// Get application name for title
+	appName := "app"
+	if rpcOp.Command != nil {
+		if root := getRootCommand(rpcOp.Command); root != nil {
+			appName = root.Name()
+		}
+	}
+
+	return &ToolDefinition{
+		Name:        rpcOp.Name,
+		Title:       fmt.Sprintf("%s %s", appName, rpcOp.Name),
+		Description: rpcOp.Description,
+		InputSchema: inputSchema,
+		Command:     rpcOp.Command,
+	}
+}
+
+// NewMcpToolWithConfig creates an MCP ToolDefinition from a generic RPC operation with config overrides
+func (r *ToolRegistry) NewMcpToolWithConfig(rpcOp *rpc.RPCOperation) *ToolDefinition {
+	tool := NewMcpTool(rpcOp)
+
+	// Apply config-specific overrides
+	if override, exists := r.config.Tools.Descriptions[rpcOp.Name]; exists {
+		tool.Description = override
+	}
+
+	return tool
+}
+
 // NewToolRegistry creates a new tool registry
 func NewToolRegistry(config *Config) *ToolRegistry {
+	// Create RPC converter with default config
+	rpcConfig := rpc.DefaultConfig()
+
 	return &ToolRegistry{
-		config: config,
-		tools:  make(map[string]*ToolDefinition),
+		config:       config,
+		tools:        make(map[string]*ToolDefinition),
+		rpcConverter: rpc.NewConverter(rpcConfig),
 	}
 }
 
 // RegisterCommand registers a cobra command as an MCP tool
 func (r *ToolRegistry) RegisterCommand(cmd *cobra.Command) error {
-	// Check if command should be exposed
+	// Check if command should be exposed (MCP-specific filtering)
 	if !r.shouldExposeCommand(cmd) {
 		return nil
 	}
 
-	// Generate tool definition
-	tool, err := r.commandToTool(cmd)
+	// Convert to RPC operation first
+	rpcOp, err := r.rpcConverter.ConvertCommand(cmd)
 	if err != nil {
-		return fmt.Errorf("failed to convert command to tool: %w", err)
+		return fmt.Errorf("failed to convert command to RPC operation: %w", err)
 	}
+
+	// Create MCP tool from RPC operation with config overrides
+	tool := r.NewMcpToolWithConfig(rpcOp)
 
 	r.tools[tool.Name] = tool
 	return nil
@@ -124,90 +180,6 @@ func (r *ToolRegistry) shouldExposeCommand(cmd *cobra.Command) bool {
 	return false
 }
 
-// commandToTool converts a cobra command to an MCP tool definition
-func (r *ToolRegistry) commandToTool(cmd *cobra.Command) (*ToolDefinition, error) {
-	cmdPath := getCommandPath(cmd)
-
-	// Build input schema from flags
-	schema := Schema{
-		Type:       "object",
-		Properties: make(map[string]Property),
-		Required:   []string{},
-	}
-
-	// Add positional arguments
-	if cmd.Args != nil {
-		schema.Properties["args"] = Property{
-			Type:        "array",
-			Description: "Positional arguments for the command",
-		}
-	}
-
-	// Process flags
-	cmd.Flags().VisitAll(func(flag *pflag.Flag) {
-		if flag.Hidden {
-			return
-		}
-
-		prop := Property{
-			Description: flag.Usage,
-		}
-
-		// Determine type based on flag type
-		switch flag.Value.Type() {
-		case "bool":
-			prop.Type = "boolean"
-			if flag.DefValue != "" {
-				prop.Default = flag.DefValue == "true"
-			}
-		case "int", "int8", "int16", "int32", "int64":
-			prop.Type = "integer"
-			if flag.DefValue != "" {
-				prop.Default = flag.DefValue
-			}
-		case "float32", "float64":
-			prop.Type = "number"
-			if flag.DefValue != "" {
-				prop.Default = flag.DefValue
-			}
-		default:
-			prop.Type = "string"
-			if flag.DefValue != "" {
-				prop.Default = flag.DefValue
-			}
-		}
-
-		flagName := flag.Name
-		schema.Properties[flagName] = prop
-
-		// Mark required flags
-		if err := cmd.MarkFlagRequired(flag.Name); err == nil {
-			schema.Required = append(schema.Required, flagName)
-		}
-	})
-
-	// Get description from config override or command
-	description := cmd.Short
-	if override, exists := r.config.Tools.Descriptions[cmdPath]; exists {
-		description = override
-	}
-
-	// Get command name for title
-	appName := "app"
-	if root := getRootCommand(cmd); root != nil {
-		appName = root.Name()
-	}
-
-	tool := &ToolDefinition{
-		Name:        cmdPath,
-		Title:       fmt.Sprintf("%s %s", appName, cmdPath),
-		Description: description,
-		InputSchema: schema,
-		Command:     cmd,
-	}
-
-	return tool, nil
-}
 
 // getCommandPath returns the full command path (e.g., "status", "ai cache")
 func getCommandPath(cmd *cobra.Command) string {
