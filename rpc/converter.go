@@ -104,8 +104,8 @@ func (c *Converter) ConvertCommand(cmd *cobra.Command) (*RPCOperation, error) {
 		schema.Properties[flag.Name] = prop
 		parameters = append(parameters, param)
 
-		// Check if flag is required (this is a heuristic since Cobra doesn't expose this easily)
-		if c.isFlagRequired(cmd, flag.Name) {
+		// Check if flag is required (skip for boolean flags since they always have defaults)
+		if flag.Value.Type() != "bool" && c.isFlagRequired(cmd, flag.Name) {
 			schema.Required = append(schema.Required, flag.Name)
 			param.Required = true
 		}
@@ -233,7 +233,7 @@ func (c *Converter) inferHTTPMethod(cmd *cobra.Command, cmdPath string) string {
 // generateRESTPath generates a REST API path from command hierarchy
 func (c *Converter) generateRESTPath(cmdPath string) string {
 	// Convert command path to REST path
-	// e.g., "user create" -> "/api/v1/users"
+	// e.g., "user create" -> "/api/v1/user"
 	// e.g., "config set" -> "/api/v1/config"
 
 	parts := strings.Split(cmdPath, " ")
@@ -249,9 +249,9 @@ func (c *Converter) generateRESTPath(cmdPath string) string {
 			}
 		}
 
-		// Pluralize resource names (simple heuristic)
+		// Use resource names as-is without pluralization
 		if i < len(parts)-1 || !isCRUDOperation(part) {
-			pathParts = append(pathParts, pluralize(part))
+			pathParts = append(pathParts, part)
 		}
 	}
 
@@ -289,12 +289,28 @@ func (c *Converter) getParentCommandName(cmd *cobra.Command) string {
 	return ""
 }
 
-// isFlagRequired checks if a flag is marked as required (heuristic)
+// isFlagRequired checks if a flag is marked as required using reflection
 func (c *Converter) isFlagRequired(cmd *cobra.Command, flagName string) bool {
-	// Try to mark flag as required and see if it succeeds
-	// This is a hack since Cobra doesn't expose required flags easily
-	err := cmd.MarkFlagRequired(flagName)
-	return err == nil
+	// Look up the flag in the command's flag set
+	flag := cmd.Flags().Lookup(flagName)
+	if flag == nil {
+		// Try persistent flags if not found in local flags
+		flag = cmd.PersistentFlags().Lookup(flagName)
+		if flag == nil {
+			return false
+		}
+	}
+
+	// Check if the flag has been marked as required by looking for Cobra's
+	// internal required flag annotation. When MarkFlagRequired is called,
+	// Cobra adds the "cobra_annotation_bash_completion_one_required_flag"
+	// annotation to the flag.
+	if flag.Annotations != nil {
+		_, isRequired := flag.Annotations["cobra_annotation_bash_completion_one_required_flag"]
+		return isRequired
+	}
+
+	return false
 }
 
 // getCommandPath returns the full command path (e.g., "status", "ai cache")

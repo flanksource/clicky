@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+	"gopkg.in/yaml.v3"
 )
 
 // OpenAPISpec represents an OpenAPI 3.0 specification
@@ -179,7 +180,8 @@ type OpenAPIExternalDocs struct {
 
 // OpenAPIGenerator generates OpenAPI specifications from RPC services
 type OpenAPIGenerator struct {
-	config *OpenAPIConfig
+	config     *OpenAPIConfig
+	components *OpenAPIComponents // Shared components for reusable schemas
 }
 
 // OpenAPIConfig holds configuration for OpenAPI generation
@@ -202,7 +204,12 @@ func NewOpenAPIGenerator(config *OpenAPIConfig) *OpenAPIGenerator {
 			Version:     "1.0.0",
 		}
 	}
-	return &OpenAPIGenerator{config: config}
+	return &OpenAPIGenerator{
+		config: config,
+		components: &OpenAPIComponents{
+			Schemas: make(map[string]*OpenAPISchema),
+		},
+	}
 }
 
 // GenerateFromService generates an OpenAPI spec from an RPC service
@@ -248,6 +255,11 @@ func (g *OpenAPIGenerator) GenerateFromService(service *RPCService) *OpenAPISpec
 		spec.Paths[path] = openAPIPath
 	}
 
+	// Add components if any schemas were generated
+	if len(g.components.Schemas) > 0 {
+		spec.Components = g.components
+	}
+
 	return spec
 }
 
@@ -280,7 +292,7 @@ func (g *OpenAPIGenerator) convertOperationToOpenAPI(op RPCOperation) OpenAPIOpe
 			In:          param.In,
 			Description: param.Description,
 			Required:    param.Required,
-			Schema:      g.convertSchemaToOpenAPI(Property{
+			Schema:      g.convertPropertyToOpenAPI(Property{
 				Type:        param.Type,
 				Description: param.Description,
 				Default:     param.Default,
@@ -369,14 +381,14 @@ func (g *OpenAPIGenerator) convertRPCSchemaToOpenAPI(schema Schema) *OpenAPISche
 	}
 
 	for name, prop := range schema.Properties {
-		openAPISchema.Properties[name] = g.convertSchemaToOpenAPI(prop)
+		openAPISchema.Properties[name] = g.convertPropertyToOpenAPI(prop)
 	}
 
 	return openAPISchema
 }
 
-// convertSchemaToOpenAPI converts a Property to OpenAPI schema
-func (g *OpenAPIGenerator) convertSchemaToOpenAPI(prop Property) *OpenAPISchema {
+// convertPropertyToOpenAPI converts a Property to OpenAPI schema with enhanced type handling
+func (g *OpenAPIGenerator) convertPropertyToOpenAPI(prop Property) *OpenAPISchema {
 	schema := &OpenAPISchema{
 		Type:        prop.Type,
 		Description: prop.Description,
@@ -390,33 +402,98 @@ func (g *OpenAPIGenerator) convertSchemaToOpenAPI(prop Property) *OpenAPISchema 
 		}
 	}
 
-	// Add format hints for common types
+	// Handle different types with enhanced logic
 	switch prop.Type {
 	case "string":
-		if strings.Contains(strings.ToLower(prop.Description), "email") {
-			schema.Format = "email"
-		} else if strings.Contains(strings.ToLower(prop.Description), "uri") ||
-			strings.Contains(strings.ToLower(prop.Description), "url") {
-			schema.Format = "uri"
-		} else if strings.Contains(strings.ToLower(prop.Description), "date") {
-			schema.Format = "date-time"
-		}
-	case "integer":
-		if strings.Contains(strings.ToLower(prop.Description), "timestamp") {
-			schema.Format = "int64"
-		} else {
-			schema.Format = "int32"
-		}
-	case "number":
-		schema.Format = "double"
+		g.enhanceStringSchema(schema, prop)
+	case "integer", "int", "int32", "int64":
+		g.enhanceIntegerSchema(schema, prop)
+	case "number", "float", "float32", "float64":
+		g.enhanceNumberSchema(schema, prop)
+	case "array":
+		g.enhanceArraySchema(schema, prop)
+	case "object", "struct":
+		g.enhanceObjectSchema(schema, prop)
+	case "boolean":
+		schema.Type = "boolean"
 	}
 
 	return schema
 }
 
+// enhanceStringSchema adds format and validation for string types
+func (g *OpenAPIGenerator) enhanceStringSchema(schema *OpenAPISchema, prop Property) {
+	schema.Type = "string"
+	descLower := strings.ToLower(prop.Description)
+
+	if strings.Contains(descLower, "email") {
+		schema.Format = "email"
+	} else if strings.Contains(descLower, "uri") || strings.Contains(descLower, "url") {
+		schema.Format = "uri"
+	} else if strings.Contains(descLower, "uuid") || strings.Contains(descLower, "guid") {
+		schema.Format = "uuid"
+	} else if strings.Contains(descLower, "password") {
+		schema.Format = "password"
+	} else if strings.Contains(descLower, "date") {
+		if strings.Contains(descLower, "time") {
+			schema.Format = "date-time"
+		} else {
+			schema.Format = "date"
+		}
+	} else if strings.Contains(descLower, "binary") || strings.Contains(descLower, "base64") {
+		schema.Format = "byte"
+	}
+}
+
+// enhanceIntegerSchema adds format for integer types
+func (g *OpenAPIGenerator) enhanceIntegerSchema(schema *OpenAPISchema, prop Property) {
+	schema.Type = "integer"
+	descLower := strings.ToLower(prop.Description)
+
+	if strings.Contains(descLower, "timestamp") || prop.Type == "int64" {
+		schema.Format = "int64"
+	} else {
+		schema.Format = "int32"
+	}
+}
+
+// enhanceNumberSchema adds format for number types
+func (g *OpenAPIGenerator) enhanceNumberSchema(schema *OpenAPISchema, prop Property) {
+	schema.Type = "number"
+	if prop.Type == "float32" {
+		schema.Format = "float"
+	} else {
+		schema.Format = "double"
+	}
+}
+
+// enhanceArraySchema handles array types with items schema
+func (g *OpenAPIGenerator) enhanceArraySchema(schema *OpenAPISchema, prop Property) {
+	schema.Type = "array"
+	// For now, default to string items - this could be enhanced to parse item types from descriptions
+	schema.Items = &OpenAPISchema{
+		Type: "string",
+	}
+
+	// Try to infer item type from description
+	descLower := strings.ToLower(prop.Description)
+	if strings.Contains(descLower, "array of integers") || strings.Contains(descLower, "list of numbers") {
+		schema.Items.Type = "integer"
+	} else if strings.Contains(descLower, "array of objects") || strings.Contains(descLower, "list of structs") {
+		schema.Items.Type = "object"
+	}
+}
+
+// enhanceObjectSchema handles object/struct types
+func (g *OpenAPIGenerator) enhanceObjectSchema(schema *OpenAPISchema, prop Property) {
+	schema.Type = "object"
+	// Additional properties could be added here if needed
+	schema.Properties = make(map[string]*OpenAPISchema)
+}
+
 // generatePathFromName generates a REST path from an operation name
 func (g *OpenAPIGenerator) generatePathFromName(name string) string {
-	// Convert "user create" to "/users"
+	// Convert "user create" to "/user"
 	// Convert "config set" to "/config"
 	parts := strings.Split(name, " ")
 
@@ -427,11 +504,8 @@ func (g *OpenAPIGenerator) generatePathFromName(name string) string {
 	// Use the first part as the resource, skip CRUD verbs
 	resource := parts[0]
 
-	// Simple pluralization for REST convention
-	if !strings.HasSuffix(resource, "s") {
-		resource += "s"
-	}
-
+	// Use resource name as-is without pluralization
+	// Keep the original resource name from the command
 	return "/" + resource
 }
 
@@ -440,9 +514,24 @@ func (spec *OpenAPISpec) ToJSON() ([]byte, error) {
 	return json.MarshalIndent(spec, "", "  ")
 }
 
-// ToYAML converts the OpenAPI spec to YAML (would need yaml package)
+// ToYAML converts the OpenAPI spec to YAML
 func (spec *OpenAPISpec) ToYAML() ([]byte, error) {
-	// Would need to implement YAML marshaling
-	// For now, return JSON as a placeholder
-	return spec.ToJSON()
+	return yaml.Marshal(spec)
+}
+
+// GenerateFromRPCService creates an OpenAPI spec directly from an RPC service
+func GenerateFromRPCService(service *RPCService, config *OpenAPIConfig) (*OpenAPISpec, error) {
+	generator := NewOpenAPIGenerator(config)
+	return generator.GenerateFromService(service), nil
+}
+
+// GenerateFromRPCOperation creates an OpenAPI spec from a single RPC operation
+func GenerateFromRPCOperation(operation *RPCOperation, config *OpenAPIConfig) (*OpenAPISpec, error) {
+	service := &RPCService{
+		Name:        "single-operation",
+		Version:     "1.0.0",
+		Description: "Generated from single RPC operation",
+		Operations:  []RPCOperation{*operation},
+	}
+	return GenerateFromRPCService(service, config)
 }
