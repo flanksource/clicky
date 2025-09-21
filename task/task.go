@@ -3,6 +3,7 @@ package task
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"reflect"
 	"sync"
 	"sync/atomic"
@@ -127,12 +128,6 @@ type WaitResult struct {
 	WarningCount int // Number of tasks with warnings
 }
 
-// LogEntry represents a log message from a task
-type LogEntry struct {
-	Message string
-	Time    time.Time
-	Level   logger.LogLevel
-}
 
 // RetryConfig holds configuration for task retry behavior
 type RetryConfig struct {
@@ -181,7 +176,10 @@ type Task struct {
 	resultType     reflect.Type
 
 	// Slices (24 bytes each on 64-bit)
-	logs []LogEntry
+	// logs removed - now stored only in bufferedLogger
+
+	// Logger interface implementation
+	bufferedLogger *logger.BufferedLogger
 
 	// Structs
 	mu          sync.Mutex
@@ -198,10 +196,11 @@ type Task struct {
 	completed   atomic.Bool   // Atomic flag for completion status
 
 	// Strings (16 bytes each on 64-bit)
-	name      string
-	modelName string
-	prompt    string
-	identity  string // Unique identifier for task deduplication
+	name        string
+	description string
+	modelName   string
+	prompt      string
+	identity    string // Unique identifier for task deduplication
 
 	// 4-byte types
 	progress   int
@@ -292,14 +291,7 @@ func (t *Task) signalDone() {
 
 // Debugf logs a debug message (only shown in verbose mode)
 func (t *Task) Debugf(format string, args ...interface{}) {
-	message := fmt.Sprintf(format, args...)
-	t.mu.Lock()
-	t.logs = append(t.logs, LogEntry{
-		Level:   logger.Debug,
-		Message: message,
-		Time:    time.Now(),
-	})
-	t.mu.Unlock()
+	t.getBufferedLogger().Debugf(format, args...)
 }
 
 // PopDirty checks and clears the dirty flag atomically
@@ -312,44 +304,34 @@ func (t *Task) PopDirty() bool {
 
 // Infof logs an info message (only shown in verbose mode)
 func (t *Task) Infof(format string, args ...interface{}) {
-	message := fmt.Sprintf(format, args...)
-	t.mu.Lock()
-	t.logs = append(t.logs, LogEntry{
-		Level:   logger.Info,
-		Message: message,
-		Time:    time.Now(),
-	})
-	t.mu.Unlock()
+	t.getBufferedLogger().Infof(format, args...)
 }
 
 // Errorf logs an error message
 func (t *Task) Errorf(format string, args ...interface{}) {
-	message := fmt.Sprintf(format, args...)
-	t.mu.Lock()
-	t.logs = append(t.logs, LogEntry{
-		Level:   logger.Error,
-		Message: message,
-		Time:    time.Now(),
-	})
-	t.mu.Unlock()
+	t.getBufferedLogger().Errorf(format, args...)
 }
 
 // Warnf logs a warning message
 func (t *Task) Warnf(format string, args ...interface{}) {
-	message := fmt.Sprintf(format, args...)
-	t.mu.Lock()
-	t.logs = append(t.logs, LogEntry{
-		Level:   logger.Warn,
-		Message: message,
-		Time:    time.Now(),
-	})
-	t.mu.Unlock()
+	t.getBufferedLogger().Warnf(format, args...)
 }
 
 // SetName sets the task name
 func (t *Task) SetName(name string) {
 	t.name = name
 	t.dirty.Store(true) // Mark task as modified
+}
+
+// SetDescription sets the task description
+func (t *Task) SetDescription(description string) {
+	t.description = description
+	t.dirty.Store(true) // Mark task as modified
+}
+
+// Description returns the task description
+func (t *Task) Description() string {
+	return t.description
 }
 
 // SetStatus updates the task's display name/status message
@@ -391,13 +373,8 @@ func (t *Task) Failed() *Task {
 
 // FailedWithError marks the task as failed with an error
 func (t *Task) FailedWithError(err error) (*Task, error) {
-	t.mu.Lock()
-	t.logs = append(t.logs, LogEntry{
-		Level:   logger.Error,
-		Message: err.Error(),
-		Time:    time.Now(),
-	})
-	t.mu.Unlock()
+	// Log to bufferedLogger
+	t.getBufferedLogger().Errorf("%s", err.Error())
 
 	t.SetStatus(StatusFailed)
 	return t, err
@@ -654,6 +631,9 @@ func (t *Task) Pretty() api.Text {
 		truncatedPrompt := t.prompt
 		displayName += fmt.Sprintf(" %q", truncatedPrompt)
 	}
+	if t.description != "" {
+		displayName += ": " + t.description
+	}
 
 	text.Content = fmt.Sprintf("%s %-10s", lo.Ellipsis(displayName, api.GetTerminalWidth()-10), duration)
 
@@ -674,12 +654,12 @@ func (t *Task) Pretty() api.Text {
 	text = t.status.Apply(text)
 
 	level := t.ctx.Logger.GetLevel()
-	// Add logs as children if present
-	logs := t.logs
-	if len(logs) > 5 {
-		logs = logs[len(logs)-5:]
+	// Add logs as children if present from bufferedLogger
+	bufferedLogs := t.getBufferedLogger().GetLogs()
+	if len(bufferedLogs) > 5 {
+		bufferedLogs = bufferedLogs[len(bufferedLogs)-5:]
 	}
-	for _, log := range logs {
+	for _, log := range bufferedLogs {
 		if level <= log.Level {
 			continue
 		}
@@ -701,4 +681,89 @@ func (t *Task) Pretty() api.Text {
 	}
 
 	return text
+}
+
+// Logger interface implementation methods
+
+// getBufferedLogger ensures the buffered logger is initialized
+func (t *Task) getBufferedLogger() *logger.BufferedLogger {
+	if t.bufferedLogger == nil {
+		t.bufferedLogger = logger.NewBufferedLogger(1000)
+	}
+	return t.bufferedLogger
+}
+
+// Tracef logs a trace message (implements Logger interface)
+func (t *Task) Tracef(format string, args ...interface{}) {
+	t.getBufferedLogger().Tracef(format, args...)
+}
+
+// Fatalf logs a fatal message (implements Logger interface)
+func (t *Task) Fatalf(format string, args ...interface{}) {
+	t.getBufferedLogger().Fatalf(format, args...)
+}
+
+// WithValues returns a logger with additional key-value pairs (implements Logger interface)
+func (t *Task) WithValues(keysAndValues ...interface{}) logger.Logger {
+	return t.getBufferedLogger().WithValues(keysAndValues...)
+}
+
+// IsTraceEnabled checks if trace level is enabled (implements Logger interface)
+func (t *Task) IsTraceEnabled() bool {
+	return t.getBufferedLogger().IsTraceEnabled()
+}
+
+// IsDebugEnabled checks if debug level is enabled (implements Logger interface)
+func (t *Task) IsDebugEnabled() bool {
+	return t.getBufferedLogger().IsDebugEnabled()
+}
+
+// IsLevelEnabled checks if a specific level is enabled (implements Logger interface)
+func (t *Task) IsLevelEnabled(level logger.LogLevel) bool {
+	return t.getBufferedLogger().IsLevelEnabled(level)
+}
+
+// GetLevel returns the current log level (implements Logger interface)
+func (t *Task) GetLevel() logger.LogLevel {
+	return t.getBufferedLogger().GetLevel()
+}
+
+// SetLogLevel sets the log level (implements Logger interface)
+func (t *Task) SetLogLevel(level any) {
+	t.getBufferedLogger().SetLogLevel(level)
+}
+
+// SetMinLogLevel sets the minimum log level (implements Logger interface)
+func (t *Task) SetMinLogLevel(level any) {
+	t.getBufferedLogger().SetMinLogLevel(level)
+}
+
+// V returns a verbose logger (implements Logger interface)
+func (t *Task) V(level any) logger.Verbose {
+	return t.getBufferedLogger().V(level)
+}
+
+// WithV returns a logger with verbosity level (implements Logger interface)
+func (t *Task) WithV(level any) logger.Logger {
+	return t.getBufferedLogger().WithV(level)
+}
+
+// Named returns a named logger (implements Logger interface - noop)
+func (t *Task) Named(name string) logger.Logger {
+	return t.getBufferedLogger().Named(name)
+}
+
+// WithoutName returns a logger without name (implements Logger interface - noop)
+func (t *Task) WithoutName() logger.Logger {
+	return t.getBufferedLogger().WithoutName()
+}
+
+// WithSkipReportLevel returns a logger with skip report level (implements Logger interface - noop)
+func (t *Task) WithSkipReportLevel(i int) logger.Logger {
+	return t.getBufferedLogger().WithSkipReportLevel(i)
+}
+
+// GetSlogLogger returns the slog logger (implements Logger interface - unsupported)
+func (t *Task) GetSlogLogger() *slog.Logger {
+	return t.getBufferedLogger().GetSlogLogger()
 }

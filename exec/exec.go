@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 	"time"
 
 	"github.com/flanksource/clicky/api"
@@ -154,6 +155,30 @@ func (p Process) ForceKill() error {
 		return nil
 	}
 	return p.cmd.Process.Kill()
+}
+
+// WaitForStdout waits for a specific message to appear in the process stdout
+// This is useful for waiting for server startup messages like "Server started on port"
+func (p *Process) WaitForStdout(message string, timeout time.Duration) error {
+	deadline := time.Now().Add(timeout)
+
+	for time.Now().Before(deadline) {
+		// Check if process has exited with error
+		if p.cmd != nil && p.cmd.ProcessState != nil && !p.cmd.ProcessState.Success() {
+			return fmt.Errorf("process exited with error: %v", p.Err)
+		}
+
+		// Check stdout buffer for the message
+		stdout := p.Stdout.String()
+		if strings.Contains(stdout, message) {
+			return nil
+		}
+
+		// Brief sleep to avoid busy waiting
+		time.Sleep(100 * time.Millisecond)
+	}
+
+	return fmt.Errorf("timeout waiting for message '%s' in stdout after %v", message, timeout)
 }
 
 // GetTask implements the Taskable interface
