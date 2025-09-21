@@ -5,13 +5,11 @@ import (
 	"os"
 	"time"
 
-	"github.com/muesli/termenv"
-
 	"github.com/flanksource/clicky/api"
 )
 
 func (tm *Manager) Render() {
-	output := termenv.NewOutput(os.Stderr)
+	// output := termenv.NewOutput(os.Stderr)
 	isInteractive := tm.isInteractive
 	noProgress := tm.noProgress
 
@@ -27,13 +25,22 @@ func (tm *Manager) Render() {
 	copy(taskSnapshot, tm.tasks)
 	tm.mu.RUnlock()
 
-	// Only use ANSI escape codes if we're in interactive mode
-	if !noProgress && isInteractive {
-		output.ClearScreen()
-		// Render the current state using snapshot
+	// Handle rendering based on interactive mode and progress settings
+	if isInteractive && !noProgress {
+		// Interactive mode with progress: clear screen and full redraw
+		// output.ClearScreen()
 		rendered := tm.prettyFromTasks(taskSnapshot).ANSI()
 		fmt.Fprint(os.Stderr, rendered)
+	} else if !noProgress {
+		// Non-interactive but progress enabled: print full state
+		rendered := tm.prettyFromTasks(taskSnapshot)
+		if tm.noColor {
+			fmt.Fprint(os.Stderr, rendered.String())
+		} else {
+			fmt.Fprint(os.Stderr, rendered.ANSI())
+		}
 	} else {
+		// noProgress mode: only print dirty tasks, never clear screen
 		for _, task := range taskSnapshot {
 			if task.PopDirty() {
 				if tm.noColor {

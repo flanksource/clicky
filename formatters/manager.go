@@ -18,6 +18,7 @@ type FormatManager struct {
 	htmlPDFFormatter  *HTMLPDFFormatter
 	prettyFormatter   *PrettyFormatter
 	treeFormatter     *TreeFormatter
+	excelFormatter    *ExcelFormatter
 }
 
 // NewFormatManager creates a new format manager with all formatters initialized
@@ -30,6 +31,7 @@ func NewFormatManager() *FormatManager {
 		htmlFormatter:     NewHTMLFormatter(),
 		prettyFormatter:   NewPrettyFormatter(),
 		treeFormatter:     NewTreeFormatter(api.DefaultTheme(), false, nil),
+		excelFormatter:    NewExcelFormatter(),
 	}
 }
 
@@ -99,6 +101,22 @@ func (f FormatManager) Tree(data interface{}) (string, error) {
 	return f.treeFormatter.Format(data)
 }
 
+// Excel formats data as Excel file (requires file output)
+func (f FormatManager) Excel(data interface{}) (string, error) {
+	if f.excelFormatter == nil {
+		f.excelFormatter = NewExcelFormatter()
+	}
+	return f.excelFormatter.Format(data)
+}
+
+// ExcelToFile formats data as Excel file and saves to specified path
+func (f FormatManager) ExcelToFile(data interface{}, filename string) error {
+	if f.excelFormatter == nil {
+		f.excelFormatter = NewExcelFormatter()
+	}
+	return f.excelFormatter.FormatToFile(data, filename)
+}
+
 // Format implements a generic format method that delegates to specific formatters
 func (f FormatManager) Format(format string, data interface{}) (string, error) {
 	switch format {
@@ -117,6 +135,8 @@ func (f FormatManager) Format(format string, data interface{}) (string, error) {
 			f.htmlPDFFormatter = NewHTMLPDFFormatter()
 		}
 		return f.htmlPDFFormatter.Format(data)
+	case "excel", "xlsx":
+		return f.Excel(data)
 	case "pretty":
 		return f.Pretty(data)
 	case "tree":
@@ -187,6 +207,12 @@ func (f FormatManager) FormatWithOptions(options FormatOptions, data interface{}
 		}
 		return f.treeFormatter.Format(data)
 
+	case "excel", "xlsx":
+		if f.excelFormatter == nil {
+			f.excelFormatter = NewExcelFormatter()
+		}
+		return f.excelFormatter.Format(data)
+
 	case "pretty":
 		if f.prettyFormatter == nil {
 			f.prettyFormatter = NewPrettyFormatter()
@@ -239,16 +265,12 @@ func (f FormatManager) FormatToFile(options FormatOptions, data interface{}) err
 	return nil
 }
 
-// Excel exports data to Excel format (CSV for now)
-func (f FormatManager) Excel(data interface{}, _ string) error {
-	// For now, we'll just generate CSV which can be opened in Excel
-	// Full Excel support would require a library like excelize
-	_, err := f.CSV(data)
-	if err != nil {
-		return fmt.Errorf("failed to generate Excel-compatible CSV: %w", err)
+// ExcelExport exports data to Excel format using filename
+func (f FormatManager) ExcelExport(data interface{}, filename string) error {
+	if f.excelFormatter == nil {
+		f.excelFormatter = NewExcelFormatter()
 	}
-	// Note: The actual file writing would be handled by the caller
-	return nil
+	return f.excelFormatter.FormatToFile(data, filename)
 }
 
 // Pdf exports data to PDF format

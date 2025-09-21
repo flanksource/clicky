@@ -137,19 +137,12 @@ func newManagerWithConcurrency(maxConcurrent int) *Manager {
 	taskLogger := logger.GetLogger("task")
 	verbose := taskLogger.IsLevelEnabled(3) || os.Getenv("VERBOSE") != "" || os.Getenv("DEBUG") != ""
 
-	// On debug level, progress updates should print to stderr
-	noProgress := false
-	if verbose && !isInteractive {
-		noProgress = true
-	}
-
 	tm := &Manager{
 		tasks:           make([]*Task, 0),
 		groups:          make([]*Group, 0),
 		stopRender:      make(chan bool, 1),
 		width:           width,
 		verbose:         verbose,
-		noProgress:      noProgress,
 		maxConcurrent:   maxConcurrent,
 		retryConfig:     DefaultRetryConfig(),
 		isInteractive:   isInteractive,
@@ -186,14 +179,14 @@ func newManagerWithConcurrency(maxConcurrent int) *Manager {
 	shutdown.AddHookWithPriority("TaskManager", shutdown.PriorityWorkers, func() {
 		// Cancel all running tasks
 		CancelAll()
-		
+
 		// Wait for tasks to complete with timeout
 		done := make(chan bool, 1)
 		go func() {
 			tm.wg.Wait()
 			done <- true
 		}()
-		
+
 		select {
 		case <-done:
 			fmt.Fprintf(os.Stderr, "✅ All tasks completed gracefully\n")
@@ -293,7 +286,6 @@ func (tm *Manager) newTask(name string, opts ...Option) *Task {
 		maxValue:       100,
 		startTime:      time.Now(),
 		manager:        tm,
-		logs:           make([]LogEntry, 0),
 		cancel:         cancel,
 		ctx:            flanksourceCtx,
 		flanksourceCtx: flanksourceCtx,

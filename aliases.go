@@ -20,7 +20,6 @@ type (
 	TaskFunc           = task.TaskFunc[any]
 	TaskResult         = task.TaskResult[any]
 	TypedTask          = task.TypedTask[any]
-	LogEntry           = task.LogEntry
 	RetryConfig        = task.RetryConfig
 	WaitResult         = task.WaitResult
 	Waitable           = task.Waitable

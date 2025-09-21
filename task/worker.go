@@ -9,7 +9,6 @@ import (
 	"time"
 
 	flanksourcecontext "github.com/flanksource/commons/context"
-	"github.com/flanksource/commons/logger"
 )
 
 // worker represents a worker goroutine that processes tasks
@@ -155,13 +154,8 @@ func (w *worker) executeWithRetry(task *Task) {
 
 			if shouldRetry && task.retryCount < task.retryConfig.MaxRetries {
 				task.retryCount++
-				task.mu.Lock()
-				task.logs = append(task.logs, LogEntry{
-					Level:   logger.Warn,
-					Message: fmt.Sprintf("Attempt %d failed, retrying: %v", task.retryCount, err),
-					Time:    time.Now(),
-				})
-				task.mu.Unlock()
+				// Log retry attempt to bufferedLogger
+				task.getBufferedLogger().Warnf("Attempt %d failed, retrying: %v", task.retryCount, err)
 
 				// Calculate backoff delay
 				delay := calculateBackoffDelay(task.retryCount, task.retryConfig)
@@ -177,13 +171,7 @@ func (w *worker) executeWithRetry(task *Task) {
 			} else {
 				if _, failErr := task.FailedWithError(err); failErr != nil {
 					// Log error but continue - task is already in failed state
-					task.mu.Lock()
-					task.logs = append(task.logs, LogEntry{
-						Level:   logger.Error,
-						Message: fmt.Sprintf("Failed to set error status: %v", failErr),
-						Time:    time.Now(),
-					})
-					task.mu.Unlock()
+					task.getBufferedLogger().Errorf("Failed to set error status: %v", failErr)
 				}
 				return
 			}
