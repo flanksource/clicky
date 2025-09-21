@@ -1,0 +1,474 @@
+package rpc
+
+import (
+	"context"
+	"embed"
+	"encoding/json"
+	"fmt"
+	"html/template"
+	"net/http"
+	"os/exec"
+	"runtime"
+	"strings"
+	"time"
+
+	"github.com/spf13/cobra"
+	"gopkg.in/yaml.v3"
+)
+
+//go:embed assets/*
+var assets embed.FS
+
+// ExecutorConfig holds configuration for command execution
+type ExecutorConfig struct {
+	Enabled     bool // Enable dynamic command execution
+	SkipPreRun  bool // Skip pre-run hooks during execution
+	PathPrefix  string // Path prefix for execution endpoints (defaults to /api/v1)
+}
+
+// ServeConfig holds configuration for the OpenAPI serve command
+type ServeConfig struct {
+	Host        string
+	Port        int
+	Title       string
+	Description string
+	Version     string
+	AutoRefresh bool
+	Open        bool
+	Executor    *ExecutorConfig // Optional command execution configuration
+}
+
+// SwaggerServer serves Swagger UI documentation for the OpenAPI specification
+type SwaggerServer struct {
+	config    *ServeConfig
+	rootCmd   *cobra.Command
+	generator *OpenAPIGenerator
+	server    *http.Server
+	executor  *CommandExecutor // Optional command executor
+}
+
+// TemplateData holds data for rendering the HTML template
+type TemplateData struct {
+	Title       string
+	Description string
+	Version     string
+	Timestamp   string
+	AutoRefresh bool
+}
+
+// NewSwaggerServer creates a new OpenAPI documentation server
+func NewSwaggerServer(config *ServeConfig, rootCmd *cobra.Command, openAPIConfig *OpenAPIConfig) *SwaggerServer {
+	generator := NewOpenAPIGenerator(openAPIConfig)
+
+	server := &SwaggerServer{
+		config:    config,
+		rootCmd:   rootCmd,
+		generator: generator,
+	}
+
+	// Initialize executor if enabled
+	if config.Executor != nil && config.Executor.Enabled {
+		converter := NewConverter(DefaultConfig())
+		service, err := converter.ConvertCommandTree(rootCmd)
+		if err == nil {
+			server.executor = NewCommandExecutor(service, config.Executor)
+		}
+	}
+
+	return server
+}
+
+// Start starts the HTTP server
+func (s *SwaggerServer) Start(ctx context.Context) error {
+	mux := http.NewServeMux()
+
+	// Register routes
+	mux.HandleFunc("/", s.handleSwaggerUI)
+	mux.HandleFunc("/api/openapi.json", s.handleOpenAPIJSON)
+	mux.HandleFunc("/api/openapi.yaml", s.handleOpenAPIYAML)
+	mux.HandleFunc("/health", s.handleHealth)
+
+	// Register dynamic execution routes if executor is enabled
+	if s.executor != nil {
+		s.registerExecutionRoutes(mux)
+	}
+
+	// Create server
+	addr := fmt.Sprintf("%s:%d", s.config.Host, s.config.Port)
+	s.server = &http.Server{
+		Addr:         addr,
+		Handler:      mux,
+		ReadTimeout:  30 * time.Second,
+		WriteTimeout: 30 * time.Second,
+		IdleTimeout:  60 * time.Second,
+	}
+
+	// Start server in goroutine
+	serverErr := make(chan error, 1)
+	go func() {
+		fmt.Printf("🚀 OpenAPI documentation server starting on http://%s\n", addr)
+		fmt.Printf("📖 Swagger UI available at: http://%s/\n", addr)
+		fmt.Printf("📄 OpenAPI JSON spec: http://%s/api/openapi.json\n", addr)
+		fmt.Printf("📄 OpenAPI YAML spec: http://%s/api/openapi.yaml\n", addr)
+		fmt.Printf("💊 Health check: http://%s/health\n", addr)
+		fmt.Println("Press Ctrl+C to stop the server")
+
+		if err := s.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			serverErr <- fmt.Errorf("server failed to start: %w", err)
+		}
+	}()
+
+	// Open browser if requested
+	if s.config.Open {
+		go func() {
+			time.Sleep(500 * time.Millisecond) // Give server time to start
+			url := fmt.Sprintf("http://%s", addr)
+			if err := openBrowser(url); err != nil {
+				fmt.Printf("⚠️  Failed to open browser: %v\n", err)
+				fmt.Printf("📖 Please manually open: %s\n", url)
+			} else {
+				fmt.Printf("🌐 Opening browser: %s\n", url)
+			}
+		}()
+	}
+
+	// Wait for context cancellation or server error
+	select {
+	case <-ctx.Done():
+		fmt.Println("\n🛑 Shutting down server...")
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		return s.server.Shutdown(shutdownCtx)
+	case err := <-serverErr:
+		return err
+	}
+}
+
+// handleSwaggerUI serves the Swagger UI HTML page
+func (s *SwaggerServer) handleSwaggerUI(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path != "/" {
+		http.NotFound(w, r)
+		return
+	}
+
+	// Read and parse the HTML template
+	htmlContent, err := assets.ReadFile("assets/index.html")
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to read template: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	tmpl, err := template.New("swagger").Parse(string(htmlContent))
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to parse template: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// Prepare template data
+	data := TemplateData{
+		Title:       s.config.Title,
+		Description: s.config.Description,
+		Version:     s.config.Version,
+		Timestamp:   time.Now().Format("2006-01-02 15:04:05 UTC"),
+		AutoRefresh: s.config.AutoRefresh,
+	}
+
+	// Set content type and render template
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	if err := tmpl.Execute(w, data); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to render template: %v", err), http.StatusInternalServerError)
+		return
+	}
+}
+
+// handleOpenAPIJSON serves the OpenAPI specification in JSON format
+func (s *SwaggerServer) handleOpenAPIJSON(w http.ResponseWriter, r *http.Request) {
+	spec, err := s.generator.GenerateFromCobra(s.rootCmd)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to generate OpenAPI spec: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+
+	if r.Method == "OPTIONS" {
+		return
+	}
+
+	encoder := json.NewEncoder(w)
+	encoder.SetIndent("", "  ")
+	if err := encoder.Encode(spec); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to encode JSON: %v", err), http.StatusInternalServerError)
+		return
+	}
+}
+
+// handleOpenAPIYAML serves the OpenAPI specification in YAML format
+func (s *SwaggerServer) handleOpenAPIYAML(w http.ResponseWriter, r *http.Request) {
+	spec, err := s.generator.GenerateFromCobra(s.rootCmd)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to generate OpenAPI spec: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	yamlData, err := yaml.Marshal(spec)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to marshal YAML: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/yaml")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+
+	if r.Method == "OPTIONS" {
+		return
+	}
+
+	w.Write(yamlData)
+}
+
+// handleHealth serves a simple health check endpoint
+func (s *SwaggerServer) handleHealth(w http.ResponseWriter, r *http.Request) {
+	health := map[string]interface{}{
+		"status":    "healthy",
+		"timestamp": time.Now().Format(time.RFC3339),
+		"server":    "OpenAPI Documentation Server",
+		"version":   s.config.Version,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(health)
+}
+
+// openBrowser opens the default browser to the specified URL
+func openBrowser(url string) error {
+	var cmd string
+	var args []string
+
+	switch runtime.GOOS {
+	case "windows":
+		cmd = "cmd"
+		args = []string{"/c", "start"}
+	case "darwin":
+		cmd = "open"
+	default: // "linux", "freebsd", "openbsd", "netbsd"
+		cmd = "xdg-open"
+	}
+
+	args = append(args, url)
+	return exec.Command(cmd, args...).Start()
+}
+
+// DefaultServeConfig returns default configuration for the serve command
+func DefaultServeConfig() *ServeConfig {
+	return &ServeConfig{
+		Host:        "localhost",
+		Port:        8080,
+		Title:       "CLI API",
+		Description: "Generated API documentation from CLI commands",
+		Version:     "1.0.0",
+		AutoRefresh: false,
+		Open:        false,
+	}
+}
+
+// newOpenAPIServeCommand creates the serve subcommand
+func newOpenAPIServeCommand(defaultConfig *OpenAPIConfig) *cobra.Command {
+	serveConfig := DefaultServeConfig()
+
+	cmd := &cobra.Command{
+		Use:   "serve",
+		Short: "Start an HTTP server with Swagger UI documentation",
+		Long: `Start an HTTP server that serves interactive Swagger UI documentation for the CLI.
+
+This command generates an OpenAPI specification from the current CLI command structure
+and serves it through a web interface using Swagger UI. The documentation is
+generated dynamically and reflects the current state of the CLI commands.`,
+		Example: `  myapp openapi serve
+  myapp openapi serve --port 3000 --open
+  myapp openapi serve --title "My API" --description "Custom API documentation"
+  myapp openapi serve --host 0.0.0.0 --port 8080 --auto-refresh`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			// Get the root command to convert
+			rootCmd := cmd.Root()
+
+			// Validate configuration
+			if serveConfig.Port < 1 || serveConfig.Port > 65535 {
+				return fmt.Errorf("invalid port number: %d (must be between 1 and 65535)", serveConfig.Port)
+			}
+
+			if strings.TrimSpace(serveConfig.Host) == "" {
+				return fmt.Errorf("host cannot be empty")
+			}
+
+			// Create OpenAPI config from serve config and defaults
+			openAPIConfig := &OpenAPIConfig{
+				Title:       serveConfig.Title,
+				Description: serveConfig.Description,
+				Version:     serveConfig.Version,
+			}
+
+			// Apply defaults if provided
+			if defaultConfig != nil {
+				if defaultConfig.Contact != nil {
+					openAPIConfig.Contact = defaultConfig.Contact
+				}
+				if defaultConfig.License != nil {
+					openAPIConfig.License = defaultConfig.License
+				}
+				if len(defaultConfig.Servers) > 0 {
+					openAPIConfig.Servers = defaultConfig.Servers
+				}
+				if len(defaultConfig.Tags) > 0 {
+					openAPIConfig.Tags = defaultConfig.Tags
+				}
+			}
+
+			// Create and start the server
+			server := NewSwaggerServer(serveConfig, rootCmd, openAPIConfig)
+			return server.Start(cmd.Context())
+		},
+	}
+
+	// Add flags
+	cmd.Flags().StringVar(&serveConfig.Host, "host", serveConfig.Host, "Host to bind the server to")
+	cmd.Flags().IntVarP(&serveConfig.Port, "port", "p", serveConfig.Port, "Port to bind the server to")
+	cmd.Flags().StringVar(&serveConfig.Title, "title", serveConfig.Title, "API documentation title")
+	cmd.Flags().StringVar(&serveConfig.Description, "description", serveConfig.Description, "API documentation description")
+	cmd.Flags().StringVar(&serveConfig.Version, "version", serveConfig.Version, "API version")
+	cmd.Flags().BoolVar(&serveConfig.AutoRefresh, "auto-refresh", serveConfig.AutoRefresh, "Enable auto-refresh of documentation")
+	cmd.Flags().BoolVar(&serveConfig.Open, "open", serveConfig.Open, "Automatically open browser")
+
+	// Add executor flags
+	var enableExecutor bool
+	var skipPreRun bool
+	cmd.Flags().BoolVar(&enableExecutor, "enable-executor", false, "Enable dynamic command execution via HTTP endpoints")
+	cmd.Flags().BoolVar(&skipPreRun, "skip-pre-run", true, "Skip pre-run hooks during command execution")
+
+	// Set up executor config when flags are parsed
+	cmd.PreRunE = func(cmd *cobra.Command, args []string) error {
+		if enableExecutor {
+			serveConfig.Executor = &ExecutorConfig{
+				Enabled:    enableExecutor,
+				SkipPreRun: skipPreRun,
+				PathPrefix: "/api/v1",
+			}
+		}
+		return nil
+	}
+
+	return cmd
+}
+
+// registerExecutionRoutes registers dynamic command execution routes based on the RPC service
+func (s *SwaggerServer) registerExecutionRoutes(mux *http.ServeMux) {
+	if s.executor == nil || s.executor.service == nil {
+		return
+	}
+
+	// Register a route for each operation
+	for _, op := range s.executor.service.Operations {
+		path := op.Path
+		method := strings.ToUpper(op.Method)
+
+		// Register the route with a method-specific handler
+		switch method {
+		case "GET":
+			mux.HandleFunc(path, s.handleExecuteGET)
+		case "POST":
+			mux.HandleFunc(path, s.handleExecutePOST)
+		case "PUT":
+			mux.HandleFunc(path, s.handleExecutePUT)
+		case "DELETE":
+			mux.HandleFunc(path, s.handleExecuteDELETE)
+		}
+	}
+}
+
+// handleExecuteGET handles GET requests for command execution
+func (s *SwaggerServer) handleExecuteGET(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "GET" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	s.handleExecuteCommand(w, r)
+}
+
+// handleExecutePOST handles POST requests for command execution
+func (s *SwaggerServer) handleExecutePOST(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "POST" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	s.handleExecuteCommand(w, r)
+}
+
+// handleExecutePUT handles PUT requests for command execution
+func (s *SwaggerServer) handleExecutePUT(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "PUT" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	s.handleExecuteCommand(w, r)
+}
+
+// handleExecuteDELETE handles DELETE requests for command execution
+func (s *SwaggerServer) handleExecuteDELETE(w http.ResponseWriter, r *http.Request) {
+	if r.Method != "DELETE" {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	s.handleExecuteCommand(w, r)
+}
+
+// handleExecuteCommand is the main handler for command execution
+func (s *SwaggerServer) handleExecuteCommand(w http.ResponseWriter, r *http.Request) {
+	// Set CORS headers
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+
+	if r.Method == "OPTIONS" {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	// Find the operation for this path and method
+	op := s.executor.FindOperation(r.Method, r.URL.Path)
+	if op == nil {
+		http.Error(w, fmt.Sprintf("No operation found for %s %s", r.Method, r.URL.Path), http.StatusNotFound)
+		return
+	}
+
+	// Extract request parameters
+	req, err := s.executor.ExtractRequestFromHTTP(r, op)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to extract parameters: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	// Validate parameters
+	if err := s.executor.ValidateParameters(req, op); err != nil {
+		http.Error(w, fmt.Sprintf("Parameter validation failed: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	// Execute the command
+	resp, err := s.executor.ExecuteCommand(op, req)
+	if err != nil {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(resp)
+		return
+	}
+
+	// Return successful response
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(resp)
+}

@@ -5,6 +5,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/flanksource/clicky/extensions"
 	"github.com/flanksource/clicky/mcp"
 	"github.com/spf13/cobra"
 )
@@ -23,8 +24,17 @@ func main() {
 	rootCmd.AddCommand(newCalculateCommand())
 	rootCmd.AddCommand(newFormatCommand())
 
-	// Add MCP command to expose your CLI as an MCP server
+	// Option 1: Add MCP command directly (traditional way)
 	rootCmd.AddCommand(mcp.NewCommand())
+
+	// Option 2: Add both OpenAPI and MCP using fluent API (recommended)
+	// extensions.CobraExtensions(rootCmd).All()
+
+	// Option 3: Add just MCP using fluent API
+	// extensions.CobraExtensions(rootCmd).MCPCommand()
+
+	// Option 4: Add just OpenAPI using fluent API
+	// extensions.CobraExtensions(rootCmd).OpenAPICommand()
 
 	// Execute
 	if err := rootCmd.Execute(); err != nil {

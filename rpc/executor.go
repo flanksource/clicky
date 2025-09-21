@@ -1,0 +1,385 @@
+package rpc
+
+import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"os"
+	"os/exec"
+	"strconv"
+	"strings"
+	"sync"
+	"syscall"
+
+	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
+)
+
+// CommandExecutor handles dynamic execution of Cobra commands via HTTP requests
+type CommandExecutor struct {
+	service    *RPCService                // Pre-converted command tree
+	operations map[string]*RPCOperation   // path+method -> operation lookup
+	config     *ExecutorConfig           // Execution configuration
+	mutex      sync.Mutex                // Protects global stdout/stderr replacement
+}
+
+// ExecutionRequest represents parameters for command execution
+type ExecutionRequest struct {
+	Args   []string          `json:"args,omitempty"`   // Positional arguments
+	Flags  map[string]string `json:"flags,omitempty"`  // Flag values
+}
+
+// ExecutionResponse represents the result of command execution
+type ExecutionResponse struct {
+	Success  bool   `json:"success"`
+	Message  string `json:"message,omitempty"`
+	Output   string `json:"output,omitempty"`   // Combined stdout+stderr for backward compatibility
+	Stdout   string `json:"stdout,omitempty"`   // Standard output only
+	Stderr   string `json:"stderr,omitempty"`   // Standard error only
+	ExitCode int    `json:"exit_code"`          // Command exit code (0 = success)
+	Error    string `json:"error,omitempty"`    // Error description
+}
+
+// NewCommandExecutor creates a new command executor
+func NewCommandExecutor(service *RPCService, config *ExecutorConfig) *CommandExecutor {
+	if config == nil {
+		config = &ExecutorConfig{
+			Enabled:    false,
+			SkipPreRun: true,
+			PathPrefix: "/api/v1",
+		}
+	}
+
+	// Build operation lookup map
+	operations := make(map[string]*RPCOperation)
+	for i := range service.Operations {
+		op := &service.Operations[i]
+		// Create lookup key: method:path
+		key := strings.ToUpper(op.Method) + ":" + op.Path
+		operations[key] = op
+	}
+
+	return &CommandExecutor{
+		service:    service,
+		operations: operations,
+		config:     config,
+	}
+}
+
+// FindOperation finds an RPC operation by HTTP method and path
+func (e *CommandExecutor) FindOperation(method, path string) *RPCOperation {
+	key := strings.ToUpper(method) + ":" + path
+	return e.operations[key]
+}
+
+// ExecuteCommand executes a Cobra command with the given parameters
+func (e *CommandExecutor) ExecuteCommand(op *RPCOperation, req *ExecutionRequest) (*ExecutionResponse, error) {
+	if !e.config.Enabled {
+		return &ExecutionResponse{
+			Success: false,
+			Error:   "Command execution is disabled",
+		}, fmt.Errorf("command execution is disabled")
+	}
+
+	cmd := op.Command
+	if cmd == nil {
+		return &ExecutionResponse{
+			Success: false,
+			Error:   "No command associated with operation",
+		}, fmt.Errorf("no command found for operation %s", op.Name)
+	}
+
+	// Store original hooks if we need to skip pre-runs
+	var (
+		origPreRun           func(*cobra.Command, []string)
+		origPreRunE          func(*cobra.Command, []string) error
+		origPersistentPreRun func(*cobra.Command, []string)
+		origPersistentPreRunE func(*cobra.Command, []string) error
+	)
+
+	if e.config.SkipPreRun {
+		origPreRun = cmd.PreRun
+		origPreRunE = cmd.PreRunE
+		origPersistentPreRun = cmd.PersistentPreRun
+		origPersistentPreRunE = cmd.PersistentPreRunE
+
+		// Clear pre-run hooks
+		cmd.PreRun = nil
+		cmd.PreRunE = nil
+		cmd.PersistentPreRun = nil
+		cmd.PersistentPreRunE = nil
+	}
+
+	// Restore hooks after execution
+	defer func() {
+		if e.config.SkipPreRun {
+			cmd.PreRun = origPreRun
+			cmd.PreRunE = origPreRunE
+			cmd.PersistentPreRun = origPersistentPreRun
+			cmd.PersistentPreRunE = origPersistentPreRunE
+		}
+	}()
+
+	// Set flags from request
+	if req.Flags != nil {
+		for flagName, flagValue := range req.Flags {
+			if flag := cmd.Flags().Lookup(flagName); flag != nil {
+				if err := flag.Value.Set(flagValue); err != nil {
+					return &ExecutionResponse{
+						Success: false,
+						Error:   fmt.Sprintf("Invalid value for flag %s: %v", flagName, err),
+					}, err
+				}
+			}
+		}
+	}
+
+	// Create a new command instance to avoid modifying the original
+	execCmd := &cobra.Command{
+		Use:   cmd.Use,
+		Short: cmd.Short,
+		Long:  cmd.Long,
+		Run:   cmd.Run,
+		RunE:  cmd.RunE,
+		Args:  cmd.Args,
+	}
+
+	// Copy flags to the execution command
+	cmd.Flags().VisitAll(func(flag *pflag.Flag) {
+		execCmd.Flags().AddFlag(flag)
+	})
+
+	// Set arguments
+	args := []string{}
+	if req.Args != nil {
+		args = req.Args
+	}
+
+	// Execute with global output capture
+	stdoutStr, stderrStr, err := e.executeWithGlobalCapture(execCmd, args)
+
+	// Extract exit code
+	exitCode := extractExitCode(err)
+
+	// Combine stdout and stderr for backward compatibility
+	combinedOutput := stdoutStr + stderrStr
+
+	// Build response with captured output
+	response := &ExecutionResponse{
+		Success:  err == nil,
+		Stdout:   stdoutStr,
+		Stderr:   stderrStr,
+		Output:   combinedOutput,
+		ExitCode: exitCode,
+	}
+
+	if err != nil {
+		response.Error = err.Error()
+		response.Message = "Command execution failed"
+		return response, err
+	}
+
+	response.Message = "Command executed successfully"
+	return response, nil
+}
+
+// executeWithGlobalCapture executes a command while capturing ALL output including direct os.Stdout/os.Stderr writes
+func (e *CommandExecutor) executeWithGlobalCapture(execCmd *cobra.Command, args []string) (stdout, stderr string, err error) {
+	// Use mutex to ensure thread safety when replacing global file descriptors
+	e.mutex.Lock()
+	defer e.mutex.Unlock()
+
+	// Create capture buffers
+	var stdoutBuf, stderrBuf bytes.Buffer
+
+	// Store original file descriptors
+	originalStdout := os.Stdout
+	originalStderr := os.Stderr
+	originalArgs := os.Args
+
+	// Ensure restoration even on panic
+	defer func() {
+		os.Stdout = originalStdout
+		os.Stderr = originalStderr
+		os.Args = originalArgs
+	}()
+
+	// Create pipes for capturing output
+	stdoutReader, stdoutWriter, err := os.Pipe()
+	if err != nil {
+		return "", "", fmt.Errorf("failed to create stdout pipe: %w", err)
+	}
+	defer stdoutReader.Close()
+
+	stderrReader, stderrWriter, err := os.Pipe()
+	if err != nil {
+		stdoutWriter.Close()
+		return "", "", fmt.Errorf("failed to create stderr pipe: %w", err)
+	}
+	defer stderrReader.Close()
+
+	// Replace global stdout/stderr
+	os.Stdout = stdoutWriter
+	os.Stderr = stderrWriter
+
+	// Also set cobra command outputs to use the same writers
+	execCmd.SetOut(stdoutWriter)
+	execCmd.SetErr(stderrWriter)
+
+	// Start goroutines to copy from pipes to buffers
+	var wg sync.WaitGroup
+	wg.Add(2)
+
+	go func() {
+		defer wg.Done()
+		io.Copy(&stdoutBuf, stdoutReader)
+	}()
+
+	go func() {
+		defer wg.Done()
+		io.Copy(&stderrBuf, stderrReader)
+	}()
+
+	// Execute the command
+	execCmd.SetArgs(args)
+	cmdErr := execCmd.Execute()
+
+	// Close writers to signal end of output and flush remaining data
+	stdoutWriter.Close()
+	stderrWriter.Close()
+
+	// Wait for all output to be copied
+	wg.Wait()
+
+	return stdoutBuf.String(), stderrBuf.String(), cmdErr
+}
+
+// ExtractRequestFromHTTP extracts execution parameters from HTTP request
+func (e *CommandExecutor) ExtractRequestFromHTTP(r *http.Request, op *RPCOperation) (*ExecutionRequest, error) {
+	req := &ExecutionRequest{
+		Flags: make(map[string]string),
+	}
+
+	// Extract query parameters
+	for _, param := range op.Parameters {
+		if param.In == "query" {
+			value := r.URL.Query().Get(param.Name)
+			if value != "" {
+				req.Flags[param.Name] = value
+			} else if param.Required {
+				return nil, fmt.Errorf("required parameter %s is missing", param.Name)
+			}
+		}
+	}
+
+	// Extract JSON body for POST/PUT requests
+	if r.Method == "POST" || r.Method == "PUT" {
+		if r.Header.Get("Content-Type") == "application/json" {
+			var bodyReq ExecutionRequest
+			if err := json.NewDecoder(r.Body).Decode(&bodyReq); err != nil {
+				return nil, fmt.Errorf("failed to parse JSON body: %w", err)
+			}
+
+			// Merge body parameters
+			if bodyReq.Args != nil {
+				req.Args = bodyReq.Args
+			}
+			if bodyReq.Flags != nil {
+				for k, v := range bodyReq.Flags {
+					req.Flags[k] = v
+				}
+			}
+		}
+	}
+
+	// Validate required parameters
+	for _, param := range op.Parameters {
+		if param.Required {
+			if param.Name == "args" && len(req.Args) == 0 {
+				return nil, fmt.Errorf("required parameter %s is missing", param.Name)
+			}
+			if _, exists := req.Flags[param.Name]; !exists && param.Name != "args" {
+				return nil, fmt.Errorf("required parameter %s is missing", param.Name)
+			}
+		}
+	}
+
+	return req, nil
+}
+
+// ValidateParameters validates request parameters against operation schema
+func (e *CommandExecutor) ValidateParameters(req *ExecutionRequest, op *RPCOperation) error {
+	for _, param := range op.Parameters {
+		if param.Required {
+			if param.Name == "args" {
+				if len(req.Args) == 0 {
+					return fmt.Errorf("required parameter %s is missing", param.Name)
+				}
+				continue
+			}
+
+			if _, exists := req.Flags[param.Name]; !exists {
+				return fmt.Errorf("required parameter %s is missing", param.Name)
+			}
+		}
+
+		// Type validation for flags
+		if value, exists := req.Flags[param.Name]; exists {
+			if err := e.validateParameterType(value, param.Type); err != nil {
+				return fmt.Errorf("invalid type for parameter %s: %w", param.Name, err)
+			}
+		}
+	}
+
+	return nil
+}
+
+// validateParameterType validates a parameter value against its expected type
+func (e *CommandExecutor) validateParameterType(value, paramType string) error {
+	switch paramType {
+	case "boolean":
+		if _, err := strconv.ParseBool(value); err != nil {
+			return fmt.Errorf("expected boolean, got %s", value)
+		}
+	case "integer":
+		if _, err := strconv.Atoi(value); err != nil {
+			return fmt.Errorf("expected integer, got %s", value)
+		}
+	case "number":
+		if _, err := strconv.ParseFloat(value, 64); err != nil {
+			return fmt.Errorf("expected number, got %s", value)
+		}
+	case "string":
+		// Strings are always valid
+	case "array":
+		// For arrays, we expect JSON array format or comma-separated values
+		// This is a simple validation - could be enhanced
+		if !strings.HasPrefix(value, "[") && !strings.Contains(value, ",") {
+			// Single value arrays are acceptable
+		}
+	default:
+		// Unknown types are treated as strings
+	}
+
+	return nil
+}
+
+// extractExitCode extracts the exit code from a command execution error
+func extractExitCode(err error) int {
+	if err == nil {
+		return 0
+	}
+
+	// Try to extract exit code from exec.ExitError
+	if exitError, ok := err.(*exec.ExitError); ok {
+		if status, ok := exitError.Sys().(syscall.WaitStatus); ok {
+			return status.ExitStatus()
+		}
+	}
+
+	// For cobra command errors, we don't have a direct exit code
+	// Return 1 as a generic error code
+	return 1
+}

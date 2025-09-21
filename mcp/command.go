@@ -24,7 +24,21 @@ type CommandOptions struct {
 
 // NewCommand creates the MCP command group that can be added to any cobra CLI
 func NewCommand() *cobra.Command {
+	return NewCommandWithConfig(nil)
+}
+
+// NewCommandWithConfig creates the MCP command group with custom configuration
+func NewCommandWithConfig(config *Config) *cobra.Command {
 	opts := &CommandOptions{}
+
+	// Apply config defaults if provided
+	if config != nil {
+		opts.ConfigPath = ""  // Will be overridden by config file
+		opts.AutoExpose = config.Tools.AutoExpose
+		opts.Transport = config.Transport.Type
+		opts.Address = config.Transport.Address
+		opts.Port = config.Transport.Port
+	}
 
 	mcpCmd := &cobra.Command{
 		Use:   "mcp",
