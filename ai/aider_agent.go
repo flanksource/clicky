@@ -75,7 +75,7 @@ func (aa *AiderAgent) ListModels(ctx context.Context) ([]Model, error) {
 func (aa *AiderAgent) ExecutePrompt(ctx context.Context, request PromptRequest) (*PromptResponse, error) {
 	var response *PromptResponse
 
-	task := clicky.StartTask(request.Name, 
+	task := clicky.StartTask(request.Name,
 		func(ctx flanksourcecontext.Context, t *clicky.Task) (interface{}, error) {
 			t.Infof("Starting Aider request")
 			// Start with unknown progress (infinite spinner)

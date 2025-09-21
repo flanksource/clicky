@@ -75,7 +75,7 @@ func TestParseTailwindColor(t *testing.T) {
 				t.Errorf("ParseTailwindColor(%q) error = %v, wantError %v", tt.input, err, tt.wantError)
 				return
 			}
-			
+
 			// For adaptive colors, just verify valid output format
 			if !tt.wantError {
 				// Special colors should remain unchanged
@@ -311,11 +311,11 @@ func TestAdaptColorForBackground(t *testing.T) {
 		{"empty", "", false, ""},
 
 		// Very dark colors on dark background - should be lightened
-		{"black on dark", "#000000", true, "#999999"}, // Will be adapted to lighter
+		{"black on dark", "#000000", true, "#999999"},     // Will be adapted to lighter
 		{"dark gray on dark", "#111827", true, "#9ca3af"}, // gray-900 -> lighter
-		
+
 		// Very light colors on light background - should be darkened
-		{"white on light", "#ffffff", false, "#404040"}, // Will be adapted to darker
+		{"white on light", "#ffffff", false, "#404040"},      // Will be adapted to darker
 		{"light gray on light", "#f9fafb", false, "#4b5563"}, // gray-50 -> darker
 
 		// Mid-range colors - should remain unchanged
@@ -332,7 +332,7 @@ func TestAdaptColorForBackground(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := adaptColorForBackground(tt.hexColor, tt.isDark)
-			
+
 			// For special cases, expect exact match
 			if tt.hexColor == "transparent" || tt.hexColor == "currentColor" || tt.hexColor == "" {
 				if result != tt.expected {
@@ -376,10 +376,10 @@ func TestColorHelperFunctions(t *testing.T) {
 			{"#0000ff", 0, 0, 255, false},
 			{"#ffffff", 255, 255, 255, false},
 			{"#000000", 0, 0, 0, false},
-			{"ff0000", 255, 0, 0, false}, // Without #
+			{"ff0000", 255, 0, 0, false},    // Without #
 			{"#ef4444", 239, 68, 68, false}, // red-500
-			{"invalid", 0, 0, 0, true}, // Invalid hex
-			{"#ff", 0, 0, 0, true},     // Too short
+			{"invalid", 0, 0, 0, true},      // Invalid hex
+			{"#ff", 0, 0, 0, true},          // Too short
 		}
 
 		for _, tt := range tests {
@@ -390,7 +390,7 @@ func TestColorHelperFunctions(t *testing.T) {
 			}
 			if !tt.shouldError {
 				if r != tt.expectedR || g != tt.expectedG || b != tt.expectedB {
-					t.Errorf("hexToRGB(%q) = (%d, %d, %d), want (%d, %d, %d)", 
+					t.Errorf("hexToRGB(%q) = (%d, %d, %d), want (%d, %d, %d)",
 						tt.hex, r, g, b, tt.expectedR, tt.expectedG, tt.expectedB)
 				}
 			}
@@ -407,7 +407,7 @@ func TestColorHelperFunctions(t *testing.T) {
 			{0, 0, 255, "#0000ff"},
 			{255, 255, 255, "#ffffff"},
 			{0, 0, 0, "#000000"},
-			{239, 68, 68, "#ef4444"}, // red-500
+			{239, 68, 68, "#ef4444"},   // red-500
 			{300, -10, 500, "#ff00ff"}, // Clamped values
 		}
 
@@ -421,13 +421,13 @@ func TestColorHelperFunctions(t *testing.T) {
 
 	t.Run("calculateLuminance", func(t *testing.T) {
 		tests := []struct {
-			r, g, b  int
-			expected float64
+			r, g, b   int
+			expected  float64
 			tolerance float64
 		}{
-			{0, 0, 0, 0.0, 0.001},         // Black
-			{255, 255, 255, 1.0, 0.001},   // White
-			{128, 128, 128, 0.215, 0.01},  // Middle gray
+			{0, 0, 0, 0.0, 0.001},        // Black
+			{255, 255, 255, 1.0, 0.001},  // White
+			{128, 128, 128, 0.215, 0.01}, // Middle gray
 		}
 
 		for _, tt := range tests {
@@ -437,7 +437,7 @@ func TestColorHelperFunctions(t *testing.T) {
 				diff = -diff
 			}
 			if diff > tt.tolerance {
-				t.Errorf("calculateLuminance(%d, %d, %d) = %f, want %f (±%f)", 
+				t.Errorf("calculateLuminance(%d, %d, %d) = %f, want %f (±%f)",
 					tt.r, tt.g, tt.b, result, tt.expected, tt.tolerance)
 			}
 		}
@@ -447,13 +447,13 @@ func TestColorHelperFunctions(t *testing.T) {
 		tests := []struct {
 			r, g, b int
 		}{
-			{255, 0, 0},   // Red
-			{0, 255, 0},   // Green
-			{0, 0, 255},   // Blue
+			{255, 0, 0},     // Red
+			{0, 255, 0},     // Green
+			{0, 0, 255},     // Blue
 			{255, 255, 255}, // White
-			{0, 0, 0},     // Black
+			{0, 0, 0},       // Black
 			{128, 128, 128}, // Gray
-			{239, 68, 68}, // red-500
+			{239, 68, 68},   // red-500
 		}
 
 		for _, tt := range tests {
@@ -463,7 +463,7 @@ func TestColorHelperFunctions(t *testing.T) {
 
 			// Allow for small rounding errors
 			if abs(backR-tt.r) > 1 || abs(backG-tt.g) > 1 || abs(backB-tt.b) > 1 {
-				t.Errorf("RGB->HSL->RGB: (%d,%d,%d) -> (%.3f,%.3f,%.3f) -> (%d,%d,%d)", 
+				t.Errorf("RGB->HSL->RGB: (%d,%d,%d) -> (%.3f,%.3f,%.3f) -> (%d,%d,%d)",
 					tt.r, tt.g, tt.b, h, s, l, backR, backG, backB)
 			}
 		}

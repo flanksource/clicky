@@ -422,7 +422,7 @@ func TestHTMLTableColumnLabels(t *testing.T) {
 
 	// Test HTML formatter in PDF mode for static table headers
 	htmlFormatter := NewHTMLFormatter()
-	htmlFormatter.IsPDFMode = true  // Use static HTML tables for testing headers
+	htmlFormatter.IsPDFMode = true // Use static HTML tables for testing headers
 	htmlOutput, err := htmlFormatter.FormatPrettyData(prettyData)
 	if err != nil {
 		t.Fatalf("Failed to format HTML: %v", err)
@@ -486,8 +486,8 @@ func TestHTMLTableMixedLabels(t *testing.T) {
 				Format: api.FormatTable,
 				TableOptions: api.PrettyTable{
 					Fields: []api.PrettyField{
-						{Name: "id", Label: "Item ID", Type: "string"},     // Has Label
-						{Name: "name", Type: "string"},                     // No Label - should use Name
+						{Name: "id", Label: "Item ID", Type: "string"},            // Has Label
+						{Name: "name", Type: "string"},                            // No Label - should use Name
 						{Name: "status", Label: "Current Status", Type: "string"}, // Has Label
 					},
 				},
@@ -507,7 +507,7 @@ func TestHTMLTableMixedLabels(t *testing.T) {
 
 	// Test with PDF mode to check static HTML table headers
 	htmlFormatter := NewHTMLFormatter()
-	htmlFormatter.IsPDFMode = true  // Use static HTML tables for testing headers
+	htmlFormatter.IsPDFMode = true // Use static HTML tables for testing headers
 	htmlOutput, err := htmlFormatter.FormatPrettyData(prettyData)
 	if err != nil {
 		t.Fatalf("Failed to format HTML: %v", err)

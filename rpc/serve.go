@@ -21,9 +21,9 @@ var assets embed.FS
 
 // ExecutorConfig holds configuration for command execution
 type ExecutorConfig struct {
-	Enabled     bool // Enable dynamic command execution
-	SkipPreRun  bool // Skip pre-run hooks during execution
-	PathPrefix  string // Path prefix for execution endpoints (defaults to /api/v1)
+	Enabled    bool   // Enable dynamic command execution
+	SkipPreRun bool   // Skip pre-run hooks during execution
+	PathPrefix string // Path prefix for execution endpoints (defaults to /api/v1)
 }
 
 // ServeConfig holds configuration for the OpenAPI serve command
@@ -448,13 +448,29 @@ func (s *SwaggerServer) handleExecuteCommand(w http.ResponseWriter, r *http.Requ
 	// Extract request parameters
 	req, err := s.executor.ExtractRequestFromHTTP(r, op)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to extract parameters: %v", err), http.StatusBadRequest)
+		// Return structured error response with partial input if available
+		errorResp := &ExecutionResponse{
+			Success: false,
+			Error:   fmt.Sprintf("Failed to extract parameters: %v", err),
+			Input:   req, // May be nil or partial if extraction failed
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(errorResp)
 		return
 	}
 
 	// Validate parameters
 	if err := s.executor.ValidateParameters(req, op); err != nil {
-		http.Error(w, fmt.Sprintf("Parameter validation failed: %v", err), http.StatusBadRequest)
+		// Return structured error response with processed input for debugging
+		errorResp := &ExecutionResponse{
+			Success: false,
+			Error:   fmt.Sprintf("Parameter validation failed: %v", err),
+			Input:   req, // Include processed parameters for debugging
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(errorResp)
 		return
 	}
 

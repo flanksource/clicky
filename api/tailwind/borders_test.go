@@ -228,7 +228,7 @@ func TestHelperFunctions(t *testing.T) {
 	t.Run("NewSolidBorder", func(t *testing.T) {
 		color := BorderColor{Hex: "#ff0000"}
 		borders := NewSolidBorder(2.0, color)
-		
+
 		expected := Line{Width: 2.0, Style: Solid, Color: color}
 		checkLine(t, "Top", borders.Top, expected)
 		checkLine(t, "Right", borders.Right, expected)
@@ -239,7 +239,7 @@ func TestHelperFunctions(t *testing.T) {
 	t.Run("NewDashedBorder", func(t *testing.T) {
 		color := BorderColor{Hex: "#00ff00"}
 		borders := NewDashedBorder(1.0, color)
-		
+
 		expected := Line{Width: 1.0, Style: Dashed, Color: color}
 		checkLine(t, "Top", borders.Top, expected)
 		checkLine(t, "Right", borders.Right, expected)
@@ -250,10 +250,10 @@ func TestHelperFunctions(t *testing.T) {
 	t.Run("NewTopBottomBorder", func(t *testing.T) {
 		color := BorderColor{Hex: "#0000ff"}
 		borders := NewTopBottomBorder(3.0, color, Dotted)
-		
+
 		expectedActive := Line{Width: 3.0, Style: Dotted, Color: color}
 		expectedInactive := Line{Width: 0}
-		
+
 		checkLine(t, "Top", borders.Top, expectedActive)
 		checkLine(t, "Right", borders.Right, expectedInactive)
 		checkLine(t, "Bottom", borders.Bottom, expectedActive)
@@ -263,10 +263,10 @@ func TestHelperFunctions(t *testing.T) {
 	t.Run("NewLeftRightBorder", func(t *testing.T) {
 		color := BorderColor{Hex: "#ff00ff"}
 		borders := NewLeftRightBorder(2.5, color, Double)
-		
+
 		expectedActive := Line{Width: 2.5, Style: Double, Color: color}
 		expectedInactive := Line{Width: 0}
-		
+
 		checkLine(t, "Top", borders.Top, expectedInactive)
 		checkLine(t, "Right", borders.Right, expectedActive)
 		checkLine(t, "Bottom", borders.Bottom, expectedInactive)

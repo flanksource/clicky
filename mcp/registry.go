@@ -180,7 +180,6 @@ func (r *ToolRegistry) shouldExposeCommand(cmd *cobra.Command) bool {
 	return false
 }
 
-
 // getCommandPath returns the full command path (e.g., "status", "ai cache")
 func getCommandPath(cmd *cobra.Command) string {
 	if cmd.Parent() == nil {

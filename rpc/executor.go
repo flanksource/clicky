@@ -19,27 +19,29 @@ import (
 
 // CommandExecutor handles dynamic execution of Cobra commands via HTTP requests
 type CommandExecutor struct {
-	service    *RPCService                // Pre-converted command tree
-	operations map[string]*RPCOperation   // path+method -> operation lookup
-	config     *ExecutorConfig           // Execution configuration
-	mutex      sync.Mutex                // Protects global stdout/stderr replacement
+	service    *RPCService              // Pre-converted command tree
+	operations map[string]*RPCOperation // path+method -> operation lookup
+	config     *ExecutorConfig          // Execution configuration
+	mutex      sync.Mutex               // Protects global stdout/stderr replacement
 }
 
 // ExecutionRequest represents parameters for command execution
 type ExecutionRequest struct {
-	Args   []string          `json:"args,omitempty"`   // Positional arguments
-	Flags  map[string]string `json:"flags,omitempty"`  // Flag values
+	Args  []string          `json:"args,omitempty"`  // Positional arguments
+	Flags map[string]string `json:"flags,omitempty"` // Flag values
 }
 
 // ExecutionResponse represents the result of command execution
 type ExecutionResponse struct {
-	Success  bool   `json:"success"`
-	Message  string `json:"message,omitempty"`
-	Output   string `json:"output,omitempty"`   // Combined stdout+stderr for backward compatibility
-	Stdout   string `json:"stdout,omitempty"`   // Standard output only
-	Stderr   string `json:"stderr,omitempty"`   // Standard error only
-	ExitCode int    `json:"exit_code"`          // Command exit code (0 = success)
-	Error    string `json:"error,omitempty"`    // Error description
+	Success  bool              `json:"success"`
+	Message  string            `json:"message,omitempty"`
+	Output   string            `json:"output,omitempty"` // Combined stdout+stderr for backward compatibility
+	Stdout   string            `json:"stdout,omitempty"` // Standard output only
+	Stderr   string            `json:"stderr,omitempty"` // Standard error only
+	ExitCode int               `json:"exit_code"`        // Command exit code (0 = success)
+	Error    string            `json:"error,omitempty"`  // Error description
+	Input    *ExecutionRequest `json:"input,omitempty"`  // Processed input parameters (included on errors for debugging)
+	CLI      string            `json:"cli,omitempty"`    // Equivalent CLI command to reproduce this execution
 }
 
 // NewCommandExecutor creates a new command executor
@@ -80,6 +82,8 @@ func (e *CommandExecutor) ExecuteCommand(op *RPCOperation, req *ExecutionRequest
 		return &ExecutionResponse{
 			Success: false,
 			Error:   "Command execution is disabled",
+			Input:   req, // Include input for debugging
+			CLI:     buildCLICommand(op, req), // Include CLI command for debugging
 		}, fmt.Errorf("command execution is disabled")
 	}
 
@@ -88,14 +92,16 @@ func (e *CommandExecutor) ExecuteCommand(op *RPCOperation, req *ExecutionRequest
 		return &ExecutionResponse{
 			Success: false,
 			Error:   "No command associated with operation",
+			Input:   req, // Include input for debugging
+			CLI:     buildCLICommand(op, req), // Include CLI command for debugging
 		}, fmt.Errorf("no command found for operation %s", op.Name)
 	}
 
 	// Store original hooks if we need to skip pre-runs
 	var (
-		origPreRun           func(*cobra.Command, []string)
-		origPreRunE          func(*cobra.Command, []string) error
-		origPersistentPreRun func(*cobra.Command, []string)
+		origPreRun            func(*cobra.Command, []string)
+		origPreRunE           func(*cobra.Command, []string) error
+		origPersistentPreRun  func(*cobra.Command, []string)
 		origPersistentPreRunE func(*cobra.Command, []string) error
 	)
 
@@ -130,8 +136,12 @@ func (e *CommandExecutor) ExecuteCommand(op *RPCOperation, req *ExecutionRequest
 					return &ExecutionResponse{
 						Success: false,
 						Error:   fmt.Sprintf("Invalid value for flag %s: %v", flagName, err),
+						Input:   req, // Include input for debugging
+						CLI:     buildCLICommand(op, req), // Include CLI command for debugging
 					}, err
 				}
+				// IMPORTANT: Mark the flag as changed so required flag validation passes
+				flag.Changed = true
 			}
 		}
 	}
@@ -150,6 +160,7 @@ func (e *CommandExecutor) ExecuteCommand(op *RPCOperation, req *ExecutionRequest
 	cmd.Flags().VisitAll(func(flag *pflag.Flag) {
 		execCmd.Flags().AddFlag(flag)
 	})
+
 
 	// Set arguments
 	args := []string{}
@@ -173,11 +184,13 @@ func (e *CommandExecutor) ExecuteCommand(op *RPCOperation, req *ExecutionRequest
 		Stderr:   stderrStr,
 		Output:   combinedOutput,
 		ExitCode: exitCode,
+		CLI:      buildCLICommand(op, req), // Include CLI command for reproduction
 	}
 
 	if err != nil {
 		response.Error = err.Error()
 		response.Message = "Command execution failed"
+		response.Input = req // Include input for debugging
 		return response, err
 	}
 
@@ -262,34 +275,63 @@ func (e *CommandExecutor) ExtractRequestFromHTTP(r *http.Request, op *RPCOperati
 		Flags: make(map[string]string),
 	}
 
-	// Extract query parameters
-	for _, param := range op.Parameters {
-		if param.In == "query" {
-			value := r.URL.Query().Get(param.Name)
-			if value != "" {
-				req.Flags[param.Name] = value
-			} else if param.Required {
-				return nil, fmt.Errorf("required parameter %s is missing", param.Name)
+	// Extract JSON body for POST/PUT requests FIRST (so query params can override)
+	if r.Method == "POST" || r.Method == "PUT" {
+		if r.Header.Get("Content-Type") == "application/json" {
+			var bodyData map[string]interface{}
+			if err := json.NewDecoder(r.Body).Decode(&bodyData); err != nil {
+				return nil, fmt.Errorf("failed to parse JSON body: %w", err)
+			}
+
+			// Handle flat JSON structure where each field is a flag or args
+			for key, value := range bodyData {
+				if key == "args" {
+					// Convert args to []string
+					if argsArray, ok := value.([]interface{}); ok {
+						for _, arg := range argsArray {
+							req.Args = append(req.Args, fmt.Sprintf("%v", arg))
+						}
+					} else if argStr, ok := value.(string); ok {
+						// Single string argument
+						req.Args = append(req.Args, argStr)
+					}
+				} else if key == "flags" {
+					// Handle nested flags structure for backward compatibility
+					if flagsMap, ok := value.(map[string]interface{}); ok {
+						for flagName, flagValue := range flagsMap {
+							req.Flags[flagName] = convertValueToString(flagValue)
+						}
+					}
+				} else {
+					// Treat all other fields as flags
+					req.Flags[key] = convertValueToString(value)
+				}
 			}
 		}
 	}
 
-	// Extract JSON body for POST/PUT requests
-	if r.Method == "POST" || r.Method == "PUT" {
-		if r.Header.Get("Content-Type") == "application/json" {
-			var bodyReq ExecutionRequest
-			if err := json.NewDecoder(r.Body).Decode(&bodyReq); err != nil {
-				return nil, fmt.Errorf("failed to parse JSON body: %w", err)
-			}
-
-			// Merge body parameters
-			if bodyReq.Args != nil {
-				req.Args = bodyReq.Args
-			}
-			if bodyReq.Flags != nil {
-				for k, v := range bodyReq.Flags {
-					req.Flags[k] = v
+	// Extract query parameters LAST (so they take precedence over JSON body)
+	for _, param := range op.Parameters {
+		if param.In == "query" {
+			value := r.URL.Query().Get(param.Name)
+			// Always check if the parameter exists in the query, even if empty
+			if r.URL.Query().Has(param.Name) {
+				if param.Name == "args" {
+					// Special handling for args parameter - goes to Args array, not Flags map
+					req.Args = []string{} // Clear existing args for precedence
+					if value != "" {
+						// Handle comma-separated values or single value
+						req.Args = strings.Split(value, ",")
+						// Trim whitespace from each arg
+						for i := range req.Args {
+							req.Args[i] = strings.TrimSpace(req.Args[i])
+						}
+					}
+				} else {
+					req.Flags[param.Name] = value // Override body value, even if empty
 				}
+			} else if param.Required {
+				return nil, fmt.Errorf("required parameter %s is missing", param.Name)
 			}
 		}
 	}
@@ -366,6 +408,30 @@ func (e *CommandExecutor) validateParameterType(value, paramType string) error {
 	return nil
 }
 
+// convertValueToString converts interface{} values to strings for flag usage
+func convertValueToString(value interface{}) string {
+	switch v := value.(type) {
+	case string:
+		return v
+	case bool:
+		if v {
+			return "true"
+		}
+		return "false"
+	case float64:
+		// JSON numbers are decoded as float64
+		if v == float64(int64(v)) {
+			// If it's a whole number, format as integer
+			return fmt.Sprintf("%.0f", v)
+		}
+		return fmt.Sprintf("%g", v)
+	case nil:
+		return ""
+	default:
+		return fmt.Sprintf("%v", v)
+	}
+}
+
 // extractExitCode extracts the exit code from a command execution error
 func extractExitCode(err error) int {
 	if err == nil {
@@ -382,4 +448,76 @@ func extractExitCode(err error) int {
 	// For cobra command errors, we don't have a direct exit code
 	// Return 1 as a generic error code
 	return 1
+}
+
+// buildCLICommand constructs the equivalent CLI command string from the operation and request
+func buildCLICommand(op *RPCOperation, req *ExecutionRequest) string {
+	if op == nil || op.Command == nil {
+		return ""
+	}
+
+	// Start with the base command name (usually "clicky")
+	baseCmd := "clicky"
+
+	// Get the command path (e.g., "pretty", "user create")
+	cmdPath := getCommandPath(op.Command)
+
+	// Build the command parts
+	parts := []string{baseCmd}
+
+	// Add command path if it's not the root command
+	if cmdPath != "" && cmdPath != "clicky" {
+		parts = append(parts, cmdPath)
+	}
+
+	// Add positional arguments
+	if req != nil && len(req.Args) > 0 {
+		for _, arg := range req.Args {
+			parts = append(parts, shellescape(arg))
+		}
+	}
+
+	// Add flags
+	if req != nil && len(req.Flags) > 0 {
+		for flagName, flagValue := range req.Flags {
+			// Check if this is a boolean flag by looking at the command's flag definition
+			if flag := op.Command.Flags().Lookup(flagName); flag != nil && flag.Value.Type() == "bool" {
+				// For boolean flags
+				if flagValue == "true" {
+					parts = append(parts, "--"+flagName)
+				}
+				// Skip false boolean flags (default behavior) - don't add anything
+				continue
+			}
+
+			// For non-boolean flags
+			if flagValue == "" {
+				// For non-boolean empty flags, include them with empty value
+				parts = append(parts, "--"+flagName+"=")
+			} else {
+				// For flags with values, use --flag=value format
+				parts = append(parts, "--"+flagName+"="+shellescape(flagValue))
+			}
+		}
+	}
+
+	return strings.Join(parts, " ")
+}
+
+// shellescape escapes a string for safe use in shell commands
+func shellescape(s string) string {
+	// If string is empty, return empty quotes
+	if s == "" {
+		return `""`
+	}
+
+	// If string contains no special characters, return as-is
+	if !strings.ContainsAny(s, " \t\n\r\"'\\$`|&;()<>") {
+		return s
+	}
+
+	// Otherwise, escape with double quotes and escape internal quotes and backslashes
+	escaped := strings.ReplaceAll(s, "\\", "\\\\") // Escape backslashes first
+	escaped = strings.ReplaceAll(escaped, "\"", "\\\"") // Escape double quotes
+	return `"` + escaped + `"`
 }

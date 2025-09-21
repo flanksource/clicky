@@ -207,22 +207,22 @@ func (c *Converter) inferHTTPMethod(cmd *cobra.Command, cmdPath string) string {
 
 	// Check for common CRUD patterns
 	if strings.Contains(cmdLower, "get") || strings.Contains(cmdLower, "list") ||
-	   strings.Contains(cmdLower, "show") || strings.Contains(cmdLower, "describe") {
+		strings.Contains(cmdLower, "show") || strings.Contains(cmdLower, "describe") {
 		return "GET"
 	}
 
 	if strings.Contains(cmdLower, "create") || strings.Contains(cmdLower, "add") ||
-	   strings.Contains(cmdLower, "new") {
+		strings.Contains(cmdLower, "new") {
 		return "POST"
 	}
 
 	if strings.Contains(cmdLower, "update") || strings.Contains(cmdLower, "edit") ||
-	   strings.Contains(cmdLower, "modify") || strings.Contains(cmdLower, "set") {
+		strings.Contains(cmdLower, "modify") || strings.Contains(cmdLower, "set") {
 		return "PUT"
 	}
 
 	if strings.Contains(cmdLower, "delete") || strings.Contains(cmdLower, "remove") ||
-	   strings.Contains(cmdLower, "destroy") {
+		strings.Contains(cmdLower, "destroy") {
 		return "DELETE"
 	}
 

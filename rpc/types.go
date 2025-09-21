@@ -4,14 +4,14 @@ import "github.com/spf13/cobra"
 
 // RPCOperation represents a generic RPC operation that can be converted to various formats
 type RPCOperation struct {
-	Name        string            `json:"name"`
-	Description string            `json:"description"`
-	Parameters  []RPCParameter    `json:"parameters"`
-	Schema      Schema            `json:"schema"`
-	Command     *cobra.Command    `json:"-"` // Reference to original command
-	Path        string            `json:"path,omitempty"`        // For REST APIs
-	Method      string            `json:"method,omitempty"`      // HTTP method
-	Tags        []string          `json:"tags,omitempty"`        // For grouping
+	Name        string         `json:"name"`
+	Description string         `json:"description"`
+	Parameters  []RPCParameter `json:"parameters"`
+	Schema      Schema         `json:"schema"`
+	Command     *cobra.Command `json:"-"`                // Reference to original command
+	Path        string         `json:"path,omitempty"`   // For REST APIs
+	Method      string         `json:"method,omitempty"` // HTTP method
+	Tags        []string       `json:"tags,omitempty"`   // For grouping
 }
 
 // RPCParameter represents a parameter in an RPC operation

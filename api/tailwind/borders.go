@@ -43,18 +43,18 @@ type Borders struct {
 // - Combined: border-t-2 border-t-gray-500 border-t-dashed
 func ParseBorders(styles ...string) Borders {
 	borders := Borders{}
-	
+
 	// Default border properties
 	defaultWidth := 1.0
 	defaultStyle := Solid
 	defaultColor := BorderColor{Hex: "#000000"}
-	
+
 	// Parse global border properties first
 	globalWidth := defaultWidth
 	globalStyle := defaultStyle
 	globalColor := defaultColor
 	hasGlobalBorder := false
-	
+
 	// Parse side-specific properties
 	sideProperties := map[string]*Line{
 		"t": &borders.Top,
@@ -62,28 +62,28 @@ func ParseBorders(styles ...string) Borders {
 		"b": &borders.Bottom,
 		"l": &borders.Left,
 	}
-	
+
 	// Initialize all sides with defaults
 	for _, line := range sideProperties {
 		line.Width = 0 // Start with no border
 		line.Style = defaultStyle
 		line.Color = defaultColor
 	}
-	
+
 	// Flatten all style strings into individual classes
 	var allClasses []string
 	for _, style := range styles {
 		classes := strings.Fields(style)
 		allClasses = append(allClasses, classes...)
 	}
-	
+
 	// Process each class
 	for _, class := range allClasses {
 		if strings.HasPrefix(class, "border") {
 			parseBorderClass(class, &borders, &globalWidth, &globalStyle, &globalColor, &hasGlobalBorder)
 		}
 	}
-	
+
 	// Apply global border properties to all sides if global border was specified
 	if hasGlobalBorder {
 		borders.Top = Line{Width: globalWidth, Style: globalStyle, Color: globalColor}
@@ -91,14 +91,14 @@ func ParseBorders(styles ...string) Borders {
 		borders.Bottom = Line{Width: globalWidth, Style: globalStyle, Color: globalColor}
 		borders.Left = Line{Width: globalWidth, Style: globalStyle, Color: globalColor}
 	}
-	
+
 	return borders
 }
 
 // parseBorderClass parses a single border class and updates the appropriate properties
 func parseBorderClass(class string, borders *Borders, globalWidth *float64, globalStyle *LineStyle, globalColor *BorderColor, hasGlobalBorder *bool) {
 	parts := strings.Split(class, "-")
-	
+
 	if len(parts) < 2 {
 		// Just "border" - enable global border with default width
 		if class == "border" {
@@ -107,12 +107,12 @@ func parseBorderClass(class string, borders *Borders, globalWidth *float64, glob
 		}
 		return
 	}
-	
+
 	// Check if it's side-specific (border-t, border-r, border-b, border-l)
 	if len(parts) >= 2 && (parts[1] == "t" || parts[1] == "r" || parts[1] == "b" || parts[1] == "l") {
 		side := parts[1]
 		var targetLine *Line
-		
+
 		switch side {
 		case "t":
 			targetLine = &borders.Top
@@ -123,58 +123,58 @@ func parseBorderClass(class string, borders *Borders, globalWidth *float64, glob
 		case "l":
 			targetLine = &borders.Left
 		}
-		
+
 		if targetLine == nil {
 			return
 		}
-		
+
 		if len(parts) == 2 {
 			// Just "border-t" - enable side with default width
 			targetLine.Width = 1.0
 			return
 		}
-		
+
 		// Parse side-specific property
 		property := strings.Join(parts[2:], "-")
-		
+
 		// Check if it's a width
 		if width, ok := parseBorderWidth(property); ok {
 			targetLine.Width = width
 			return
 		}
-		
+
 		// Check if it's a style
 		if style, ok := parseBorderStyle(property); ok {
 			targetLine.Style = style
 			return
 		}
-		
+
 		// Check if it's a color
 		if colorHex := Color(property); colorHex != "" {
 			targetLine.Color = BorderColor{Hex: colorHex}
 			return
 		}
-		
+
 		return
 	}
-	
+
 	// Global border property
 	property := strings.Join(parts[1:], "-")
-	
+
 	// Check if it's a width
 	if width, ok := parseBorderWidth(property); ok {
 		*hasGlobalBorder = true
 		*globalWidth = width
 		return
 	}
-	
+
 	// Check if it's a style
 	if style, ok := parseBorderStyle(property); ok {
 		*hasGlobalBorder = true
 		*globalStyle = style
 		return
 	}
-	
+
 	// Check if it's a color (border-gray-500, etc.)
 	if colorHex := Color(property); colorHex != "" {
 		*hasGlobalBorder = true
