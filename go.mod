@@ -20,6 +20,7 @@ require (
 	github.com/spf13/cobra v1.9.2-0.20250831231508-51d675196729
 	github.com/spf13/pflag v1.0.9
 	github.com/stretchr/testify v1.10.0
+	github.com/xuri/excelize/v2 v2.9.1
 	golang.org/x/sync v0.16.0
 	golang.org/x/term v0.34.0
 	gopkg.in/yaml.v3 v3.0.1
@@ -74,7 +75,6 @@ require (
 	github.com/samber/oops v1.17.0 // indirect
 	github.com/tiendc/go-deepcopy v1.6.0 // indirect
 	github.com/xuri/efp v0.0.1 // indirect
-	github.com/xuri/excelize/v2 v2.9.1 // indirect
 	github.com/xuri/nfp v0.0.1 // indirect
 	go.opentelemetry.io/otel v1.35.0 // indirect
 	go.opentelemetry.io/otel/trace v1.35.0 // indirect
