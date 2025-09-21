@@ -11,9 +11,9 @@ func TestOpenAPIValidator_Validate(t *testing.T) {
 	validator := NewOpenAPIValidator()
 
 	tests := []struct {
-		name      string
-		spec      *OpenAPISpec
-		wantValid bool
+		name       string
+		spec       *OpenAPISpec
+		wantValid  bool
 		wantErrors []string
 	}{
 		{
@@ -308,8 +308,8 @@ func TestOpenAPIValidator_isValidResponseCode(t *testing.T) {
 		{"2XX", true},
 		{"4xx", true},
 		{"default", true},
-		{"999", false}, // Invalid first digit
-		{"99", false},  // Too short
+		{"999", false},  // Invalid first digit
+		{"99", false},   // Too short
 		{"1234", false}, // Too long
 		{"abc", false},  // Non-numeric
 		{"", false},     // Empty

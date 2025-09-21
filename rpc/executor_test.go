@@ -100,6 +100,7 @@ func createTestSubCommand() *cobra.Command {
 	createCmd := &cobra.Command{
 		Use:   "create",
 		Short: "Create a user",
+		Args:  cobra.MinimumNArgs(0), // Allow positional arguments for testing
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return nil
 		},
@@ -243,6 +244,151 @@ func TestExtractRequestFromHTTP(t *testing.T) {
 
 	if execReq.Flags["name"] != "jane" {
 		t.Errorf("Expected name flag to be 'jane', got '%s'", execReq.Flags["name"])
+	}
+
+	// Test precedence: query parameters should override JSON body
+	bodyDataPrecedence := map[string]interface{}{
+		"name":  "body-name",
+		"email": "body@example.com",
+		"extra": "body-extra",
+	}
+	bodyBytesPrecedence, _ := json.Marshal(bodyDataPrecedence)
+	req = httptest.NewRequest("POST", "/api/v1/user?name=query-name&email=query@example.com", bytes.NewReader(bodyBytesPrecedence))
+	req.Header.Set("Content-Type", "application/json")
+
+	execReq, err = executor.ExtractRequestFromHTTP(req, createOp)
+	if err != nil {
+		t.Fatalf("Failed to extract request with precedence test: %v", err)
+	}
+
+	// Query parameters should take precedence
+	if execReq.Flags["name"] != "query-name" {
+		t.Errorf("Expected name flag to be 'query-name' (query param precedence), got '%s'", execReq.Flags["name"])
+	}
+
+	if execReq.Flags["email"] != "query@example.com" {
+		t.Errorf("Expected email flag to be 'query@example.com' (query param precedence), got '%s'", execReq.Flags["email"])
+	}
+
+	// Body-only parameters should still be preserved
+	if execReq.Flags["extra"] != "body-extra" {
+		t.Errorf("Expected extra flag to be 'body-extra' (body param preserved), got '%s'", execReq.Flags["extra"])
+	}
+}
+
+func TestExtractRequestFromHTTP_ArgsPrecedence(t *testing.T) {
+	cmd := createTestSubCommand()
+	converter := NewConverter(DefaultConfig())
+	service, err := converter.ConvertCommandTree(cmd)
+	if err != nil {
+		t.Fatalf("Failed to convert command tree: %v", err)
+	}
+
+	config := &ExecutorConfig{
+		Enabled:    true,
+		SkipPreRun: true,
+		PathPrefix: "/api/v1",
+	}
+	executor := NewCommandExecutor(service, config)
+
+	// Find the user create operation
+	var createOp *RPCOperation
+	for _, op := range service.Operations {
+		if strings.Contains(op.Name, "create") {
+			createOp = &op
+			break
+		}
+	}
+	if createOp == nil {
+		t.Fatal("Could not find create operation")
+	}
+
+	// Test args from JSON body
+	bodyData := map[string]interface{}{
+		"args": []string{"file1.json", "file2.json"},
+		"name": "body-name",
+	}
+	bodyBytes, _ := json.Marshal(bodyData)
+	req := httptest.NewRequest("POST", "/api/v1/user", bytes.NewReader(bodyBytes))
+	req.Header.Set("Content-Type", "application/json")
+
+	execReq, err := executor.ExtractRequestFromHTTP(req, createOp)
+	if err != nil {
+		t.Fatalf("Failed to extract request from JSON body with args: %v", err)
+	}
+
+	// Should have args from body
+	if len(execReq.Args) != 2 || execReq.Args[0] != "file1.json" || execReq.Args[1] != "file2.json" {
+		t.Errorf("Expected args ['file1.json', 'file2.json'], got %v", execReq.Args)
+	}
+
+	// Should NOT have args in flags
+	if _, hasArgs := execReq.Flags["args"]; hasArgs {
+		t.Errorf("args should not appear in flags map, but found: %v", execReq.Flags["args"])
+	}
+
+	// Test query parameter args override body args
+	bodyDataPrecedence := map[string]interface{}{
+		"args": []string{"body-file1.json", "body-file2.json"},
+		"name": "body-name",
+	}
+	bodyBytesPrecedence, _ := json.Marshal(bodyDataPrecedence)
+	req = httptest.NewRequest("POST", "/api/v1/user?args=query-file.json&name=query-name", bytes.NewReader(bodyBytesPrecedence))
+	req.Header.Set("Content-Type", "application/json")
+
+	execReq, err = executor.ExtractRequestFromHTTP(req, createOp)
+	if err != nil {
+		t.Fatalf("Failed to extract request with args precedence test: %v", err)
+	}
+
+	// Query parameter args should take precedence
+	if len(execReq.Args) != 1 || execReq.Args[0] != "query-file.json" {
+		t.Errorf("Expected args ['query-file.json'] (query param precedence), got %v", execReq.Args)
+	}
+
+	// Regular flag precedence should still work
+	if execReq.Flags["name"] != "query-name" {
+		t.Errorf("Expected name flag to be 'query-name' (query param precedence), got '%s'", execReq.Flags["name"])
+	}
+
+	// Should still NOT have args in flags
+	if _, hasArgs := execReq.Flags["args"]; hasArgs {
+		t.Errorf("args should not appear in flags map, but found: %v", execReq.Flags["args"])
+	}
+
+	// Test comma-separated args in query parameter
+	req = httptest.NewRequest("POST", "/api/v1/user?args=file1.json,file2.json,file3.json", nil)
+	execReq, err = executor.ExtractRequestFromHTTP(req, createOp)
+	if err != nil {
+		t.Fatalf("Failed to extract request with comma-separated args: %v", err)
+	}
+
+	expectedArgs := []string{"file1.json", "file2.json", "file3.json"}
+	if len(execReq.Args) != 3 {
+		t.Errorf("Expected 3 args, got %d: %v", len(execReq.Args), execReq.Args)
+	}
+	for i, expected := range expectedArgs {
+		if i >= len(execReq.Args) || execReq.Args[i] != expected {
+			t.Errorf("Expected arg[%d] to be '%s', got '%s'", i, expected, execReq.Args[i])
+		}
+	}
+
+	// Test empty args query parameter (should clear body args)
+	bodyWithArgs := map[string]interface{}{
+		"args": []string{"body-file.json"},
+	}
+	bodyBytesWithArgs, _ := json.Marshal(bodyWithArgs)
+	req = httptest.NewRequest("POST", "/api/v1/user?args=", bytes.NewReader(bodyBytesWithArgs))
+	req.Header.Set("Content-Type", "application/json")
+
+	execReq, err = executor.ExtractRequestFromHTTP(req, createOp)
+	if err != nil {
+		t.Fatalf("Failed to extract request with empty args query param: %v", err)
+	}
+
+	// Empty query args should override body args
+	if len(execReq.Args) != 0 {
+		t.Errorf("Expected empty args (query param precedence), got %v", execReq.Args)
 	}
 }
 
@@ -938,4 +1084,539 @@ func TestValidateParameterType(t *testing.T) {
 	if err != nil {
 		t.Errorf("Expected string to be valid: %v", err)
 	}
+}
+
+func TestExecuteCommandWithErrorIncludesInput(t *testing.T) {
+	// Test that command execution errors include input parameters for debugging
+	testCmd := &cobra.Command{
+		Use:   "test",
+		Short: "Test command",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return fmt.Errorf("test command failed")
+		},
+	}
+
+	config := &ExecutorConfig{
+		Enabled:    true,
+		SkipPreRun: true,
+		PathPrefix: "/api/v1",
+	}
+
+	op := &RPCOperation{
+		Name:        "test",
+		Description: "Test operation",
+		Command:     testCmd,
+		Parameters:  []RPCParameter{},
+	}
+
+	executor := &CommandExecutor{
+		config: config,
+	}
+
+	req := &ExecutionRequest{
+		Args: []string{"arg1", "arg2"},
+		Flags: map[string]string{
+			"test-flag": "test-value",
+		},
+	}
+
+	resp, err := executor.ExecuteCommand(op, req)
+	if err == nil {
+		t.Error("Expected command to return an error")
+	}
+
+	if resp.Success {
+		t.Error("Expected command execution to fail")
+	}
+
+	// Verify input is included in error response
+	if resp.Input == nil {
+		t.Error("Expected Input to be included in error response")
+	} else {
+		if len(resp.Input.Args) != 2 || resp.Input.Args[0] != "arg1" || resp.Input.Args[1] != "arg2" {
+			t.Errorf("Expected Input.Args to be [arg1, arg2], got %v", resp.Input.Args)
+		}
+		if resp.Input.Flags["test-flag"] != "test-value" {
+			t.Errorf("Expected Input.Flags[test-flag] to be 'test-value', got '%s'", resp.Input.Flags["test-flag"])
+		}
+	}
+
+	if resp.Error != "test command failed" {
+		t.Errorf("Expected error 'test command failed', got '%s'", resp.Error)
+	}
+}
+
+func TestExecuteCommandDisabledIncludesInput(t *testing.T) {
+	// Test that disabled executor errors include input parameters
+	config := &ExecutorConfig{
+		Enabled:    false, // Disabled
+		SkipPreRun: true,
+		PathPrefix: "/api/v1",
+	}
+
+	op := &RPCOperation{
+		Name:        "test",
+		Description: "Test operation",
+		Command:     &cobra.Command{Use: "test"},
+	}
+
+	executor := &CommandExecutor{
+		config: config,
+	}
+
+	req := &ExecutionRequest{
+		Args: []string{"disabled-test"},
+		Flags: map[string]string{
+			"debug": "true",
+		},
+	}
+
+	resp, err := executor.ExecuteCommand(op, req)
+	if err == nil {
+		t.Error("Expected error when executor is disabled")
+	}
+
+	if resp == nil || resp.Success {
+		t.Error("Expected command execution to fail when disabled")
+	}
+
+	// Verify input is included in error response
+	if resp.Input == nil {
+		t.Error("Expected Input to be included in disabled executor error response")
+	} else {
+		if len(resp.Input.Args) != 1 || resp.Input.Args[0] != "disabled-test" {
+			t.Errorf("Expected Input.Args to be [disabled-test], got %v", resp.Input.Args)
+		}
+		if resp.Input.Flags["debug"] != "true" {
+			t.Errorf("Expected Input.Flags[debug] to be 'true', got '%s'", resp.Input.Flags["debug"])
+		}
+	}
+}
+
+func TestExecuteCommandInvalidFlagIncludesInput(t *testing.T) {
+	// Test that invalid flag value errors include input parameters
+	testCmd := &cobra.Command{
+		Use:   "test",
+		Short: "Test command",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return nil
+		},
+	}
+	testCmd.Flags().Int("count", 0, "Count value")
+
+	config := &ExecutorConfig{
+		Enabled:    true,
+		SkipPreRun: true,
+		PathPrefix: "/api/v1",
+	}
+
+	op := &RPCOperation{
+		Name:        "test",
+		Description: "Test operation",
+		Command:     testCmd,
+		Parameters: []RPCParameter{
+			{
+				Name:     "count",
+				Type:     "integer",
+				Required: false,
+				In:       "query",
+			},
+		},
+	}
+
+	executor := &CommandExecutor{
+		config: config,
+	}
+
+	req := &ExecutionRequest{
+		Args: []string{"test-data"},
+		Flags: map[string]string{
+			"count": "invalid-number", // This should cause an error
+		},
+	}
+
+	resp, err := executor.ExecuteCommand(op, req)
+	if err == nil {
+		t.Error("Expected error for invalid flag value")
+	}
+
+	if resp.Success {
+		t.Error("Expected command execution to fail for invalid flag")
+	}
+
+	// Verify input is included in error response
+	if resp.Input == nil {
+		t.Error("Expected Input to be included in invalid flag error response")
+	} else {
+		if len(resp.Input.Args) != 1 || resp.Input.Args[0] != "test-data" {
+			t.Errorf("Expected Input.Args to be [test-data], got %v", resp.Input.Args)
+		}
+		if resp.Input.Flags["count"] != "invalid-number" {
+			t.Errorf("Expected Input.Flags[count] to be 'invalid-number', got '%s'", resp.Input.Flags["count"])
+		}
+	}
+
+	// Verify error message mentions the invalid flag
+	if !strings.Contains(resp.Error, "Invalid value for flag count") {
+		t.Errorf("Expected error to mention invalid flag, got '%s'", resp.Error)
+	}
+}
+
+func TestBuildCLICommand(t *testing.T) {
+	// Create a test command
+	testCmd := &cobra.Command{
+		Use:   "test",
+		Short: "Test command",
+		Args:  cobra.MinimumNArgs(0),
+	}
+	testCmd.Flags().String("name", "", "User name")
+	testCmd.Flags().String("email", "", "User email")
+	testCmd.Flags().Bool("verbose", false, "Enable verbose output")
+	testCmd.Flags().String("output", "", "Output file")
+
+	// Create parent command to test command paths
+	parentCmd := &cobra.Command{
+		Use: "parent",
+	}
+	subCmd := &cobra.Command{
+		Use:   "sub",
+		Short: "Sub command",
+		Args:  cobra.MinimumNArgs(0),
+	}
+	subCmd.Flags().String("config", "", "Config file")
+	parentCmd.AddCommand(subCmd)
+
+	tests := []struct {
+		name     string
+		cmd      *cobra.Command
+		req      *ExecutionRequest
+		expected string
+	}{
+		{
+			name: "simple command with no args or flags",
+			cmd:  testCmd,
+			req: &ExecutionRequest{
+				Args:  []string{},
+				Flags: map[string]string{},
+			},
+			expected: "clicky test",
+		},
+		{
+			name: "command with args only",
+			cmd:  testCmd,
+			req: &ExecutionRequest{
+				Args:  []string{"file1.json", "file2.json"},
+				Flags: map[string]string{},
+			},
+			expected: "clicky test file1.json file2.json",
+		},
+		{
+			name: "command with flags only",
+			cmd:  testCmd,
+			req: &ExecutionRequest{
+				Args: []string{},
+				Flags: map[string]string{
+					"name":  "John Doe",
+					"email": "john@example.com",
+				},
+			},
+			expected: "clicky test --email=john@example.com --name=\"John Doe\"",
+		},
+		{
+			name: "command with both args and flags",
+			cmd:  testCmd,
+			req: &ExecutionRequest{
+				Args: []string{"input.json"},
+				Flags: map[string]string{
+					"name":    "Alice",
+					"verbose": "true",
+				},
+			},
+			expected: "clicky test input.json --name=Alice --verbose",
+		},
+		{
+			name: "command with boolean false flag (should be omitted)",
+			cmd:  testCmd,
+			req: &ExecutionRequest{
+				Args: []string{},
+				Flags: map[string]string{
+					"verbose": "false",
+				},
+			},
+			expected: "clicky test",
+		},
+		{
+			name: "command with empty string flag",
+			cmd:  testCmd,
+			req: &ExecutionRequest{
+				Args: []string{},
+				Flags: map[string]string{
+					"output": "",
+				},
+			},
+			expected: "clicky test --output=",
+		},
+		{
+			name: "command with special characters requiring escaping",
+			cmd:  testCmd,
+			req: &ExecutionRequest{
+				Args: []string{"file with spaces.json", "file\"with\"quotes.json"},
+				Flags: map[string]string{
+					"name": "User with spaces",
+					"email": `user"with"quotes@example.com`,
+				},
+			},
+			expected: `clicky test "file with spaces.json" "file\"with\"quotes.json" --email="user\"with\"quotes@example.com" --name="User with spaces"`,
+		},
+		{
+			name: "nested command",
+			cmd:  subCmd,
+			req: &ExecutionRequest{
+				Args: []string{"config.yaml"},
+				Flags: map[string]string{
+					"config": "/path/to/config.yaml",
+				},
+			},
+			expected: "clicky sub config.yaml --config=/path/to/config.yaml", // Updated: getCommandPath doesn't include root command name
+		},
+		{
+			name: "nil request",
+			cmd:  testCmd,
+			req:  nil,
+			expected: "clicky test",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			op := &RPCOperation{
+				Command: tt.cmd,
+			}
+
+			result := buildCLICommand(op, tt.req)
+
+			// For tests with multiple flags, we need to handle the fact that map iteration order is not guaranteed
+			if strings.Contains(tt.expected, "--") && strings.Count(tt.expected, "--") > 1 {
+				// Split into parts and check that all expected parts are present
+				expectedParts := strings.Fields(tt.expected)
+				resultParts := strings.Fields(result)
+
+				// Check that command and args match (before first flag)
+				var expectedBeforeFlags, resultBeforeFlags []string
+				for _, part := range expectedParts {
+					if strings.HasPrefix(part, "--") {
+						break
+					}
+					expectedBeforeFlags = append(expectedBeforeFlags, part)
+				}
+				for _, part := range resultParts {
+					if strings.HasPrefix(part, "--") {
+						break
+					}
+					resultBeforeFlags = append(resultBeforeFlags, part)
+				}
+
+				if !slicesEqual(expectedBeforeFlags, resultBeforeFlags) {
+					t.Errorf("Command and args don't match.\nExpected: %v\nGot: %v", expectedBeforeFlags, resultBeforeFlags)
+				}
+
+				// Check that all expected flags are present
+				expectedFlags := make(map[string]bool)
+				resultFlags := make(map[string]bool)
+
+				for _, part := range expectedParts {
+					if strings.HasPrefix(part, "--") {
+						expectedFlags[part] = true
+					}
+				}
+				for _, part := range resultParts {
+					if strings.HasPrefix(part, "--") {
+						resultFlags[part] = true
+					}
+				}
+
+				for flag := range expectedFlags {
+					if !resultFlags[flag] {
+						t.Errorf("Expected flag %s not found in result: %s", flag, result)
+					}
+				}
+			} else {
+				// For simpler cases, do exact match
+				if result != tt.expected {
+					t.Errorf("buildCLICommand() = %q, expected %q", result, tt.expected)
+				}
+			}
+		})
+	}
+}
+
+func TestShellEscape(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{
+			name:     "empty string",
+			input:    "",
+			expected: `""`,
+		},
+		{
+			name:     "simple string",
+			input:    "hello",
+			expected: "hello",
+		},
+		{
+			name:     "string with spaces",
+			input:    "hello world",
+			expected: `"hello world"`,
+		},
+		{
+			name:     "string with quotes",
+			input:    `hello "world"`,
+			expected: `"hello \"world\""`,
+		},
+		{
+			name:     "string with backslashes",
+			input:    `hello\world`,
+			expected: `"hello\\world"`,
+		},
+		{
+			name:     "string with both quotes and backslashes",
+			input:    `hello\"world`,
+			expected: `"hello\\\"world"`,
+		},
+		{
+			name:     "string with special shell characters",
+			input:    "hello;world&test",
+			expected: `"hello;world&test"`,
+		},
+		{
+			name:     "string with dollar sign",
+			input:    "hello$world",
+			expected: `"hello$world"`,
+		},
+		{
+			name:     "string with backticks",
+			input:    "hello`world`",
+			expected: `"hello`+"`"+`world`+"`"+`"`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := shellescape(tt.input)
+			if result != tt.expected {
+				t.Errorf("shellescape(%q) = %q, expected %q", tt.input, result, tt.expected)
+			}
+		})
+	}
+}
+
+func TestExecuteCommandIncludesCLI(t *testing.T) {
+	// Create a test command with flags and args
+	testCmd := &cobra.Command{
+		Use:   "test",
+		Short: "Test command",
+		Args:  cobra.MinimumNArgs(0),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			fmt.Fprintln(cmd.OutOrStdout(), "Test output")
+			return nil
+		},
+	}
+	testCmd.Flags().String("name", "", "User name")
+	testCmd.Flags().Bool("verbose", false, "Enable verbose output")
+
+	op := &RPCOperation{
+		Command: testCmd,
+	}
+
+	config := &ExecutorConfig{
+		Enabled:    true,
+		SkipPreRun: true,
+		PathPrefix: "/api/v1",
+	}
+	executor := NewCommandExecutor(&RPCService{Operations: []RPCOperation{*op}}, config)
+
+	// Test successful execution includes CLI
+	req := &ExecutionRequest{
+		Args: []string{"input.json"},
+		Flags: map[string]string{
+			"name":    "Alice",
+			"verbose": "true",
+		},
+	}
+
+	resp, err := executor.ExecuteCommand(op, req)
+	if err != nil {
+		t.Fatalf("Expected no error, got %v", err)
+	}
+	if !resp.Success {
+		t.Error("Expected successful execution")
+	}
+	if resp.CLI == "" {
+		t.Error("CLI field should be populated")
+	}
+	if !strings.Contains(resp.CLI, "clicky test") {
+		t.Errorf("Expected CLI to contain 'clicky test', got: %s", resp.CLI)
+	}
+	if !strings.Contains(resp.CLI, "input.json") {
+		t.Errorf("Expected CLI to contain 'input.json', got: %s", resp.CLI)
+	}
+	if !strings.Contains(resp.CLI, "--name=Alice") {
+		t.Errorf("Expected CLI to contain '--name=Alice', got: %s", resp.CLI)
+	}
+	if !strings.Contains(resp.CLI, "--verbose") {
+		t.Errorf("Expected CLI to contain '--verbose', got: %s", resp.CLI)
+	}
+
+	// Test error execution includes CLI
+	testCmd.RunE = func(cmd *cobra.Command, args []string) error {
+		return fmt.Errorf("test error")
+	}
+
+	resp, err = executor.ExecuteCommand(op, req)
+	if err == nil {
+		t.Error("Expected error")
+	}
+	if resp.Success {
+		t.Error("Expected failed execution")
+	}
+	if resp.CLI == "" {
+		t.Error("CLI field should be populated even on error")
+	}
+	if !strings.Contains(resp.CLI, "clicky test") {
+		t.Errorf("Expected CLI to contain 'clicky test', got: %s", resp.CLI)
+	}
+
+	// Test disabled executor includes CLI
+	config.Enabled = false
+	executor = NewCommandExecutor(&RPCService{Operations: []RPCOperation{*op}}, config)
+
+	resp, err = executor.ExecuteCommand(op, req)
+	if err == nil {
+		t.Error("Expected error for disabled executor")
+	}
+	if resp.Success {
+		t.Error("Expected failed execution for disabled executor")
+	}
+	if resp.CLI == "" {
+		t.Error("CLI field should be populated even when disabled")
+	}
+	if !strings.Contains(resp.CLI, "clicky test") {
+		t.Errorf("Expected CLI to contain 'clicky test', got: %s", resp.CLI)
+	}
+}
+
+// Helper function to compare slices
+func slicesEqual(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }

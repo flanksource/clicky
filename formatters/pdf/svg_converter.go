@@ -47,7 +47,7 @@ func DefaultConvertOptions() *ConvertOptions {
 		Format:  "png", // Default to PNG for compatibility
 		Width:   0,
 		Height:  0,
-		DPI:     96,    // Standard web DPI
+		DPI:     96, // Standard web DPI
 		Quality: 90,
 	}
 }

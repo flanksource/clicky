@@ -124,14 +124,14 @@ func GetFieldValueWithAliases(val reflect.Value, field api.PrettyField) reflect.
 			}
 		}
 	}
-	
+
 	// Fall back to the field name
 	fieldVal := GetFieldValue(val, field.Name)
 	if !fieldVal.IsValid() {
 		// Try with different casing
 		fieldVal = GetFieldValueCaseInsensitive(val, field.Name)
 	}
-	
+
 	return fieldVal
 }
 
@@ -140,7 +140,7 @@ func isEmptyValue(v reflect.Value) bool {
 	if !v.IsValid() {
 		return true
 	}
-	
+
 	switch v.Kind() {
 	case reflect.String:
 		return v.String() == ""

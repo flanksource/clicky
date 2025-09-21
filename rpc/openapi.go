@@ -21,9 +21,9 @@ type OpenAPISpec struct {
 
 // OpenAPIInfo contains metadata about the API
 type OpenAPIInfo struct {
-	Title       string         `json:"title"`
-	Description string         `json:"description,omitempty"`
-	Version     string         `json:"version"`
+	Title       string          `json:"title"`
+	Description string          `json:"description,omitempty"`
+	Version     string          `json:"version"`
 	Contact     *OpenAPIContact `json:"contact,omitempty"`
 	License     *OpenAPILicense `json:"license,omitempty"`
 }
@@ -43,8 +43,8 @@ type OpenAPILicense struct {
 
 // OpenAPIServer represents a server in the OpenAPI spec
 type OpenAPIServer struct {
-	URL         string                    `json:"url"`
-	Description string                    `json:"description,omitempty"`
+	URL         string                     `json:"url"`
+	Description string                     `json:"description,omitempty"`
 	Variables   map[string]OpenAPIVariable `json:"variables,omitempty"`
 }
 
@@ -60,31 +60,31 @@ type OpenAPIPath map[string]OpenAPIOperation
 
 // OpenAPIOperation represents an operation in the OpenAPI spec
 type OpenAPIOperation struct {
-	Tags        []string                       `json:"tags,omitempty"`
-	Summary     string                         `json:"summary,omitempty"`
-	Description string                         `json:"description,omitempty"`
-	OperationID string                         `json:"operationId,omitempty"`
-	Parameters  []OpenAPIParameter             `json:"parameters,omitempty"`
-	RequestBody *OpenAPIRequestBody            `json:"requestBody,omitempty"`
-	Responses   map[string]OpenAPIResponse     `json:"responses"`
-	Security    []map[string][]string          `json:"security,omitempty"`
+	Tags        []string                   `json:"tags,omitempty"`
+	Summary     string                     `json:"summary,omitempty"`
+	Description string                     `json:"description,omitempty"`
+	OperationID string                     `json:"operationId,omitempty"`
+	Parameters  []OpenAPIParameter         `json:"parameters,omitempty"`
+	RequestBody *OpenAPIRequestBody        `json:"requestBody,omitempty"`
+	Responses   map[string]OpenAPIResponse `json:"responses"`
+	Security    []map[string][]string      `json:"security,omitempty"`
 }
 
 // OpenAPIParameter represents a parameter in the OpenAPI spec
 type OpenAPIParameter struct {
-	Name        string             `json:"name"`
-	In          string             `json:"in"`
-	Description string             `json:"description,omitempty"`
-	Required    bool               `json:"required,omitempty"`
-	Schema      *OpenAPISchema     `json:"schema,omitempty"`
-	Example     interface{}        `json:"example,omitempty"`
+	Name        string         `json:"name"`
+	In          string         `json:"in"`
+	Description string         `json:"description,omitempty"`
+	Required    bool           `json:"required,omitempty"`
+	Schema      *OpenAPISchema `json:"schema,omitempty"`
+	Example     interface{}    `json:"example,omitempty"`
 }
 
 // OpenAPIRequestBody represents a request body in the OpenAPI spec
 type OpenAPIRequestBody struct {
-	Description string                        `json:"description,omitempty"`
-	Content     map[string]OpenAPIMediaType   `json:"content"`
-	Required    bool                          `json:"required,omitempty"`
+	Description string                      `json:"description,omitempty"`
+	Content     map[string]OpenAPIMediaType `json:"content"`
+	Required    bool                        `json:"required,omitempty"`
 }
 
 // OpenAPIResponse represents a response in the OpenAPI spec
@@ -103,8 +103,8 @@ type OpenAPIHeader struct {
 
 // OpenAPIMediaType represents a media type in the OpenAPI spec
 type OpenAPIMediaType struct {
-	Schema   *OpenAPISchema `json:"schema,omitempty"`
-	Example  interface{}    `json:"example,omitempty"`
+	Schema   *OpenAPISchema            `json:"schema,omitempty"`
+	Example  interface{}               `json:"example,omitempty"`
 	Examples map[string]OpenAPIExample `json:"examples,omitempty"`
 }
 
@@ -130,22 +130,22 @@ type OpenAPISchema struct {
 
 // OpenAPIComponents contains reusable components
 type OpenAPIComponents struct {
-	Schemas         map[string]*OpenAPISchema   `json:"schemas,omitempty"`
-	Responses       map[string]OpenAPIResponse  `json:"responses,omitempty"`
-	Parameters      map[string]OpenAPIParameter `json:"parameters,omitempty"`
-	RequestBodies   map[string]OpenAPIRequestBody `json:"requestBodies,omitempty"`
-	Headers         map[string]OpenAPIHeader    `json:"headers,omitempty"`
+	Schemas         map[string]*OpenAPISchema        `json:"schemas,omitempty"`
+	Responses       map[string]OpenAPIResponse       `json:"responses,omitempty"`
+	Parameters      map[string]OpenAPIParameter      `json:"parameters,omitempty"`
+	RequestBodies   map[string]OpenAPIRequestBody    `json:"requestBodies,omitempty"`
+	Headers         map[string]OpenAPIHeader         `json:"headers,omitempty"`
 	SecuritySchemes map[string]OpenAPISecurityScheme `json:"securitySchemes,omitempty"`
 }
 
 // OpenAPISecurityScheme represents a security scheme
 type OpenAPISecurityScheme struct {
-	Type         string            `json:"type"`
-	Description  string            `json:"description,omitempty"`
-	Name         string            `json:"name,omitempty"`
-	In           string            `json:"in,omitempty"`
-	Scheme       string            `json:"scheme,omitempty"`
-	BearerFormat string            `json:"bearerFormat,omitempty"`
+	Type         string             `json:"type"`
+	Description  string             `json:"description,omitempty"`
+	Name         string             `json:"name,omitempty"`
+	In           string             `json:"in,omitempty"`
+	Scheme       string             `json:"scheme,omitempty"`
+	BearerFormat string             `json:"bearerFormat,omitempty"`
 	Flows        *OpenAPIOAuthFlows `json:"flows,omitempty"`
 }
 
@@ -292,7 +292,7 @@ func (g *OpenAPIGenerator) convertOperationToOpenAPI(op RPCOperation) OpenAPIOpe
 			In:          param.In,
 			Description: param.Description,
 			Required:    param.Required,
-			Schema:      g.convertPropertyToOpenAPI(Property{
+			Schema: g.convertPropertyToOpenAPI(Property{
 				Type:        param.Type,
 				Description: param.Description,
 				Default:     param.Default,

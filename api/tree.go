@@ -76,17 +76,17 @@ type SimpleTreeNode struct {
 
 func (n *SimpleTreeNode) Pretty() Text {
 	text := Text{Content: n.Label}
-	
+
 	// Add icon if present
 	if n.Icon != "" {
 		text.Content = n.Icon + " " + text.Content
 	}
-	
+
 	// Apply style if present
 	if n.Style != "" {
 		text.Style = n.Style
 	}
-	
+
 	return text
 }
 
@@ -106,17 +106,17 @@ type CompactListNode struct {
 
 func (n *CompactListNode) Pretty() Text {
 	text := Text{Content: n.Label}
-	
+
 	// Add icon if present
 	if n.Icon != "" {
 		text.Content = n.Icon + " " + text.Content
 	}
-	
+
 	// Apply style if present
 	if n.Style != "" {
 		text.Style = n.Style
 	}
-	
+
 	return text
 }
 

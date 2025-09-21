@@ -128,7 +128,6 @@ type WaitResult struct {
 	WarningCount int // Number of tasks with warnings
 }
 
-
 // RetryConfig holds configuration for task retry behavior
 type RetryConfig struct {
 	RetryableErrors []string // Error message patterns that should trigger retries

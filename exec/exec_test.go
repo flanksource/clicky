@@ -203,7 +203,7 @@ var _ = Describe("Process", func() {
 			It("should start process in background", func() {
 				err := p.Start()
 				Expect(err).To(BeNil())
-				
+
 				// Process should be running
 				time.Sleep(100 * time.Millisecond)
 				// Since Start() runs in background, we can't easily test the state
@@ -214,9 +214,9 @@ var _ = Describe("Process", func() {
 			It("should handle process termination", func() {
 				p := exec.Process{Cmd: "sleep 1"}
 				go p.Run()
-				
+
 				time.Sleep(100 * time.Millisecond)
-				
+
 				// Test termination methods exist (actual termination testing is complex in unit tests)
 				Expect(p.Stop).ToNot(BeNil())
 				Expect(p.Kill).ToNot(BeNil())
@@ -227,9 +227,9 @@ var _ = Describe("Process", func() {
 			It("should handle MustStop with timeout", func() {
 				p := exec.Process{Cmd: "sleep 0.1"}
 				go p.Run()
-				
+
 				time.Sleep(50 * time.Millisecond)
-				
+
 				err := p.MustStop(5 * time.Second)
 				// MustStop should complete without error for short-lived process
 				Expect(err).To(BeNil())
@@ -275,7 +275,7 @@ echo line3`
 			// Test that Wait() function exists and can be called
 			p := exec.Process{Cmd: "echo quick"}
 			go p.Run()
-			
+
 			// Wait should not hang for quick commands
 			err := p.Wait()
 			// For a command that hasn't been properly started, this might error
@@ -288,7 +288,7 @@ echo line3`
 		It("should handle multiple processes running concurrently", func() {
 			processes := make([]exec.Process, 3)
 			results := make(chan string, 3)
-			
+
 			for i := 0; i < 3; i++ {
 				processes[i] = exec.Process{Cmd: "echo process" + string(rune('1'+i))}
 				go func(p exec.Process, id string) {
@@ -300,7 +300,7 @@ echo line3`
 					}
 				}(processes[i], string(rune('1'+i)))
 			}
-			
+
 			// Collect results
 			outputs := make([]string, 3)
 			for i := 0; i < 3; i++ {
@@ -311,7 +311,7 @@ echo line3`
 					Fail("Timeout waiting for concurrent processes")
 				}
 			}
-			
+
 			// Verify all processes completed
 			Expect(len(outputs)).To(Equal(3))
 			for _, output := range outputs {
@@ -323,10 +323,10 @@ echo line3`
 	Describe("Task Interface Integration", func() {
 		It("should implement Taskable interface with GetTask()", func() {
 			p := &exec.Process{Cmd: "echo test"}
-			
+
 			// Initially, task should be nil
 			Expect(p.GetTask()).To(BeNil())
-			
+
 			// After creating a task, it should be set
 			taskObj := p.AsTask("Test Task")
 			Expect(taskObj).ToNot(BeNil())
@@ -335,10 +335,10 @@ echo line3`
 		It("should convert Process to Task with AsTask()", func() {
 			p := &exec.Process{Cmd: "echo 'hello from task'"}
 			taskObj := p.AsTask("Echo Task")
-			
+
 			Expect(taskObj).ToNot(BeNil())
 			Expect(taskObj.Name()).To(Equal("Echo Task"))
-			
+
 			// Wait for task completion
 			result := taskObj.WaitFor()
 			Expect(result).ToNot(BeNil())
@@ -348,14 +348,14 @@ echo line3`
 		It("should run Process as TypedTask with StartAsTask()", func() {
 			p := &exec.Process{Cmd: "echo 'typed task output'"}
 			typedTask := p.StartAsTask("Typed Echo Task")
-			
+
 			Expect(typedTask).ToNot(BeNil())
-			
+
 			// Wait for completion and get typed result
 			result := typedTask.WaitFor()
 			Expect(result).ToNot(BeNil())
 			Expect(result.Status).To(Equal(task.StatusSuccess))
-			
+
 			// Get the typed result
 			processResult, err := typedTask.GetResult()
 			Expect(err).To(BeNil())
@@ -365,12 +365,12 @@ echo line3`
 		It("should handle task failures properly", func() {
 			p := &exec.Process{Cmd: "exit 1"}
 			typedTask := p.StartAsTask("Failing Task")
-			
+
 			result := typedTask.WaitFor()
 			Expect(result).ToNot(BeNil())
 			Expect(result.Status).To(Equal(task.StatusFailed))
 			Expect(result.Error).ToNot(BeNil())
-			
+
 			// The typed result should reflect the failure
 			processResult, err := typedTask.GetResult()
 			// Either GetResult returns an error OR the process result has an error
@@ -385,17 +385,17 @@ echo line3`
 
 		It("should support task options", func() {
 			p := &exec.Process{Cmd: "sleep 0.1; echo done"}
-			
+
 			// Create task with timeout option
-			typedTask := p.StartAsTask("Task with Options", 
+			typedTask := p.StartAsTask("Task with Options",
 				task.WithTimeout(5*time.Second),
 				task.WithPriority(1),
 			)
-			
+
 			result := typedTask.WaitFor()
 			Expect(result).ToNot(BeNil())
 			Expect(result.Status).To(Equal(task.StatusSuccess))
-			
+
 			processResult, err := typedTask.GetResult()
 			Expect(err).To(BeNil())
 			Expect(processResult.Stdout.String()).To(Equal("done\n"))
@@ -407,22 +407,22 @@ echo line3`
 				{Cmd: "echo task2"},
 				{Cmd: "echo task3"},
 			}
-			
+
 			tasks := make([]task.TypedTask[exec.Process], len(processes))
-			
+
 			// Start all tasks
 			for i, p := range processes {
 				tasks[i] = p.StartAsTask(string(rune('A'+i)) + " Concurrent Task")
 			}
-			
+
 			// Wait for all to complete
 			for i, t := range tasks {
 				result := t.WaitFor()
 				Expect(result.Status).To(Equal(task.StatusSuccess))
-				
+
 				processResult, err := t.GetResult()
 				Expect(err).To(BeNil())
-				expectedOutput := string(rune('1'+i))
+				expectedOutput := string(rune('1' + i))
 				Expect(processResult.Stdout.String()).To(Equal("task" + expectedOutput + "\n"))
 			}
 		})
@@ -433,12 +433,12 @@ echo line3`
 			}).WithEnv(map[string]string{
 				"TEST_TASK_VAR": "task_value",
 			})
-			
+
 			typedTask := (&p).StartAsTask("Env Task")
 			result := typedTask.WaitFor()
-			
+
 			Expect(result.Status).To(Equal(task.StatusSuccess))
-			
+
 			processResult, err := typedTask.GetResult()
 			Expect(err).To(BeNil())
 			Expect(processResult.Stdout.String()).To(Equal("task_value\n"))
@@ -467,14 +467,14 @@ echo line3`
 
 		It("should preserve task reference in GetTask() after AsTask()", func() {
 			p := &exec.Process{Cmd: "echo test"}
-			
+
 			// Create task
 			taskObj := p.AsTask("Reference Test")
-			
+
 			// Wait for completion first (this ensures the task function runs)
 			result := taskObj.WaitFor()
 			Expect(result.Status).To(Equal(task.StatusSuccess))
-			
+
 			// After the task has run, the process should have the task reference
 			Expect(p.GetTask()).ToNot(BeNil())
 		})

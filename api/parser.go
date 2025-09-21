@@ -953,7 +953,7 @@ func (p *StructParser) getMapFieldValue(val reflect.Value, fieldName string) ref
 	if mapValue.IsValid() {
 		return mapValue
 	}
-	
+
 	// Return zero value if not found
 	return reflect.Value{}
 }

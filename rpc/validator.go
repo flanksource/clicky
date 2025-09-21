@@ -259,7 +259,7 @@ func (v *OpenAPIValidator) isValidOperationID(operationID string) bool {
 
 	for _, char := range operationID {
 		if !((char >= 'a' && char <= 'z') || (char >= 'A' && char <= 'Z') ||
-			 (char >= '0' && char <= '9') || char == '_') {
+			(char >= '0' && char <= '9') || char == '_') {
 			return false
 		}
 	}

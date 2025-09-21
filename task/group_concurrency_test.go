@@ -27,7 +27,7 @@ func TestGroupConcurrency(t *testing.T) {
 			func(ctx flanksourceContext.Context, t *Task) (int, error) {
 				// Track active tasks
 				active := atomic.AddInt64(&activeCount, 1)
-				
+
 				// Update max active count if needed
 				for {
 					current := atomic.LoadInt64(&maxActiveCount)
@@ -38,7 +38,7 @@ func TestGroupConcurrency(t *testing.T) {
 
 				// Simulate work
 				time.Sleep(100 * time.Millisecond)
-				
+
 				// Store result
 				mu.Lock()
 				results = append(results, taskID)
@@ -46,7 +46,7 @@ func TestGroupConcurrency(t *testing.T) {
 
 				// Decrement active count
 				atomic.AddInt64(&activeCount, -1)
-				
+
 				return taskID, nil
 			},
 		)
@@ -78,7 +78,7 @@ func TestGroupNoConcurrencyLimit(t *testing.T) {
 			func(ctx flanksourceContext.Context, t *Task) (int, error) {
 				// Track active tasks
 				active := atomic.AddInt64(&activeCount, 1)
-				
+
 				// Update max active count
 				for {
 					current := atomic.LoadInt64(&maxActiveCount)
@@ -89,7 +89,7 @@ func TestGroupNoConcurrencyLimit(t *testing.T) {
 
 				// Simulate brief work
 				time.Sleep(50 * time.Millisecond)
-				
+
 				// Store result
 				mu.Lock()
 				results = append(results, taskID)
@@ -97,7 +97,7 @@ func TestGroupNoConcurrencyLimit(t *testing.T) {
 
 				// Decrement active count
 				atomic.AddInt64(&activeCount, -1)
-				
+
 				return taskID, nil
 			},
 		)
@@ -128,7 +128,7 @@ func TestGroupConcurrencyZero(t *testing.T) {
 			func(ctx flanksourceContext.Context, t *Task) (int, error) {
 				// Track active tasks
 				active := atomic.AddInt64(&activeCount, 1)
-				
+
 				// Update max active count
 				for {
 					current := atomic.LoadInt64(&maxActiveCount)
@@ -142,7 +142,7 @@ func TestGroupConcurrencyZero(t *testing.T) {
 
 				// Decrement active count
 				atomic.AddInt64(&activeCount, -1)
-				
+
 				return taskID, nil
 			},
 		)

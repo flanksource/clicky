@@ -33,7 +33,7 @@ func NewCommandWithConfig(config *Config) *cobra.Command {
 
 	// Apply config defaults if provided
 	if config != nil {
-		opts.ConfigPath = ""  // Will be overridden by config file
+		opts.ConfigPath = "" // Will be overridden by config file
 		opts.AutoExpose = config.Tools.AutoExpose
 		opts.Transport = config.Transport.Type
 		opts.Address = config.Transport.Address

@@ -12,7 +12,9 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/flanksource/clicky/api"
+	"github.com/flanksource/clicky/extensions"
 	"github.com/flanksource/clicky/formatters"
+	"github.com/flanksource/commons/logger"
 )
 
 // Build information (set by goreleaser)
@@ -97,8 +99,11 @@ For backward compatibility, you can use the root command directly, or use the
 	rootCmd.AddCommand(newPrettyCommand())
 	rootCmd.AddCommand(newVersionCommand())
 	rootCmd.AddCommand(newSchemaCommand())
-	// TODO: Re-enable MCP command after fixing compatibility issues
-	// rootCmd.AddCommand(mcp.NewCommand())
+
+	// Add OpenAPI and MCP commands using extensions
+	extensions.CobraExtensions(rootCmd).
+		OpenAPICommand().
+		MCPCommand()
 
 	return rootCmd
 }
@@ -488,8 +493,13 @@ func formatDataFile(manager *formatters.FormatManager, dataFile string, options 
 		}
 	}
 
-	// Output to file or stdout
-	if options.Output != "" {
+	if options.Output == "" || options.Output == "stdout" || options.Output == "-" || options.Output == "/dev/stdout" {
+		// Output to stdout
+		fmt.Print(output)
+	} else if options.Output == "stderr" || options.Output == "/dev/stderr" {
+		// Output to stderr
+		fmt.Fprint(os.Stderr, output)
+	} else {
 		// Create output file path
 		outputFile := options.Output
 		if strings.Contains(options.Output, "*") || filepath.Ext(options.Output) == "" {
@@ -513,12 +523,7 @@ func formatDataFile(manager *formatters.FormatManager, dataFile string, options 
 			return fmt.Errorf("failed to write output file: %w", err)
 		}
 
-		if options.Verbose {
-			fmt.Printf("Output written to %s\n", outputFile)
-		}
-	} else {
-		// Output to stdout
-		fmt.Print(output)
+		logger.Tracef("Output written to %s\n", outputFile)
 	}
 
 	return nil
