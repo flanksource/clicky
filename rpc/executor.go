@@ -82,7 +82,7 @@ func (e *CommandExecutor) ExecuteCommand(op *RPCOperation, req *ExecutionRequest
 		return &ExecutionResponse{
 			Success: false,
 			Error:   "Command execution is disabled",
-			Input:   req, // Include input for debugging
+			Input:   req,                      // Include input for debugging
 			CLI:     buildCLICommand(op, req), // Include CLI command for debugging
 		}, fmt.Errorf("command execution is disabled")
 	}
@@ -92,7 +92,7 @@ func (e *CommandExecutor) ExecuteCommand(op *RPCOperation, req *ExecutionRequest
 		return &ExecutionResponse{
 			Success: false,
 			Error:   "No command associated with operation",
-			Input:   req, // Include input for debugging
+			Input:   req,                      // Include input for debugging
 			CLI:     buildCLICommand(op, req), // Include CLI command for debugging
 		}, fmt.Errorf("no command found for operation %s", op.Name)
 	}
@@ -136,7 +136,7 @@ func (e *CommandExecutor) ExecuteCommand(op *RPCOperation, req *ExecutionRequest
 					return &ExecutionResponse{
 						Success: false,
 						Error:   fmt.Sprintf("Invalid value for flag %s: %v", flagName, err),
-						Input:   req, // Include input for debugging
+						Input:   req,                      // Include input for debugging
 						CLI:     buildCLICommand(op, req), // Include CLI command for debugging
 					}, err
 				}
@@ -160,7 +160,6 @@ func (e *CommandExecutor) ExecuteCommand(op *RPCOperation, req *ExecutionRequest
 	cmd.Flags().VisitAll(func(flag *pflag.Flag) {
 		execCmd.Flags().AddFlag(flag)
 	})
-
 
 	// Set arguments
 	args := []string{}
@@ -517,7 +516,7 @@ func shellescape(s string) string {
 	}
 
 	// Otherwise, escape with double quotes and escape internal quotes and backslashes
-	escaped := strings.ReplaceAll(s, "\\", "\\\\") // Escape backslashes first
+	escaped := strings.ReplaceAll(s, "\\", "\\\\")      // Escape backslashes first
 	escaped = strings.ReplaceAll(escaped, "\"", "\\\"") // Escape double quotes
 	return `"` + escaped + `"`
 }
