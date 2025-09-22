@@ -9,7 +9,6 @@ import (
 	"github.com/flanksource/maroto/v2/pkg/components/row"
 	"github.com/flanksource/maroto/v2/pkg/components/text"
 	"github.com/flanksource/maroto/v2/pkg/consts/align"
-	"github.com/flanksource/maroto/v2/pkg/consts/breakline"
 
 	"github.com/flanksource/clicky/api"
 )
@@ -180,40 +179,6 @@ func (t Text) parseHTML(content string) string {
 	return content
 }
 
-// Enhanced text drawing with more options
-func (t Text) drawEnhancedText(b *Builder, apiText api.Text) {
-	// Apply Tailwind classes if specified
-	if apiText.Style != "" {
-		resolvedClass := api.ResolveStyles(apiText.Style)
-		apiText.Class = mergeClasses(apiText.Class, resolvedClass)
-	}
-
-	// Convert to props
-	textProps := b.style.ConvertToTextProps(apiText.Class)
-
-	// Add alignment support
-	if strings.Contains(apiText.Style, "text-center") {
-		textProps.Align = align.Center
-	} else if strings.Contains(apiText.Style, "text-right") {
-		textProps.Align = align.Right
-	} else if strings.Contains(apiText.Style, "text-justify") {
-		textProps.Align = align.Justify
-	}
-
-	// Add break line strategy
-	if strings.Contains(apiText.Style, "break-words") {
-		textProps.BreakLineStrategy = breakline.DashStrategy
-	}
-
-	// TODO: Add hyperlink support if api.Text gets an Href field
-
-	// Calculate height
-	height := b.style.CalculateTextHeight(apiText.Class)
-
-	// Create and add text component
-	textComponent := text.New(apiText.Content, *textProps)
-	b.maroto.AddRow(height, col.New(12).Add(textComponent))
-}
 
 // mergeClasses merges two api.Class instances
 func mergeClasses(base, override api.Class) api.Class {

@@ -45,14 +45,14 @@ func (g TypedGroup[T]) Add(name string, taskFunc func(flanksourceContext.Context
 
 	// Wrap the task function with semaphore acquire/release if concurrency is limited
 	wrappedTaskFunc := taskFunc
-	if g.Group.sem != nil {
+	if g.sem != nil {
 		wrappedTaskFunc = func(ctx flanksourceContext.Context, t *Task) (T, error) {
 			// Acquire semaphore permit
-			if err := g.Group.sem.Acquire(ctx, 1); err != nil {
+			if err := g.sem.Acquire(ctx, 1); err != nil {
 				var zero T
 				return zero, err
 			}
-			defer g.Group.sem.Release(1)
+			defer g.sem.Release(1)
 
 			// Execute the original task function
 			return taskFunc(ctx, t)
@@ -63,7 +63,7 @@ func (g TypedGroup[T]) Add(name string, taskFunc func(flanksourceContext.Context
 	task := StartTask(name, wrappedTaskFunc, opts...)
 
 	// Add to the group's items
-	g.Group.Items = append(g.Group.Items, task)
+	g.Items = append(g.Items, task)
 	task.parent = g.Group
 
 	// Update start time if this is the first item or it started earlier
@@ -80,7 +80,7 @@ func (g TypedGroup[T]) Add(name string, taskFunc func(flanksourceContext.Context
 // GetResults waits for all tasks in the group and returns typed results
 func (g TypedGroup[T]) GetResults() (map[TypedTask[T]]T, error) {
 	results := make(map[TypedTask[T]]T)
-	for _, item := range g.Group.Items {
+	for _, item := range g.Items {
 		switch v := item.(type) {
 		case TypedTask[T]:
 			v.WaitFor()
@@ -155,7 +155,7 @@ func (g *TypedGroup[T]) WaitFor() *WaitResult {
 	for {
 		// Get current count of tasks
 		g.mu.RLock()
-		currentCount := len(g.Group.Items)
+		currentCount := len(g.Items)
 		g.mu.RUnlock()
 
 		// Check if we have new tasks
@@ -172,7 +172,7 @@ func (g *TypedGroup[T]) WaitFor() *WaitResult {
 		hasRunning := false
 
 		g.mu.RLock()
-		for _, item := range g.Group.Items {
+		for _, item := range g.Items {
 			status := item.GetTask().Status()
 			if status == StatusPending || status == StatusRunning {
 				allComplete = false
@@ -246,7 +246,7 @@ func (g *TypedGroup[T]) Duration() time.Duration {
 	var latestEnd time.Time
 	allCompleted := true
 
-	for _, item := range g.Group.Items {
+	for _, item := range g.Items {
 		status := item.GetTask().Status()
 		if status == StatusPending || status == StatusRunning {
 			allCompleted = false

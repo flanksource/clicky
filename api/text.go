@@ -328,23 +328,26 @@ func ResolveStyles(styles ...string) Class {
 			}
 
 			// Apply font weight
-			if class == "bold" || class == "font-bold" || class == "font-semibold" || class == "font-medium" {
+			switch class {
+			case "bold", "font-bold", "font-semibold", "font-medium":
 				resolved.Font.Bold = true
-			} else if class == "font-normal" {
+			case "font-normal":
 				resolved.Font.Bold = false
 			}
 
 			// Apply font style
-			if class == "italic" || class == "font-italic" {
+			switch class {
+			case "italic", "font-italic":
 				resolved.Font.Italic = true
-			} else if class == "not-italic" {
+			case "not-italic":
 				resolved.Font.Italic = false
 			}
 
 			// Apply text decoration
-			if class == "underline" {
+			switch class {
+			case "underline":
 				resolved.Font.Underline = true
-			} else if class == "no-underline" {
+			case "no-underline":
 				resolved.Font.Underline = false
 			}
 
@@ -353,10 +356,10 @@ func ResolveStyles(styles ...string) Class {
 			}
 
 			// Apply faint/opacity
-			if class == "font-light" || class == "font-thin" || class == "font-extralight" ||
-				class == "opacity-50" || class == "opacity-75" || class == "opacity-25" {
+			switch class {
+			case "font-light", "font-thin", "font-extralight", "opacity-50", "opacity-75", "opacity-25":
 				resolved.Font.Faint = true
-			} else if class == "opacity-100" {
+			case "opacity-100":
 				resolved.Font.Faint = false
 			}
 

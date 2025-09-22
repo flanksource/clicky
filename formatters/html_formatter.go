@@ -360,7 +360,8 @@ func (f *HTMLFormatter) Format(in interface{}) (string, error) {
 	// Then handle tables
 	for _, field := range data.Schema.Fields {
 		// Check for table format
-		if field.Format == api.FormatTable {
+		switch field.Format {
+		case api.FormatTable:
 			tableData, exists := data.GetTable(field.Name)
 			if exists && len(tableData) > 0 {
 				// Add section title
@@ -383,7 +384,7 @@ func (f *HTMLFormatter) Format(in interface{}) (string, error) {
 				result.WriteString(tableHTML)
 				result.WriteString("        </div>\n")
 			}
-		} else if field.Format == api.FormatTree {
+		case api.FormatTree:
 			// Handle tree format
 			fieldValue, exists := data.GetValue(field.Name)
 			if exists {
@@ -482,7 +483,8 @@ func (f *HTMLFormatter) FormatPrettyData(data *api.PrettyData) (string, error) {
 	// Then handle tables
 	for _, field := range data.Schema.Fields {
 		// Check for table format
-		if field.Format == api.FormatTable {
+		switch field.Format {
+		case api.FormatTable:
 			tableData, exists := data.GetTable(field.Name)
 			if exists && len(tableData) > 0 {
 				// Add section title
@@ -505,7 +507,7 @@ func (f *HTMLFormatter) FormatPrettyData(data *api.PrettyData) (string, error) {
 				result.WriteString(tableHTML)
 				result.WriteString("        </div>\n")
 			}
-		} else if field.Format == api.FormatTree {
+		case api.FormatTree:
 			// Handle tree format
 			fieldValue, exists := data.GetValue(field.Name)
 			if exists {
@@ -731,7 +733,7 @@ func (f *HTMLFormatter) formatTableDataHTMLWithGridJS(rows []api.PrettyDataRow, 
 	// Generate JavaScript to initialize Grid.js
 	result.WriteString("            <script>\n")
 	result.WriteString("                document.addEventListener('DOMContentLoaded', function() {\n")
-	result.WriteString(fmt.Sprintf("                    new gridjs.Grid({\n"))
+	result.WriteString("                    new gridjs.Grid({\n")
 
 	// Configure columns
 	result.WriteString("                        columns: [\n")

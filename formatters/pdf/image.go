@@ -3,7 +3,6 @@ package pdf
 import (
 	"context"
 	"fmt"
-	"image"
 	"image/png"
 	"io"
 	"net/http"
@@ -306,7 +305,9 @@ func validatePDFFile(path string) error {
 	}
 
 	// More comprehensive PDF structure validation
-	file.Seek(0, 0) // Reset to beginning
+	if _, err := file.Seek(0, 0); err != nil {
+		return fmt.Errorf("failed to seek to beginning of file: %w", err)
+	} // Reset to beginning
 
 	// Read entire file content for structure validation
 	// Since we need to check for XRef streams which are typically at the end
@@ -399,7 +400,10 @@ func (i *Image) convertSVGWithMetadata(b *Builder, svgPath string) (string, *Con
 	// Set preferred converter if specified
 	converterUsed := "default"
 	if i.PreferredConverter != "" {
-		SetPreferred(i.PreferredConverter)
+		if err := SetPreferred(i.PreferredConverter); err != nil {
+			// Log warning but continue with default converter
+			fmt.Printf("Warning: failed to set preferred converter %s: %v\n", i.PreferredConverter, err)
+		}
 		converterUsed = i.PreferredConverter
 	} else if available := GetAvailableConverters(); len(available) > 0 {
 		converterUsed = available[0] // First available converter
@@ -484,38 +488,3 @@ func ValidatePNGFile(pngPath string) error {
 	return nil
 }
 
-// validateImageFile validates that an image file can be properly decoded
-func validateImageFile(imagePath string) error {
-	file, err := os.Open(imagePath)
-	if err != nil {
-		return fmt.Errorf("cannot open image file: %w", err)
-	}
-	defer file.Close()
-
-	// Try to decode as any supported image format
-	_, _, err = image.DecodeConfig(file)
-	if err != nil {
-		return fmt.Errorf("image decode config failed: %w", err)
-	}
-
-	return nil
-}
-
-// getFileSize returns the size of a file, or 0 if there's an error
-func getFileSize(path string) int64 {
-	if stat, err := os.Stat(path); err == nil {
-		return stat.Size()
-	}
-	return 0
-}
-
-// formatFileSize formats a file size in bytes to a human-readable string
-func formatFileSize(size int64) string {
-	if size < 1024 {
-		return fmt.Sprintf("%d bytes", size)
-	} else if size < 1024*1024 {
-		return fmt.Sprintf("%.1f KB", float64(size)/1024)
-	} else {
-		return fmt.Sprintf("%.1f MB", float64(size)/(1024*1024))
-	}
-}

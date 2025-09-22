@@ -33,8 +33,8 @@ github.com/f-amaral/go-async v0.3.0 h1:h4kLsX7aKfdWaHvV0lf+/EE3OIeCzyeDYJDb/vDZU
 github.com/f-amaral/go-async v0.3.0/go.mod h1:Hz5Qr6DAWpbTTUjytnrg1WIsDgS7NtOei5y8SipYS7U=
 github.com/fatih/color v1.18.0 h1:S8gINlzdQ840/4pfAwic/ZE0djQEH3wM94VfqLTZcOM=
 github.com/fatih/color v1.18.0/go.mod h1:4FelSpRwEGDpQ12mAdzqdOukCy4u8WUtOY6lkT/6HfU=
-github.com/flanksource/commons v1.41.1 h1:9T0M24/mEj2FlMouh2LxDMFMems1nOMWUptoL+P8SlI=
-github.com/flanksource/commons v1.41.1/go.mod h1:u14gMIiatT3pwmlwhSB3ZfNN9B/D062jofGv0WjBwFM=
+github.com/flanksource/commons v1.42.0 h1:vg1Zvb4rmqqiOnJzmUl7aCVlg6wtNtkkkH4Vn5InNYU=
+github.com/flanksource/commons v1.42.0/go.mod h1:xEBCobwaM0+EHn2SvFpqiCBJCVk1803An1kZleXFR9Y=
 github.com/flanksource/maroto/v2 v2.4.2 h1:2cW/LJ/AY7Uqs/yecPAsV1Pkct+BQtTehoAb5f7pOcc=
 github.com/flanksource/maroto/v2 v2.4.2/go.mod h1:2ox4ZhXbIY+1fyJwuXAca0S/05soOlFSWqyqCnSPtO4=
 github.com/fsnotify/fsnotify v1.9.0 h1:2Ml+OJNzbYCTzsxtv8vKSFD9PbJjmhYF14k/jKC7S9k=

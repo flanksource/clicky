@@ -34,7 +34,10 @@ func NewMCPServer(config *Config, rootCmd *cobra.Command) *MCPServer {
 	// Try to load custom prompts
 	promptsPath := GetPromptsPath()
 	if _, err := os.Stat(promptsPath); err == nil {
-		promptRegistry.LoadFromFile(promptsPath)
+		if err := promptRegistry.LoadFromFile(promptsPath); err != nil {
+			// Log error but continue with empty registry
+			fmt.Printf("Warning: failed to load prompts from %s: %v\n", promptsPath, err)
+		}
 	}
 
 	return &MCPServer{
@@ -413,7 +416,10 @@ func (s *MCPServer) executeToolWithTaskManager(ctx context.Context, tool *ToolDe
 			<-errDone
 
 			if cmdErr != nil {
-				t.FailedWithError(cmdErr)
+				if _, err := t.FailedWithError(cmdErr); err != nil {
+					// Log error but continue
+					fmt.Printf("Warning: failed to record command failure: %v\n", err)
+				}
 				return nil, cmdErr
 			}
 

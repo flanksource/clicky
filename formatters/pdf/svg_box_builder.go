@@ -52,8 +52,8 @@ func NewSVGBoxBuilder() *SVGBoxBuilder {
 
 // WithSize sets the width and height of the SVG box
 func (b *SVGBoxBuilder) WithSize(width, height int) *SVGBoxBuilder {
-	b.box.Rectangle.Width = width
-	b.box.Rectangle.Height = height
+	b.box.Width = width
+	b.box.Height = height
 	return b
 }
 

@@ -50,22 +50,22 @@ func (f *HTMLPDFFormatter) Format(data interface{}) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to create temp HTML file: %w", err)
 	}
-	defer os.Remove(tempHTMLFile.Name()) // Clean up HTML file
+	defer func() { _ = os.Remove(tempHTMLFile.Name()) }() // Clean up HTML file
 
 	// Write HTML content to temp file
 	if _, err := tempHTMLFile.WriteString(htmlContent); err != nil {
-		tempHTMLFile.Close()
+		_ = tempHTMLFile.Close()
 		return "", fmt.Errorf("failed to write HTML to temp file: %w", err)
 	}
-	tempHTMLFile.Close()
+	_ = tempHTMLFile.Close()
 
 	// Create temporary PDF file
 	tempPDFFile, err := os.CreateTemp("", "clicky_*.pdf")
 	if err != nil {
 		return "", fmt.Errorf("failed to create temp PDF file: %w", err)
 	}
-	tempPDFFile.Close()                 // Close immediately, we just need the path
-	defer os.Remove(tempPDFFile.Name()) // Clean up PDF file
+	_ = tempPDFFile.Close() // Close immediately, we just need the path
+	defer func() { _ = os.Remove(tempPDFFile.Name()) }() // Clean up PDF file
 
 	// Convert HTML to PDF using ChromiumConverter
 	ctx := context.Background()
@@ -104,14 +104,14 @@ func (f *HTMLPDFFormatter) FormatToFile(data interface{}, outputPath string) err
 	if err != nil {
 		return fmt.Errorf("failed to create temp HTML file: %w", err)
 	}
-	defer os.Remove(tempHTMLFile.Name()) // Clean up HTML file
+	defer func() { _ = os.Remove(tempHTMLFile.Name()) }() // Clean up HTML file
 
 	// Write HTML content to temp file
 	if _, err := tempHTMLFile.WriteString(htmlContent); err != nil {
-		tempHTMLFile.Close()
+		_ = tempHTMLFile.Close()
 		return fmt.Errorf("failed to write HTML to temp file: %w", err)
 	}
-	tempHTMLFile.Close()
+	_ = tempHTMLFile.Close()
 
 	// Ensure output directory exists
 	outputDir := filepath.Dir(outputPath)
@@ -150,22 +150,22 @@ func (f *HTMLPDFFormatter) FormatPrettyData(data *api.PrettyData) (string, error
 	if err != nil {
 		return "", fmt.Errorf("failed to create temp HTML file: %w", err)
 	}
-	defer os.Remove(tempHTMLFile.Name()) // Clean up HTML file
+	defer func() { _ = os.Remove(tempHTMLFile.Name()) }() // Clean up HTML file
 
 	// Write HTML content to temp file
 	if _, err := tempHTMLFile.WriteString(htmlContent); err != nil {
-		tempHTMLFile.Close()
+		_ = tempHTMLFile.Close()
 		return "", fmt.Errorf("failed to write HTML to temp file: %w", err)
 	}
-	tempHTMLFile.Close()
+	_ = tempHTMLFile.Close()
 
 	// Create temporary PDF file
 	tempPDFFile, err := os.CreateTemp("", "clicky_*.pdf")
 	if err != nil {
 		return "", fmt.Errorf("failed to create temp PDF file: %w", err)
 	}
-	tempPDFFile.Close()                 // Close immediately, we just need the path
-	defer os.Remove(tempPDFFile.Name()) // Clean up PDF file
+	_ = tempPDFFile.Close() // Close immediately, we just need the path
+	defer func() { _ = os.Remove(tempPDFFile.Name()) }() // Clean up PDF file
 
 	// Convert HTML to PDF using ChromiumConverter
 	ctx := context.Background()

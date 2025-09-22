@@ -270,16 +270,6 @@ func isCRUDOperation(part string) bool {
 	return false
 }
 
-// pluralize applies simple pluralization rules (can be enhanced)
-func pluralize(word string) string {
-	if strings.HasSuffix(word, "s") {
-		return word
-	}
-	if strings.HasSuffix(word, "y") {
-		return strings.TrimSuffix(word, "y") + "ies"
-	}
-	return word + "s"
-}
 
 // getParentCommandName returns the name of the parent command for tagging
 func (c *Converter) getParentCommandName(cmd *cobra.Command) string {

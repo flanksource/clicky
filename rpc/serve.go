@@ -229,7 +229,10 @@ func (s *SwaggerServer) handleOpenAPIYAML(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	w.Write(yamlData)
+	if _, err := w.Write(yamlData); err != nil {
+		// Log error but response already started
+		fmt.Printf("Warning: failed to write YAML response: %v\n", err)
+	}
 }
 
 // handleHealth serves a simple health check endpoint
@@ -242,7 +245,10 @@ func (s *SwaggerServer) handleHealth(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(health)
+	if err := json.NewEncoder(w).Encode(health); err != nil {
+		// Log error but response already started
+		fmt.Printf("Warning: failed to encode health response: %v\n", err)
+	}
 }
 
 // openBrowser opens the default browser to the specified URL
@@ -456,7 +462,9 @@ func (s *SwaggerServer) handleExecuteCommand(w http.ResponseWriter, r *http.Requ
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(errorResp)
+		if err := json.NewEncoder(w).Encode(errorResp); err != nil {
+			fmt.Printf("Warning: failed to encode error response: %v\n", err)
+		}
 		return
 	}
 
@@ -470,7 +478,9 @@ func (s *SwaggerServer) handleExecuteCommand(w http.ResponseWriter, r *http.Requ
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(errorResp)
+		if err := json.NewEncoder(w).Encode(errorResp); err != nil {
+			fmt.Printf("Warning: failed to encode error response: %v\n", err)
+		}
 		return
 	}
 
@@ -479,12 +489,16 @@ func (s *SwaggerServer) handleExecuteCommand(w http.ResponseWriter, r *http.Requ
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(resp)
+		if err := json.NewEncoder(w).Encode(resp); err != nil {
+			fmt.Printf("Warning: failed to encode error response: %v\n", err)
+		}
 		return
 	}
 
 	// Return successful response
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(resp)
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
+		fmt.Printf("Warning: failed to encode response: %v\n", err)
+	}
 }

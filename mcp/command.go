@@ -10,6 +10,8 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/spf13/cobra"
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
 )
 
 // CommandOptions holds options for MCP command creation
@@ -342,7 +344,9 @@ Examples:
 			// Try to load custom prompts
 			promptsPath := GetPromptsPath()
 			if _, err := os.Stat(promptsPath); err == nil {
-				promptRegistry.LoadFromFile(promptsPath)
+				if err := promptRegistry.LoadFromFile(promptsPath); err != nil {
+					fmt.Printf("Warning: failed to load prompts from %s: %v\n", promptsPath, err)
+				}
 			}
 
 			// Handle save option
@@ -397,7 +401,9 @@ Examples:
 				if promptName == "discover-tools" {
 					// Create tool registry to get available tools
 					toolRegistry := NewToolRegistry(config)
-					toolRegistry.RegisterCommandTree(rootCmd)
+					if err := toolRegistry.RegisterCommandTree(rootCmd); err != nil {
+					fmt.Printf("Warning: failed to register command tree: %v\n", err)
+				}
 					tools := toolRegistry.GetTools()
 
 					fmt.Println(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("14")).
@@ -543,7 +549,7 @@ Examples:
 				}
 
 				fmt.Printf("%s:\n", lipgloss.NewStyle().Foreground(lipgloss.Color("12")).
-					Render(strings.Title(tag)))
+					Render(cases.Title(language.English).String(tag)))
 				for _, p := range tagPrompts {
 					if !displayedPrompts[p.Name] {
 						fmt.Printf("  • %s - %s\n",

@@ -8,6 +8,9 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
+
 	"github.com/samber/lo"
 )
 
@@ -915,7 +918,7 @@ func (f PrettyField) prettifyFieldName(name string) string {
 		if i > 0 {
 			result.WriteString(" ")
 		}
-		result.WriteString(strings.Title(strings.ToLower(word)))
+		result.WriteString(cases.Title(language.English).String(strings.ToLower(word)))
 	}
 
 	return result.String()

@@ -1,18 +1,11 @@
 package pdf
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"os"
 	"strconv"
 	"strings"
-
-	"github.com/flanksource/maroto/v2/pkg/components/col"
-	"github.com/flanksource/maroto/v2/pkg/components/text"
-	"github.com/flanksource/maroto/v2/pkg/consts/align"
-	"github.com/flanksource/maroto/v2/pkg/consts/fontstyle"
-	"github.com/flanksource/maroto/v2/pkg/props"
 )
 
 // SVGWidget renders an SVGBox as a widget in the PDF
@@ -74,7 +67,7 @@ func (w SVGWidget) Draw(b *Builder) error {
 	// Use PDF embed widget to embed the converted SVG
 	embedWidget := NewPDFEmbedWidget(tempFile.Name())
 	if w.Height != nil {
-		embedWidget = embedWidget.WithSize(float64(w.SVGBox.Rectangle.Width)*0.264583, height) // Convert pixels to mm (96 DPI)
+		embedWidget = embedWidget.WithSize(float64(w.SVGBox.Width)*0.264583, height) // Convert pixels to mm (96 DPI)
 	}
 	return embedWidget.Draw(b)
 }
@@ -226,89 +219,3 @@ func extractViewBox(svgContent string) []float64 {
 	return values
 }
 
-// drawSVGDescription draws a text description of the SVG contents
-func (w SVGWidget) drawSVGDescription(b *Builder) error {
-	var description bytes.Buffer
-
-	// Describe the box
-	description.WriteString(fmt.Sprintf("SVG Box: %dx%d",
-		w.SVGBox.Rectangle.Width, w.SVGBox.Rectangle.Height))
-
-	// Describe circles
-	if len(w.SVGBox.Circles) > 0 {
-		description.WriteString(fmt.Sprintf("\nCircles: %d", len(w.SVGBox.Circles)))
-		for i, circle := range w.SVGBox.Circles {
-			if i < 3 { // Show first 3
-				description.WriteString(fmt.Sprintf("\n  - Circle at (%.1f,%.1f), diameter %.1f",
-					circle.X, circle.Y, circle.Diameter))
-				if circle.Label != "" {
-					description.WriteString(fmt.Sprintf(" [%s]", circle.Label))
-				}
-			} else if i == 3 {
-				description.WriteString(fmt.Sprintf("\n  ... and %d more", len(w.SVGBox.Circles)-3))
-				break
-			}
-		}
-	}
-
-	// Describe cuts
-	if len(w.SVGBox.Cuts) > 0 {
-		description.WriteString(fmt.Sprintf("\nCuts: %d", len(w.SVGBox.Cuts)))
-		for i, cut := range w.SVGBox.Cuts {
-			if i < 3 { // Show first 3
-				description.WriteString(fmt.Sprintf("\n  - %s cut at %.1f, width %.1f",
-					cut.Orientation, cut.Position, cut.Width))
-				if cut.Label != "" {
-					description.WriteString(fmt.Sprintf(" [%s]", cut.Label))
-				}
-			} else if i == 3 {
-				description.WriteString(fmt.Sprintf("\n  ... and %d more", len(w.SVGBox.Cuts)-3))
-				break
-			}
-		}
-	}
-
-	// Describe edge cuts
-	if len(w.SVGBox.EdgeCuts) > 0 {
-		description.WriteString(fmt.Sprintf("\nEdge Cuts: %d", len(w.SVGBox.EdgeCuts)))
-		for i, edgeCut := range w.SVGBox.EdgeCuts {
-			if i < 3 { // Show first 3
-				description.WriteString(fmt.Sprintf("\n  - %s edge cut, width %.1f",
-					edgeCut.Edge, edgeCut.Width))
-				if edgeCut.Label != "" {
-					description.WriteString(fmt.Sprintf(" [%s]", edgeCut.Label))
-				}
-			} else if i == 3 {
-				description.WriteString(fmt.Sprintf("\n  ... and %d more", len(w.SVGBox.EdgeCuts)-3))
-				break
-			}
-		}
-	}
-
-	// Describe labels
-	if len(w.SVGBox.Labels) > 0 {
-		description.WriteString(fmt.Sprintf("\nLabels: %d", len(w.SVGBox.Labels)))
-		for i, label := range w.SVGBox.Labels {
-			if i < 3 { // Show first 3
-				description.WriteString(fmt.Sprintf("\n  - \"%s\"", label.Text.Content))
-			} else if i == 3 {
-				description.WriteString(fmt.Sprintf("\n  ... and %d more", len(w.SVGBox.Labels)-3))
-				break
-			}
-		}
-	}
-
-	// Create description text component
-	descProps := props.Text{
-		Size:  9,
-		Style: fontstyle.Normal,
-		Align: align.Left,
-		Color: &props.Color{Red: 100, Green: 100, Blue: 100},
-	}
-
-	descComponent := text.New(description.String(), descProps)
-	descCol := col.New(12).Add(descComponent)
-	b.maroto.AddRow(30, descCol) // 30mm height for description
-
-	return nil
-}
