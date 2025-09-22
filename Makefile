@@ -1,8 +1,7 @@
 .PHONY: test build clean install
 
 
-# Run all tests (including legacy)
-test:
+test: build
 	go test -v ./...
 
 # Run tests with coverage
@@ -19,9 +18,8 @@ clean:
 	go clean
 
 # Install dependencies
-install:
-	go mod download
-	go mod tidy
+install: build
+	mv clicky /usr/local/bin/clicky
 
 # Run linter (if available)
 lint:
@@ -31,13 +29,6 @@ lint:
 		echo "golangci-lint not installed, skipping lint"; \
 	fi
 
-# Run linter with test file filtering (reduced noise)
-lint-filtered:
-	@if command -v golangci-lint >/dev/null 2>&1; then \
-		./lint.sh; \
-	else \
-		echo "golangci-lint not installed, skipping lint"; \
-	fi
 
 # Format code
 fmt:
@@ -62,11 +53,6 @@ docker-build:
 docker-run:
 	docker run --rm clicky:latest --help
 
-# Setup development environment
-dev-setup:
-	@echo "Installing development tools..."
-	go install github.com/goreleaser/goreleaser@latest
-	go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
 
 # Default target
 all: install fmt test build
