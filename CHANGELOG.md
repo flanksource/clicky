@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0](https://github.com/flanksource/clicky/compare/v1.1.1...v1.2.0) (2025-09-22)
+
+
+### ♻️ Code Refactoring
+
+* extract MCP logic into generic RPC package ([03950c3](https://github.com/flanksource/clicky/commit/03950c32db238c89d1114b099db44f096d06bcea))
+
+
+### ✨ Features
+
+* add args parser ([bca5105](https://github.com/flanksource/clicky/commit/bca510575faec7053b3dc17f10c9cbec215b1b46))
+* add openapi server ([b4cfac3](https://github.com/flanksource/clicky/commit/b4cfac3cf426c3ddb0119a12af7df757fa163035))
+* add openapi server ([879897b](https://github.com/flanksource/clicky/commit/879897b7b6bc5913d99b7286b945ea77b1d3ef51))
+
+
+### 🐛 Bug Fixes
+
+* linting issues ([b622469](https://github.com/flanksource/clicky/commit/b622469f80cd046c0b075ec38e601c674ed4644a))
+
+
+### 🔧 Maintenance
+
+* add openapi html ([a3833bc](https://github.com/flanksource/clicky/commit/a3833bc93fa704abd78cd082c00d8cb381627a61))
+* bump golangci-lint action ([e8ce19d](https://github.com/flanksource/clicky/commit/e8ce19db9d797801ef3a1fa940d810b8e3fbc7aa))
+* go mod tidy ([3656a9f](https://github.com/flanksource/clicky/commit/3656a9f49f688572df3e42794f7f4a54b088aa86))
+* update lint workflows ([b2b34fe](https://github.com/flanksource/clicky/commit/b2b34fe585a1b92125205b06917293f5d630eb81))
+
 ## [1.1.1](https://github.com/flanksource/clicky/compare/v1.1.0...v1.1.1) (2025-09-16)
 
 
