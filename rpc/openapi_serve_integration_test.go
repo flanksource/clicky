@@ -533,9 +533,9 @@ func TestOpenAPIServe_E2E_WithBinary(t *testing.T) {
 			// Test that query parameters take precedence over JSON body
 			bodyWithConflict := map[string]interface{}{
 				"args":   []string{"../examples/example-data.json"},
-				"schema": "../examples/order-schema.yaml",  // This should be overridden
-				"format": "json",                           // This should be overridden
-				"output": "from-body.txt",                  // This should be overridden to empty
+				"schema": "../examples/order-schema.yaml", // This should be overridden
+				"format": "json",                          // This should be overridden
+				"output": "from-body.txt",                 // This should be overridden to empty
 			}
 
 			// Query params should override schema, format, and output from body
@@ -630,8 +630,8 @@ func TestOpenAPIServe_E2E_WithBinary(t *testing.T) {
 			// Error message could be about args or parameters
 			assert.True(t,
 				strings.Contains(response.Error, "parameter") ||
-				strings.Contains(response.Error, "arg") ||
-				strings.Contains(response.Error, "required"),
+					strings.Contains(response.Error, "arg") ||
+					strings.Contains(response.Error, "required"),
 				"Error should mention parameter/arg issue, got: "+response.Error)
 
 			// Verify input is included for debugging

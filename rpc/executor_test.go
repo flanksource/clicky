@@ -1362,7 +1362,7 @@ func TestBuildCLICommand(t *testing.T) {
 			req: &ExecutionRequest{
 				Args: []string{"file with spaces.json", "file\"with\"quotes.json"},
 				Flags: map[string]string{
-					"name": "User with spaces",
+					"name":  "User with spaces",
 					"email": `user"with"quotes@example.com`,
 				},
 			},
@@ -1380,9 +1380,9 @@ func TestBuildCLICommand(t *testing.T) {
 			expected: "clicky sub config.yaml --config=/path/to/config.yaml", // Updated: getCommandPath doesn't include root command name
 		},
 		{
-			name: "nil request",
-			cmd:  testCmd,
-			req:  nil,
+			name:     "nil request",
+			cmd:      testCmd,
+			req:      nil,
 			expected: "clicky test",
 		},
 	}
@@ -1499,7 +1499,7 @@ func TestShellEscape(t *testing.T) {
 		{
 			name:     "string with backticks",
 			input:    "hello`world`",
-			expected: `"hello`+"`"+`world`+"`"+`"`,
+			expected: `"hello` + "`" + `world` + "`" + `"`,
 		},
 	}
 
