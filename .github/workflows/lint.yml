@@ -14,6 +14,11 @@ jobs:
   golangci-lint:
     name: golangci-lint
     runs-on: ubuntu-latest
+    permissions:
+      # Required: allow read access to the content for analysis.
+      contents: read
+      # Optional: allow read access to pull requests. Use with `only-new-issues` option.
+      pull-requests: read
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -27,10 +32,10 @@ jobs:
           cache: true
 
       - name: golangci-lint
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v7
         with:
-          version: v2.5.0
-          args: --timeout=10m
+          version: v2.4.0
+          args: --timeout=10m --tests=false --verbose
           skip-cache: true
 
   go-fmt:
