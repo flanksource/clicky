@@ -2,6 +2,9 @@ package api
 
 import (
 	"strings"
+
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
 )
 
 // PrettifyFieldName converts field names to readable format
@@ -23,7 +26,7 @@ func PrettifyFieldName(name string) string {
 		if i > 0 {
 			result.WriteString(" ")
 		}
-		result.WriteString(strings.Title(strings.ToLower(word)))
+		result.WriteString(cases.Title(language.English).String(strings.ToLower(word)))
 	}
 
 	return result.String()

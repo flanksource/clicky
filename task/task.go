@@ -228,7 +228,7 @@ func (t *Task) GetTask() *Task {
 
 // GetResult retrieves the typed result from a TypedTask
 func (t TypedTask[T]) GetResult() (T, error) {
-	wait := t.Task.WaitFor()
+	wait := t.WaitFor()
 	if wait != nil && wait.Error != nil {
 		return *new(T), wait.Error
 	}

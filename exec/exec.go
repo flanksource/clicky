@@ -62,7 +62,7 @@ func (p Process) Name() string {
 // Start runs the process in the background
 func (p Process) Start() error {
 	shutdown.AddHook("Stopping "+p.Name(), func() {
-		p.MustStop(10 * time.Second)
+		_ = p.MustStop(10 * time.Second) // ignore error during shutdown
 	})
 	go p.Run()
 	return nil
@@ -125,7 +125,7 @@ func (p Process) Run() Process {
 }
 
 func (p Process) IsRunning() bool {
-	return p.cmd != nil && p.cmd.Process != nil && p.cmd.ProcessState.Exited() == false
+	return p.cmd != nil && p.cmd.Process != nil && !p.cmd.ProcessState.Exited()
 }
 
 func (p Process) IsOK() bool {

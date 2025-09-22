@@ -111,7 +111,7 @@ func Shutdown() {
 func WaitForSignal() {
 	once.Do(func() {
 		sigChan := make(chan os.Signal, 100)
-		signal.Notify(sigChan, os.Interrupt, os.Kill, syscall.SIGTERM, syscall.SIGHUP)
+		signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM, syscall.SIGHUP)
 		sig := <-sigChan
 		fmt.Fprintf(os.Stderr, "\n🛑 Received %s - initiating graceful shutdown..., %d hooks\n", sig, len(hooks))
 		fmt.Fprintf(os.Stderr, "   Press Ctrl+C again to force immediate exit\n\n")

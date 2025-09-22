@@ -346,7 +346,8 @@ func parseCSVLine(line string) []string {
 	var current strings.Builder
 	inQuotes := false
 
-	for i, char := range line {
+	for i := 0; i < len(line); i++ {
+		char := rune(line[i])
 		switch char {
 		case '"':
 			if inQuotes && i+1 < len(line) && line[i+1] == '"' {

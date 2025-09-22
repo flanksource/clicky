@@ -10,11 +10,8 @@ import (
 	"github.com/flanksource/maroto/v2/pkg/components/row"
 	"github.com/flanksource/maroto/v2/pkg/components/text"
 	"github.com/flanksource/maroto/v2/pkg/config"
-	"github.com/flanksource/maroto/v2/pkg/consts/align"
-	"github.com/flanksource/maroto/v2/pkg/consts/fontstyle"
 	"github.com/flanksource/maroto/v2/pkg/consts/pagesize"
 	"github.com/flanksource/maroto/v2/pkg/core"
-	"github.com/flanksource/maroto/v2/pkg/props"
 
 	"github.com/flanksource/clicky/api"
 )
@@ -141,7 +138,10 @@ func (b *Builder) registerHeader() {
 	}
 
 	headerRow := b.createTextRow(b.header, 10)
-	b.maroto.RegisterHeader(headerRow)
+	if err := b.maroto.RegisterHeader(headerRow); err != nil {
+		// Log error but don't fail, just continue without header
+		fmt.Printf("Warning: failed to register header: %v\n", err)
+	}
 }
 
 // registerFooter registers the footer with Maroto
@@ -151,7 +151,10 @@ func (b *Builder) registerFooter() {
 	}
 
 	footerRow := b.createTextRow(b.footer, 8)
-	b.maroto.RegisterFooter(footerRow)
+	if err := b.maroto.RegisterFooter(footerRow); err != nil {
+		// Log error but don't fail, just continue without footer
+		fmt.Printf("Warning: failed to register footer: %v\n", err)
+	}
 }
 
 // createTextRow creates a Maroto row with text
@@ -280,12 +283,3 @@ func (b *Builder) Build() ([]byte, error) {
 	return b.Output()
 }
 
-// Helper function to create text properties with alignment
-func createTextProps(style fontstyle.Type, size float64, alignment align.Type, color *props.Color) *props.Text {
-	return &props.Text{
-		Style: style,
-		Size:  size,
-		Align: alignment,
-		Color: color,
-	}
-}

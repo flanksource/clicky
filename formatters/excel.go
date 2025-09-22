@@ -34,7 +34,9 @@ func (f *ExcelFormatter) FormatToFile(data interface{}, filename string) error {
 	}
 
 	file := excelize.NewFile()
-	defer file.Close()
+	defer func() {
+		_ = file.Close() // ignore error on close
+	}()
 
 	return f.FormatPrettyDataToFile(prettyData, filename, file)
 }
@@ -52,7 +54,9 @@ func (f *ExcelFormatter) FormatPrettyDataToFile(data *api.PrettyData, filename s
 
 	// Rename default sheet
 	if sheetIndex, err := file.GetSheetIndex("Sheet1"); err == nil && sheetIndex >= 0 {
-		file.SetSheetName("Sheet1", sheetName)
+		if err := file.SetSheetName("Sheet1", sheetName); err != nil {
+			return fmt.Errorf("failed to rename sheet: %w", err)
+		}
 	} else {
 		_, err := file.NewSheet(sheetName)
 		if err != nil {
@@ -77,28 +81,40 @@ func (f *ExcelFormatter) FormatPrettyDataToFile(data *api.PrettyData, filename s
 	// Write regular field values first (if any)
 	if len(regularFields) > 0 {
 		// Create headers for regular fields
-		file.SetCellValue(sheetName, "A1", "Field")
-		file.SetCellValue(sheetName, "B1", "Value")
+		if err := file.SetCellValue(sheetName, "A1", "Field"); err != nil {
+			return fmt.Errorf("failed to set header cell: %w", err)
+		}
+		if err := file.SetCellValue(sheetName, "B1", "Value"); err != nil {
+			return fmt.Errorf("failed to set header cell: %w", err)
+		}
 
 		// Apply header styling
 		headerStyle, err := f.createHeaderStyle(file)
 		if err != nil {
 			return fmt.Errorf("failed to create header style: %w", err)
 		}
-		file.SetCellStyle(sheetName, "A1", "B1", headerStyle)
+		if err := file.SetCellStyle(sheetName, "A1", "B1", headerStyle); err != nil {
+			return fmt.Errorf("failed to set header style: %w", err)
+		}
 		currentRow = 2
 
 		// Write field data using Plain() for formatted text
 		for _, field := range regularFields {
 			if fieldValue, exists := data.Values[field.Name]; exists {
-				file.SetCellValue(sheetName, fmt.Sprintf("A%d", currentRow), field.Name)
-				file.SetCellValue(sheetName, fmt.Sprintf("B%d", currentRow), fieldValue.Plain())
+				if err := file.SetCellValue(sheetName, fmt.Sprintf("A%d", currentRow), field.Name); err != nil {
+					return fmt.Errorf("failed to set cell value: %w", err)
+				}
+				if err := file.SetCellValue(sheetName, fmt.Sprintf("B%d", currentRow), fieldValue.Plain()); err != nil {
+					return fmt.Errorf("failed to set cell value: %w", err)
+				}
 				currentRow++
 			}
 		}
 
 		// Auto-fit columns
-		file.SetColWidth(sheetName, "A", "B", 20)
+		if err := file.SetColWidth(sheetName, "A", "B", 20); err != nil {
+			return fmt.Errorf("failed to set column width: %w", err)
+		}
 		currentRow += 2 // Add spacing
 	}
 
@@ -107,12 +123,16 @@ func (f *ExcelFormatter) FormatPrettyDataToFile(data *api.PrettyData, filename s
 		if tableData, exists := data.Tables[tableField.Name]; exists && len(tableData) > 0 {
 			// Add table title if we had regular fields above
 			if len(regularFields) > 0 {
-				file.SetCellValue(sheetName, fmt.Sprintf("A%d", currentRow), tableField.Name)
+				if err := file.SetCellValue(sheetName, fmt.Sprintf("A%d", currentRow), tableField.Name); err != nil {
+				return fmt.Errorf("failed to set table title: %w", err)
+			}
 				titleStyle, err := f.createTitleStyle(file)
 				if err != nil {
 					return fmt.Errorf("failed to create title style: %w", err)
 				}
-				file.SetCellStyle(sheetName, fmt.Sprintf("A%d", currentRow), fmt.Sprintf("A%d", currentRow), titleStyle)
+				if err := file.SetCellStyle(sheetName, fmt.Sprintf("A%d", currentRow), fmt.Sprintf("A%d", currentRow), titleStyle); err != nil {
+				return fmt.Errorf("failed to set title style: %w", err)
+			}
 				currentRow++
 			}
 
@@ -133,7 +153,9 @@ func (f *ExcelFormatter) FormatPrettyDataToFile(data *api.PrettyData, filename s
 			// Write headers
 			for i, header := range headers {
 				cellRef := f.getCellReference(i+1, currentRow)
-				file.SetCellValue(sheetName, cellRef, header)
+				if err := file.SetCellValue(sheetName, cellRef, header); err != nil {
+				return fmt.Errorf("failed to set header value: %w", err)
+			}
 			}
 
 			// Apply header styling
@@ -145,7 +167,9 @@ func (f *ExcelFormatter) FormatPrettyDataToFile(data *api.PrettyData, filename s
 			if len(headers) > 0 {
 				startCell := f.getCellReference(1, currentRow)
 				endCell := f.getCellReference(len(headers), currentRow)
-				file.SetCellStyle(sheetName, startCell, endCell, headerStyle)
+				if err := file.SetCellStyle(sheetName, startCell, endCell, headerStyle); err != nil {
+				return fmt.Errorf("failed to set header style: %w", err)
+			}
 			}
 			currentRow++
 
@@ -155,7 +179,9 @@ func (f *ExcelFormatter) FormatPrettyDataToFile(data *api.PrettyData, filename s
 					cellRef := f.getCellReference(i+1, currentRow)
 					if fieldValue, exists := row[fieldName]; exists {
 						// Use Plain() to get the formatted text representation
-						file.SetCellValue(sheetName, cellRef, fieldValue.Plain())
+						if err := file.SetCellValue(sheetName, cellRef, fieldValue.Plain()); err != nil {
+					return fmt.Errorf("failed to set cell value: %w", err)
+				}
 					}
 				}
 				currentRow++
@@ -165,7 +191,9 @@ func (f *ExcelFormatter) FormatPrettyDataToFile(data *api.PrettyData, filename s
 			if len(headers) > 0 {
 				startCol := f.getColumnName(1)
 				endCol := f.getColumnName(len(headers))
-				file.SetColWidth(sheetName, startCol, endCol, 15)
+				if err := file.SetColWidth(sheetName, startCol, endCol, 15); err != nil {
+				return fmt.Errorf("failed to set column width: %w", err)
+			}
 			}
 		}
 	}
@@ -181,7 +209,9 @@ func (f *ExcelFormatter) FormatPrettyDataToFile(data *api.PrettyData, filename s
 // FormatPrettyData formats PrettyData to Excel bytes (for in-memory operations)
 func (f *ExcelFormatter) FormatPrettyData(data *api.PrettyData) (string, error) {
 	file := excelize.NewFile()
-	defer file.Close()
+	defer func() {
+		_ = file.Close() // ignore error on close
+	}()
 
 	if err := f.FormatPrettyDataToFile(data, "", file); err != nil {
 		return "", err

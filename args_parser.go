@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 	"regexp"
 	"strings"
 	"unicode/utf8"
@@ -163,11 +162,6 @@ func parseArgumentEnhanced(rawArg string) (string, any, string, error) {
 	return "", nil, "", fmt.Errorf("invalid argument format, expected key=value, key:=json, key@file, Header:value, or key:=@file")
 }
 
-// parseArgument provides backward compatibility for the old function signature
-func parseArgument(arg string) (string, any, error) {
-	key, value, _, err := parseArgumentEnhanced(arg)
-	return key, value, err
-}
 
 // Helper functions
 
@@ -197,22 +191,6 @@ func readFileAsStringOrBase64(filepath string) (string, error) {
 	return base64.StdEncoding.EncodeToString(content), nil
 }
 
-// isBinaryFile checks if a file is likely binary based on extension
-func isBinaryFile(filePath string) bool {
-	ext := strings.ToLower(filepath.Ext(filePath))
-	binaryExts := []string{
-		".jpg", ".jpeg", ".png", ".gif", ".pdf", ".zip", ".tar", ".gz",
-		".exe", ".bin", ".dll", ".so", ".dylib", ".mp3", ".mp4", ".avi",
-		".mov", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx",
-	}
-
-	for _, bext := range binaryExts {
-		if ext == bext {
-			return true
-		}
-	}
-	return false
-}
 
 // isQueryParameter checks if an argument is a query parameter (key==value) and not escaped
 func isQueryParameter(arg string) bool {

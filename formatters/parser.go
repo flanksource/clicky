@@ -264,10 +264,11 @@ func ToPrettyDataWithFormatHint(data interface{}, formatHint string) (*api.Prett
 
 	// Handle slices/arrays - force format hint
 	if val.Kind() == reflect.Slice || val.Kind() == reflect.Array {
-		if formatHint == "table" {
+		switch formatHint {
+		case "table":
 			result, err := convertSliceToPrettyData(val)
 			return result, err
-		} else if formatHint == "tree" {
+		case "tree":
 			// Check if items have tree structure, otherwise convert to table
 			if hasTreeStructure(val) {
 				return convertSliceToTreeData(val)

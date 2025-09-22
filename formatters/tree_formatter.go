@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/charmbracelet/lipgloss"
-
 	"github.com/flanksource/clicky/api"
 )
 
@@ -172,33 +170,6 @@ func (f *TreeFormatter) FormatTreeFromRoot(root api.TreeNode) string {
 	return f.FormatTree(root, 0, "", true)
 }
 
-// applyTailwindStyle applies Tailwind-style classes to text
-func (f *TreeFormatter) applyTailwindStyle(text, styleStr string) string {
-	style := lipgloss.NewStyle()
-
-	// Parse style string (simplified version - would need full implementation)
-	styles := strings.Fields(styleStr)
-	for _, s := range styles {
-		switch {
-		case strings.HasPrefix(s, "text-blue"):
-			style = style.Foreground(f.Theme.Info)
-		case strings.HasPrefix(s, "text-green"):
-			style = style.Foreground(f.Theme.Success)
-		case strings.HasPrefix(s, "text-red"):
-			style = style.Foreground(f.Theme.Error)
-		case strings.HasPrefix(s, "text-yellow"):
-			style = style.Foreground(f.Theme.Warning)
-		case s == "font-bold":
-			style = style.Bold(true)
-		case s == "italic":
-			style = style.Italic(true)
-		case s == "underline":
-			style = style.Underline(true)
-		}
-	}
-
-	return style.Render(text)
-}
 
 // FormatInlineTree formats a tree structure for inline display
 func (f *TreeFormatter) FormatInlineTree(nodes []api.TreeNode, separator string) string {
@@ -268,11 +239,11 @@ func (f *TreeFormatter) WrapCompactList(items []string, maxWidth int, indent str
 // ConvertToTreeNode converts various types to TreeNode interface
 func ConvertToTreeNode(v interface{}) api.TreeNode {
 	switch node := v.(type) {
-	case api.TreeNode:
-		return node
 	case *api.SimpleTreeNode:
 		return node
 	case *api.CompactListNode:
+		return node
+	case api.TreeNode:
 		return node
 	case map[string]interface{}:
 		// Convert map to tree node

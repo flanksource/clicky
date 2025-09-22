@@ -58,11 +58,12 @@ func (f *CSVFormatter) FormatPrettyData(data *api.PrettyData) (string, error) {
 	var nonTableFields []api.PrettyField
 
 	for _, field := range data.Schema.Fields {
-		if field.Format == api.FormatTable {
+		switch field.Format {
+		case api.FormatTable:
 			tableField = &field
-		} else if field.Format == api.FormatTree {
+		case api.FormatTree:
 			treeField = &field
-		} else {
+		default:
 			nonTableFields = append(nonTableFields, field)
 		}
 	}

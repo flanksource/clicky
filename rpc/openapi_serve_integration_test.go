@@ -700,7 +700,7 @@ func TestOpenAPIServe_E2E_WithBinary(t *testing.T) {
 				url.QueryEscape("../examples/example-data.json,../examples/example-data.json"),
 				url.QueryEscape("../examples/order-schema.yaml"))
 
-			resp, err = client.R(context.Background()).
+			_, err = client.R(context.Background()).
 				Header("Accept", "application/json").
 				Post(queryURL, nil)
 			require.NoError(t, err, "Request should succeed")

@@ -343,7 +343,10 @@ func (ca *ClaudeAgent) executeClaude(ctx context.Context, request PromptRequest,
 		// Cache the error
 		cacheEntry.Error = errMsg
 		if ca.cache != nil {
-			ca.cache.Set(cacheEntry)
+			if err := ca.cache.Set(cacheEntry); err != nil {
+				// Log cache error but don't fail the request
+				fmt.Printf("Warning: failed to cache error: %v\n", err)
+			}
 		}
 
 		return nil, fmt.Errorf("%s\nOutput: %s", errMsg, string(output))
@@ -364,7 +367,10 @@ func (ca *ClaudeAgent) executeClaude(ctx context.Context, request PromptRequest,
 		// Cache the response
 		cacheEntry.Response = response.Result
 		if ca.cache != nil {
-			ca.cache.Set(cacheEntry)
+			if err := ca.cache.Set(cacheEntry); err != nil {
+				// Log cache error but don't fail the request
+				fmt.Printf("Warning: failed to cache response: %v\n", err)
+			}
 		}
 
 		return response, nil
@@ -374,7 +380,10 @@ func (ca *ClaudeAgent) executeClaude(ctx context.Context, request PromptRequest,
 		errMsg := fmt.Sprintf("claude returned error: %s", claudeResp.Result)
 		cacheEntry.Error = errMsg
 		if ca.cache != nil {
-			ca.cache.Set(cacheEntry)
+			if err := ca.cache.Set(cacheEntry); err != nil {
+				// Log cache error but don't fail the request
+				fmt.Printf("Warning: failed to cache error: %v\n", err)
+			}
 		}
 		return nil, fmt.Errorf("%s", errMsg)
 	}

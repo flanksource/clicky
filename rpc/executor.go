@@ -246,12 +246,18 @@ func (e *CommandExecutor) executeWithGlobalCapture(execCmd *cobra.Command, args 
 
 	go func() {
 		defer wg.Done()
-		io.Copy(&stdoutBuf, stdoutReader)
+		if _, err := io.Copy(&stdoutBuf, stdoutReader); err != nil {
+			// Log error but continue
+			fmt.Printf("Warning: failed to copy stdout: %v\n", err)
+		}
 	}()
 
 	go func() {
 		defer wg.Done()
-		io.Copy(&stderrBuf, stderrReader)
+		if _, err := io.Copy(&stderrBuf, stderrReader); err != nil {
+			// Log error but continue
+			fmt.Printf("Warning: failed to copy stderr: %v\n", err)
+		}
 	}()
 
 	// Execute the command
@@ -284,7 +290,8 @@ func (e *CommandExecutor) ExtractRequestFromHTTP(r *http.Request, op *RPCOperati
 
 			// Handle flat JSON structure where each field is a flag or args
 			for key, value := range bodyData {
-				if key == "args" {
+				switch key {
+				case "args":
 					// Convert args to []string
 					if argsArray, ok := value.([]interface{}); ok {
 						for _, arg := range argsArray {
@@ -294,14 +301,14 @@ func (e *CommandExecutor) ExtractRequestFromHTTP(r *http.Request, op *RPCOperati
 						// Single string argument
 						req.Args = append(req.Args, argStr)
 					}
-				} else if key == "flags" {
+				case "flags":
 					// Handle nested flags structure for backward compatibility
 					if flagsMap, ok := value.(map[string]interface{}); ok {
 						for flagName, flagValue := range flagsMap {
 							req.Flags[flagName] = convertValueToString(flagValue)
 						}
 					}
-				} else {
+				default:
 					// Treat all other fields as flags
 					req.Flags[key] = convertValueToString(value)
 				}
@@ -397,9 +404,7 @@ func (e *CommandExecutor) validateParameterType(value, paramType string) error {
 	case "array":
 		// For arrays, we expect JSON array format or comma-separated values
 		// This is a simple validation - could be enhanced
-		if !strings.HasPrefix(value, "[") && !strings.Contains(value, ",") {
-			// Single value arrays are acceptable
-		}
+		// Single value arrays are acceptable (no validation needed for simple cases)
 	default:
 		// Unknown types are treated as strings
 	}

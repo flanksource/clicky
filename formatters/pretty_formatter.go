@@ -591,10 +591,6 @@ func (p *PrettyFormatter) formatDefaultWithVisited(val reflect.Value, visited ma
 	}
 }
 
-// formatMap formats a map value
-func (p *PrettyFormatter) formatMap(val reflect.Value) string {
-	return p.formatMapWithVisited(val, make(map[uintptr]bool))
-}
 
 // formatMapWithVisited formats a map value with circular reference detection
 func (p *PrettyFormatter) formatMapWithVisited(val reflect.Value, visited map[uintptr]bool) string {
@@ -629,10 +625,6 @@ func (p *PrettyFormatter) formatMapWithVisited(val reflect.Value, visited map[ui
 	return fmt.Sprintf("map[%s]", strings.Join(parts, " "))
 }
 
-// formatSlice formats a slice value
-func (p *PrettyFormatter) formatSlice(val reflect.Value) string {
-	return p.formatSliceWithVisited(val, make(map[uintptr]bool))
-}
 
 // formatSliceWithVisited formats a slice value with circular reference detection
 func (p *PrettyFormatter) formatSliceWithVisited(val reflect.Value, visited map[uintptr]bool) string {

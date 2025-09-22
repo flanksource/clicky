@@ -329,9 +329,10 @@ func (tc *TableComponent) drawCellText(drawingHelper *fpdf.DrawingHelper, text s
 		}
 
 		fontStyleStr := ""
-		if style.Style == fontstyle.Bold {
+		switch style.Style {
+		case fontstyle.Bold:
 			fontStyleStr = "B"
-		} else if style.Style == fontstyle.Italic {
+		case fontstyle.Italic:
 			fontStyleStr = "I"
 		}
 

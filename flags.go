@@ -26,12 +26,12 @@ var Flags *AllFlags = &AllFlags{
 
 // BindTaskManagerPFlags adds TaskManager flags to pflag set (for Cobra)
 func BindAllFlags(flags *pflag.FlagSet, filters ...string) *AllFlags {
-	flags.CountVarP(&Flags.Flags.LevelCount, "loglevel", "v", "Increase logging level")
-	flags.StringVar(&Flags.Flags.Level, "log-level", "info", "Set the default log level")
-	flags.BoolVar(&Flags.Flags.JsonLogs, "json-logs", false, "Print logs in json format to stderr")
+	flags.CountVarP(&Flags.LevelCount, "loglevel", "v", "Increase logging level")
+	flags.StringVar(&Flags.Level, "log-level", "info", "Set the default log level")
+	flags.BoolVar(&Flags.JsonLogs, "json-logs", false, "Print logs in json format to stderr")
 
-	flags.BoolVar(&Flags.Flags.ReportCaller, "report-caller", false, "Report log caller info")
-	flags.BoolVar(&Flags.Flags.LogToStderr, "log-to-stderr", true, "Log to stderr instead of stdout")
+	flags.BoolVar(&Flags.ReportCaller, "report-caller", false, "Report log caller info")
+	flags.BoolVar(&Flags.LogToStderr, "log-to-stderr", true, "Log to stderr instead of stdout")
 
 	if collections.MatchItems("tasks", filters...) {
 
@@ -50,19 +50,19 @@ func BindAllFlags(flags *pflag.FlagSet, filters ...string) *AllFlags {
 
 	if collections.MatchItems("format", filters...) {
 
-		flags.StringVar(&Flags.FormatOptions.Format, "format", "", "Output format: pretty, json, yaml, csv, html, pdf, markdown")
+		flags.StringVar(&Flags.Format, "format", "", "Output format: pretty, json, yaml, csv, html, pdf, markdown")
 		flags.BoolVar(&Flags.FormatOptions.NoColor, "no-color", false, "Disable colored output")
-		flags.BoolVar(&Flags.FormatOptions.Verbose, "verbose", false, "Enable verbose output")
-		flags.BoolVar(&Flags.FormatOptions.DumpSchema, "dump-schema", false, "Dump the schema to stderr for debugging")
+		flags.BoolVar(&Flags.Verbose, "verbose", false, "Enable verbose output")
+		flags.BoolVar(&Flags.DumpSchema, "dump-schema", false, "Dump the schema to stderr for debugging")
 
 		// Format-specific flags (mutually exclusive)
-		flags.BoolVar(&Flags.FormatOptions.JSON, "json", false, "Output in JSON format")
-		flags.BoolVar(&Flags.FormatOptions.YAML, "yaml", false, "Output in YAML format")
-		flags.BoolVar(&Flags.FormatOptions.CSV, "csv", false, "Output in CSV format")
-		flags.BoolVar(&Flags.FormatOptions.Markdown, "markdown", false, "Output in Markdown format")
-		flags.BoolVar(&Flags.FormatOptions.Pretty, "pretty", false, "Output in pretty format (default)")
-		flags.BoolVar(&Flags.FormatOptions.HTML, "html", false, "Output in HTML format")
-		flags.BoolVar(&Flags.FormatOptions.PDF, "pdf", false, "Output in PDF format")
+		flags.BoolVar(&Flags.JSON, "json", false, "Output in JSON format")
+		flags.BoolVar(&Flags.YAML, "yaml", false, "Output in YAML format")
+		flags.BoolVar(&Flags.CSV, "csv", false, "Output in CSV format")
+		flags.BoolVar(&Flags.Markdown, "markdown", false, "Output in Markdown format")
+		flags.BoolVar(&Flags.Pretty, "pretty", false, "Output in pretty format (default)")
+		flags.BoolVar(&Flags.HTML, "html", false, "Output in HTML format")
+		flags.BoolVar(&Flags.PDF, "pdf", false, "Output in PDF format")
 	}
 
 	return Flags
@@ -76,6 +76,6 @@ func (a *AllFlags) String() string {
 func (a *AllFlags) UseFlags() {
 	logger.Configure(a.Flags)
 	logger.Debugf("Using logger flags: %s", a)
-	a.TaskManagerOptions.Apply()
+	a.Apply()
 	UseFormatter(a.FormatOptions)
 }

@@ -1,6 +1,8 @@
 package pdf
 
 import (
+	"fmt"
+
 	"github.com/flanksource/maroto/v2/pkg/components/row"
 
 	"github.com/flanksource/clicky/api"
@@ -32,18 +34,16 @@ func (g GridLayout) Draw(b *Builder) error {
 		b.maroto.AddRows(row.New(topPadding))
 	}
 
-	// Maroto uses a 12-column grid system
-	// Calculate how many Maroto columns each logical column should use
-	marotoColsPerLogicalCol := 12 / g.Columns
-	if marotoColsPerLogicalCol < 1 {
-		marotoColsPerLogicalCol = 1
-	}
+	// TODO: Implement proper grid layout using Maroto's 12-column system
+	// For now, widgets are drawn sequentially
 
 	// Process items and draw widgets
 	for _, item := range g.Items {
 		// Draw the widget if present
 		if item.Widget != nil {
-			item.Widget.Draw(b)
+			if err := item.Widget.Draw(b); err != nil {
+				return fmt.Errorf("failed to draw widget: %w", err)
+			}
 		}
 	}
 
@@ -56,12 +56,3 @@ func (g GridLayout) Draw(b *Builder) error {
 	return nil
 }
 
-// drawRow draws a single row of grid items (simplified - just draws widgets sequentially)
-func (g GridLayout) drawRow(b *Builder, items []GridItem) {
-	// For simplicity, just draw each widget
-	for _, item := range items {
-		if item.Widget != nil {
-			item.Widget.Draw(b)
-		}
-	}
-}

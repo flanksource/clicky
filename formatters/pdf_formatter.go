@@ -61,9 +61,7 @@ func (f *PDFFormatter) optimizeHTMLForPDF(htmlContent string) string {
 	</style>`
 
 	// Insert the PDF CSS before the closing </head> tag
-	if strings.Contains(htmlContent, "</head>") {
-		htmlContent = strings.Replace(htmlContent, "</head>", pdfCSS+"\n</head>", 1)
-	}
+	htmlContent = strings.Replace(htmlContent, "</head>", pdfCSS+"\n</head>", 1)
 
 	return htmlContent
 }
@@ -81,7 +79,11 @@ func (f *PDFFormatter) convertHTMLToPDFWithRod(htmlContent string) ([]byte, erro
 	if err != nil {
 		return nil, fmt.Errorf("failed to run playwright: %w", err)
 	}
-	defer pw.Stop()
+	defer func() {
+		if err := pw.Stop(); err != nil {
+			fmt.Printf("Warning: failed to stop playwright: %v\n", err)
+		}
+	}()
 
 	// Launch browser with headless mode
 	browser, err := pw.Chromium.Launch(playwright.BrowserTypeLaunchOptions{

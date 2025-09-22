@@ -3,7 +3,7 @@ package pdf
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -68,7 +68,7 @@ func (c *PlaywrightConverter) Convert(ctx context.Context, svgPath, outputPath s
 	}
 
 	// Read SVG content
-	svgContent, err := ioutil.ReadFile(svgPath)
+	svgContent, err := os.ReadFile(svgPath)
 	if err != nil {
 		return NewConverterError(c.Name(), "read SVG", err)
 	}

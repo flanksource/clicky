@@ -5,7 +5,7 @@ go 1.25.1
 require (
 	github.com/ajstarks/svgo v0.0.0-20211024235047-1546f124cd8b
 	github.com/charmbracelet/lipgloss v0.13.1
-	github.com/flanksource/commons v1.41.1
+	github.com/flanksource/commons v1.42.0
 	github.com/flanksource/maroto/v2 v2.4.2
 	github.com/johnfercher/go-tree v1.0.5
 	github.com/jung-kurt/gofpdf v1.16.2

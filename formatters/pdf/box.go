@@ -98,7 +98,7 @@ func (b Box) Draw(builder *Builder) error {
 	// Since Maroto doesn't have a rectangle component, we'll use borders and spacing
 	// to simulate a box appearance
 
-	height := float64(b.Rectangle.Height)
+	height := float64(b.Height)
 	if height == 0 {
 		height = 20 // Default box height
 	}

@@ -155,7 +155,9 @@ raw data into beautifully formatted output using customizable schemas.`,
 
 	// Add schema flag
 	cmd.Flags().StringVar(&schemaFile, "schema", "", "YAML file containing PrettyObject schema (required)")
-	cmd.MarkFlagRequired("schema")
+	if err := cmd.MarkFlagRequired("schema"); err != nil {
+		panic(fmt.Sprintf("Failed to mark schema flag as required: %v", err))
+	}
 
 	// Add formatting flags using the new BindPFlags function
 	formatters.BindPFlags(cmd.Flags(), &options)
@@ -493,13 +495,14 @@ func formatDataFile(manager *formatters.FormatManager, dataFile string, options 
 		}
 	}
 
-	if options.Output == "" || options.Output == "stdout" || options.Output == "-" || options.Output == "/dev/stdout" {
+	switch options.Output {
+	case "", "stdout", "-", "/dev/stdout":
 		// Output to stdout
 		fmt.Print(output)
-	} else if options.Output == "stderr" || options.Output == "/dev/stderr" {
+	case "stderr", "/dev/stderr":
 		// Output to stderr
 		fmt.Fprint(os.Stderr, output)
-	} else {
+	default:
 		// Create output file path
 		outputFile := options.Output
 		if strings.Contains(options.Output, "*") || filepath.Ext(options.Output) == "" {
@@ -507,7 +510,7 @@ func formatDataFile(manager *formatters.FormatManager, dataFile string, options 
 			base := strings.TrimSuffix(filepath.Base(dataFile), filepath.Ext(dataFile))
 			ext := getOutputExtension(options.Format)
 			if strings.Contains(options.Output, "*") {
-				outputFile = strings.Replace(options.Output, "*", base, -1)
+				outputFile = strings.ReplaceAll(options.Output, "*", base)
 			} else {
 				outputFile = filepath.Join(options.Output, base+ext)
 			}

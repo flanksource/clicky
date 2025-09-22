@@ -92,29 +92,6 @@ func ExtractTextFromPage(pdfData []byte, pageNum int) (string, error) {
 	return textContent, nil
 }
 
-// assertPDFContainsText verifies that a PDF contains all expected text content
-func assertPDFContainsText(t *testing.T, pdfData []byte, expectedTexts []string) {
-	t.Helper()
-
-	// Extract text from the PDF
-	extractedText, err := ExtractTextFromPDF(pdfData)
-	if err != nil {
-		t.Errorf("Failed to extract text from PDF: %v", err)
-		return
-	}
-
-	// Check for each expected text
-	for _, expected := range expectedTexts {
-		if !strings.Contains(extractedText, expected) {
-			t.Errorf("PDF does not contain expected text: %q", expected)
-			t.Logf("Extracted text (first 500 chars): %s", truncateString(extractedText, 500))
-		}
-	}
-
-	if len(expectedTexts) > 0 {
-		t.Logf("✓ PDF contains all %d expected text segments", len(expectedTexts))
-	}
-}
 
 // assertPDFTextOrder verifies that text appears in the PDF in the expected order
 func assertPDFTextOrder(t *testing.T, pdfData []byte, orderedTexts []string) {
@@ -146,52 +123,7 @@ func assertPDFTextOrder(t *testing.T, pdfData []byte, orderedTexts []string) {
 	}
 }
 
-// assertPDFPageCount verifies that the PDF has the expected number of pages
-// NOTE: Currently there seems to be a discrepancy between fpdf page generation and pdfcpu page counting.
-// For now, we focus on ensuring the PDF is valid rather than exact page counts.
-func assertPDFPageCount(t *testing.T, pdfData []byte, expectedPages int) {
-	t.Helper()
 
-	reader := bytes.NewReader(pdfData)
-	ctx, err := api.ReadContext(reader, model.NewDefaultConfiguration())
-	if err != nil {
-		t.Errorf("Failed to read PDF for page count verification: %v", err)
-		return
-	}
-
-	// Log the page count discrepancy for investigation but don't fail the test
-	if ctx.PageCount != expectedPages {
-		t.Logf("Note: pdfcpu reports %d pages, expected %d. This may be due to differences between fpdf generation and pdfcpu parsing.",
-			ctx.PageCount, expectedPages)
-		t.Logf("✓ PDF structure is valid and readable by pdfcpu")
-	} else {
-		t.Logf("✓ PDF has expected page count: %d", expectedPages)
-	}
-}
-
-// assertPDFBasicStructure performs basic PDF structure validation
-func assertPDFBasicStructure(t *testing.T, pdfData []byte) {
-	t.Helper()
-
-	// Verify PDF header
-	if len(pdfData) < 4 || string(pdfData[:4]) != "%PDF" {
-		t.Error("Generated data doesn't look like a PDF (missing %PDF header)")
-		return
-	}
-
-	// Verify minimum size
-	if len(pdfData) < 100 {
-		t.Error("PDF appears to be too small to contain meaningful content")
-		return
-	}
-
-	// Try to parse with pdfcpu
-	reader := bytes.NewReader(pdfData)
-	_, err := api.ReadContext(reader, model.NewDefaultConfiguration())
-	if err != nil {
-		t.Errorf("PDF structure validation failed: %v", err)
-	}
-}
 
 // GetPDFInfo returns basic information about a PDF
 func GetPDFInfo(pdfData []byte) (pages, size int, err error) {
@@ -215,14 +147,6 @@ func createTestSVG() string {
 </svg>`
 }
 
-// createTestSVGWithSize creates a test SVG with specific dimensions
-func createTestSVGWithSize(width, height int) string {
-	return fmt.Sprintf(`<svg width="%d" height="%d" xmlns="http://www.w3.org/2000/svg">
-  <rect x="5" y="5" width="%d" height="%d" fill="blue" stroke="black" stroke-width="2"/>
-  <circle cx="%d" cy="%d" r="15" fill="red" />
-  <text x="%d" y="%d" text-anchor="middle" fill="white" font-size="12">%dx%d</text>
-</svg>`, width, height, width-10, height-10, width/2, height/2, width/2, height/2-5, width, height)
-}
 
 // createComplexTestSVG creates a more complex test SVG with various elements
 func createComplexTestSVG() string {
@@ -399,13 +323,6 @@ func assertNoSVGRenderingErrors(t *testing.T, pdfData []byte) {
 
 // Helper functions
 
-// truncateString truncates a string to a maximum length
-func truncateString(s string, maxLen int) string {
-	if len(s) <= maxLen {
-		return s
-	}
-	return s[:maxLen] + "..."
-}
 
 // maxInt returns the larger of two integers
 func maxInt(a, b int) int {

@@ -50,11 +50,12 @@ func (f *MarkdownFormatter) FormatPrettyData(data *api.PrettyData) (string, erro
 
 	// Separate special format fields from summary fields
 	for _, field := range data.Schema.Fields {
-		if field.Format == api.FormatTable {
+		switch field.Format {
+		case api.FormatTable:
 			tableFields = append(tableFields, field)
-		} else if field.Format == api.FormatTree {
+		case api.FormatTree:
 			treeFields = append(treeFields, field)
-		} else {
+		default:
 			summaryFields = append(summaryFields, field)
 		}
 	}

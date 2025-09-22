@@ -31,6 +31,14 @@ lint:
 		echo "golangci-lint not installed, skipping lint"; \
 	fi
 
+# Run linter with test file filtering (reduced noise)
+lint-filtered:
+	@if command -v golangci-lint >/dev/null 2>&1; then \
+		./lint.sh; \
+	else \
+		echo "golangci-lint not installed, skipping lint"; \
+	fi
+
 # Format code
 fmt:
 	go fmt ./...
