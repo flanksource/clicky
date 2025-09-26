@@ -1,0 +1,6 @@
+# Simple user=password file for development
+# WARNING: Plain text passwords - use only for development!
+dev_admin=dev123
+test_user=password
+demo_user=demo
+guest=guest123

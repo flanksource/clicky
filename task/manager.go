@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"os"
 	"reflect"
+	"strings"
 	"sync"
 	"sync/atomic"
+	"testing"
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
@@ -66,6 +68,43 @@ type styleSet struct {
 
 func init() {
 	global = newManager()
+
+	// Automatically disable progress and color output during tests
+	// testing.Testing() only works within test execution, not when library is used by test binaries
+	// So we also check for common test environment indicators
+	if testing.Testing() || isTestEnvironment() {
+		SetNoProgress(true)
+		SetNoColor(true)
+	}
+}
+
+// isTestEnvironment checks for common test environment indicators
+func isTestEnvironment() bool {
+	// Check if running under go test
+	if os.Getenv("GO_TEST") != "" {
+		return true
+	}
+
+	// Check if running with -test. flags (when go test compiles and runs binaries)
+	for _, arg := range os.Args {
+		if strings.HasPrefix(arg, "-test.") {
+			return true
+		}
+	}
+
+	// Check common CI/test environment variables
+	testEnvVars := []string{
+		"CI", "GITHUB_ACTIONS", "GITLAB_CI", "JENKINS_URL", "TRAVIS", "CIRCLECI",
+		"DEPS_TEST", "NO_PROGRESS", "TEST_ENV",
+	}
+
+	for _, envVar := range testEnvVars {
+		if os.Getenv(envVar) != "" {
+			return true
+		}
+	}
+
+	return false
 }
 
 // NewManager creates a new TaskManager instance

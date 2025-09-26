@@ -6,10 +6,11 @@ import (
 	"time"
 
 	"github.com/flanksource/clicky/api"
+	"github.com/muesli/termenv"
 )
 
 func (tm *Manager) Render() {
-	// output := termenv.NewOutput(os.Stderr)
+	output := termenv.NewOutput(os.Stderr)
 	isInteractive := tm.isInteractive
 	noProgress := tm.noProgress
 
@@ -28,7 +29,7 @@ func (tm *Manager) Render() {
 	// Handle rendering based on interactive mode and progress settings
 	if isInteractive && !noProgress {
 		// Interactive mode with progress: clear screen and full redraw
-		// output.ClearScreen()
+		output.ClearScreen()
 		rendered := tm.prettyFromTasks(taskSnapshot).ANSI()
 		fmt.Fprint(os.Stderr, rendered)
 	} else if !noProgress {

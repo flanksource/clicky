@@ -655,8 +655,20 @@ func (t *Task) Pretty() api.Text {
 	level := t.ctx.Logger.GetLevel()
 	// Add logs as children if present from bufferedLogger
 	bufferedLogs := t.getBufferedLogger().GetLogs()
-	if len(bufferedLogs) > 5 {
-		bufferedLogs = bufferedLogs[len(bufferedLogs)-5:]
+	maxLogs := 5
+	if t.ctx.Logger.IsLevelEnabled(logger.Trace2) {
+		maxLogs = 1000
+	} else if t.ctx.Logger.IsLevelEnabled(logger.Trace1) {
+		maxLogs = 100
+	} else if t.ctx.Logger.IsLevelEnabled(logger.Trace) {
+		maxLogs = 50
+	} else if t.ctx.Logger.IsLevelEnabled(logger.Debug) {
+		maxLogs = 20
+	}
+	if len(bufferedLogs) > maxLogs {
+		excess := len(bufferedLogs) - maxLogs
+		bufferedLogs = bufferedLogs[len(bufferedLogs)-maxLogs:]
+		bufferedLogs = append(bufferedLogs, logger.BufferedLogEntry{Message: fmt.Sprintf("\t... %d more log lines ...", excess)})
 	}
 	for _, log := range bufferedLogs {
 		if level <= log.Level {
@@ -670,7 +682,7 @@ func (t *Task) Pretty() api.Text {
 		case logger.Warn:
 			logStyle = "text-yellow-600"
 		default:
-			logStyle = "text-gray-600"
+			logStyle = "text-gray-400"
 		}
 
 		text.Children = append(text.Children, api.Text{
@@ -688,6 +700,9 @@ func (t *Task) Pretty() api.Text {
 func (t *Task) getBufferedLogger() *logger.BufferedLogger {
 	if t.bufferedLogger == nil {
 		t.bufferedLogger = logger.NewBufferedLogger(1000)
+		if t.ctx.Logger != nil {
+			t.bufferedLogger.SetLogLevel(t.ctx.Logger.GetLevel())
+		}
 	}
 	return t.bufferedLogger
 }
