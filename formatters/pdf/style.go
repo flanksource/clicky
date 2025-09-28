@@ -31,7 +31,10 @@ func (s *StyleConverter) ConvertToTextProps(class api.Class) *props.Text {
 	if class.Font != nil {
 		// Font size
 		if class.Font.Size > 0 {
-			textProps.Size = class.Font.Size * 12 // Convert rem to points (assuming 1rem = 12pt)
+			// Convert rem to font size (points)
+			remSize := NewRem(class.Font.Size)
+			fontSize := remSize.ToFontSize()
+			textProps.Size = fontSize.Float64()
 		}
 
 		// Font style
@@ -84,19 +87,24 @@ func (s *StyleConverter) ConvertBackgroundColor(color api.Color) *props.Color {
 
 // CalculateTextHeight calculates appropriate row height for text based on font size
 func (s *StyleConverter) CalculateTextHeight(class api.Class) float64 {
-	baseHeight := 6.0 // Default row height in mm
+	baseHeightMM := NewMM(6.0) // Default row height in mm
 
 	if class.Font != nil && class.Font.Size > 0 {
-		// Scale height based on font size
-		baseHeight = class.Font.Size * 6 // Convert rem to mm (approximately)
+		// Convert rem font size to mm
+		remSize := NewRem(class.Font.Size)
+		fontHeightMM := remSize.ToMM()
+		// Use font height with some line spacing
+		baseHeightMM = fontHeightMM.Multiply(1.4) // 40% line spacing
 	}
 
 	// Add padding if specified
 	if class.Padding != nil {
-		baseHeight += (class.Padding.Top + class.Padding.Bottom) * 4 // Convert rem to mm
+		paddingTop := NewRem(class.Padding.Top).ToMM()
+		paddingBottom := NewRem(class.Padding.Bottom).ToMM()
+		baseHeightMM = baseHeightMM.Add(paddingTop).Add(paddingBottom)
 	}
 
-	return baseHeight
+	return baseHeightMM.Float64()
 }
 
 // CalculatePadding calculates padding for a cell
@@ -105,13 +113,13 @@ func (s *StyleConverter) CalculatePadding(padding *api.Padding) (left, top, righ
 		return 0, 0, 0, 0
 	}
 
-	// Convert rem to mm (1rem ≈ 4mm for PDF)
-	left = padding.Left * 4
-	top = padding.Top * 4
-	right = padding.Right * 4
-	bottom = padding.Bottom * 4
+	// Convert rem to mm using proper unit conversion
+	leftMM := NewRem(padding.Left).ToMM()
+	topMM := NewRem(padding.Top).ToMM()
+	rightMM := NewRem(padding.Right).ToMM()
+	bottomMM := NewRem(padding.Bottom).ToMM()
 
-	return
+	return leftMM.Float64(), topMM.Float64(), rightMM.Float64(), bottomMM.Float64()
 }
 
 // ParseTailwindToProps parses Tailwind classes and returns Maroto text properties
