@@ -376,7 +376,7 @@ func (t *Task) FailedWithError(err error) (*Task, error) {
 	t.getBufferedLogger().Errorf("%s", err.Error())
 
 	t.SetStatus(StatusFailed)
-	return t, err
+	return t, nil
 }
 
 // Warning marks the task as completed with warnings
