@@ -92,7 +92,6 @@ func ExtractTextFromPage(pdfData []byte, pageNum int) (string, error) {
 	return textContent, nil
 }
 
-
 // assertPDFTextOrder verifies that text appears in the PDF in the expected order
 func assertPDFTextOrder(t *testing.T, pdfData []byte, orderedTexts []string) {
 	t.Helper()
@@ -123,8 +122,6 @@ func assertPDFTextOrder(t *testing.T, pdfData []byte, orderedTexts []string) {
 	}
 }
 
-
-
 // GetPDFInfo returns basic information about a PDF
 func GetPDFInfo(pdfData []byte) (pages, size int, err error) {
 	reader := bytes.NewReader(pdfData)
@@ -146,7 +143,6 @@ func createTestSVG() string {
   <text x="50" y="30" text-anchor="middle" fill="white">Test</text>
 </svg>`
 }
-
 
 // createComplexTestSVG creates a more complex test SVG with various elements
 func createComplexTestSVG() string {
@@ -322,7 +318,6 @@ func assertNoSVGRenderingErrors(t *testing.T, pdfData []byte) {
 }
 
 // Helper functions
-
 
 // maxInt returns the larger of two integers
 func maxInt(a, b int) int {
