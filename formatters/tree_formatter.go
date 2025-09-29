@@ -170,7 +170,6 @@ func (f *TreeFormatter) FormatTreeFromRoot(root api.TreeNode) string {
 	return f.FormatTree(root, 0, "", true)
 }
 
-
 // FormatInlineTree formats a tree structure for inline display
 func (f *TreeFormatter) FormatInlineTree(nodes []api.TreeNode, separator string) string {
 	if len(nodes) == 0 {

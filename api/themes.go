@@ -61,12 +61,34 @@ type Circle struct {
 	Diameter float64
 }
 
-// Padding defines spacing around content in CSS box model format.
+// Padding defines spacing around content in CSS box model format using Point units.
 type Padding struct {
-	Top    float64
-	Right  float64
-	Bottom float64
-	Left   float64
+	Top    Point
+	Right  Point
+	Bottom Point
+	Left   Point
+}
+
+// Helper methods for conversion to MM (for layout calculations)
+
+// TopMM returns the top padding converted to millimeters
+func (p *Padding) TopMM() float64 {
+	return p.Top.ToMM()
+}
+
+// RightMM returns the right padding converted to millimeters
+func (p *Padding) RightMM() float64 {
+	return p.Right.ToMM()
+}
+
+// BottomMM returns the bottom padding converted to millimeters
+func (p *Padding) BottomMM() float64 {
+	return p.Bottom.ToMM()
+}
+
+// LeftMM returns the left padding converted to millimeters
+func (p *Padding) LeftMM() float64 {
+	return p.Left.ToMM()
 }
 
 // Box represents a styled rectangular container with fill, borders, and padding.

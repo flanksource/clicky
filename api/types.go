@@ -21,6 +21,13 @@ type Pretty interface {
 	Pretty() Text
 }
 
+// PrettyRow enables structs to provide custom table row representation with fine-grained control
+// over columns and cell formatting based on output format options.
+// The opts parameter should be of type formatters.FormatOptions.
+type PrettyRow interface {
+	PrettyRow(opts interface{}) map[string]Text
+}
+
 // RenderFunc provides custom rendering logic for field values.
 // It receives the raw value, field configuration, and current theme,
 // allowing complete control over how a field is displayed.

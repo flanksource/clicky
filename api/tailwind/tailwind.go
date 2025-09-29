@@ -3,11 +3,42 @@ package tailwind
 import (
 	"fmt"
 	"math"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
 
 	"github.com/muesli/termenv"
+)
+
+// Slice-based lookups for efficient parsing (sorted for binary search if needed)
+var (
+	// Font weight classes that make text bold
+	boldWeights = []string{"bold", "font-bold", "font-semibold", "font-medium"}
+
+	// Font weight classes that make text light/faint
+	faintWeights = []string{"font-light", "font-thin", "font-extralight"}
+
+	// Font style classes for italic
+	italicStyles = []string{"italic", "font-italic"}
+
+	// Text decoration classes
+	underlineClasses = []string{"underline"}
+	strikethroughClasses = []string{"line-through", "strikethrough"}
+
+	// Text transform classes
+	uppercaseClasses = []string{"uppercase"}
+	lowercaseClasses = []string{"lowercase"}
+	capitalizeClasses = []string{"capitalize"}
+
+	// Opacity classes that make text faint
+	faintOpacities = []string{"opacity-50", "opacity-75", "opacity-25"}
+
+	// Visibility classes
+	invisibleClasses = []string{"invisible"}
+
+	// Text utility classes that affect appearance
+	truncateClasses = []string{"truncate", "text-ellipsis", "text-clip"}
 )
 
 // ParseTailwindColor parses a Tailwind color class and returns the hex color value
@@ -248,74 +279,63 @@ func ParseStyle(styleStr string) Style {
 			style.Background = Color(class)
 		}
 
-		// Font weight classes
-		switch class {
-		case "bold", "font-bold":
+		// Font weight classes using slice lookup
+		if slices.Contains(boldWeights, class) {
 			style.Bold = true
-		case "font-semibold", "font-medium":
-			// Use bold as fallback for semibold/medium
-			style.Bold = true
-		case "font-light", "font-thin", "font-extralight":
-			// Use faint for light weights
+		} else if slices.Contains(faintWeights, class) {
 			style.Faint = true
-		case "font-normal":
+		} else if class == "font-normal" {
 			// Reset bold and faint
 			style.Bold = false
 			style.Faint = false
 		}
 
-		// Font style classes
-		switch class {
-		case "italic", "font-italic":
+		// Font style classes using slice lookup
+		if slices.Contains(italicStyles, class) {
 			style.Italic = true
-		case "not-italic":
+		} else if class == "not-italic" {
 			style.Italic = false
 		}
 
-		// Text decoration classes
-		switch class {
-		case "underline":
+		// Text decoration classes using slice lookup
+		if slices.Contains(underlineClasses, class) {
 			style.Underline = true
-		case "line-through", "strikethrough":
+		} else if slices.Contains(strikethroughClasses, class) {
 			style.Strikethrough = true
-		case "no-underline":
+		} else if class == "no-underline" {
 			style.Underline = false
-		case "overline":
+		} else if class == "overline" {
 			// Use underline as fallback for overline
 			style.Underline = true
 		}
 
-		// Text transform classes
-		switch class {
-		case "uppercase":
+		// Text transform classes using slice lookup
+		if slices.Contains(uppercaseClasses, class) {
 			style.TextTransform = "uppercase"
-		case "lowercase":
+		} else if slices.Contains(lowercaseClasses, class) {
 			style.TextTransform = "lowercase"
-		case "capitalize":
+		} else if slices.Contains(capitalizeClasses, class) {
 			style.TextTransform = "capitalize"
-		case "normal-case":
+		} else if class == "normal-case" {
 			style.TextTransform = ""
 		}
 
-		// Additional text utilities
-		switch class {
-		case "truncate", "text-ellipsis", "text-clip":
+		// Additional text utilities using slice lookup
+		if slices.Contains(truncateClasses, class) {
 			style.MaxWidth = 50 // Example max width
 		}
 
-		// Visibility utilities
-		switch class {
-		case "invisible":
+		// Visibility utilities using slice lookup
+		if slices.Contains(invisibleClasses, class) {
 			style.Faint = true
-		case "visible":
+		} else if class == "visible" {
 			style.Faint = false
 		}
 
-		// Opacity utilities (using Faint as approximation)
-		switch class {
-		case "opacity-50", "opacity-75", "opacity-25":
+		// Opacity utilities using slice lookup
+		if slices.Contains(faintOpacities, class) {
 			style.Faint = true
-		case "opacity-100":
+		} else if class == "opacity-100" {
 			style.Faint = false
 		}
 	}
@@ -685,4 +705,32 @@ func adaptColorForBackground(hexColor string, isDark bool) string {
 
 	// No adaptation needed
 	return hexColor
+}
+
+// ResolveLayoutFromStyle extracts width and alignment from a style string
+// This avoids import cycles by not depending on api.Class
+func ResolveLayoutFromStyle(style string) (*WidthSpec, ParsedAlignment) {
+	// Parse width using our new parser
+	width := ParseWidthFromStyle(style)
+
+	// Parse alignment using our new parser
+	align := ParseAlignment(style)
+
+	return width, align
+}
+
+// ExtractProperty extracts a specific property type from a style string
+// Returns the last occurrence of that property type (last wins)
+func ExtractProperty(style, property string) string {
+	classes := strings.Fields(style)
+	merger := DefaultStyleMerger
+
+	var lastMatch string
+	for _, class := range classes {
+		if merger.getPropertyType(class) == property {
+			lastMatch = class
+		}
+	}
+
+	return lastMatch
 }

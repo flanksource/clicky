@@ -21,7 +21,7 @@ func NewText(content string) *TextBuilder {
 	return &TextBuilder{
 		text: Text{
 			Content:  content,
-			Children: make([]Text, 0),
+			Children: make([]Textable, 0),
 		},
 	}
 }

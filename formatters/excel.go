@@ -124,15 +124,15 @@ func (f *ExcelFormatter) FormatPrettyDataToFile(data *api.PrettyData, filename s
 			// Add table title if we had regular fields above
 			if len(regularFields) > 0 {
 				if err := file.SetCellValue(sheetName, fmt.Sprintf("A%d", currentRow), tableField.Name); err != nil {
-				return fmt.Errorf("failed to set table title: %w", err)
-			}
+					return fmt.Errorf("failed to set table title: %w", err)
+				}
 				titleStyle, err := f.createTitleStyle(file)
 				if err != nil {
 					return fmt.Errorf("failed to create title style: %w", err)
 				}
 				if err := file.SetCellStyle(sheetName, fmt.Sprintf("A%d", currentRow), fmt.Sprintf("A%d", currentRow), titleStyle); err != nil {
-				return fmt.Errorf("failed to set title style: %w", err)
-			}
+					return fmt.Errorf("failed to set title style: %w", err)
+				}
 				currentRow++
 			}
 
@@ -154,8 +154,8 @@ func (f *ExcelFormatter) FormatPrettyDataToFile(data *api.PrettyData, filename s
 			for i, header := range headers {
 				cellRef := f.getCellReference(i+1, currentRow)
 				if err := file.SetCellValue(sheetName, cellRef, header); err != nil {
-				return fmt.Errorf("failed to set header value: %w", err)
-			}
+					return fmt.Errorf("failed to set header value: %w", err)
+				}
 			}
 
 			// Apply header styling
@@ -168,8 +168,8 @@ func (f *ExcelFormatter) FormatPrettyDataToFile(data *api.PrettyData, filename s
 				startCell := f.getCellReference(1, currentRow)
 				endCell := f.getCellReference(len(headers), currentRow)
 				if err := file.SetCellStyle(sheetName, startCell, endCell, headerStyle); err != nil {
-				return fmt.Errorf("failed to set header style: %w", err)
-			}
+					return fmt.Errorf("failed to set header style: %w", err)
+				}
 			}
 			currentRow++
 
@@ -180,8 +180,8 @@ func (f *ExcelFormatter) FormatPrettyDataToFile(data *api.PrettyData, filename s
 					if fieldValue, exists := row[fieldName]; exists {
 						// Use Plain() to get the formatted text representation
 						if err := file.SetCellValue(sheetName, cellRef, fieldValue.Plain()); err != nil {
-					return fmt.Errorf("failed to set cell value: %w", err)
-				}
+							return fmt.Errorf("failed to set cell value: %w", err)
+						}
 					}
 				}
 				currentRow++
@@ -192,8 +192,8 @@ func (f *ExcelFormatter) FormatPrettyDataToFile(data *api.PrettyData, filename s
 				startCol := f.getColumnName(1)
 				endCol := f.getColumnName(len(headers))
 				if err := file.SetColWidth(sheetName, startCol, endCol, 15); err != nil {
-				return fmt.Errorf("failed to set column width: %w", err)
-			}
+					return fmt.Errorf("failed to set column width: %w", err)
+				}
 			}
 		}
 	}

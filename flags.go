@@ -75,7 +75,7 @@ func (a *AllFlags) String() string {
 
 func (a *AllFlags) UseFlags() {
 	logger.Configure(a.Flags)
-	logger.Debugf("Using logger flags: %s", a)
+	logger.V(4).Infof("Using logger flags: %s", a)
 	a.Apply()
 	UseFormatter(a.FormatOptions)
 }

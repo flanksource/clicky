@@ -165,7 +165,7 @@ func TestChildBuilder(t *testing.T) {
 		t.Errorf("expected 1 child, got %d", len(result.Children))
 	}
 
-	if result.Children[0].Content != "Child" {
-		t.Errorf("expected child content %q, got %q", "Child", result.Children[0].Content)
+	if result.Children[0].String() != "Child" {
+		t.Errorf("expected child content %q, got %q", "Child", result.Children[0].String())
 	}
 }

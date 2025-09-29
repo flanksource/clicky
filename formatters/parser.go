@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/flanksource/clicky/api"
+	"github.com/flanksource/commons/logger"
 )
 
 // NewStructParser creates a new struct parser
@@ -230,8 +231,8 @@ func processFieldValue(fieldVal reflect.Value) interface{} {
 	return parser.ProcessFieldValue(fieldVal)
 }
 
-// ToPrettyDataWithFormatHint converts various input types to PrettyData with a format hint for slices
-func ToPrettyDataWithFormatHint(data interface{}, formatHint string) (*api.PrettyData, error) {
+// ToPrettyDataWithOptions converts various input types to PrettyData using format options
+func ToPrettyDataWithOptions(data interface{}, opts FormatOptions) (*api.PrettyData, error) {
 	// Handle nil data at root level
 	if data == nil {
 		return &api.PrettyData{
@@ -242,45 +243,216 @@ func ToPrettyDataWithFormatHint(data interface{}, formatHint string) (*api.Prett
 		}, nil
 	}
 
-	// Check if already PrettyData
-	if pd, ok := data.(*api.PrettyData); ok {
-		return pd, nil
-	}
-
-	val := reflect.ValueOf(data)
-
-	// Handle nil pointer at root level
-	if val.Kind() == reflect.Ptr && val.IsNil() {
+	// Check if data implements Pretty interface first
+	if pretty, ok := data.(api.Pretty); ok {
+		// For Pretty objects, create a simple field value
+		text := pretty.Pretty()
 		return &api.PrettyData{
-			Schema:   &api.PrettyObject{Fields: []api.PrettyField{}},
-			Values:   make(map[string]api.FieldValue),
+			Schema: &api.PrettyObject{Fields: []api.PrettyField{{Name: "content", Type: "string"}}},
+			Values: map[string]api.FieldValue{
+				"content": {
+					Value: text.Content,
+					Text:  &text,
+					Field: api.PrettyField{Name: "content", Type: "string"},
+				},
+			},
 			Tables:   make(map[string][]api.PrettyDataRow),
 			Original: data,
 		}, nil
 	}
 
+	// Get reflect value
+	val := reflect.ValueOf(data)
+
+	// Check if it's a slice/array
+	if val.Kind() == reflect.Slice || val.Kind() == reflect.Array {
+		return parseSliceDataWithOptions(val, opts)
+	}
+
+	// For single objects (struct or map)
+	return parseStructDataWithOptions(val, opts)
+}
+
+// parseSliceDataWithOptions handles slice/array data with format options
+func parseSliceDataWithOptions(val reflect.Value, opts FormatOptions) (*api.PrettyData, error) {
 	// Safely dereference root level pointer
 	val, _ = safeDerefPointer(val)
 
-	// Handle slices/arrays - force format hint
+	// Handle slices/arrays - default to table format unless items have tree structure
 	if val.Kind() == reflect.Slice || val.Kind() == reflect.Array {
-		switch formatHint {
-		case "table":
-			result, err := convertSliceToPrettyData(val)
-			return result, err
-		case "tree":
-			// Check if items have tree structure, otherwise convert to table
-			if hasTreeStructure(val) {
-				return convertSliceToTreeData(val)
-			} else {
-				return convertSliceToPrettyData(val)
-			}
+		if hasTreeStructure(val) {
+			return convertSliceToTreeData(val)
 		}
-		return convertSliceToPrettyData(val)
+		return convertSliceToPrettyDataWithOptions(val, opts)
 	}
 
-	// For non-slices, delegate to the regular function
-	return ToPrettyData(data)
+	// Not a slice, delegate to struct parser
+	return parseStructDataWithOptions(val, opts)
+}
+
+// parseStructDataWithOptions handles struct/map data with format options
+func parseStructDataWithOptions(val reflect.Value, opts FormatOptions) (*api.PrettyData, error) {
+	// Safely dereference root level pointer
+	val, _ = safeDerefPointer(val)
+
+	// Check dereferenced value for Pretty interface
+	if val.CanInterface() {
+		if pretty, ok := val.Interface().(api.Pretty); ok {
+			// For Pretty objects, create a simple field value
+			text := pretty.Pretty()
+			return &api.PrettyData{
+				Schema: &api.PrettyObject{
+					Fields: []api.PrettyField{{
+						Name:   "content",
+						Format: "pretty",
+						Label:  "Content",
+					}},
+				},
+				Values: map[string]api.FieldValue{
+					"content": {
+						Value: val.Interface(), // Store the dereferenced Pretty object
+						Text:  &text,           // Store the pretty text
+						Field: api.PrettyField{
+							Name:   "content",
+							Format: "pretty",
+							Label:  "Content",
+						},
+					},
+				},
+				Tables:   make(map[string][]api.PrettyDataRow),
+				Original: val.Interface(),
+			}, nil
+		}
+	}
+
+	// Create the schema from struct tags
+	schema, err := ParseStructSchema(val)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse struct schema: %w", err)
+	}
+
+	// Parse the struct data with options
+	return parseStructDataWithOptionsAndSchema(val, schema, opts)
+}
+
+// convertSliceToPrettyDataWithOptions converts a slice to PrettyData using format options
+func convertSliceToPrettyDataWithOptions(val reflect.Value, opts FormatOptions) (*api.PrettyData, error) {
+	// Store the original interface value
+	originalData := val.Interface()
+
+	if val.Len() == 0 {
+		// Empty slice - return empty PrettyData
+		return &api.PrettyData{
+			Schema:   &api.PrettyObject{Fields: []api.PrettyField{}},
+			Values:   make(map[string]api.FieldValue),
+			Tables:   make(map[string][]api.PrettyDataRow),
+			Original: originalData,
+		}, nil
+	}
+
+	// Get the first element to check the type
+	firstElem := val.Index(0)
+	firstElem, _ = safeDerefPointer(firstElem)
+
+	// We only handle slices of structs
+	if firstElem.Kind() != reflect.Struct {
+		return nil, fmt.Errorf("can only convert slice of structs to PrettyData, got slice of %s", firstElem.Kind())
+	}
+
+	// Convert all elements to rows using options-aware method
+	var rows []api.PrettyDataRow
+	var tableFields []api.PrettyField
+	parser := api.NewStructParser()
+
+	// Statistics for PrettyRow usage
+	prettyRowCount := 0
+	reflectionCount := 0
+
+	for i := 0; i < val.Len(); i++ {
+		elem := val.Index(i)
+		elem, isNil := safeDerefPointer(elem)
+		if isNil {
+			continue // Skip nil elements
+		}
+
+		// Check if this element implements PrettyRow for statistics
+		if elem.CanInterface() {
+			if _, ok := elem.Interface().(api.PrettyRow); ok {
+				prettyRowCount++
+			} else {
+				reflectionCount++
+			}
+		} else {
+			reflectionCount++
+		}
+
+		// Use StructToRowWithOptions to check for PrettyRow interface
+		row, err := parser.StructToRowWithOptions(elem, opts)
+		if err != nil {
+			logger.V(4).Infof("Failed to convert element at index %d: %v", i, err)
+			continue // Skip elements that can't be converted
+		}
+
+		// Extract table schema from the first successful row
+		// This ensures schema matches PrettyRow columns
+		if i == 0 && len(tableFields) == 0 {
+			for columnName := range row {
+				tableFields = append(tableFields, api.PrettyField{
+					Name:  columnName,
+					Label: columnName,
+					Type:  "string", // Default type, could be enhanced
+				})
+			}
+		}
+
+		rows = append(rows, row)
+	}
+
+	// Fallback to struct reflection if no rows were generated
+	if len(rows) == 0 || len(tableFields) == 0 {
+		var err error
+		tableFields, err = GetTableFields(firstElem)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get table fields: %w", err)
+		}
+	}
+
+	// Sort rows based on sort tags in the struct
+	if len(rows) > 0 {
+		sortFields := ExtractSortFields(firstElem.Type())
+		if len(sortFields) > 0 {
+			SortRows(rows, sortFields)
+		}
+	}
+
+	return &api.PrettyData{
+		Schema: &api.PrettyObject{
+			Fields: []api.PrettyField{
+				{
+					Name:         "table",
+					Format:       api.FormatTable,
+					TableOptions: api.PrettyTable{Fields: tableFields},
+				},
+			},
+		},
+		Values: make(map[string]api.FieldValue),
+		Tables: map[string][]api.PrettyDataRow{
+			"table": rows,
+		},
+		Original: originalData,
+	}, nil
+}
+
+// parseStructDataWithOptionsAndSchema parses struct data with schema and options
+func parseStructDataWithOptionsAndSchema(val reflect.Value, schema *api.PrettyObject, opts FormatOptions) (*api.PrettyData, error) {
+	// This would be similar to existing struct parsing but with options
+	// For now, delegate to existing parsing since most struct parsing doesn't need special option handling
+	parser := api.NewStructParser()
+	prettyData, err := parser.ParseDataWithSchema(val.Interface(), schema)
+	if err != nil {
+		return nil, err
+	}
+	return prettyData, nil
 }
 
 // ToPrettyData converts various input types to PrettyData

@@ -24,7 +24,7 @@ func TestText(t *testing.T) {
 		},
 		{
 			name:     "Text with children",
-			input:    Text{Content: "Hello, ", Children: []Text{{Content: "world!", Style: "font-bold"}}},
+			input:    Text{Content: "Hello, ", Children: []Textable{Text{Content: "world!", Style: "font-bold"}}},
 			plain:    "Hello, world!",
 			markdown: "Hello, **world!**",
 			html:     "Hello, <span class=\"font-bold\"><strong>world!</strong></span>",

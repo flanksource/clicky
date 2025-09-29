@@ -1,8 +1,18 @@
 package tailwind
 
 import (
+	"regexp"
 	"strconv"
 	"strings"
+)
+
+// Compiled regex patterns for efficient parsing
+var (
+	// paddingPrefixRegex matches padding classes: p-, px-, py-, pt-, pr-, pb-, pl-
+	paddingPrefixRegex = regexp.MustCompile(`^(p|px|py|pt|pr|pb|pl)-(.+)$`)
+
+	// fontSizeRegex matches text size classes: text-xs, text-sm, text-base, etc.
+	fontSizeRegex = regexp.MustCompile(`^text-(.+)$`)
 )
 
 // TailwindSpacing defines the Tailwind CSS spacing scale in rem units
@@ -71,41 +81,14 @@ type PaddingValue struct {
 // Returns padding values in rem units for each side (top, right, bottom, left)
 // Returns nil values for sides that are not set
 func ParsePadding(class string) (top, right, bottom, left *float64) {
-	if !strings.Contains(class, "p-") && !strings.Contains(class, "px-") &&
-		!strings.Contains(class, "py-") && !strings.Contains(class, "pt-") &&
-		!strings.Contains(class, "pr-") && !strings.Contains(class, "pb-") &&
-		!strings.Contains(class, "pl-") {
+	// Use regex to match padding classes and extract prefix and value
+	matches := paddingPrefixRegex.FindStringSubmatch(class)
+	if matches == nil {
 		return nil, nil, nil, nil
 	}
 
-	// Extract the value part
-	var prefix string
-	var valueStr string
-
-	if strings.HasPrefix(class, "p-") {
-		prefix = "p"
-		valueStr = strings.TrimPrefix(class, "p-")
-	} else if strings.HasPrefix(class, "px-") {
-		prefix = "px"
-		valueStr = strings.TrimPrefix(class, "px-")
-	} else if strings.HasPrefix(class, "py-") {
-		prefix = "py"
-		valueStr = strings.TrimPrefix(class, "py-")
-	} else if strings.HasPrefix(class, "pt-") {
-		prefix = "pt"
-		valueStr = strings.TrimPrefix(class, "pt-")
-	} else if strings.HasPrefix(class, "pr-") {
-		prefix = "pr"
-		valueStr = strings.TrimPrefix(class, "pr-")
-	} else if strings.HasPrefix(class, "pb-") {
-		prefix = "pb"
-		valueStr = strings.TrimPrefix(class, "pb-")
-	} else if strings.HasPrefix(class, "pl-") {
-		prefix = "pl"
-		valueStr = strings.TrimPrefix(class, "pl-")
-	} else {
-		return nil, nil, nil, nil
-	}
+	prefix := matches[1]    // p, px, py, pt, pr, pb, pl
+	valueStr := matches[2]  // the value part after the prefix
 
 	// Parse the value
 	value, exists := TailwindSpacing[valueStr]
@@ -154,11 +137,12 @@ func ParsePadding(class string) (top, right, bottom, left *float64) {
 // ParseFontSize parses a Tailwind font size utility class
 // Returns the font size in rem units, or 0 if not a font size class
 func ParseFontSize(class string) float64 {
-	if !strings.HasPrefix(class, "text-") {
+	matches := fontSizeRegex.FindStringSubmatch(class)
+	if matches == nil {
 		return 0
 	}
 
-	sizeStr := strings.TrimPrefix(class, "text-")
+	sizeStr := matches[1] // the size part after "text-"
 
 	// Check if it's a standard font size
 	if size, exists := TailwindFontSizes[sizeStr]; exists {

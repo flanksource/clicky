@@ -40,9 +40,9 @@ func (f FormatManager) ToPrettyData(data interface{}) (*api.PrettyData, error) {
 	return ToPrettyData(data)
 }
 
-// ToPrettyDataWithFormatHint converts data to PrettyData with a format hint for slices
-func (f FormatManager) ToPrettyDataWithFormatHint(data interface{}, formatHint string) (*api.PrettyData, error) {
-	return ToPrettyDataWithFormatHint(data, formatHint)
+// ToPrettyDataWithOptions converts data to PrettyData using format options
+func (f FormatManager) ToPrettyDataWithOptions(data interface{}, opts FormatOptions) (*api.PrettyData, error) {
+	return ToPrettyDataWithOptions(data, opts)
 }
 
 // Pretty implements api.FormatManager.
@@ -172,7 +172,7 @@ func (f FormatManager) FormatWithOptions(options FormatOptions, data interface{}
 		}
 		f.markdownFormatter.NoColor = options.NoColor
 		// Convert to PrettyData first to handle pretty tags like tree
-		prettyData, err := f.ToPrettyData(data)
+		prettyData, err := f.ToPrettyDataWithOptions(data, options)
 		if err != nil {
 			// Fallback to direct formatting if PrettyData conversion fails
 			return f.markdownFormatter.Format(data)
@@ -193,8 +193,8 @@ func (f FormatManager) FormatWithOptions(options FormatOptions, data interface{}
 			f.prettyFormatter = NewPrettyFormatter()
 		}
 		f.prettyFormatter.NoColor = options.NoColor
-		// Force table formatting by setting format hint
-		prettyData, err := f.ToPrettyDataWithFormatHint(data, "table")
+		// Force table formatting by setting format option
+		prettyData, err := ToPrettyDataWithOptions(data, FormatOptions{Format: "table"})
 		if err != nil {
 			// Fallback to direct formatting if PrettyData conversion fails
 			return f.prettyFormatter.Format(data)
@@ -219,7 +219,7 @@ func (f FormatManager) FormatWithOptions(options FormatOptions, data interface{}
 		}
 		f.prettyFormatter.NoColor = options.NoColor
 		// Convert to PrettyData first to handle pretty tags, default slices to table
-		prettyData, err := f.ToPrettyDataWithFormatHint(data, "table")
+		prettyData, err := ToPrettyDataWithOptions(data, FormatOptions{Format: "table"})
 		if err != nil {
 			// Fallback to direct formatting if PrettyData conversion fails
 			return f.prettyFormatter.Format(data)

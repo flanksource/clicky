@@ -162,7 +162,6 @@ func parseArgumentEnhanced(rawArg string) (string, any, string, error) {
 	return "", nil, "", fmt.Errorf("invalid argument format, expected key=value, key:=json, key@file, Header:value, or key:=@file")
 }
 
-
 // Helper functions
 
 // readFileAsString reads a file and returns its content as a string
@@ -190,7 +189,6 @@ func readFileAsStringOrBase64(filepath string) (string, error) {
 	// For binary files, return as base64
 	return base64.StdEncoding.EncodeToString(content), nil
 }
-
 
 // isQueryParameter checks if an argument is a query parameter (key==value) and not escaped
 func isQueryParameter(arg string) bool {
