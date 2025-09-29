@@ -402,8 +402,8 @@ Examples:
 					// Create tool registry to get available tools
 					toolRegistry := NewToolRegistry(config)
 					if err := toolRegistry.RegisterCommandTree(rootCmd); err != nil {
-					fmt.Printf("Warning: failed to register command tree: %v\n", err)
-				}
+						fmt.Printf("Warning: failed to register command tree: %v\n", err)
+					}
 					tools := toolRegistry.GetTools()
 
 					fmt.Println(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("14")).

@@ -153,9 +153,9 @@ var _ = Describe("Echo Middleware", func() {
 			It("should create middleware with LogValuesFunc", func() {
 				config := MiddlewareConfig{
 					RequestLogger: &RequestLoggerConfig{
-						LogStatus:      true,
-						LogURI:         true,
-						LogMethod:      true,
+						LogStatus: true,
+						LogURI:    true,
+						LogMethod: true,
 						LogValuesFunc: func(c echo.Context, v echomiddleware.RequestLoggerValues) error {
 							// Custom logging logic
 							return nil
