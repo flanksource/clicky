@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/flanksource/commons/logger"
 	"gopkg.in/yaml.v3"
 )
 
@@ -850,6 +851,54 @@ func (p *StructParser) GetTableFields(val reflect.Value) ([]PrettyField, error) 
 	}
 
 	return fields, nil
+}
+
+// StructToRowWithOptions converts a struct to a PrettyDataRow, checking for PrettyRow interface first
+func (p *StructParser) StructToRowWithOptions(val reflect.Value, opts interface{}) (PrettyDataRow, error) {
+	// Dereference pointer if needed
+	if val.Kind() == reflect.Ptr {
+		if val.IsNil() {
+			return nil, fmt.Errorf("cannot convert nil pointer to row")
+		}
+		val = val.Elem()
+	}
+
+	if val.Kind() != reflect.Struct {
+		return nil, fmt.Errorf("expected struct, got %s", val.Kind())
+	}
+
+	structType := val.Type()
+	logger.V(4).Infof("Processing struct type %s with %d fields for PrettyRow conversion", structType.Name(), val.NumField())
+
+	// Check if the struct implements PrettyRow interface
+	if val.CanInterface() {
+		if prettyRowInterface, ok := val.Interface().(PrettyRow); ok {
+			logger.Debugf("Struct %s implements PrettyRow interface - using custom implementation", structType.Name())
+
+			// Use the custom PrettyRow implementation
+			prettyRowMap := prettyRowInterface.PrettyRow(opts)
+			logger.V(4).Infof("PrettyRow() returned %d columns for struct %s", len(prettyRowMap), structType.Name())
+
+			// Convert map[string]Text to PrettyDataRow
+			row := make(PrettyDataRow)
+			for key, text := range prettyRowMap {
+				row[key] = FieldValue{
+					Value: text.Content,
+					Text:  &text,
+					Field: PrettyField{Name: key},
+				}
+			}
+			return row, nil
+		} else {
+			logger.V(4).Infof("Struct %s does not implement PrettyRow interface - checking CanInterface capability", structType.Name())
+		}
+	} else {
+		logger.V(4).Infof("Struct %s cannot interface - skipping PrettyRow check", structType.Name())
+	}
+
+	// Fall back to reflection-based approach
+	logger.Debugf("Falling back to reflection-based parsing for struct %s (no PrettyRow interface)", structType.Name())
+	return p.StructToRow(val)
 }
 
 // StructToRow converts a struct to a PrettyDataRow
