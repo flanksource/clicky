@@ -16,9 +16,9 @@ import (
 // through either programmatic configuration or YAML/JSON file loading.
 type MiddlewareConfig struct {
 	// Core middleware - Essential middleware for most applications
-	CORS      *CORSConfig      `json:"cors,omitempty" yaml:"cors,omitempty"`           // Cross-Origin Resource Sharing
-	Logger    *LoggerConfig    `json:"logger,omitempty" yaml:"logger,omitempty"`       // Request logging
-	Recover   *RecoverConfig   `json:"recover,omitempty" yaml:"recover,omitempty"`     // Panic recovery
+	CORS      *CORSConfig      `json:"cors,omitempty" yaml:"cors,omitempty"`             // Cross-Origin Resource Sharing
+	Logger    *LoggerConfig    `json:"logger,omitempty" yaml:"logger,omitempty"`         // Request logging
+	Recover   *RecoverConfig   `json:"recover,omitempty" yaml:"recover,omitempty"`       // Panic recovery
 	RequestID *RequestIDConfig `json:"request_id,omitempty" yaml:"request_id,omitempty"` // Request ID generation
 
 	// Security middleware - Authentication and authorization
@@ -32,10 +32,10 @@ type MiddlewareConfig struct {
 	Interceptors []*InterceptorConfig `json:"interceptors,omitempty" yaml:"interceptors,omitempty"` // Generic request/response interceptors
 
 	// Request/Response processing middleware - Content handling
-	BodyDump   *BodyDumpConfig   `json:"body_dump,omitempty" yaml:"body_dump,omitempty"`     // Request/response body logging
-	BodyLimit  *BodyLimitConfig  `json:"body_limit,omitempty" yaml:"body_limit,omitempty"`   // Request body size limiting
-	Gzip       *GzipConfig       `json:"gzip,omitempty" yaml:"gzip,omitempty"`               // Response compression
-	Decompress *DecompressConfig `json:"decompress,omitempty" yaml:"decompress,omitempty"`   // Request decompression
+	BodyDump   *BodyDumpConfig   `json:"body_dump,omitempty" yaml:"body_dump,omitempty"`   // Request/response body logging
+	BodyLimit  *BodyLimitConfig  `json:"body_limit,omitempty" yaml:"body_limit,omitempty"` // Request body size limiting
+	Gzip       *GzipConfig       `json:"gzip,omitempty" yaml:"gzip,omitempty"`             // Response compression
+	Decompress *DecompressConfig `json:"decompress,omitempty" yaml:"decompress,omitempty"` // Request decompression
 
 	// Routing and static middleware - URL and file handling
 	Static         *StaticConfig         `json:"static,omitempty" yaml:"static,omitempty"`                   // Static file serving
@@ -44,8 +44,8 @@ type MiddlewareConfig struct {
 	Rewrite        *RewriteConfig        `json:"rewrite,omitempty" yaml:"rewrite,omitempty"`                 // URL rewriting
 
 	// Redirect middleware - URL redirection
-	HTTPSRedirect    *RedirectConfig `json:"https_redirect,omitempty" yaml:"https_redirect,omitempty"`       // HTTP to HTTPS redirect
-	WWWRedirect      *RedirectConfig `json:"www_redirect,omitempty" yaml:"www_redirect,omitempty"`           // WWW subdomain redirect
+	HTTPSRedirect    *RedirectConfig `json:"https_redirect,omitempty" yaml:"https_redirect,omitempty"`         // HTTP to HTTPS redirect
+	WWWRedirect      *RedirectConfig `json:"www_redirect,omitempty" yaml:"www_redirect,omitempty"`             // WWW subdomain redirect
 	HTTPSWWWRedirect *RedirectConfig `json:"https_www_redirect,omitempty" yaml:"https_www_redirect,omitempty"` // Combined HTTPS+WWW redirect
 
 	// URL normalization middleware - Trailing slash handling
@@ -447,12 +447,12 @@ type DecompressConfig struct {
 
 // StaticConfig configures Static middleware
 type StaticConfig struct {
-	Root       string                     `json:"root,omitempty"`        // Root directory for static files
-	Index      string                     `json:"index,omitempty"`       // Index file name
-	Browse     bool                       `json:"browse,omitempty"`      // Enable directory browsing
-	HTML5      bool                       `json:"html5,omitempty"`       // Enable HTML5 mode
-	IgnoreBase bool                       `json:"ignore_base,omitempty"` // Ignore base of URL path
-	Filesystem http.FileSystem           `json:"-"`                     // Custom filesystem, not serializable
+	Root       string          `json:"root,omitempty"`        // Root directory for static files
+	Index      string          `json:"index,omitempty"`       // Index file name
+	Browse     bool            `json:"browse,omitempty"`      // Enable directory browsing
+	HTML5      bool            `json:"html5,omitempty"`       // Enable HTML5 mode
+	IgnoreBase bool            `json:"ignore_base,omitempty"` // Ignore base of URL path
+	Filesystem http.FileSystem `json:"-"`                     // Custom filesystem, not serializable
 }
 
 // MethodOverrideConfig configures MethodOverride middleware
@@ -462,31 +462,31 @@ type MethodOverrideConfig struct {
 
 // RequestLoggerConfig configures RequestLogger middleware
 type RequestLoggerConfig struct {
-	LogStatus   bool `json:"log_status,omitempty"`
-	LogURI      bool `json:"log_uri,omitempty"`
-	LogError    bool `json:"log_error,omitempty"`
-	LogLatency  bool `json:"log_latency,omitempty"`
-	LogProtocol bool `json:"log_protocol,omitempty"`
-	LogRemoteIP bool `json:"log_remote_ip,omitempty"`
-	LogHost     bool `json:"log_host,omitempty"`
-	LogMethod   bool `json:"log_method,omitempty"`
-	LogUserAgent bool `json:"log_user_agent,omitempty"`
-	LogRequestID bool `json:"log_request_id,omitempty"`
-	LogReferer   bool `json:"log_referer,omitempty"`
-	LogContentLength bool `json:"log_content_length,omitempty"`
-	LogResponseSize  bool `json:"log_response_size,omitempty"`
-	HandleError      bool `json:"handle_error,omitempty"`
+	LogStatus        bool                                                     `json:"log_status,omitempty"`
+	LogURI           bool                                                     `json:"log_uri,omitempty"`
+	LogError         bool                                                     `json:"log_error,omitempty"`
+	LogLatency       bool                                                     `json:"log_latency,omitempty"`
+	LogProtocol      bool                                                     `json:"log_protocol,omitempty"`
+	LogRemoteIP      bool                                                     `json:"log_remote_ip,omitempty"`
+	LogHost          bool                                                     `json:"log_host,omitempty"`
+	LogMethod        bool                                                     `json:"log_method,omitempty"`
+	LogUserAgent     bool                                                     `json:"log_user_agent,omitempty"`
+	LogRequestID     bool                                                     `json:"log_request_id,omitempty"`
+	LogReferer       bool                                                     `json:"log_referer,omitempty"`
+	LogContentLength bool                                                     `json:"log_content_length,omitempty"`
+	LogResponseSize  bool                                                     `json:"log_response_size,omitempty"`
+	HandleError      bool                                                     `json:"handle_error,omitempty"`
 	LogValuesFunc    func(echo.Context, middleware.RequestLoggerValues) error `json:"-"` // Log values function, not serializable
 }
 
 // ProxyConfig configures Proxy middleware
 type ProxyConfig struct {
-	Targets    []*ProxyTarget               `json:"targets,omitempty"`      // List of targets
-	Balancer   interface{}                  `json:"-"`                      // Load balancer, not serializable
-	Rewrite    map[string]string            `json:"rewrite,omitempty"`      // URL rewrite rules
-	RegexRewrite map[string]string          `json:"regex_rewrite,omitempty"` // Regex rewrite rules
-	Timeout     time.Duration               `json:"timeout,omitempty"`      // Request timeout
-	ModifyResponse func(*http.Response) error `json:"-"`                    // Response modifier, not serializable
+	Targets        []*ProxyTarget             `json:"targets,omitempty"`       // List of targets
+	Balancer       interface{}                `json:"-"`                       // Load balancer, not serializable
+	Rewrite        map[string]string          `json:"rewrite,omitempty"`       // URL rewrite rules
+	RegexRewrite   map[string]string          `json:"regex_rewrite,omitempty"` // Regex rewrite rules
+	Timeout        time.Duration              `json:"timeout,omitempty"`       // Request timeout
+	ModifyResponse func(*http.Response) error `json:"-"`                       // Response modifier, not serializable
 }
 
 // ProxyTarget represents a proxy target
@@ -512,9 +512,9 @@ type TrailingSlashConfig struct {
 
 // ContextTimeoutConfig configures ContextTimeout middleware
 type ContextTimeoutConfig struct {
-	Timeout         time.Duration `json:"timeout"`                    // Request timeout
-	ErrorHandler    func(error, echo.Context) error `json:"-"`       // Timeout error handler, not serializable
-	OnTimeoutRouteErrorHandler func(error, echo.Context) `json:"-"` // Timeout route error handler, not serializable
+	Timeout                    time.Duration                   `json:"timeout"` // Request timeout
+	ErrorHandler               func(error, echo.Context) error `json:"-"`       // Timeout error handler, not serializable
+	OnTimeoutRouteErrorHandler func(error, echo.Context)       `json:"-"`       // Timeout route error handler, not serializable
 }
 
 // DefaultConfig returns a MiddlewareConfig with sensible defaults
@@ -587,12 +587,12 @@ func ProductionConfig() MiddlewareConfig {
 			TargetHeader: echo.HeaderXRequestID,
 		},
 		CSRF: &CSRFConfig{
-			TokenLength:  32,
-			TokenLookup:  "header:X-CSRF-Token",
-			ContextKey:   "csrf",
-			CookieName:   "_csrf",
-			CookieMaxAge: 86400, // 24 hours
-			CookieSecure: true,
+			TokenLength:    32,
+			TokenLookup:    "header:X-CSRF-Token",
+			ContextKey:     "csrf",
+			CookieName:     "_csrf",
+			CookieMaxAge:   86400, // 24 hours
+			CookieSecure:   true,
 			CookieHTTPOnly: true,
 		},
 		BodyLimit: &BodyLimitConfig{
@@ -634,17 +634,17 @@ func SecurityConfig() MiddlewareConfig {
 			TargetHeader: echo.HeaderXRequestID,
 		},
 		CSRF: &CSRFConfig{
-			TokenLength:  32,
-			TokenLookup:  "header:X-CSRF-Token",
-			CookieSecure: true,
+			TokenLength:    32,
+			TokenLookup:    "header:X-CSRF-Token",
+			CookieSecure:   true,
 			CookieHTTPOnly: true,
 		},
 		Secure: &SecureConfig{
-			XSSProtection:      "1; mode=block",
-			ContentTypeNosniff: "nosniff",
-			XFrameOptions:      "DENY",
-			HSTSMaxAge:         31536000,
-			HSTSPreloadEnabled: true,
+			XSSProtection:         "1; mode=block",
+			ContentTypeNosniff:    "nosniff",
+			XFrameOptions:         "DENY",
+			HSTSMaxAge:            31536000,
+			HSTSPreloadEnabled:    true,
 			ContentSecurityPolicy: "default-src 'self'",
 		},
 		RateLimiter: &RateLimiterConfig{
@@ -717,17 +717,20 @@ func ProxyGatewayConfig() MiddlewareConfig {
 // validates the parsed data, and returns a MiddlewareConfig struct.
 //
 // Example usage:
-//   config, err := middleware.LoadConfigFromYAML("config/middleware.yaml")
-//   if err != nil {
-//     log.Fatalf("Failed to load config: %v", err)
-//   }
+//
+//	config, err := middleware.LoadConfigFromYAML("config/middleware.yaml")
+//	if err != nil {
+//	  log.Fatalf("Failed to load config: %v", err)
+//	}
 //
 // Parameters:
-//   filename - Path to the YAML configuration file
+//
+//	filename - Path to the YAML configuration file
 //
 // Returns:
-//   MiddlewareConfig - Parsed and validated configuration
-//   error - Any error that occurred during loading or validation
+//
+//	MiddlewareConfig - Parsed and validated configuration
+//	error - Any error that occurred during loading or validation
 func LoadConfigFromYAML(filename string) (MiddlewareConfig, error) {
 	var config MiddlewareConfig
 
@@ -755,18 +758,21 @@ func LoadConfigFromYAML(filename string) (MiddlewareConfig, error) {
 // and writes it to the specified file with proper formatting.
 //
 // Example usage:
-//   config := middleware.DefaultConfig()
-//   err := middleware.SaveConfigToYAML(config, "config/middleware.yaml")
-//   if err != nil {
-//     log.Fatalf("Failed to save config: %v", err)
-//   }
+//
+//	config := middleware.DefaultConfig()
+//	err := middleware.SaveConfigToYAML(config, "config/middleware.yaml")
+//	if err != nil {
+//	  log.Fatalf("Failed to save config: %v", err)
+//	}
 //
 // Parameters:
-//   config - The middleware configuration to save
-//   filename - Path where the YAML file should be written
+//
+//	config - The middleware configuration to save
+//	filename - Path where the YAML file should be written
 //
 // Returns:
-//   error - Any error that occurred during serialization or file writing
+//
+//	error - Any error that occurred during serialization or file writing
 func SaveConfigToYAML(config MiddlewareConfig, filename string) error {
 	// Serialize to YAML with proper formatting
 	data, err := yaml.Marshal(&config)
@@ -787,15 +793,18 @@ func SaveConfigToYAML(config MiddlewareConfig, filename string) error {
 // is valid and can be safely used with Echo middleware.
 //
 // Example usage:
-//   if err := middleware.ValidateConfig(config); err != nil {
-//     log.Fatalf("Invalid config: %v", err)
-//   }
+//
+//	if err := middleware.ValidateConfig(config); err != nil {
+//	  log.Fatalf("Invalid config: %v", err)
+//	}
 //
 // Parameters:
-//   config - The middleware configuration to validate
+//
+//	config - The middleware configuration to validate
 //
 // Returns:
-//   error - Description of validation errors, or nil if valid
+//
+//	error - Description of validation errors, or nil if valid
 func ValidateConfig(config MiddlewareConfig) error {
 	// Validate CORS configuration
 	if config.CORS != nil {
