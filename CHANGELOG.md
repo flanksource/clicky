@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0](https://github.com/flanksource/clicky/compare/v1.2.1...v1.3.0) (2025-09-29)
+
+
+### ✨ Features
+
+* add echo middleware helper ([61fa1a4](https://github.com/flanksource/clicky/commit/61fa1a43872da3b695267b08a4d3539649d277fe))
+* add type-safe unit conversions for PDF font metrics and margins ([dbb575c](https://github.com/flanksource/clicky/commit/dbb575cce577a5f45bd17ffe47060a2ba2b6d88d))
+
+
+### 🐛 Bug Fixes
+
+* correct drawCellText method calls in table tests ([00983e5](https://github.com/flanksource/clicky/commit/00983e515744164b7ce7dbbbfd53689c4c21a933))
+* pdf formatting fixes ([9fdce42](https://github.com/flanksource/clicky/commit/9fdce42ad45f9979fb93bcaf6c64b64df3701e4f))
+
+
+### 🔧 Maintenance
+
+* misc ([805185c](https://github.com/flanksource/clicky/commit/805185ccf2bed46fc3976092f8addfff6717ef69))
+* tailwind improvement ([b177b9b](https://github.com/flanksource/clicky/commit/b177b9b327a87a93cb8f801d385374b635fcc000))
+* tailwind style improvements ([7c6876a](https://github.com/flanksource/clicky/commit/7c6876a0e60ea2bf86047b5821aa5e2495c7908d))
+* update tailwind tests ([c4304af](https://github.com/flanksource/clicky/commit/c4304afbda6ec3dbfe6a8c4b354d752b9854a2e0))
+
 ## [1.2.1](https://github.com/flanksource/clicky/compare/v1.2.0...v1.2.1) (2025-09-28)
 
 
