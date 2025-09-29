@@ -18,6 +18,15 @@ var (
 	styleCacheLock sync.RWMutex
 )
 
+// Textable interface defines the standard text rendering methods
+// for any type that can be rendered to multiple output formats
+type Textable interface {
+	String() string   // Plain text representation
+	ANSI() string     // ANSI colored terminal output
+	HTML() string     // HTML formatted output
+	Markdown() string // Markdown formatted output
+}
+
 // Text represents styled content that can be rendered to multiple output formats.
 // It supports hierarchical structure through Children, CSS-compatible styling,
 // and format-specific rendering (ANSI, HTML, Markdown).
@@ -25,10 +34,10 @@ type Text struct {
 	Content  string
 	Class    Class
 	Style    string
-	Children []Text
+	Children []Textable
 }
 
-func (t Text) Add(child Text) Text {
+func (t Text) Add(child Textable) Text {
 	t.Children = append(t.Children, child)
 	return t
 }
@@ -46,6 +55,16 @@ func (t Text) Suffix(suffix string) Text {
 // Text adds a new child Text with the specified content and styles.
 func (t Text) Text(text string, styles ...string) Text {
 	return t.Add(Text{Content: text, Style: strings.Join(styles, " ")})
+}
+
+// AddText convenience method for adding Text content as a child
+func (t Text) AddText(content string, styles ...string) Text {
+	return t.Add(Text{Content: content, Style: strings.Join(styles, " ")})
+}
+
+// AddIcon convenience method for adding icons as children
+func (t Text) AddIcon(icon Textable, styles ...string) Text {
+	return t.Add(icon)
 }
 
 func (t Text) Styles(classes ...string) Text {
@@ -81,7 +100,11 @@ func (t Text) Indent(spaces int) Text {
 	indentation := strings.Repeat(" ", spaces)
 	t.Content = indentation + strings.ReplaceAll(t.Content, "\n", "\n"+indentation)
 	for i := range t.Children {
-		t.Children[i] = t.Children[i].Indent(spaces + 2)
+		// Only indent if the child is a Text type that supports Indent
+		if textChild, ok := t.Children[i].(Text); ok {
+			t.Children[i] = textChild.Indent(spaces + 2)
+		}
+		// Icons and other Textable types don't need indentation
 	}
 	return t
 }
@@ -110,8 +133,16 @@ func (t Text) IsEmpty() bool {
 		return false
 	}
 	for _, child := range t.Children {
-		if !child.IsEmpty() {
-			return false
+		// Check if child is Text type and not empty
+		if textChild, ok := child.(Text); ok {
+			if !textChild.IsEmpty() {
+				return false
+			}
+		} else {
+			// For non-Text Textable types (like icons), check if they have content
+			if child.String() != "" {
+				return false
+			}
 		}
 	}
 	return true
@@ -327,6 +358,28 @@ func ResolveStyles(styles ...string) Class {
 				resolved.Font = &Font{}
 			}
 
+			// Apply font family
+			if strings.HasPrefix(class, "font-family-") {
+				fontName := strings.TrimPrefix(class, "font-family-")
+				switch strings.ToLower(fontName) {
+				case "arial":
+					resolved.Font.Name = "Arial"
+				case "times":
+					resolved.Font.Name = "Times"
+				case "helvetica":
+					resolved.Font.Name = "Helvetica"
+				case "courier":
+					resolved.Font.Name = "Courier"
+				case "georgia":
+					resolved.Font.Name = "Georgia"
+				case "verdana":
+					resolved.Font.Name = "Verdana"
+				default:
+					// Allow custom font names (case-sensitive for exact match)
+					resolved.Font.Name = fontName
+				}
+			}
+
 			// Apply font weight
 			switch class {
 			case "bold", "font-bold", "font-semibold", "font-medium":
@@ -375,18 +428,18 @@ func ResolveStyles(styles ...string) Class {
 					resolved.Padding = &Padding{}
 				}
 
-				// Apply non-nil values
+				// Apply non-nil values, converting to Point type
 				if top != nil {
-					resolved.Padding.Top = *top
+					resolved.Padding.Top = NewPoint(*top)
 				}
 				if right != nil {
-					resolved.Padding.Right = *right
+					resolved.Padding.Right = NewPoint(*right)
 				}
 				if bottom != nil {
-					resolved.Padding.Bottom = *bottom
+					resolved.Padding.Bottom = NewPoint(*bottom)
 				}
 				if left != nil {
-					resolved.Padding.Left = *left
+					resolved.Padding.Left = NewPoint(*left)
 				}
 			}
 

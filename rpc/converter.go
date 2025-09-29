@@ -270,7 +270,6 @@ func isCRUDOperation(part string) bool {
 	return false
 }
 
-
 // getParentCommandName returns the name of the parent command for tagging
 func (c *Converter) getParentCommandName(cmd *cobra.Command) string {
 	if cmd.Parent() != nil && cmd.Parent().Parent() != nil {

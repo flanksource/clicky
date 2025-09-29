@@ -5,6 +5,23 @@ import (
 	"strings"
 )
 
+// Border width lookup map for efficient parsing
+var borderWidths = map[string]float64{
+	"0": 0,
+	"2": 2,
+	"4": 4,
+	"8": 8,
+}
+
+// Border style lookup map for efficient parsing
+var borderStyles = map[string]LineStyle{
+	"solid":  Solid,
+	"dashed": Dashed,
+	"dotted": Dotted,
+	"double": Double,
+	"none":   None,
+}
+
 // Border structs to avoid import cycle
 type BorderColor struct {
 	Hex     string
@@ -186,45 +203,32 @@ func parseBorderClass(class string, borders *Borders, globalWidth *float64, glob
 // parseBorderWidth parses border width from a class suffix
 // Supports: 0, 2, 4, 8, [3px], etc.
 func parseBorderWidth(suffix string) (float64, bool) {
-	switch suffix {
-	case "0":
-		return 0, true
-	case "2":
-		return 2, true
-	case "4":
-		return 4, true
-	case "8":
-		return 8, true
-	default:
-		// Handle arbitrary values like [3px]
-		if strings.HasPrefix(suffix, "[") && strings.HasSuffix(suffix, "]") {
-			value := strings.Trim(suffix, "[]")
-			value = strings.TrimSuffix(value, "px") // Remove px unit
-			if width, err := strconv.ParseFloat(value, 64); err == nil {
-				return width, true
-			}
-		}
-		// Handle numeric values
-		if width, err := strconv.ParseFloat(suffix, 64); err == nil {
+	// Check standard border widths first
+	if width, exists := borderWidths[suffix]; exists {
+		return width, true
+	}
+
+	// Handle arbitrary values like [3px]
+	if strings.HasPrefix(suffix, "[") && strings.HasSuffix(suffix, "]") {
+		value := strings.Trim(suffix, "[]")
+		value = strings.TrimSuffix(value, "px") // Remove px unit
+		if width, err := strconv.ParseFloat(value, 64); err == nil {
 			return width, true
 		}
 	}
+
+	// Handle numeric values
+	if width, err := strconv.ParseFloat(suffix, 64); err == nil {
+		return width, true
+	}
+
 	return 0, false
 }
 
 // parseBorderStyle parses border style from a class suffix
 func parseBorderStyle(suffix string) (LineStyle, bool) {
-	switch suffix {
-	case "solid":
-		return Solid, true
-	case "dashed":
-		return Dashed, true
-	case "dotted":
-		return Dotted, true
-	case "double":
-		return Double, true
-	case "none":
-		return None, true
+	if style, exists := borderStyles[suffix]; exists {
+		return style, true
 	}
 	return Solid, false
 }

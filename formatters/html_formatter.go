@@ -26,7 +26,7 @@ func NewHTMLFormatter() *HTMLFormatter {
 
 // ToPrettyData converts various input types to PrettyData
 func (f *HTMLFormatter) ToPrettyData(data interface{}) (*api.PrettyData, error) {
-	return ToPrettyData(data)
+	return ToPrettyDataWithOptions(data, FormatOptions{Format: "html"})
 }
 
 // getCSS returns Tailwind CSS CDN and custom styling
