@@ -64,7 +64,7 @@ func (f *HTMLPDFFormatter) Format(data interface{}) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to create temp PDF file: %w", err)
 	}
-	_ = tempPDFFile.Close() // Close immediately, we just need the path
+	_ = tempPDFFile.Close()                              // Close immediately, we just need the path
 	defer func() { _ = os.Remove(tempPDFFile.Name()) }() // Clean up PDF file
 
 	// Convert HTML to PDF using ChromiumConverter
@@ -164,7 +164,7 @@ func (f *HTMLPDFFormatter) FormatPrettyData(data *api.PrettyData) (string, error
 	if err != nil {
 		return "", fmt.Errorf("failed to create temp PDF file: %w", err)
 	}
-	_ = tempPDFFile.Close() // Close immediately, we just need the path
+	_ = tempPDFFile.Close()                              // Close immediately, we just need the path
 	defer func() { _ = os.Remove(tempPDFFile.Name()) }() // Clean up PDF file
 
 	// Convert HTML to PDF using ChromiumConverter

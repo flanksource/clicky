@@ -576,7 +576,7 @@ func TestTableComponent_drawCellText(t *testing.T) {
 			name:           "nil cell with empty text",
 			text:           "",
 			cell:           nil,
-			style:          props.Text{Size: 12},
+			style:          props.Text{Family: "Arial", Size: 12},
 			expectError:    false, // Empty text returns early before checking cell
 			errorSubstring: "",
 		},
@@ -584,7 +584,7 @@ func TestTableComponent_drawCellText(t *testing.T) {
 			name:           "nil cell with text",
 			text:           "test",
 			cell:           nil,
-			style:          props.Text{Size: 12},
+			style:          props.Text{Family: "Arial", Size: 12},
 			expectError:    true,
 			errorSubstring: "cell is nil",
 		},
@@ -592,14 +592,14 @@ func TestTableComponent_drawCellText(t *testing.T) {
 			name:        "empty text with valid cell",
 			text:        "",
 			cell:        &entity.Cell{X: 0, Y: 0, Width: 100, Height: 20},
-			style:       props.Text{Size: 12},
+			style:       props.Text{Family: "Arial", Size: 12},
 			expectError: false, // Empty text should return success
 		},
 		{
 			name:           "invalid cell dimensions",
 			text:           "test",
 			cell:           &entity.Cell{X: 0, Y: 0, Width: 0, Height: 20}, // Invalid width
-			style:          props.Text{Size: 12},
+			style:          props.Text{Family: "Arial", Size: 12},
 			expectError:    true,
 			errorSubstring: "invalid cell dimensions",
 		},
@@ -614,7 +614,7 @@ func TestTableComponent_drawCellText(t *testing.T) {
 			tc.Fpdf = WrapFpdf(drawingHelper.GetFpdf())
 
 			// Test the method with valid infrastructure
-			err := tc.drawCellText(tt.text, tt.cell, tt.style)
+			err := tc.drawCellText(tt.text, tt.cell, tt.style, api.Class{})
 
 			// Test normal error handling with proper infrastructure
 			if tt.expectError {
@@ -637,7 +637,6 @@ func TestTableComponent_drawCellText_StyleHandling(t *testing.T) {
 		TopAlign:       true, // Test top alignment
 		styleConverter: NewStyleConverter(),
 	}
-
 
 	// Test different style configurations
 	styleTests := []struct {
@@ -666,13 +665,17 @@ func TestTableComponent_drawCellText_StyleHandling(t *testing.T) {
 		{
 			name: "right aligned",
 			style: props.Text{
-				Size:  10,
-				Align: align.Right,
+				Family: "Arial",
+				Size:   10,
+				Align:  align.Right,
 			},
 		},
 		{
-			name:  "default values",
-			style: props.Text{}, // Test all defaults
+			name: "default values",
+			style: props.Text{
+				Family: "Arial",
+				Size:   12,
+			}, // Test with minimal required values
 		},
 	}
 
@@ -687,8 +690,14 @@ func TestTableComponent_drawCellText_StyleHandling(t *testing.T) {
 				}
 			}()
 
+			// Create a proper DrawingHelper for testing
+			drawingHelper := createTestDrawingHelper(t)
+
+			// Set up FPDF interface for testing
+			tc.Fpdf = WrapFpdf(drawingHelper.GetFpdf())
+
 			// Test with proper DrawingHelper infrastructure
-			err := tc.drawCellText("test", cell, tt.style)
+			err := tc.drawCellText("test", cell, tt.style, api.Class{})
 			if err != nil {
 				t.Errorf("drawCellText failed with style %+v: %v", tt.style, err)
 			}
@@ -750,10 +759,17 @@ func TestTableComponent_drawCellText_AlignmentCalculation(t *testing.T) {
 			}
 
 			style := props.Text{
-				Align: tt.horizontalAlign,
-				Size:  10,
+				Family: "Arial",
+				Align:  tt.horizontalAlign,
+				Size:   10,
 			}
 			cell := &entity.Cell{X: 0, Y: 0, Width: 100, Height: 20}
+
+			// Create a proper DrawingHelper for testing
+			drawingHelper := createTestDrawingHelper(t)
+
+			// Set up FPDF interface for testing
+			tc.Fpdf = WrapFpdf(drawingHelper.GetFpdf())
 
 			// Test that alignment calculation works correctly
 			// Since we can't access the internal alignment string directly,
@@ -764,7 +780,7 @@ func TestTableComponent_drawCellText_AlignmentCalculation(t *testing.T) {
 				}
 			}()
 
-			err := tc.drawCellText("test", cell, style)
+			err := tc.drawCellText("test", cell, style, api.Class{})
 			if err != nil {
 				t.Errorf("drawCellText failed with alignment %v: %v", tt.horizontalAlign, err)
 			}
@@ -777,7 +793,6 @@ func TestTableComponent_drawCellText_EdgeCases(t *testing.T) {
 		TopAlign:       false,
 		styleConverter: NewStyleConverter(),
 	}
-
 
 	edgeCases := []struct {
 		name         string
@@ -835,8 +850,14 @@ func TestTableComponent_drawCellText_EdgeCases(t *testing.T) {
 				}
 			}()
 
-			style := props.Text{Size: 10}
-			err := tc.drawCellText(tt.text, tt.cell, style)
+			// Create a proper DrawingHelper for testing
+			drawingHelper := createTestDrawingHelper(t)
+
+			// Set up FPDF interface for testing
+			tc.Fpdf = WrapFpdf(drawingHelper.GetFpdf())
+
+			style := props.Text{Family: "Arial", Size: 10}
+			err := tc.drawCellText(tt.text, tt.cell, style, api.Class{})
 
 			if tt.expectError {
 				if err == nil {
@@ -975,7 +996,7 @@ func TestTwoColumnSVGTableLayout(t *testing.T) {
 	// Right column: Table component (5 columns ≈ 41.67%)
 	tableComponent := NewTableComponent(
 		[]string{"Property", "Value"},
-		[][]string{
+		[][]any{
 			{"Width", "300mm"},
 			{"Height", "200mm"},
 			{"Circles", "3 (A, B, C)"},
@@ -1008,6 +1029,75 @@ func TestTwoColumnSVGTableLayout(t *testing.T) {
 
 	builder.GetMaroto().AddRow(rowHeight, leftCol, rightCol)
 
+	// Row 2: Font Metrics Tester (50%) + Alignment Demo Table (50%)
+	fontMetricsTable := NewFontMetricsTable()
+	fontMetricsTable.Debug = debugMode
+	fontMetricsCol := col.New(6).Add(fontMetricsTable)
+
+	// Create alignment demonstration table with alternating row styling
+	alignmentTable := NewTableComponent(
+		[]string{"Position", "Left", "Center", "Right", "Justify"},
+		[][]any{
+			{"Top ↑", "Top-Left", "Top-Center", "Top-Right", "Top-Justify"},
+			{"Middle ↔", "Mid-Left", "Mid-Center", "Mid-Right", "Mid-Justify"},
+			{"Bottom ↓", "Bot-Left", "Bot-Center", "Bot-Right", "Bot-Justify"},
+			{"Sizes", "XS text", "SM text", "BASE text", "LG text"},
+		},
+	)
+
+	// Configure alignment table with specific column alignments and alternating row colors
+	alignmentTable.Columns = []Column{
+		{Label: "Position", Style: "w-[20%] text-sm font-semibold text-center align-middle"},
+		{Label: "Left", Style: "w-[20%] text-sm text-left align-top"},
+		{Label: "Center", Style: "w-[20%] text-sm text-center align-middle"},
+		{Label: "Right", Style: "w-[20%] text-sm text-right align-bottom"},
+		{Label: "Justify", Style: "w-[20%] text-sm text-justify align-middle"},
+	}
+
+	// Set header and alternating row styles
+	alignmentTable.HeaderStyle = "font-bold text-white bg-blue-600 text-center text-sm"
+	alignmentTable.RowStyle = "text-sm text-gray-700 font-normal" // Lighter than header
+	alignmentTable.Debug = debugMode
+
+	// Note: Row-level styling will be handled through the RowStyle property
+	// Alternating colors can be implemented in the table rendering logic
+
+	alignmentCol := col.New(6).Add(alignmentTable)
+
+	// Add second row with font metrics and alignment demo
+	row2Height := 60.0
+	if debugMode {
+		t.Logf("DEBUG: TestTwoColumnSVGTableLayout: adding font metrics + alignment demo row with height=%.1fmm", row2Height)
+	}
+
+	builder.GetMaroto().AddRow(row2Height, fontMetricsCol, alignmentCol)
+
+	// Row 3: Unit Conversion Examples (full width)
+	unitConversionTable := NewTableComponent(
+		[]string{"Unit Type", "Value", "Points Equivalent", "MM Equivalent", "Usage"},
+		[][]any{
+			{"Font Size", "1rem", "12.00pt", "4.23mm", "Typography sizing"},
+			{"Line Height", "1.2× font", "14.40pt", "5.08mm", "Text line spacing"},
+			{"Padding", "0.5rem", "6.00pt", "2.12mm", "Cell spacing"},
+			{"Grid Cell", "1/12 width", "Variable", "~16.67mm", "Layout columns"},
+			{"Precision", "72pt = 1in", "72.00pt", "25.40mm", "Print standard"},
+		},
+	)
+
+	unitConversionTable.HeaderStyle = "font-bold text-white bg-purple-600 text-center text-sm"
+	unitConversionTable.RowStyle = "text-sm text-gray-800 font-normal"
+	unitConversionTable.Debug = debugMode
+
+	unitConversionCol := col.New(12).Add(unitConversionTable)
+
+	// Add third row with unit conversion examples
+	row3Height := 40.0
+	if debugMode {
+		t.Logf("DEBUG: TestTwoColumnSVGTableLayout: adding unit conversion examples row with height=%.1fmm", row3Height)
+	}
+
+	builder.GetMaroto().AddRow(row3Height, unitConversionCol)
+
 	// Generate the PDF
 	if debugMode {
 		t.Logf("DEBUG: TestTwoColumnSVGTableLayout: generating PDF...")
@@ -1039,9 +1129,12 @@ func TestTwoColumnSVGTableLayout(t *testing.T) {
 		pngSize = "Unknown"
 	}
 
-	t.Logf("✓ Two-column layout PDF generated successfully")
+	t.Logf("✓ Enhanced PDF layout test generated successfully")
 	t.Logf("  PDF size: %d bytes", len(pdfData))
 	t.Logf("  PNG size: %s", pngSize)
-	t.Logf("  Layout: 7:5 column ratio (58.33%%:41.67%%)")
+	t.Logf("  Row 1: SVG (60%%) + Property Table (40%%)")
+	t.Logf("  Row 2: Font Metrics (50%%) + Alignment Demo (50%%)")
+	t.Logf("  Row 3: Unit Conversion Examples (100%%)")
+	t.Logf("  Grid: 5mm spacing with bright purple 2pt lines")
 	t.Logf("  Files: out/two_column_layout_test.pdf, %s", pngPath)
 }

@@ -29,8 +29,8 @@ func (g GridLayout) Draw(b *Builder) error {
 	}
 
 	// Apply top padding if specified
-	if g.Padding.Top > 0 {
-		topPadding := g.Padding.Top * 4 // Convert rem to mm
+	if g.Padding.Top.Float64() > 0 {
+		topPadding := g.Padding.Top.ToMM()
 		b.maroto.AddRows(row.New(topPadding))
 	}
 
@@ -48,11 +48,10 @@ func (g GridLayout) Draw(b *Builder) error {
 	}
 
 	// Apply bottom padding if specified
-	if g.Padding.Bottom > 0 {
-		bottomPadding := g.Padding.Bottom * 4 // Convert rem to mm
+	if g.Padding.Bottom.Float64() > 0 {
+		bottomPadding := g.Padding.Bottom.ToMM()
 		b.maroto.AddRows(row.New(bottomPadding))
 	}
 
 	return nil
 }
-

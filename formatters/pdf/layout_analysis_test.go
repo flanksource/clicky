@@ -269,23 +269,28 @@ func addComplexTwoColumnLayout(builder *Builder) error {
 		},
 	}
 
-	// Create more detailed table
-	detailedTable := TableImproved{
-		Headers: []string{"Component", "Value", "Unit", "Status"},
-		Rows: [][]any{
-			{"Node1", "100", "mm", "Active"},
-			{"Node2", "300", "mm", "Active"},
-			{"Hub", "200", "mm", "Central"},
-			{"Distance", "200", "mm", "Fixed"},
-			{"Area", "12", "cm²", "Optimal"},
-			{"Efficiency", "95", "%", "Good"},
+	// Create more detailed table using new unified Table implementation
+	detailedTable := Table{
+		BaseTable: BaseTable{
+			Columns: []Column{
+				{Label: "Component", Style: "w-[25%] text-left align-middle font-medium"},
+				{Label: "Value", Style: "w-[16.67%] text-right align-middle font-mono"},
+				{Label: "Unit", Style: "w-[16.67%] text-center align-middle"},
+				{Label: "Status", Style: "w-[25%] text-center align-middle"},
+			},
+			Rows: [][]any{
+				{"Node1", "100", "mm", "Active"},
+				{"Node2", "300", "mm", "Active"},
+				{"Hub", "200", "mm", "Central"},
+				{"Distance", "200", "mm", "Fixed"},
+				{"Area", "12", "cm²", "Optimal"},
+				{"Efficiency", "95", "%", "Good"},
+			},
+			HeaderStyle:       "bg-gray-800 text-white font-bold text-sm text-center align-middle",
+			RowStyle:          "text-sm text-gray-700 align-middle",
+			AlternateRowStyle: "bg-gray-50",
+			ShowBorders:       true,
 		},
-		ColumnWidths:      []int{3, 2, 2, 3},
-		ColumnAlignments:  []string{"left", "right", "center", "center"},
-		ShowBorders:       true,
-		AlternateRowColor: true,
-		HeaderStyle:       api.ResolveStyles("bg-dark text-white font-bold text-sm"),
-		RowStyle:          api.ResolveStyles("text-sm"),
 	}
 
 	// Add the complex layout

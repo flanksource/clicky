@@ -218,4 +218,3 @@ func extractViewBox(svgContent string) []float64 {
 
 	return values
 }
-

@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -21,7 +22,10 @@ import (
 	"github.com/flanksource/maroto/v2/pkg/consts/border"
 	"github.com/flanksource/maroto/v2/pkg/consts/extension"
 	"github.com/flanksource/maroto/v2/pkg/consts/fontstyle"
+	"github.com/flanksource/maroto/v2/pkg/core"
 	"github.com/flanksource/maroto/v2/pkg/props"
+
+	"github.com/flanksource/clicky/api/tailwind"
 )
 
 // Image widget for rendering images in PDF
@@ -31,6 +35,9 @@ type Image struct {
 	AltText string   `json:"alt_text,omitempty"`
 	Width   *float64 `json:"width,omitempty"`
 	Height  *float64 `json:"height,omitempty"`
+
+	// Tailwind styling for grid positioning, alignment, and spacing
+	Style string `json:"style,omitempty"`
 
 	// SVG conversion options
 	ConverterOptions   *ConvertOptions `json:"converter_options,omitempty"`
@@ -367,7 +374,7 @@ func (i *Image) convertSVGWithMetadata(b *Builder, svgPath string) (string, *Con
 	options := i.ConverterOptions
 	if options == nil {
 		options = &ConvertOptions{
-			Format: "pdf", // Use PDF for better quality
+			Format: "png", // Use PNG for better compatibility with validation
 			DPI:    288,   // 3x resolution for higher quality images
 		}
 	}
@@ -488,3 +495,371 @@ func ValidatePNGFile(pngPath string) error {
 	return nil
 }
 
+// WithStyle applies Tailwind styles to the image for grid positioning and alignment
+func (i *Image) WithStyle(style string) *Image {
+	i.Style = style
+	return i
+}
+
+// WithColumnSpan explicitly sets the column span for the image
+func (i *Image) WithColumnSpan(span int) *Image {
+	if span < 1 {
+		span = 1
+	} else if span > 12 {
+		span = 12
+	}
+
+	// Convert span to Tailwind class
+	switch span {
+	case 1:
+		i.Style = "w-1/12"
+	case 2:
+		i.Style = "w-1/6"
+	case 3:
+		i.Style = "w-1/4"
+	case 4:
+		i.Style = "w-1/3"
+	case 6:
+		i.Style = "w-1/2"
+	case 8:
+		i.Style = "w-2/3"
+	case 9:
+		i.Style = "w-3/4"
+	case 12:
+		i.Style = "w-full"
+	default:
+		i.Style = fmt.Sprintf("col-span-%d", span)
+	}
+
+	return i
+}
+
+// GetColumnSpan returns the column span from Style or defaults to 12 (full width)
+func (i *Image) GetColumnSpan() int {
+	if i.Style == "" {
+		return 12 // Default to full width
+	}
+
+	return i.parseColumnSpan(i.Style)
+}
+
+// parseColumnSpan extracts column span from Tailwind classes
+func (i *Image) parseColumnSpan(style string) int {
+	if style == "" {
+		return 12
+	}
+
+	classes := strings.Fields(style)
+
+	for _, class := range classes {
+		// Handle w-{fraction} classes
+		switch class {
+		case "w-1/12":
+			return 1
+		case "w-1/6":
+			return 2
+		case "w-1/4":
+			return 3
+		case "w-1/3":
+			return 4
+		case "w-5/12":
+			return 5
+		case "w-1/2":
+			return 6
+		case "w-7/12":
+			return 7
+		case "w-2/3":
+			return 8
+		case "w-3/4":
+			return 9
+		case "w-5/6":
+			return 10
+		case "w-11/12":
+			return 11
+		case "w-full":
+			return 12
+		}
+
+		// Handle col-span-{number} classes
+		if strings.HasPrefix(class, "col-span-") {
+			spanStr := strings.TrimPrefix(class, "col-span-")
+			if span, err := strconv.Atoi(spanStr); err == nil && span >= 1 && span <= 12 {
+				return span
+			}
+		}
+	}
+
+	return 12 // Default to full width
+}
+
+// parseImageAlignment extracts alignment and padding from Tailwind classes
+func (i *Image) parseImageAlignment(style string) (center bool, left float64, percent float64, verticalAlign tailwind.VerticalAlign, paddingMM float64) {
+	if style == "" {
+		return false, 0, 95, tailwind.VerticalMiddle, 0 // Default: not centered, left=0, 95% size, middle aligned, no padding
+	}
+
+	// Use Tailwind alignment parser for comprehensive alignment support
+	alignment := tailwind.ParseAlignment(style)
+
+	classes := strings.Fields(style)
+	center = false
+	left = 0.0
+	percent = 95.0 // Default to 95% of column width
+	verticalAlign = alignment.Vertical
+	paddingMM = 0.0
+
+	// First apply Tailwind parser alignment if detected
+	switch alignment.Horizontal {
+	case align.Center:
+		center = true
+		left = 0
+	case align.Left:
+		center = false
+		left = 0
+	case align.Right:
+		center = false
+		left = 100 - percent
+	}
+
+	// Parse additional classes and override if found
+	maxPadding := 0.0
+	for _, class := range classes {
+		switch class {
+		case "justify-center", "mx-auto":
+			center = true
+			left = 0
+		case "justify-left":
+			center = false
+			left = 0
+		case "justify-right":
+			center = false
+			left = 100 - percent // Position at right edge
+		}
+
+		// Parse padding classes (p-1 through p-12, etc.)
+		// Use the largest padding value found
+		if paddingValue := i.parsePaddingClass(class); paddingValue > maxPadding {
+			maxPadding = paddingValue
+		}
+	}
+
+	paddingMM = maxPadding
+
+	return center, left, percent, verticalAlign, paddingMM
+}
+
+// parsePaddingClass extracts padding value from Tailwind padding classes
+func (i *Image) parsePaddingClass(class string) float64 {
+	// Convert Tailwind padding scale to millimeters
+	// Tailwind uses 0.25rem increments, 1rem ≈ 4.23mm (16px at 96dpi)
+	paddingScale := map[string]float64{
+		"p-0":  0,
+		"p-1":  1.06,  // 0.25rem = ~1.06mm
+		"p-2":  2.12,  // 0.5rem = ~2.12mm
+		"p-3":  3.18,  // 0.75rem = ~3.18mm
+		"p-4":  4.23,  // 1rem = ~4.23mm
+		"p-5":  5.29,  // 1.25rem = ~5.29mm
+		"p-6":  6.35,  // 1.5rem = ~6.35mm
+		"p-8":  8.46,  // 2rem = ~8.46mm
+		"p-10": 10.58, // 2.5rem = ~10.58mm
+		"p-12": 12.69, // 3rem = ~12.69mm
+	}
+
+	if value, exists := paddingScale[class]; exists {
+		return value
+	}
+
+	// Handle directional padding (px, py, pt, pb, pl, pr)
+	// For images, we'll use the general padding value for overall spacing
+	directionalPadding := map[string]float64{
+		"px-1": 1.06, "py-1": 1.06, "pt-1": 1.06, "pb-1": 1.06, "pl-1": 1.06, "pr-1": 1.06,
+		"px-2": 2.12, "py-2": 2.12, "pt-2": 2.12, "pb-2": 2.12, "pl-2": 2.12, "pr-2": 2.12,
+		"px-3": 3.18, "py-3": 3.18, "pt-3": 3.18, "pb-3": 3.18, "pl-3": 3.18, "pr-3": 3.18,
+		"px-4": 4.23, "py-4": 4.23, "pt-4": 4.23, "pb-4": 4.23, "pl-4": 4.23, "pr-4": 4.23,
+		"px-6": 6.35, "py-6": 6.35, "pt-6": 6.35, "pb-6": 6.35, "pl-6": 6.35, "pr-6": 6.35,
+		"px-8": 8.46, "py-8": 8.46, "pt-8": 8.46, "pb-8": 8.46, "pl-8": 8.46, "pr-8": 8.46,
+	}
+
+	if value, exists := directionalPadding[class]; exists {
+		return value
+	}
+
+	return 0
+}
+
+// DrawInColumn renders the image within a specified column span with Tailwind styling
+func (i *Image) DrawInColumn(b *Builder, columnSpan int) error {
+	if i.Source == "" {
+		return i.drawPlaceholderInColumn(b, columnSpan)
+	}
+
+	// Get image dimensions
+	height := 50.0 // Default height in mm
+	if i.Height != nil {
+		height = *i.Height
+	} else if i.Width != nil {
+		// Assume 4:3 aspect ratio as default
+		height = (*i.Width * 3.0) / 4.0
+	}
+
+	return i.drawImageInColumn(b, height, columnSpan)
+}
+
+// drawImageInColumn draws the image with column span and Tailwind styling
+func (i *Image) drawImageInColumn(b *Builder, height float64, columnSpan int) error {
+	// Parse alignment and padding from style
+	center, left, percent, verticalAlign, paddingMM := i.parseImageAlignment(i.Style)
+
+	// Create image component with styling and vertical alignment
+	var imageComponent core.Component
+
+	// Calculate vertical positioning based on alignment
+	var top float64
+	switch verticalAlign {
+	case tailwind.VerticalTop:
+		top = paddingMM // Top aligned with padding offset
+	case tailwind.VerticalMiddle:
+		top = 0 // Center/middle is default
+	case tailwind.VerticalBottom:
+		top = -paddingMM // Bottom aligned with negative padding offset
+	}
+
+	// Adjust percent to account for padding (reduce image size slightly to accommodate padding)
+	adjustedPercent := percent
+	if paddingMM > 0 {
+		// Reduce image size by padding amount (rough approximation)
+		paddingPercentage := (paddingMM / 100.0) * 100 // Convert mm to rough percentage
+		adjustedPercent = percent - paddingPercentage
+		if adjustedPercent < 10 {
+			adjustedPercent = 10 // Minimum size to remain visible
+		}
+	}
+
+	if isURL(i.Source) {
+		// Download image to bytes
+		imageBytes, ext, err := i.downloadImageBytes(i.Source)
+		if err != nil {
+			return fmt.Errorf("failed to download image: %w", err)
+		}
+		imageComponent = marotoimagecomponent.NewFromBytes(imageBytes, ext, props.Rect{
+			Center:  center,
+			Left:    left,
+			Top:     top,
+			Percent: adjustedPercent,
+		})
+	} else {
+		// Check if file exists
+		if _, err := os.Stat(i.Source); os.IsNotExist(err) {
+			return fmt.Errorf("image file not found: %s", i.Source)
+		}
+
+		// Check if it's an SVG file that needs conversion
+		imagePath := i.Source
+		if isSVGFile(i.Source) {
+			// Convert SVG to PDF using the converter manager
+			convertedPath, metadata, err := i.convertSVGWithMetadata(b, i.Source)
+			if err != nil {
+				return fmt.Errorf("failed to convert SVG: %w", err)
+			}
+
+			// Store metadata for potential future use
+			i.lastConversionMetadata = metadata
+
+			// Handle PDF embedding
+			if metadata != nil && strings.HasSuffix(convertedPath, ".pdf") {
+				embedWidget := NewPDFEmbedWidget(convertedPath)
+				if i.Width != nil && i.Height != nil {
+					embedWidget = embedWidget.WithSize(*i.Width, *i.Height)
+				}
+				return embedWidget.Draw(b)
+			}
+
+			imagePath = convertedPath
+		} else if isPDFFile(i.Source) {
+			// Handle PDF files - embed directly using PDF embed widget
+			embedWidget := NewPDFEmbedWidget(i.Source)
+			if i.Width != nil && i.Height != nil {
+				embedWidget = embedWidget.WithSize(*i.Width, *i.Height)
+			}
+			return embedWidget.Draw(b)
+		}
+
+		imageComponent = marotoimagecomponent.NewFromFile(imagePath, props.Rect{
+			Center:  center,
+			Left:    left,
+			Top:     top,
+			Percent: adjustedPercent,
+		})
+	}
+
+	// Create column with the specified span
+	imageCol := col.New(columnSpan).Add(imageComponent)
+	b.maroto.AddRow(height, imageCol)
+
+	// Add alt text caption if available
+	if i.AltText != "" {
+		captionProps := props.Text{
+			Size:  8,
+			Style: fontstyle.Italic,
+			Align: align.Center,
+			Color: &props.Color{Red: 100, Green: 100, Blue: 100},
+		}
+		captionText := text.New(i.AltText, captionProps)
+		captionCol := col.New(columnSpan).Add(captionText)
+		b.maroto.AddRow(5, captionCol)
+	}
+
+	return nil
+}
+
+// drawPlaceholderInColumn draws a placeholder within a specified column span
+func (i *Image) drawPlaceholderInColumn(b *Builder, columnSpan int) error {
+	// Get dimensions
+	height := 50.0 // Default height in mm
+	if i.Height != nil {
+		height = *i.Height
+	} else if i.Width != nil {
+		// Assume 4:3 aspect ratio as default
+		height = (*i.Width * 3.0) / 4.0
+	}
+
+	// Create placeholder box with border
+	placeholderRow := row.New(height)
+	placeholderCol := col.New(columnSpan)
+
+	// Add alt text in the center if available
+	if i.AltText != "" {
+		textProps := props.Text{
+			Size:  10,
+			Style: fontstyle.Normal,
+			Align: align.Center,
+			Color: &props.Color{Red: 64, Green: 64, Blue: 64},
+		}
+		altTextComponent := text.New(i.AltText, textProps)
+		placeholderCol.Add(altTextComponent)
+	} else {
+		// Add generic placeholder text
+		textProps := props.Text{
+			Size:  10,
+			Style: fontstyle.Italic,
+			Align: align.Center,
+			Color: &props.Color{Red: 128, Green: 128, Blue: 128},
+		}
+		placeholderText := text.New("[Image Placeholder]", textProps)
+		placeholderCol.Add(placeholderText)
+	}
+
+	placeholderRow.Add(placeholderCol)
+
+	// Add border and background
+	placeholderRow.WithStyle(&props.Cell{
+		BackgroundColor: &props.Color{Red: 240, Green: 240, Blue: 240},
+		BorderType:      border.Full,
+		BorderColor:     &props.Color{Red: 128, Green: 128, Blue: 128},
+		BorderThickness: 0.5,
+	})
+
+	b.maroto.AddRows(placeholderRow)
+
+	return nil
+}

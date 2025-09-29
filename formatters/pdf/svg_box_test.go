@@ -3,6 +3,7 @@ package pdf_test
 import (
 	"fmt"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/flanksource/clicky/api"
@@ -80,6 +81,111 @@ func TestAllLabelPositions(t *testing.T) {
 			t.Logf("SVG saved to: %s", filename)
 		})
 	}
+}
+
+// TestAllLabelPositionsMerged creates a single large SVG showing all label positions in a grid
+func TestAllLabelPositionsMerged(t *testing.T) {
+	positions := []struct {
+		name     string
+		position LabelPosition
+	}{
+		{"center", LabelPosition{Vertical: VerticalCenter, Horizontal: HorizontalCenter}},
+		{"top", LabelPosition{Vertical: VerticalTop}},
+		{"bottom", LabelPosition{Vertical: VerticalBottom}},
+		{"left", LabelPosition{Horizontal: HorizontalLeft}},
+		{"right", LabelPosition{Horizontal: HorizontalRight}},
+		{"top-left", LabelPosition{Vertical: VerticalTop, Horizontal: HorizontalLeft}},
+		{"top-right", LabelPosition{Vertical: VerticalTop, Horizontal: HorizontalRight}},
+		{"bottom-left", LabelPosition{Vertical: VerticalBottom, Horizontal: HorizontalLeft}},
+		{"bottom-right", LabelPosition{Vertical: VerticalBottom, Horizontal: HorizontalRight}},
+		{"top-outside", LabelPosition{Vertical: VerticalTop, Inside: InsideBottom}},
+		{"bottom-outside", LabelPosition{Vertical: VerticalBottom, Inside: InsideBottom}},
+		{"left-outside", LabelPosition{Horizontal: HorizontalLeft, Inside: InsideBottom}},
+		{"right-outside", LabelPosition{Horizontal: HorizontalRight, Inside: InsideBottom}},
+	}
+
+	// Create output directory
+	os.MkdirAll("out", 0o755)
+
+	// Calculate grid dimensions (4 columns x 4 rows to fit 13 positions)
+	cols := 4
+	rows := 4
+	boxWidth := 180
+	boxHeight := 140
+	spacing := 20
+	totalWidth := cols*boxWidth + (cols-1)*spacing
+	totalHeight := rows*boxHeight + (rows-1)*spacing
+
+	// Start building the combined SVG
+	svgContent := fmt.Sprintf(`<svg width="%d" height="%d" xmlns="http://www.w3.org/2000/svg">`, totalWidth, totalHeight)
+
+	for i, pos := range positions {
+		// Calculate grid position
+		col := i % cols
+		row := i / cols
+		x := col * (boxWidth + spacing)
+		y := row * (boxHeight + spacing)
+
+		// Create individual box for this position
+		box := SVGBox{
+			Box: api.Box{
+				Rectangle: api.Rectangle{
+					Width:  boxWidth,
+					Height: boxHeight,
+				},
+				Fill: api.Color{Hex: "#f8f8f8"},
+				Border: api.Borders{
+					Top:    api.Line{Color: api.Color{Hex: "#333"}, Width: 1},
+					Bottom: api.Line{Color: api.Color{Hex: "#333"}, Width: 1},
+					Left:   api.Line{Color: api.Color{Hex: "#333"}, Width: 1},
+					Right:  api.Line{Color: api.Color{Hex: "#333"}, Width: 1},
+				},
+			},
+			Labels: []Label{
+				{
+					Text: api.Text{
+						Content: fmt.Sprintf("Label: %s", pos.name),
+						Class: api.Class{
+							Font: &api.Font{Size: 12},
+						},
+					},
+					Positionable: Positionable{
+						Position: &pos.position,
+					},
+				},
+			},
+		}
+
+		// Generate SVG for this box
+		boxSVG, err := box.GenerateSVG()
+		if err != nil {
+			t.Fatalf("Failed to generate SVG for position %s: %v", pos.name, err)
+		}
+
+		// Extract the content between <svg> tags and add it with translation
+		svgStr := string(boxSVG)
+		// Find the start of the actual content (after opening <svg> tag)
+		startIdx := strings.Index(svgStr, ">") + 1
+		endIdx := strings.LastIndex(svgStr, "</svg>")
+		if startIdx > 0 && endIdx > startIdx {
+			content := svgStr[startIdx:endIdx]
+			// Wrap content in a group with translation
+			svgContent += fmt.Sprintf(`<g transform="translate(%d, %d)">%s</g>`, x, y, content)
+		}
+	}
+
+	svgContent += "</svg>"
+
+	// Save the merged SVG
+	filename := "out/all_label_positions_merged.svg"
+	err := os.WriteFile(filename, []byte(svgContent), 0o644)
+	if err != nil {
+		t.Fatalf("Failed to write merged SVG file: %v", err)
+	}
+
+	t.Logf("Merged SVG saved to: %s", filename)
+	t.Logf("SVG dimensions: %dx%d pixels", totalWidth, totalHeight)
+	t.Logf("Grid layout: %d columns x %d rows", cols, rows)
 }
 
 // TestOperations tests each type of operation (holes, dados, rabbets)

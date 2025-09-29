@@ -22,7 +22,6 @@ import (
 
 // TestGenerateShowcasePDF generates a comprehensive PDF showcasing all widgets
 func TestGenerateShowcasePDF(t *testing.T) {
-	t.Skip("Skipping showcase PDF tests due to SVG conversion validation issues")
 	// Generate both normal and debug versions
 	for _, debugMode := range []bool{false, true} {
 		name := "showcase"
@@ -59,10 +58,7 @@ func TestGenerateShowcasePDF(t *testing.T) {
 			// Page 5: Image Features
 			addImageFeaturesPage(builder)
 
-			// Page 6: SVG Features
-			if err := addSVGFeaturesPage(builder); err != nil {
-				t.Fatalf("Failed to add SVG features page: %v", err)
-			}
+			// Page 6: SVG Features - REMOVED (consolidated into image_test.go)
 
 			// Page 7: Label Positions Gallery
 			if err := addLabelPositionsGalleryPage(builder); err != nil {
@@ -74,7 +70,10 @@ func TestGenerateShowcasePDF(t *testing.T) {
 				t.Fatalf("Failed to add two-column layout page: %v", err)
 			}
 
-			// Page 9: Combined Examples
+			// Page 9: Font Family Features
+			addFontFamilyFeaturesPage(builder)
+
+			// Page 10: Combined Examples
 			addCombinedExamplesPage(builder)
 
 			// Generate PDF
@@ -274,15 +273,23 @@ func addTableFeaturesPage(b *Builder) {
 	}
 	sectionTitle.Draw(b)
 
-	table1 := TableImproved{
-		Headers: []string{"Name", "Age", "City"},
-		Rows: [][]any{
-			{"Alice Johnson", 28, "New York"},
-			{"Bob Smith", 35, "Los Angeles"},
-			{"Charlie Brown", 42, "Chicago"},
+	table1 := Table{
+		BaseTable: BaseTable{
+			Columns: []Column{
+				{Label: "Name", Style: "w-[33.33%] text-left align-middle"},
+				{Label: "Age", Style: "w-[33.33%] text-center align-middle"},
+				{Label: "City", Style: "w-[33.33%] text-left align-middle"},
+			},
+			Rows: [][]any{
+				{"Alice Johnson", 28, "New York"},
+				{"Bob Smith", 35, "Los Angeles"},
+				{"Charlie Brown", 42, "Chicago"},
+			},
+			HeaderStyle:       "font-bold bg-gray-100 text-center align-middle",
+			RowStyle:          "text-gray-700 align-middle",
+			AlternateRowStyle: "bg-gray-50",
+			ShowBorders:       true,
 		},
-		ShowBorders:       true,
-		AlternateRowColor: true,
 	}
 	table1.Draw(b)
 
@@ -295,17 +302,24 @@ func addTableFeaturesPage(b *Builder) {
 	}
 	sectionTitle2.Draw(b)
 
-	table2 := TableImproved{
-		Headers: []string{"Product", "Description", "Price", "Stock"},
-		Rows: [][]any{
-			{"Laptop", "High-performance laptop with 16GB RAM", "$1,299", 15},
-			{"Mouse", "Wireless ergonomic mouse", "$29.99", 150},
-			{"Keyboard", "Mechanical keyboard with RGB", "$89.99", 45},
+	table2 := Table{
+		BaseTable: BaseTable{
+			Columns: []Column{
+				{Label: "Product", Style: "w-[16.67%] text-left align-middle"},
+				{Label: "Description", Style: "w-[50%] text-left align-middle"},
+				{Label: "Price", Style: "w-[16.67%] text-right align-middle font-mono"},
+				{Label: "Stock", Style: "w-[16.67%] text-center align-middle"},
+			},
+			Rows: [][]any{
+				{"Laptop", "High-performance laptop with 16GB RAM", "$1,299", 15},
+				{"Mouse", "Wireless ergonomic mouse", "$29.99", 150},
+				{"Keyboard", "Mechanical keyboard with RGB", "$89.99", 45},
+			},
+			HeaderStyle:       "font-bold bg-gray-100 text-center align-middle",
+			RowStyle:          "text-gray-700 align-middle",
+			AlternateRowStyle: "bg-gray-50",
+			ShowBorders:       true,
 		},
-		ColumnWidths:      []int{2, 6, 2, 2}, // Custom widths totaling 12
-		ColumnAlignments:  []string{"left", "left", "right", "center"},
-		ShowBorders:       true,
-		AlternateRowColor: true,
 	}
 	table2.Draw(b)
 
@@ -318,18 +332,32 @@ func addTableFeaturesPage(b *Builder) {
 	}
 	sectionTitle3.Draw(b)
 
-	headers12 := []string{"1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12"}
 	rows12 := [][]any{
 		{"A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L"},
 		{"1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12"},
 	}
 
-	table3 := TableImproved{
-		Headers:           headers12,
-		Rows:              rows12,
-		ShowBorders:       true,
-		AlternateRowColor: false,
-		HeaderStyle:       api.ResolveStyles("bg-blue-100 font-bold text-xs"),
+	table3 := Table{
+		BaseTable: BaseTable{
+			Columns: []Column{
+				{Label: "1", Style: "w-[8.33%] text-center align-middle font-bold text-xs"},
+				{Label: "2", Style: "w-[8.33%] text-center align-middle font-bold text-xs"},
+				{Label: "3", Style: "w-[8.33%] text-center align-middle font-bold text-xs"},
+				{Label: "4", Style: "w-[8.33%] text-center align-middle font-bold text-xs"},
+				{Label: "5", Style: "w-[8.33%] text-center align-middle font-bold text-xs"},
+				{Label: "6", Style: "w-[8.33%] text-center align-middle font-bold text-xs"},
+				{Label: "7", Style: "w-[8.33%] text-center align-middle font-bold text-xs"},
+				{Label: "8", Style: "w-[8.33%] text-center align-middle font-bold text-xs"},
+				{Label: "9", Style: "w-[8.33%] text-center align-middle font-bold text-xs"},
+				{Label: "10", Style: "w-[8.33%] text-center align-middle font-bold text-xs"},
+				{Label: "11", Style: "w-[8.33%] text-center align-middle font-bold text-xs"},
+				{Label: "12", Style: "w-[8.33%] text-center align-middle font-bold text-xs"},
+			},
+			Rows:        rows12,
+			HeaderStyle: "bg-blue-100 font-bold text-xs text-center align-middle",
+			RowStyle:    "text-xs text-gray-700 text-center align-middle",
+			ShowBorders: true,
+		},
 	}
 	table3.Draw(b)
 
@@ -342,19 +370,24 @@ func addTableFeaturesPage(b *Builder) {
 	}
 	sectionTitle4.Draw(b)
 
-	table4 := TableImproved{
-		Headers: []string{"Task", "Status", "Priority"},
-		Rows: [][]any{
-			{"Complete documentation", "Done", "High"},
-			{"Review pull requests", "In Progress", "Medium"},
-			{"Deploy to production", "Pending", "High"},
-			{"Update dependencies", "Pending", "Low"},
+	table4 := Table{
+		BaseTable: BaseTable{
+			Columns: []Column{
+				{Label: "Task", Style: "w-[50%] text-left align-middle"},
+				{Label: "Status", Style: "w-[25%] text-center align-middle"},
+				{Label: "Priority", Style: "w-[25%] text-center align-middle"},
+			},
+			Rows: [][]any{
+				{"Complete documentation", "Done", "High"},
+				{"Review pull requests", "In Progress", "Medium"},
+				{"Deploy to production", "Pending", "High"},
+				{"Update dependencies", "Pending", "Low"},
+			},
+			HeaderStyle:       "bg-gray-800 text-white font-bold text-center align-middle",
+			RowStyle:          "text-sm text-gray-700 align-middle",
+			AlternateRowStyle: "bg-gray-50",
+			ShowBorders:       true,
 		},
-		HeaderStyle:       api.ResolveStyles("bg-gray-800 text-white font-bold"),
-		RowStyle:          api.ResolveStyles("text-sm"),
-		ShowBorders:       true,
-		AlternateRowColor: true,
-		ColumnAlignments:  []string{"left", "center", "center"},
 	}
 	table4.Draw(b)
 }
@@ -381,33 +414,55 @@ func addLayoutFeaturesPage(b *Builder) error {
 	// Show different column combinations
 	gridExamples := []struct {
 		title string
-		table TableImproved
+		table Table
 	}{
 		{
-			title: "Equal columns (4-4-4)",
-			table: TableImproved{
-				Headers:      []string{"Column 1", "Column 2", "Column 3"},
-				Rows:         [][]any{{"4 units", "4 units", "4 units"}},
-				ColumnWidths: []int{4, 4, 4},
-				ShowBorders:  true,
+			title: "Equal columns (33.33%-33.33%-33.33%)",
+			table: Table{
+				BaseTable: BaseTable{
+					Columns: []Column{
+						{Label: "Column 1", Style: "w-[33.33%] text-center align-middle"},
+						{Label: "Column 2", Style: "w-[33.33%] text-center align-middle"},
+						{Label: "Column 3", Style: "w-[33.33%] text-center align-middle"},
+					},
+					Rows:        [][]any{{"33.33% width", "33.33% width", "33.33% width"}},
+					ShowBorders: true,
+					HeaderStyle: "font-bold bg-gray-100 text-center align-middle",
+					RowStyle:    "text-gray-700 text-center align-middle",
+				},
 			},
 		},
 		{
-			title: "Asymmetric columns (2-8-2)",
-			table: TableImproved{
-				Headers:      []string{"Side", "Main Content", "Side"},
-				Rows:         [][]any{{"2 units", "8 units (main content area)", "2 units"}},
-				ColumnWidths: []int{2, 8, 2},
-				ShowBorders:  true,
+			title: "Asymmetric columns (16.67%-66.67%-16.67%)",
+			table: Table{
+				BaseTable: BaseTable{
+					Columns: []Column{
+						{Label: "Side", Style: "w-[16.67%] text-center align-middle"},
+						{Label: "Main Content", Style: "w-[66.67%] text-center align-middle"},
+						{Label: "Side", Style: "w-[16.67%] text-center align-middle"},
+					},
+					Rows:        [][]any{{"16.67% width", "66.67% width (main content area)", "16.67% width"}},
+					ShowBorders: true,
+					HeaderStyle: "font-bold bg-gray-100 text-center align-middle",
+					RowStyle:    "text-gray-700 text-center align-middle",
+				},
 			},
 		},
 		{
-			title: "Progressive columns (1-2-3-6)",
-			table: TableImproved{
-				Headers:      []string{"1", "2", "3", "6"},
-				Rows:         [][]any{{"Tiny", "Small", "Medium", "Large content area"}},
-				ColumnWidths: []int{1, 2, 3, 6},
-				ShowBorders:  true,
+			title: "Progressive columns (8.33%-16.67%-25%-50%)",
+			table: Table{
+				BaseTable: BaseTable{
+					Columns: []Column{
+						{Label: "1", Style: "w-[8.33%] text-center align-middle"},
+						{Label: "2", Style: "w-[16.67%] text-center align-middle"},
+						{Label: "3", Style: "w-[25%] text-center align-middle"},
+						{Label: "6", Style: "w-[50%] text-center align-middle"},
+					},
+					Rows:        [][]any{{"Tiny", "Small", "Medium", "Large content area"}},
+					ShowBorders: true,
+					HeaderStyle: "font-bold bg-gray-100 text-center align-middle",
+					RowStyle:    "text-gray-700 text-center align-middle",
+				},
 			},
 		},
 	}
@@ -656,18 +711,25 @@ func addCombinedExamplesPage(b *Builder) {
 	addressText.Draw(b)
 
 	// Invoice details table
-	invoiceTable := TableImproved{
-		Headers: []string{"Item", "Description", "Qty", "Price", "Total"},
-		Rows: [][]any{
-			{"PRD-001", "Professional Services", 40, "$150.00", "$6,000.00"},
-			{"PRD-002", "Software License", 5, "$299.00", "$1,495.00"},
-			{"PRD-003", "Support Package", 1, "$500.00", "$500.00"},
+	invoiceTable := Table{
+		BaseTable: BaseTable{
+			Columns: []Column{
+				{Label: "Item", Style: "w-[16.67%] text-left align-middle font-mono"},
+				{Label: "Description", Style: "w-[41.67%] text-left align-middle"},
+				{Label: "Qty", Style: "w-[8.33%] text-center align-middle"},
+				{Label: "Price", Style: "w-[16.67%] text-right align-middle font-mono"},
+				{Label: "Total", Style: "w-[16.67%] text-right align-middle font-mono font-bold"},
+			},
+			Rows: [][]any{
+				{"PRD-001", "Professional Services", 40, "$150.00", "$6,000.00"},
+				{"PRD-002", "Software License", 5, "$299.00", "$1,495.00"},
+				{"PRD-003", "Support Package", 1, "$500.00", "$500.00"},
+			},
+			HeaderStyle:       "bg-gray-700 text-white font-bold text-center align-middle",
+			RowStyle:          "text-gray-700 align-middle",
+			AlternateRowStyle: "bg-gray-50",
+			ShowBorders:       true,
 		},
-		ColumnWidths:      []int{2, 5, 1, 2, 2},
-		ColumnAlignments:  []string{"left", "left", "center", "right", "right"},
-		ShowBorders:       true,
-		AlternateRowColor: true,
-		HeaderStyle:       api.ResolveStyles("bg-gray-700 text-white font-bold"),
 	}
 	invoiceTable.Draw(b)
 
@@ -682,17 +744,21 @@ func addCombinedExamplesPage(b *Builder) {
 	totalLine.Draw(b)
 
 	// Total amount
-	totalTable := TableImproved{
-		Headers: []string{"", ""},
-		Rows: [][]any{
-			{"Subtotal:", "$7,995.00"},
-			{"Tax (8%):", "$639.60"},
-			{"Total:", "$8,634.60"},
+	totalTable := Table{
+		BaseTable: BaseTable{
+			Columns: []Column{
+				{Label: "", Style: "w-[83.33%] text-right align-middle font-bold"},
+				{Label: "", Style: "w-[16.67%] text-right align-middle font-bold font-mono"},
+			},
+			Rows: [][]any{
+				{"Subtotal:", "$7,995.00"},
+				{"Tax (8%):", "$639.60"},
+				{"Total:", "$8,634.60"},
+			},
+			HeaderStyle: "hidden", // Hide headers for this table
+			RowStyle:    "font-bold text-gray-800 align-middle",
+			ShowBorders: false,
 		},
-		ColumnWidths:     []int{10, 2},
-		ColumnAlignments: []string{"right", "right"},
-		ShowBorders:      false,
-		RowStyle:         api.ResolveStyles("font-bold"),
 	}
 	totalTable.Draw(b)
 
@@ -715,17 +781,25 @@ func addCombinedExamplesPage(b *Builder) {
 	reportText.Draw(b)
 
 	// Data table
-	dataTable := TableImproved{
-		Headers: []string{"Quarter", "Revenue", "Growth", "Status"},
-		Rows: [][]any{
-			{"Q1 2024", "$2.5M", "+15%", "✓ Target Met"},
-			{"Q2 2024", "$3.1M", "+24%", "✓ Target Exceeded"},
-			{"Q3 2024", "$2.8M", "-10%", "⚠ Below Target"},
-			{"Q4 2024", "$3.5M", "+25%", "✓ Target Exceeded"},
+	dataTable := Table{
+		BaseTable: BaseTable{
+			Columns: []Column{
+				{Label: "Quarter", Style: "w-[25%] text-left align-middle"},
+				{Label: "Revenue", Style: "w-[25%] text-right align-middle font-mono"},
+				{Label: "Growth", Style: "w-[25%] text-center align-middle"},
+				{Label: "Status", Style: "w-[25%] text-center align-middle"},
+			},
+			Rows: [][]any{
+				{"Q1 2024", "$2.5M", "+15%", "✓ Target Met"},
+				{"Q2 2024", "$3.1M", "+24%", "✓ Target Exceeded"},
+				{"Q3 2024", "$2.8M", "-10%", "⚠ Below Target"},
+				{"Q4 2024", "$3.5M", "+25%", "✓ Target Exceeded"},
+			},
+			HeaderStyle:       "font-bold bg-gray-100 text-center align-middle",
+			RowStyle:          "text-gray-700 align-middle",
+			AlternateRowStyle: "bg-gray-50",
+			ShowBorders:       true,
 		},
-		ShowBorders:       true,
-		AlternateRowColor: true,
-		ColumnAlignments:  []string{"left", "right", "center", "center"},
 	}
 	dataTable.Draw(b)
 
@@ -779,116 +853,10 @@ func addImageFeaturesPage(builder *Builder) {
 	}
 	sectionHeader.Draw(builder)
 
-	// Create a simple SVG for demo purposes
-	demoSVGBox := SVGBox{
-		Box: api.Box{
-			Rectangle: api.Rectangle{Width: 80, Height: 40},
-			Fill:      api.Color{Hex: "e8f5e8"},
-			Border: api.Borders{
-				Top:    api.Line{Width: 1, Color: api.Color{Hex: "28a745"}},
-				Right:  api.Line{Width: 1, Color: api.Color{Hex: "28a745"}},
-				Bottom: api.Line{Width: 1, Color: api.Color{Hex: "28a745"}},
-				Left:   api.Line{Width: 1, Color: api.Color{Hex: "28a745"}},
-			},
-		},
-		Labels: []Label{
-			{
-				Positionable: Positionable{
-					Position: &LabelPosition{Vertical: VerticalCenter, Horizontal: HorizontalCenter},
-				},
-				Text: api.Text{Content: "Demo Image"},
-			},
-		},
-	}
+	// Simple image example (SVGBox functionality moved to image_test.go)
+	// Note: SVG box functionality has been consolidated into image_test.go
 
-	svgBytes, err := demoSVGBox.GenerateSVG()
-	var demoImagePath string
-	if err != nil {
-		// Skip image features if SVG generation fails (fail fast)
-		return
-	}
-
-	// Write to temporary file
-	tempFile, err := os.CreateTemp("", "demo_image_*.svg")
-	if err != nil {
-		// Skip image features if temp file creation fails (fail fast)
-		return
-	}
-
-	demoImagePath = tempFile.Name()
-	defer os.Remove(demoImagePath)
-	tempFile.Write(svgBytes)
-	tempFile.Close()
-
-	placeholderImage := Image{
-		Source:  demoImagePath,
-		AltText: "Demo image created from SVG",
-		Height:  &[]float64{40}[0],
-	}
-	// Try to draw the image, skip if it fails
-	placeholderImage.Draw(builder)
-
-	// SVG Box as image example
-	sectionHeader = Text{
-		Text: api.Text{
-			Content: "SVG Box Example",
-			Style:   "text-xl font-semibold mt-4",
-			Class:   api.ResolveStyles("text-xl font-semibold"),
-		},
-	}
-	sectionHeader.Draw(builder)
-
-	// Create an SVG box
-	svgBox := SVGBox{
-		Box: api.Box{
-			Rectangle: api.Rectangle{
-				Width:  150,
-				Height: 100,
-			},
-			Fill: api.Color{Hex: "#e3f2fd"},
-			Border: api.Borders{
-				Top:    api.Line{Color: api.Color{Hex: "#2196f3"}, Width: 2},
-				Bottom: api.Line{Color: api.Color{Hex: "#2196f3"}, Width: 2},
-				Left:   api.Line{Color: api.Color{Hex: "#2196f3"}, Width: 2},
-				Right:  api.Line{Color: api.Color{Hex: "#2196f3"}, Width: 2},
-			},
-		},
-		Labels: []Label{
-			{
-				Text: api.Text{Content: "SVG Box"},
-				Positionable: Positionable{
-					Position: &LabelPosition{
-						Vertical:   VerticalCenter,
-						Horizontal: HorizontalCenter,
-					},
-				},
-			},
-		},
-		Circles: []CircleShape{
-			{X: 30, Y: 30, Diameter: 15, Label: "A"},
-			{X: 120, Y: 30, Diameter: 15, Label: "B"},
-		},
-		ShowDimensions: true,
-		ActualWidth:    150,
-		ActualHeight:   100,
-		DimensionUnit:  "mm",
-	}
-
-	// Generate SVG and save for reference
-	svgData, err := svgBox.GenerateSVG()
-	if err == nil {
-		os.WriteFile("out/showcase_svgbox.svg", svgData, 0o644)
-
-		// Note about SVG
-		note := Text{
-			Text: api.Text{
-				Content: "Note: SVG box saved to out/showcase_svgbox.svg",
-				Style:   "text-sm text-gray-600 italic",
-				Class:   api.ResolveStyles("text-sm text-gray-600 italic"),
-			},
-		}
-		note.Draw(builder)
-	}
+	// Note: SVG Box functionality has been moved to image_test.go for consolidation
 
 	// Multiple placeholder images with different sizes
 	sectionHeader = Text{
@@ -900,469 +868,10 @@ func addImageFeaturesPage(builder *Builder) {
 	}
 	sectionHeader.Draw(builder)
 
-	// Use the same SVG demo approach for different sized images
-	if demoImagePath != "" {
-		// Reuse the same SVG source for different sizes
-		smallImage := Image{
-			Source:  demoImagePath,
-			AltText: "Small Image (30mm height)",
-			Height:  &[]float64{30}[0],
-		}
-		smallImage.Draw(builder)
-
-		mediumImage := Image{
-			Source:  demoImagePath,
-			AltText: "Medium Image (50mm height)",
-			Height:  &[]float64{50}[0],
-		}
-		mediumImage.Draw(builder)
-
-		largeImage := Image{
-			Source:  demoImagePath,
-			AltText: "Large Image (70mm height)",
-			Height:  &[]float64{70}[0],
-		}
-		largeImage.Draw(builder)
-	}
+	// Note: Image size demonstrations have been moved to image_test.go for better organization
 }
 
-func addSVGFeaturesPage(builder *Builder) error {
-	// Page title
-	titleWidget := Text{
-		Text: api.Text{
-			Content: "SVG Features",
-			Class:   api.ResolveStyles("text-2xl font-bold text-center mb-4"),
-		},
-	}
-	titleWidget.Draw(builder)
-
-	// Section 1: Basic SVG Box
-	sectionHeader := Text{
-		Text: api.Text{
-			Content: "Basic SVG Box with Circles and Cuts",
-			Class:   api.ResolveStyles("text-xl font-semibold mt-4 mb-2"),
-		},
-	}
-	sectionHeader.Draw(builder)
-
-	// Create SVG box with basic elements
-	basicSVGBox := SVGBox{
-		Box: api.Box{
-			Rectangle: api.Rectangle{Width: 200, Height: 150},
-			Fill:      api.Color{Hex: "f0f0f0"},
-			Border: api.Borders{
-				Top:    api.Line{Width: 2, Color: api.Color{Hex: "333333"}},
-				Right:  api.Line{Width: 2, Color: api.Color{Hex: "333333"}},
-				Bottom: api.Line{Width: 2, Color: api.Color{Hex: "333333"}},
-				Left:   api.Line{Width: 2, Color: api.Color{Hex: "333333"}},
-			},
-		},
-		Circles: []CircleShape{
-			{X: 50, Y: 40, Diameter: 30, Label: "C1"},
-			{X: 150, Y: 40, Diameter: 25, Label: "C2"},
-			{X: 100, Y: 110, Diameter: 35, Label: "C3"},
-		},
-		Cuts: []Cut{
-			{Orientation: "horizontal", Position: 75, Width: 8, Label: "Cut1"},
-			{Orientation: "vertical", Position: 100, Width: 6, Label: "Cut2"},
-		},
-		Labels: []Label{
-			{
-				Positionable: Positionable{
-					Position: &LabelPosition{Vertical: VerticalTop, Horizontal: HorizontalCenter},
-				},
-				Text: api.Text{Content: "Basic SVG Box"},
-			},
-		},
-		EnableCollisionAvoidance: true,
-	}
-
-	// Create SVG widget
-	basicSVGWidget := NewSVGWidget(basicSVGBox).WithHeight(80)
-	basicSVGWidget.Draw(builder)
-
-	// Section 2: SVG Import from Content
-	sectionHeader = Text{
-		Text: api.Text{
-			Content: "SVG Import from External Content",
-			Class:   api.ResolveStyles("text-xl font-semibold mt-4 mb-2"),
-		},
-	}
-	sectionHeader.Draw(builder)
-
-	// Section 3: Aspect Ratio Preservation Demo
-	sectionHeader = Text{
-		Text: api.Text{
-			Content: "Aspect Ratio Preservation",
-			Class:   api.ResolveStyles("text-xl font-semibold mt-4 mb-2"),
-		},
-	}
-	sectionHeader.Draw(builder)
-
-	// Landscape SVG (2:1 aspect ratio)
-	landscapeSVGBox := SVGBox{
-		Box: api.Box{
-			Rectangle: api.Rectangle{Width: 400, Height: 200},
-			Fill:      api.Color{Hex: "e6f3ff"},
-			Border: api.Borders{
-				Top:    api.Line{Width: 1, Color: api.Color{Hex: "0066cc"}},
-				Right:  api.Line{Width: 1, Color: api.Color{Hex: "0066cc"}},
-				Bottom: api.Line{Width: 1, Color: api.Color{Hex: "0066cc"}},
-				Left:   api.Line{Width: 1, Color: api.Color{Hex: "0066cc"}},
-			},
-		},
-		Circles: []CircleShape{
-			{X: 100, Y: 100, Diameter: 40, Label: "L1"},
-			{X: 200, Y: 100, Diameter: 40, Label: "L2"},
-			{X: 300, Y: 100, Diameter: 40, Label: "L3"},
-		},
-		Labels: []Label{
-			{
-				Positionable: Positionable{
-					Position: &LabelPosition{Vertical: VerticalTop, Horizontal: HorizontalCenter},
-				},
-				Text: api.Text{Content: "Landscape (2:1 aspect)"},
-			},
-		},
-	}
-
-	landscapeWidget := NewSVGWidget(landscapeSVGBox).WithHeight(40)
-	landscapeWidget.Draw(builder)
-
-	// Portrait SVG (1:2 aspect ratio)
-	portraitSVGBox := SVGBox{
-		Box: api.Box{
-			Rectangle: api.Rectangle{Width: 150, Height: 300},
-			Fill:      api.Color{Hex: "fff0e6"},
-			Border: api.Borders{
-				Top:    api.Line{Width: 1, Color: api.Color{Hex: "cc6600"}},
-				Right:  api.Line{Width: 1, Color: api.Color{Hex: "cc6600"}},
-				Bottom: api.Line{Width: 1, Color: api.Color{Hex: "cc6600"}},
-				Left:   api.Line{Width: 1, Color: api.Color{Hex: "cc6600"}},
-			},
-		},
-		Circles: []CircleShape{
-			{X: 75, Y: 80, Diameter: 35, Label: "P1"},
-			{X: 75, Y: 150, Diameter: 35, Label: "P2"},
-			{X: 75, Y: 220, Diameter: 35, Label: "P3"},
-		},
-		Labels: []Label{
-			{
-				Positionable: Positionable{
-					Position: &LabelPosition{Vertical: VerticalTop, Horizontal: HorizontalCenter},
-				},
-				Text: api.Text{Content: "Portrait (1:2 aspect)"},
-			},
-		},
-	}
-
-	portraitWidget := NewSVGWidget(portraitSVGBox).WithHeight(60)
-	portraitWidget.Draw(builder)
-
-	// Technical Note
-	noteText := Text{
-		Text: api.Text{
-			Content: "Note: SVG widgets are converted to PNG with preserved aspect ratios using oksvg library before embedding in PDF.",
-			Class:   api.ResolveStyles("text-sm text-gray-600 italic mt-4"),
-		},
-	}
-	noteText.Draw(builder)
-
-	// Section 4: SVG Converter Integration
-	if err := addSVGConverterDemo(builder); err != nil {
-		return fmt.Errorf("failed to add SVG converter demo: %w", err)
-	}
-
-	// Section 5: Dedicated converter pages
-	if err := addSVGConverterPages(builder); err != nil {
-		// Error generating converter pages - return it
-		return fmt.Errorf("failed to add SVG converter pages: %w", err)
-	}
-	return nil
-}
-
-// addSVGConverterDemo demonstrates the new SVG converter functionality
-func addSVGConverterDemo(builder *Builder) error {
-	// Section header
-	sectionHeader := Text{
-		Text: api.Text{
-			Content: "SVG Converter Integration",
-			Class:   api.ResolveStyles("text-xl font-semibold mt-6 mb-2"),
-		},
-	}
-	sectionHeader.Draw(builder)
-
-	availableConverters := GetAvailableConverters()
-
-	if len(availableConverters) == 0 {
-		noConvertersText := Text{
-			Text: api.Text{
-				Content: "No external SVG converters detected.",
-				Class:   api.ResolveStyles("text-orange-600 italic"),
-			},
-		}
-		noConvertersText.Draw(builder)
-		return nil
-	}
-
-	// Show available converters
-	convertersText := Text{
-		Text: api.Text{
-			Content: fmt.Sprintf("Available SVG Converters: %s", strings.Join(availableConverters, ", ")),
-			Class:   api.ResolveStyles("text-green-600 font-medium"),
-		},
-	}
-	convertersText.Draw(builder)
-
-	// Show supported formats
-	supportedFormats := GetSupportedFormats()
-	formatsText := Text{
-		Text: api.Text{
-			Content: fmt.Sprintf("Supported Output Formats: %s", strings.Join(supportedFormats, ", ")),
-			Class:   api.ResolveStyles("text-blue-600"),
-		},
-	}
-	formatsText.Draw(builder)
-
-	// Add SVG to all formats conversion grid
-	if err := addSVGFormatConversionGrid(builder); err != nil {
-		return fmt.Errorf("failed to add SVG format conversion grid: %w", err)
-	}
-
-	// Demo converter functionality
-	return demoConverterFunctionality(builder)
-}
-
-// demoConverterFunctionality creates a live demo of SVG conversion
-func demoConverterFunctionality(builder *Builder) error {
-	// Create a test SVG using SVGBox for consistent results
-	testSVGBox := SVGBox{
-		Box: api.Box{
-			Rectangle: api.Rectangle{Width: 120, Height: 80},
-			Fill:      api.Color{Hex: "f0f8ff"},
-			Border: api.Borders{
-				Top:    api.Line{Width: 2, Color: api.Color{Hex: "4169e1"}},
-				Right:  api.Line{Width: 2, Color: api.Color{Hex: "4169e1"}},
-				Bottom: api.Line{Width: 2, Color: api.Color{Hex: "4169e1"}},
-				Left:   api.Line{Width: 2, Color: api.Color{Hex: "4169e1"}},
-			},
-		},
-		Circles: []CircleShape{
-			{X: 30, Y: 25, Diameter: 15, Label: "A"},
-			{X: 90, Y: 55, Diameter: 15, Label: "B"},
-		},
-		Labels: []Label{
-			{
-				Positionable: Positionable{
-					Position: &LabelPosition{Vertical: VerticalCenter, Horizontal: HorizontalCenter},
-				},
-				Text: api.Text{Content: "Demo"},
-			},
-		},
-	}
-
-	// Generate SVG content
-	svgBytes, err := testSVGBox.GenerateSVG()
-	if err != nil {
-		return fmt.Errorf("failed to generate demo SVG: %w", err)
-	}
-
-	// Create temporary file with generated SVG content
-	tempDir := os.TempDir()
-	svgPath := filepath.Join(tempDir, "showcase_demo.svg")
-
-	if err := os.WriteFile(svgPath, svgBytes, 0o644); err != nil {
-		return fmt.Errorf("failed to write demo SVG file: %w", err)
-	}
-	defer os.Remove(svgPath)
-
-	// Demo 1: Direct SVG usage with automatic conversion
-	demoTitle1 := Text{
-		Text: api.Text{
-			Content: "Demo 1: Automatic SVG Conversion",
-			Class:   api.ResolveStyles("text-md font-semibold mt-4 mb-2"),
-		},
-	}
-	demoTitle1.Draw(builder)
-
-	// Use the Image widget directly with an SVG file
-	// The enhanced validation will prevent "could not load image" errors
-	svgImage := &Image{
-		Source:  svgPath,
-		AltText: "Test SVG converted automatically",
-		Width:   floatPtr(40),
-		Height:  floatPtr(30),
-	}
-	if err := svgImage.Draw(builder); err != nil {
-		// Conversion validation failed - show error but don't crash
-		errorText := Text{
-			Text: api.Text{
-				Content: fmt.Sprintf("SVG conversion failed: %v", err),
-				Class:   api.ResolveStyles("text-red-600 text-sm"),
-			},
-		}
-		errorText.Draw(builder)
-		return nil // Don't fail the entire showcase
-	}
-
-	// Display conversion metadata if available
-	if metadata := svgImage.GetLastConversionMetadata(); metadata != nil {
-		metadataText := Text{
-			Text: api.Text{
-				Content: fmt.Sprintf("✓ Converted using %s in %v (DPI: %d, Size: %s)",
-					metadata.ConverterUsed,
-					metadata.Duration.Round(time.Millisecond),
-					metadata.DPI,
-					formatFileSize(metadata.OutputFileSize)),
-				Class: api.ResolveStyles("text-green-600 text-xs"),
-			},
-		}
-		metadataText.Draw(builder)
-
-		// Show detailed settings
-		settingsText := Text{
-			Text: api.Text{
-				Content: fmt.Sprintf("Settings: %dx%d pixels, Format: PNG, High Resolution (3x DPI)",
-					metadata.OutputWidth, metadata.OutputHeight),
-				Class: api.ResolveStyles("text-gray-600 text-xs"),
-			},
-		}
-		settingsText.Draw(builder)
-	} else {
-		successText := Text{
-			Text: api.Text{
-				Content: "✓ SVG automatically detected and converted",
-				Class:   api.ResolveStyles("text-green-600 text-sm"),
-			},
-		}
-		successText.Draw(builder)
-	}
-
-	return nil
-}
-
-// addSVGConverterPages creates dedicated pages for each available converter
-func addSVGConverterPages(builder *Builder) error {
-	availableConverters := GetAvailableConverters()
-
-	if len(availableConverters) == 0 {
-		return nil // No converters available
-	}
-
-	// Create a test SVG for converter demonstrations
-	testSVGBox := createComplexSVGBoxForTesting()
-
-	// Generate SVG content
-	svgBytes, err := testSVGBox.GenerateSVG()
-	if err != nil {
-		return fmt.Errorf("failed to generate test SVG: %w", err)
-	}
-
-	// Create temporary SVG file
-	tempDir := os.TempDir()
-	svgPath := filepath.Join(tempDir, "converter_test.svg")
-	if err := os.WriteFile(svgPath, svgBytes, 0o644); err != nil {
-		return fmt.Errorf("failed to write test SVG: %w", err)
-	}
-	defer os.Remove(svgPath)
-
-	// Create a page for each available converter
-	for i, converterName := range availableConverters {
-		// Add a new page for this converter
-		if i > 0 {
-			builder.AddPage()
-		}
-
-		// Page title
-		titleText := Text{
-			Text: api.Text{
-				Content: fmt.Sprintf("SVG Converter: %s", converterName),
-				Class:   api.ResolveStyles("text-2xl font-bold text-center mb-4"),
-			},
-		}
-		titleText.Draw(builder)
-
-		// Show original SVG using SVGWidget (oksvg-based, not external converter)
-		origText := Text{
-			Text: api.Text{
-				Content: "Original SVG (rendered with oksvg):",
-				Class:   api.ResolveStyles("text-lg font-semibold mt-2 mb-2"),
-			},
-		}
-		origText.Draw(builder)
-
-		svgWidget := NewSVGWidget(testSVGBox).WithHeight(60)
-		svgWidget.Draw(builder)
-
-		// Test conversion with this specific converter
-		conversionText := Text{
-			Text: api.Text{
-				Content: fmt.Sprintf("Converted using %s:", converterName),
-				Class:   api.ResolveStyles("text-lg font-semibold mt-4 mb-2"),
-			},
-		}
-		conversionText.Draw(builder)
-
-		// Use Image widget with specific converter preference
-		convertedImage := &Image{
-			Source:             svgPath,
-			AltText:            fmt.Sprintf("SVG converted by %s", converterName),
-			Width:              floatPtr(80),
-			Height:             floatPtr(60),
-			PreferredConverter: converterName,
-			ConverterOptions: &ConvertOptions{
-				Format: "png",
-				DPI:    288, // High resolution output (3x standard DPI)
-			},
-		}
-
-		if err := convertedImage.Draw(builder); err != nil {
-			// Conversion failed - show error message instead of crashing
-			errorText := Text{
-				Text: api.Text{
-					Content: fmt.Sprintf("✗ Conversion failed with %s: %v", converterName, err),
-					Class:   api.ResolveStyles("text-red-600 text-sm"),
-				},
-			}
-			errorText.Draw(builder)
-		} else {
-			// Display detailed conversion metadata
-			if metadata := convertedImage.GetLastConversionMetadata(); metadata != nil {
-				successText := Text{
-					Text: api.Text{
-						Content: fmt.Sprintf("✓ %s conversion: %v (DPI: %d, %s)",
-							converterName,
-							metadata.Duration.Round(time.Millisecond),
-							metadata.DPI,
-							formatFileSize(metadata.OutputFileSize)),
-						Class: api.ResolveStyles("text-green-600 text-sm"),
-					},
-				}
-				successText.Draw(builder)
-
-				// Show technical details
-				detailsText := Text{
-					Text: api.Text{
-						Content: fmt.Sprintf("Output: %dx%d pixels, Format: PNG, Quality: High Resolution",
-							metadata.OutputWidth, metadata.OutputHeight),
-						Class: api.ResolveStyles("text-gray-600 text-xs"),
-					},
-				}
-				detailsText.Draw(builder)
-			} else {
-				successText := Text{
-					Text: api.Text{
-						Content: fmt.Sprintf("✓ Successfully converted using %s", converterName),
-						Class:   api.ResolveStyles("text-green-600 text-sm"),
-					},
-				}
-				successText.Draw(builder)
-			}
-		}
-	}
-
-	return nil
-}
+// SVG Functions removed and consolidated into image_test.go
 
 // addLabelPositionsGalleryPage creates a comprehensive page showing all label position variations
 func addLabelPositionsGalleryPage(builder *Builder) error {
@@ -1380,7 +889,7 @@ func addLabelPositionsGalleryPage(builder *Builder) error {
 	// Description
 	descWidget := Text{
 		Text: api.Text{
-			Content: "Complete showcase of all available label positioning options in SVGBox",
+			Content: "Complete showcase of all available label positioning options",
 			Class:   api.ResolveStyles("text-md text-center text-gray-600 mb-6"),
 		},
 	}
@@ -1556,7 +1065,7 @@ func addLabelPositionsGalleryPage(builder *Builder) error {
 
 	summaryText := Text{
 		Text: api.Text{
-			Content: fmt.Sprintf("This page demonstrates all %d label positioning options available in SVGBox. All examples are rendered at 288 DPI for high quality output and include performance metrics.", len(labelPositions)),
+			Content: fmt.Sprintf("This page demonstrates all %d label positioning options available. All examples are rendered at 288 DPI for high quality output and include performance metrics.", len(labelPositions)),
 			Class:   api.ResolveStyles("text-sm text-gray-700 mb-4"),
 		},
 	}
@@ -1810,7 +1319,7 @@ func addTrueTwoColumnLayout(builder *Builder, svgPath string) error {
 	// Right column: Real table component (5 columns ≈ 41.67%)
 	tableComponent := NewTableComponent(
 		[]string{"Property", "Value"},
-		[][]string{
+		[][]any{
 			{"Width", "300mm"},
 			{"Height", "200mm"},
 			{"Circles", "3"},
@@ -2047,6 +1556,240 @@ func createSuccessWidget(format, outputPath string) core.Component {
 		Align: align.Center,
 		Color: &props.Color{Red: 0, Green: 150, Blue: 0}, // Green text
 	})
+}
+
+// addFontFamilyFeaturesPage demonstrates font-family-{Name} Tailwind classes
+func addFontFamilyFeaturesPage(builder *Builder) {
+	builder.AddPage()
+
+	// Page title
+	titleWidget := Text{
+		Text: api.Text{
+			Content: "Font Family Features",
+			Class:   api.ResolveStyles("text-2xl font-bold text-center mb-4"),
+		},
+	}
+	titleWidget.Draw(builder)
+
+	// Description
+	descWidget := Text{
+		Text: api.Text{
+			Content: "Demonstration of font-family-{Name} Tailwind classes with Unicode compatibility testing",
+			Class:   api.ResolveStyles("text-md text-center text-gray-600 mb-6"),
+		},
+	}
+	descWidget.Draw(builder)
+
+	// Section 1: Font Family Comparison
+	sectionHeader := Text{
+		Text: api.Text{
+			Content: "Font Family Comparison",
+			Class:   api.ResolveStyles("text-xl font-semibold mt-4 mb-3"),
+		},
+	}
+	sectionHeader.Draw(builder)
+
+	// Font families to demonstrate
+	fontFamilies := []struct {
+		name        string
+		className   string
+		description string
+		sample      string
+	}{
+		{"Arial", "font-family-Arial", "Sans-serif, excellent Unicode support", "The quick brown fox jumps over lazy dog π²³°±µΩ"},
+		{"Times", "font-family-Times", "Serif, traditional readability", "The quick brown fox jumps over lazy dog π²³°±µΩ"},
+		{"Courier", "font-family-Courier", "Monospace, ideal for code and data", "The quick brown fox jumps π²³°±µΩ"},
+		{"Helvetica", "font-family-Helvetica", "Sans-serif, clean modern appearance", "The quick brown fox jumps π²³°±µΩ"},
+	}
+
+	for _, font := range fontFamilies {
+		// Font name and description
+		nameText := Text{
+			Text: api.Text{
+				Content: fmt.Sprintf("%s Font Family", font.name),
+				Class:   api.ResolveStyles("text-lg font-semibold mt-3 mb-1"),
+			},
+		}
+		nameText.Draw(builder)
+
+		descText := Text{
+			Text: api.Text{
+				Content: font.description,
+				Class:   api.ResolveStyles("text-sm text-gray-600 mb-2"),
+			},
+		}
+		descText.Draw(builder)
+
+		// Sample text with font applied
+		sampleText := Text{
+			Text: api.Text{
+				Content: font.sample,
+				Class:   api.ResolveStyles(fmt.Sprintf("%s text-base", font.className)),
+			},
+		}
+		sampleText.Draw(builder)
+
+		// Class name reference
+		classText := Text{
+			Text: api.Text{
+				Content: fmt.Sprintf("Usage: %s", font.className),
+				Class:   api.ResolveStyles("text-xs text-gray-500 mb-3 font-mono"),
+			},
+		}
+		classText.Draw(builder)
+	}
+
+	// Section 2: Font Weight Combinations
+	sectionHeader2 := Text{
+		Text: api.Text{
+			Content: "Font Family + Weight Combinations",
+			Class:   api.ResolveStyles("text-xl font-semibold mt-6 mb-3"),
+		},
+	}
+	sectionHeader2.Draw(builder)
+
+	// Weight combinations
+	weightCombos := []struct {
+		family string
+		weight string
+		class  string
+	}{
+		{"Arial", "Normal", "font-family-Arial font-normal"},
+		{"Arial", "Bold", "font-family-Arial font-bold"},
+		{"Times", "Normal", "font-family-Times font-normal"},
+		{"Times", "Bold", "font-family-Times font-bold"},
+		{"Courier", "Normal", "font-family-Courier font-normal"},
+		{"Courier", "Bold", "font-family-Courier font-bold"},
+	}
+
+	for _, combo := range weightCombos {
+		comboText := Text{
+			Text: api.Text{
+				Content: fmt.Sprintf("%s %s: Sample text with Unicode π²³°±µΩπ√∞≤", combo.family, combo.weight),
+				Class:   api.ResolveStyles(fmt.Sprintf("%s text-base", combo.class)),
+			},
+		}
+		comboText.Draw(builder)
+
+		classRefText := Text{
+			Text: api.Text{
+				Content: fmt.Sprintf("Class: %s", combo.class),
+				Class:   api.ResolveStyles("text-xs text-gray-500 mb-2 font-mono"),
+			},
+		}
+		classRefText.Draw(builder)
+	}
+
+	// Section 3: Unicode Compatibility Table
+	sectionHeader3 := Text{
+		Text: api.Text{
+			Content: "Unicode Compatibility Matrix",
+			Class:   api.ResolveStyles("text-xl font-semibold mt-6 mb-3"),
+		},
+	}
+	sectionHeader3.Draw(builder)
+
+	// Create Unicode test table
+	unicodeChars := []string{"²", "³", "°", "±", "µ", "Ω", "π", "√", "∞", "≤"}
+	testFonts := []string{"Arial", "Times", "Courier"}
+
+	// Table headers
+	headers := []string{"Font Family"}
+	for _, char := range unicodeChars {
+		headers = append(headers, char)
+	}
+
+	// Table rows
+	var rows [][]any
+	for _, font := range testFonts {
+		row := []any{font}
+		for _, char := range unicodeChars {
+			row = append(row, char)
+		}
+		rows = append(rows, row)
+	}
+
+	// Create columns
+	columns := []Column{
+		{Label: "Font Family", Style: "w-[20%] text-left align-middle font-medium"},
+	}
+
+	charWidth := fmt.Sprintf("w-[%d%%]", 80/len(unicodeChars))
+	for _, char := range unicodeChars {
+		columns = append(columns, Column{
+			Label: char,
+			Style: fmt.Sprintf("%s text-center align-middle", charWidth),
+		})
+	}
+
+	unicodeTable := Table{
+		BaseTable: BaseTable{
+			Columns:           columns,
+			Rows:              rows,
+			HeaderStyle:       "bg-gray-800 text-white font-bold text-sm text-center align-middle",
+			RowStyle:          "text-lg text-gray-700 align-middle",
+			AlternateRowStyle: "bg-gray-50",
+			ShowBorders:       true,
+		},
+	}
+	unicodeTable.Draw(builder)
+
+	// Section 4: Practical Usage Examples
+	sectionHeader4 := Text{
+		Text: api.Text{
+			Content: "Practical Usage Examples",
+			Class:   api.ResolveStyles("text-xl font-semibold mt-6 mb-3"),
+		},
+	}
+	sectionHeader4.Draw(builder)
+
+	usageExamples := []struct {
+		purpose string
+		class   string
+		example string
+	}{
+		{"Headers", "font-family-Arial font-bold text-xl", "Document Title in Arial Bold"},
+		{"Body Text", "font-family-Times text-base", "Main content in readable Times font"},
+		{"Code/Data", "font-family-Courier text-sm", "monospace_code_example = true"},
+		{"Captions", "font-family-Helvetica text-xs", "Small caption text in Helvetica"},
+		{"Technical", "font-family-Arial text-sm", "Formula: E = mc² (±0.1%)"},
+		{"Math", "font-family-Times text-base", "Mathematical expression: π ≈ 3.14159, √2 ≈ 1.414"},
+	}
+
+	for _, example := range usageExamples {
+		purposeText := Text{
+			Text: api.Text{
+				Content: fmt.Sprintf("%s:", example.purpose),
+				Class:   api.ResolveStyles("text-sm font-medium text-gray-700 mt-2"),
+			},
+		}
+		purposeText.Draw(builder)
+
+		exampleText := Text{
+			Text: api.Text{
+				Content: example.example,
+				Class:   api.ResolveStyles(example.class),
+			},
+		}
+		exampleText.Draw(builder)
+
+		classText := Text{
+			Text: api.Text{
+				Content: fmt.Sprintf("Class: %s", example.class),
+				Class:   api.ResolveStyles("text-xs text-gray-500 mb-3 font-mono"),
+			},
+		}
+		classText.Draw(builder)
+	}
+
+	// Summary
+	summaryText := Text{
+		Text: api.Text{
+			Content: "Font families are specified using font-family-{Name} classes where {Name} can be Arial, Times, Courier, Helvetica, Georgia, or Verdana. All fonts support Unicode characters for international and mathematical content.",
+			Class:   api.ResolveStyles("text-sm text-gray-600 italic mt-4 p-4 bg-gray-100"),
+		},
+	}
+	summaryText.Draw(builder)
 }
 
 // floatPtr is a helper to create a pointer to a float64

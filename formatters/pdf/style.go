@@ -22,13 +22,19 @@ func NewStyleConverter() *StyleConverter {
 // ConvertToTextProps converts api.Class to Maroto text properties
 func (s *StyleConverter) ConvertToTextProps(class api.Class) *props.Text {
 	textProps := &props.Text{
-		Size:  12, // Default size
-		Style: fontstyle.Normal,
-		Align: align.Left,
+		Family: "Arial", // Default font family with Unicode support
+		Size:   12,      // Default size
+		Style:  fontstyle.Normal,
+		Align:  align.Left,
 	}
 
 	// Apply font properties
 	if class.Font != nil {
+		// Font family/name
+		if class.Font.Name != "" {
+			textProps.Family = class.Font.Name
+		}
+
 		// Font size
 		if class.Font.Size > 0 {
 			// Convert rem to font size (points)
@@ -99,8 +105,8 @@ func (s *StyleConverter) CalculateTextHeight(class api.Class) float64 {
 
 	// Add padding if specified
 	if class.Padding != nil {
-		paddingTop := NewRem(class.Padding.Top).ToMM()
-		paddingBottom := NewRem(class.Padding.Bottom).ToMM()
+		paddingTop := NewMM(class.Padding.Top.ToMM())
+		paddingBottom := NewMM(class.Padding.Bottom.ToMM())
 		baseHeightMM = baseHeightMM.Add(paddingTop).Add(paddingBottom)
 	}
 
@@ -113,11 +119,11 @@ func (s *StyleConverter) CalculatePadding(padding *api.Padding) (left, top, righ
 		return 0, 0, 0, 0
 	}
 
-	// Convert rem to mm using proper unit conversion
-	leftMM := NewRem(padding.Left).ToMM()
-	topMM := NewRem(padding.Top).ToMM()
-	rightMM := NewRem(padding.Right).ToMM()
-	bottomMM := NewRem(padding.Bottom).ToMM()
+	// Convert Point to mm using proper unit conversion
+	leftMM := NewMM(padding.Left.ToMM())
+	topMM := NewMM(padding.Top.ToMM())
+	rightMM := NewMM(padding.Right.ToMM())
+	bottomMM := NewMM(padding.Bottom.ToMM())
 
 	return leftMM.Float64(), topMM.Float64(), rightMM.Float64(), bottomMM.Float64()
 }

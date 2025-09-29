@@ -93,7 +93,11 @@ func (t Text) drawTextWithChildren(b *Builder, apiText api.Text) {
 
 	// Draw children recursively
 	for _, child := range apiText.Children {
-		t.drawTextWithChildren(b, child)
+		// Only draw if child is a Text type (PDF doesn't support other Textable types yet)
+		if textChild, ok := child.(api.Text); ok {
+			t.drawTextWithChildren(b, textChild)
+		}
+		// Other Textable types like icons are not yet supported in PDF
 	}
 }
 
@@ -178,7 +182,6 @@ func (t Text) parseHTML(content string) string {
 
 	return content
 }
-
 
 // mergeClasses merges two api.Class instances
 func mergeClasses(base, override api.Class) api.Class {

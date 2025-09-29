@@ -2,6 +2,7 @@ package pdf
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 
@@ -10,8 +11,11 @@ import (
 	"github.com/flanksource/maroto/v2/pkg/components/row"
 	"github.com/flanksource/maroto/v2/pkg/components/text"
 	"github.com/flanksource/maroto/v2/pkg/config"
+	"github.com/flanksource/maroto/v2/pkg/consts/fontfamily"
 	"github.com/flanksource/maroto/v2/pkg/consts/pagesize"
 	"github.com/flanksource/maroto/v2/pkg/core"
+	"github.com/flanksource/maroto/v2/pkg/fpdf"
+	"github.com/flanksource/maroto/v2/pkg/props"
 
 	"github.com/flanksource/clicky/api"
 )
@@ -69,13 +73,17 @@ func NewBuilder(opts ...BuilderOption) *Builder {
 		opt(b)
 	}
 
-	// Create Maroto configuration
+	// Create Maroto configuration with Unicode font support
 	cfg := config.NewBuilder().
 		WithPageSize(pagesize.A4).
 		WithLeftMargin(5).
 		WithRightMargin(5).
 		WithTopMargin(5).
 		WithBottomMargin(5).
+		WithDefaultFont(&props.Font{
+			Family: fontfamily.Arial,
+			Size:   12.0,
+		}).                     // Use Arial for better Unicode support
 		WithDebug(b.debugMode). // Enable debug mode if requested
 		Build()
 
@@ -194,7 +202,11 @@ func (b *Builder) AddText(t api.Text) {
 
 	// Add children
 	for _, child := range t.Children {
-		b.AddText(child)
+		// Only add if child is a Text type (PDF builder doesn't support other Textable types yet)
+		if textChild, ok := child.(api.Text); ok {
+			b.AddText(textChild)
+		}
+		// Other Textable types like icons are not yet supported in PDF
 	}
 }
 
@@ -262,10 +274,128 @@ func (b *Builder) GetFpdf() interface{} {
 	return provider
 }
 
+// generateColumnLabel creates Excel-style column labels (A, B, C... Z, AA, AB, etc.)
+func generateColumnLabel(index int) string {
+	var result string
+	for index >= 0 {
+		result = string(rune('A'+index%26)) + result
+		index = index/26 - 1
+	}
+	return result
+}
+
+// drawDebugGrid draws a red grid with position markers for debugging layout
+func (b *Builder) drawDebugGrid() error {
+	if !b.debugMode {
+		return nil // Only draw grid in debug mode
+	}
+
+	provider := b.maroto.GetProvider()
+	if provider == nil {
+		return fmt.Errorf("provider is nil")
+	}
+
+	drawingHelper := fpdf.NewDrawingHelper(provider)
+	if drawingHelper == nil {
+		return fmt.Errorf("drawingHelper is nil")
+	}
+
+	fpdfInterface := drawingHelper.GetFpdf()
+	if fpdfInterface == nil {
+		return fmt.Errorf("fpdfInterface is nil")
+	}
+
+	// Type assert to access required fpdf methods
+	fpdfObj, ok := fpdfInterface.(interface {
+		SetDrawColor(r, g, b int)
+		SetTextColor(r, g, b int)
+		Line(x1, y1, x2, y2 float64)
+		SetLineCapStyle(styleStr string)
+		SetLineWidth(width float64)
+		SetDashPattern(dashArray []float64, dashPhase float64)
+		SetFont(familyStr, styleStr string, size float64)
+		Text(x, y float64, txtStr string)
+		GetMargins() (left, top, right, bottom float64)
+		GetPageSize() (width, height float64)
+	})
+	if !ok {
+		return fmt.Errorf("fpdf interface does not support required methods for grid drawing")
+	}
+
+	// Get page dimensions and margins
+	pageWidth, pageHeight := fpdfObj.GetPageSize()
+	leftMargin, topMargin, rightMargin, bottomMargin := fpdfObj.GetMargins()
+
+	// First draw dashed red margin lines
+	fpdfObj.SetDrawColor(128, 0, 0)                // Dark red for margins
+	fpdfObj.SetDashPattern([]float64{2.0, 1.0}, 0) // 2mm dash, 1mm gap
+	fpdfObj.SetLineWidth(0.5)                      // Ensure 0.5pt thickness
+
+	// Left margin line
+	fpdfObj.Line(leftMargin, 0, leftMargin, pageHeight)
+	// Right margin line
+	fpdfObj.Line(pageWidth-rightMargin, 0, pageWidth-rightMargin, pageHeight)
+	// Top margin line
+	fpdfObj.Line(0, topMargin, pageWidth, topMargin)
+	// Bottom margin line
+	fpdfObj.Line(0, pageHeight-bottomMargin, pageWidth, pageHeight-bottomMargin)
+
+	// Set light gray color for full-page grid with thin lines
+	fpdfObj.SetDrawColor(192, 192, 192)    // Light gray instead of bright purple
+	fpdfObj.SetDashPattern([]float64{}, 0) // Reset to solid lines for grid
+	fpdfObj.SetLineWidth(0.2)              // 0.2pt line thickness
+
+	// Draw vertical grid lines every 5mm across full page width
+	verticalLines := 0
+	for x := float64(0); x <= pageWidth; x += 5 {
+		fpdfObj.Line(x, 0, x, pageHeight)
+		verticalLines++
+	}
+
+	// Draw horizontal grid lines every 5mm across full page height
+	horizontalLines := 0
+	for y := float64(0); y <= pageHeight; y += 5 {
+		fpdfObj.Line(0, y, pageWidth, y)
+		horizontalLines++
+	}
+
+	// Set font and text color for grid labels
+	fpdfObj.SetFont("Arial", "", 8)
+	fpdfObj.SetTextColor(64, 64, 64) // Dark gray for labels
+
+	// Add column labels (A, B, C...) at top of every 5th column (25mm intervals)
+	columnLabels := 0
+	for x := float64(0); x <= pageWidth; x += 25 {
+		if x+25 <= pageWidth { // Only label if there's a full column
+			letter := generateColumnLabel(columnLabels)
+			fpdfObj.Text(x+10, 2, letter) // Center in column (x+12.5-2.5 for text width)
+			columnLabels++
+		}
+	}
+
+	// Add row labels (1, 2, 3...) at left of every 5th row (25mm intervals)
+	rowLabels := 0
+	for y := float64(25); y <= pageHeight; y += 25 { // Start from 25 to skip first row with column headers
+		rowNumber := rowLabels + 1
+		fpdfObj.Text(2, y-10, fmt.Sprintf("%d", rowNumber)) // Center in row (y-12.5+2.5 for text height)
+		rowLabels++
+	}
+
+	return nil
+}
+
 // Output generates the final PDF content
 func (b *Builder) Output() ([]byte, error) {
 	if b.maroto == nil {
 		return nil, fmt.Errorf("builder not initialized: maroto instance is nil (use NewBuilder() to create a proper builder)")
+	}
+
+	// Draw debug grid if in debug mode (before generating final PDF)
+	if b.debugMode {
+		if err := b.drawDebugGrid(); err != nil {
+			log.Printf("WARNING: Failed to draw debug grid: %v", err)
+			// Continue with PDF generation even if grid drawing fails
+		}
 	}
 
 	// Generate the PDF document
@@ -282,4 +412,3 @@ func (b *Builder) Output() ([]byte, error) {
 func (b *Builder) Build() ([]byte, error) {
 	return b.Output()
 }
-

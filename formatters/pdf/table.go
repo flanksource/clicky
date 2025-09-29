@@ -15,7 +15,6 @@ import (
 	"github.com/flanksource/maroto/v2/pkg/consts/fontstyle"
 	"github.com/flanksource/maroto/v2/pkg/core"
 	"github.com/flanksource/maroto/v2/pkg/core/entity"
-	"github.com/flanksource/maroto/v2/pkg/fpdf"
 	"github.com/flanksource/maroto/v2/pkg/props"
 	"github.com/johnfercher/go-tree/node"
 
@@ -40,15 +39,16 @@ func (c *Component) Render(provider core.Provider, cell *entity.Cell) {
 	}
 }
 
-// initializeFpdf initializes the FPDF interface from the provider
+// initializeFpdf initializes the FPDF interface directly from the provider
 func (c *Component) initializeFpdf(provider core.Provider) {
 	if c.Fpdf != nil {
 		return // Already initialized
 	}
 
-	drawingHelper := fpdf.NewDrawingHelper(provider)
-	fpdfInterface := drawingHelper.GetFpdf()
-	c.Fpdf = WrapFpdf(fpdfInterface)
+	// The provider itself is typically the FPDF wrapper we need
+	// This bypasses the DrawingHelper layer and gives us direct access
+	// to all FPDF methods through our expanded interface
+	c.Fpdf = WrapFpdf(provider)
 }
 
 // SetConfig implements core.Node interface
@@ -294,11 +294,12 @@ func (t Table) renderAsWidget(b *Builder, colWidths []int) error {
 		return nil
 	}
 
-	// Calculate row height
-	baseHeight := 8.0 // Default row height in mm
+	// Calculate row height based on actual font size instead of hardcoded values
+	defaultFontSize := NewFontSize(12.0)
 	if t.CompactMode {
-		baseHeight = 6.0
+		defaultFontSize = NewFontSize(10.0) // Smaller font for compact
 	}
+	baseHeight := defaultFontSize.ToMM().Float64()
 
 	// Draw top border if enabled
 	if t.ShowBorders {
@@ -455,16 +456,15 @@ func sumArray(arr []int) int {
 
 // TableComponent implements the Component interface for positioned usage
 type TableComponent struct {
-	Component                       // Embedded base component with FPDF access
+	Component // Embedded base component with FPDF access
 	BaseTable
 	TopAlign       bool            // Force top alignment within cell
 	styleConverter *StyleConverter // For proper Unicode font handling
 	Debug          bool            // Enable debug mode for detailed positioning logs
 }
 
-
 // NewTableComponent creates a new table component with default Tailwind styling
-func NewTableComponent(headers []string, rows [][]string) *TableComponent {
+func NewTableComponent(headers []string, rows [][]any) *TableComponent {
 	columns := make([]Column, len(headers))
 
 	// Calculate equal column widths based on number of columns
@@ -477,25 +477,17 @@ func NewTableComponent(headers []string, rows [][]string) *TableComponent {
 	for i, header := range headers {
 		columns[i] = Column{
 			Label: header,
-			Style: fmt.Sprintf("w-[%.1f%%] text-sm text-gray-800 text-left align-middle", equalWidthPercent),
+			Style: fmt.Sprintf("w-[%.1f%%] text-sm text-gray-600 text-left align-middle", equalWidthPercent),
 		}
 	}
 
-	// Convert rows to [][]any
-	convertedRows := make([][]any, len(rows))
-	for i, row := range rows {
-		convertedRows[i] = make([]any, len(row))
-		for j, cell := range row {
-			convertedRows[i][j] = cell
-		}
-	}
-
+	// Rows are already [][]any, no conversion needed
 	tc := &TableComponent{
 		BaseTable: BaseTable{
 			Columns:           columns,
-			Rows:              convertedRows,
+			Rows:              rows,
 			HeaderStyle:       "font-bold text-white bg-blue-600 text-center text-sm",
-			RowStyle:          "text-sm text-gray-800",
+			RowStyle:          "text-sm text-gray-800 bg-white",
 			AlternateRowStyle: "bg-gray-50",
 			ShowBorders:       true,
 		},
@@ -540,7 +532,6 @@ func (tc *TableComponent) adjustForMargins(cell *entity.Cell) *entity.Cell {
 
 	return &adjustedCell
 }
-
 
 // renderAsComponent renders the table as a positioned component
 func (tc *TableComponent) renderAsComponent(cell *entity.Cell, colWidths []float64) {
@@ -597,51 +588,36 @@ func (tc *TableComponent) renderAsComponent(cell *entity.Cell, colWidths []float
 	}
 }
 
-// getRowHeight calculates the height needed for each row using font metrics
+// getRowHeight calculates the height needed for each row using pure font size + Point padding
 func (tc *TableComponent) getRowHeight() float64 {
-	// Use actual font metrics if FPDF is available
 	if tc.Fpdf != nil {
+		// Get actual font size in points
 		fontSizePoints, _ := tc.Fpdf.GetFontSize()
-		fontSize := NewFontSize(fontSizePoints)
 
-		// Get style padding (convert Tailwind padding to mm)
-		paddingMM := NewMM(tc.extractPaddingFromStyle(tc.resolvedRowStyle))
+		// Convert font size to MM - this is the base text height (no line height multiplier)
+		fontHeight := NewFontSize(fontSizePoints).ToMM()
 
-		// Calculate height: font size + line spacing + padding
-		lineHeightMM := fontSize.LineHeight(1.2) // 20% line spacing
-		baseHeightMM := lineHeightMM.Add(paddingMM.Multiply(2)) // Top + bottom padding
-
-		if tc.CompactMode {
-			baseHeightMM = baseHeightMM.Multiply(0.8) // 20% reduction for compact mode
+		// Add padding from styles (converted from Points to MM)
+		totalHeight := fontHeight
+		if tc.resolvedRowStyle.Padding != nil {
+			totalHeight += NewMM(tc.resolvedRowStyle.Padding.TopMM())
+			totalHeight += NewMM(tc.resolvedRowStyle.Padding.BottomMM())
 		}
 
 		if tc.Debug {
-			log.Printf("DEBUG: TableComponent.getRowHeight: font=%s, calculated=%s (compact=%v)",
-				fontSize.String(), baseHeightMM.String(), tc.CompactMode)
+			paddingMM := 0.0
+			if tc.resolvedRowStyle.Padding != nil {
+				paddingMM = tc.resolvedRowStyle.Padding.TopMM() + tc.resolvedRowStyle.Padding.BottomMM()
+			}
+			log.Printf("DEBUG: TableComponent.getRowHeight: font=%.1fpt (%s), padding=%.2fmm, total=%s",
+				fontSizePoints, fontHeight.String(), paddingMM, totalHeight.String())
 		}
 
-		return baseHeightMM.Float64()
+		return totalHeight.Float64()
 	}
 
-	// Fallback to hardcoded values if FPDF not available
-	baseHeight := 8.0 // 8mm default row height
-	if tc.CompactMode {
-		baseHeight = 6.0
-	}
-
-	if tc.Debug {
-		log.Printf("DEBUG: TableComponent.getRowHeight: fallback height=%.2fmm (compact=%v)", baseHeight, tc.CompactMode)
-	}
-
-	return baseHeight
-}
-
-// extractPaddingFromStyle extracts padding from Tailwind style classes
-func (tc *TableComponent) extractPaddingFromStyle(style api.Class) float64 {
-	// Extract padding from Tailwind classes (p-1, p-2, etc.)
-	// For now, return a reasonable default
-	// TODO: Parse actual Tailwind padding values
-	return 2.0 // Default 2mm padding
+	// Fallback: 12pt font converted to MM
+	return NewFontSize(12.0).ToMM().Float64()
 }
 
 // renderHeaderRowComponent renders the header row for component interface
@@ -679,7 +655,7 @@ func (tc *TableComponent) renderHeaderRowComponent(x, y float64, colWidths []flo
 		} else {
 			// Fallback to standard text rendering using our direct FPDF access
 			headerTextProps := tc.convertStyleToTextProps(tc.resolvedHeaderStyle, column.resolvedAlign)
-			if err := tc.drawCellText(column.Label, headerCell, headerTextProps); err != nil {
+			if err := tc.drawCellText(column.Label, headerCell, headerTextProps, tc.resolvedHeaderStyle); err != nil {
 				log.Printf("ERROR: Failed to render header text for column %d (%s): %v", i, column.Label, err)
 			}
 		}
@@ -734,7 +710,7 @@ func (tc *TableComponent) renderCellWithStyle(text string, cell *entity.Cell, st
 
 	// Draw text
 	textProps := tc.convertStyleToTextProps(style, alignment)
-	if err := tc.drawCellText(text, cell, textProps); err != nil {
+	if err := tc.drawCellText(text, cell, textProps, style); err != nil {
 		return fmt.Errorf("failed to draw cell text: %w", err)
 	}
 
@@ -808,7 +784,7 @@ func (tc *TableComponent) getMarginInfo() (leftMargin, topMargin, rightMargin, b
 	return leftMargin, topMargin, rightMargin, bottomMargin, pageWidth, pageHeight, nil
 }
 
-func (tc *TableComponent) drawCellText(text string, cell *entity.Cell, style props.Text) error {
+func (tc *TableComponent) drawCellText(text string, cell *entity.Cell, style props.Text, cellStyle api.Class) error {
 	if text == "" {
 		return nil // Empty text is not an error, just return success
 	}
@@ -825,10 +801,10 @@ func (tc *TableComponent) drawCellText(text string, cell *entity.Cell, style pro
 		return err
 	}
 
-	// Configure font with Unicode support
+	// Configure font with proper validation and error handling
 	fontFamily := style.Family
 	if fontFamily == "" {
-		fontFamily = "Arial" // Default font with Unicode support
+		return fmt.Errorf("font family is required - style.Family cannot be empty")
 	}
 
 	// Convert fontstyle enum to string
@@ -844,14 +820,26 @@ func (tc *TableComponent) drawCellText(text string, cell *entity.Cell, style pro
 		fontStyleStr = ""
 	}
 
-	// Validate and set font size
+	// Validate font size
 	fontSize := style.Size
 	if fontSize <= 0 {
-		fontSize = 8.0 // Default size
+		return fmt.Errorf("font size must be positive, got %.2f", style.Size)
 	}
 
-	// Set font properties
+	// Set font properties with verification
 	tc.Fpdf.SetFont(fontFamily, fontStyleStr, fontSize)
+
+	// Verify font was set correctly by checking current font
+	actualSize, _ := tc.Fpdf.GetFontSize()
+	if actualSize != fontSize {
+		if tc.Debug {
+			log.Printf("WARNING: TableComponent.drawCellText: font size mismatch - requested %.2f, got %.2f", fontSize, actualSize)
+		}
+	}
+
+	if tc.Debug {
+		log.Printf("DEBUG: TableComponent.drawCellText: set font %s %s %.2fpt", fontFamily, fontStyleStr, fontSize)
+	}
 
 	// Set text color
 	if style.Color != nil {
@@ -887,12 +875,36 @@ func (tc *TableComponent) drawCellText(text string, cell *entity.Cell, style pro
 		return err
 	}
 
-	// Position and render text
-	tc.Fpdf.SetXY(cell.X, cell.Y)
+	// Apply Point-based padding to adjust text position and available space
+	var paddingTopMM, paddingLeftMM, paddingRightMM, paddingBottomMM float64
+	if cellStyle.Padding != nil {
+		paddingTopMM = cellStyle.Padding.TopMM()
+		paddingLeftMM = cellStyle.Padding.LeftMM()
+		paddingRightMM = cellStyle.Padding.RightMM()
+		paddingBottomMM = cellStyle.Padding.BottomMM()
+	}
+
+	// Calculate adjusted cell position and dimensions with padding
+	adjustedX := cell.X + paddingLeftMM
+	adjustedY := cell.Y + paddingTopMM
+	adjustedWidth := cell.Width - paddingLeftMM - paddingRightMM
+	adjustedHeight := cell.Height - paddingTopMM - paddingBottomMM
+
+	// Ensure adjusted dimensions are valid
+	if adjustedWidth <= 0 || adjustedHeight <= 0 {
+		// If padding is too large, use original cell dimensions
+		adjustedX = cell.X
+		adjustedY = cell.Y
+		adjustedWidth = cell.Width
+		adjustedHeight = cell.Height
+	}
+
+	// Position and render text with padding adjustments
+	tc.Fpdf.SetXY(adjustedX, adjustedY)
 
 	// Use CellFormat for proper text positioning and rendering
 	// Parameters: width, height, text, border, line break, alignment, fill, link, linkStr
-	tc.Fpdf.CellFormat(cell.Width, cell.Height, text, "", 0, alignStr, false, 0, "")
+	tc.Fpdf.CellFormat(adjustedWidth, adjustedHeight, text, "", 0, alignStr, false, 0, "")
 
 	return nil
 }
@@ -924,4 +936,140 @@ func (tc *TableComponent) GetStructure() *node.Node[core.Structure] {
 	}
 
 	return node.New(str)
+}
+
+// WithStyle applies a custom style to all table cells (merges with existing styles)
+func (tc *TableComponent) WithStyle(style string) *TableComponent {
+	// Apply to all columns
+	for i := range tc.Columns {
+		tc.Columns[i].Style = tailwind.MergeStyles(tc.Columns[i].Style, style)
+	}
+	return tc
+}
+
+// WithCellPadding applies padding to all table cells
+func (tc *TableComponent) WithCellPadding(padding string) *TableComponent {
+	// Apply padding to all columns
+	for i := range tc.Columns {
+		tc.Columns[i].Style = tailwind.MergeStyles(tc.Columns[i].Style, padding)
+	}
+	// Also apply to row styles
+	tc.RowStyle = tailwind.MergeStyles(tc.RowStyle, padding)
+	tc.HeaderStyle = tailwind.MergeStyles(tc.HeaderStyle, padding)
+	return tc
+}
+
+// WithColumnStyle applies or replaces style for a specific column
+func (tc *TableComponent) WithColumnStyle(index int, style string) *TableComponent {
+	if index >= 0 && index < len(tc.Columns) {
+		tc.Columns[index].Style = style
+	}
+	return tc
+}
+
+// WithHeaderStyle replaces the header style
+func (tc *TableComponent) WithHeaderStyle(style string) *TableComponent {
+	tc.HeaderStyle = style
+	return tc
+}
+
+// WithRowStyle replaces the row style
+func (tc *TableComponent) WithRowStyle(style string) *TableComponent {
+	tc.RowStyle = style
+	return tc
+}
+
+// WithAlternateRowStyle replaces the alternate row style
+func (tc *TableComponent) WithAlternateRowStyle(style string) *TableComponent {
+	tc.AlternateRowStyle = style
+	return tc
+}
+
+// WithCompactMode enables or disables compact mode
+func (tc *TableComponent) WithCompactMode(compact bool) *TableComponent {
+	tc.CompactMode = compact
+	return tc
+}
+
+// WithBorders enables or disables table borders
+func (tc *TableComponent) WithBorders(show bool) *TableComponent {
+	tc.ShowBorders = show
+	return tc
+}
+
+// NewTable creates a new table component with sensible defaults and fluent API
+func NewTable() *TableComponent {
+	tc := &TableComponent{
+		BaseTable: BaseTable{
+			Columns:           []Column{},
+			Rows:              [][]any{},
+			HeaderStyle:       "font-bold text-white bg-blue-600 text-center text-sm p-2",
+			RowStyle:          "text-sm text-gray-800 bg-white p-2",
+			AlternateRowStyle: "bg-gray-50",
+			ShowBorders:       true,
+		},
+		TopAlign:       true,
+		styleConverter: NewStyleConverter(),
+	}
+
+	// Set the component's render function
+	tc.Component.RenderFunc = tc.renderComponent
+
+	return tc
+}
+
+// WithHeader adds a single header column with optional style
+func (tc *TableComponent) WithHeader(name, style string) *TableComponent {
+	column := Column{
+		Label:   name,
+		DataKey: name, // Use name as default data key
+	}
+
+	// Apply style if provided, otherwise use default column style
+	if style != "" {
+		column.Style = style
+	} else {
+		column.Style = "text-sm text-gray-600 text-left align-middle"
+	}
+
+	tc.Columns = append(tc.Columns, column)
+	return tc
+}
+
+// WithHeaders adds multiple header columns with default styling
+func (tc *TableComponent) WithHeaders(names ...string) *TableComponent {
+	for _, name := range names {
+		tc.WithHeader(name, "")
+	}
+	return tc
+}
+
+// WithRows adds rows from a slice of maps where keys match column labels/data keys
+func (tc *TableComponent) WithRows(data []map[string]any) *TableComponent {
+	for _, rowMap := range data {
+		row := make([]any, len(tc.Columns))
+
+		// Extract values for each column using DataKey or Label as fallback
+		for i, column := range tc.Columns {
+			key := column.DataKey
+			if key == "" {
+				key = column.Label
+			}
+
+			if value, exists := rowMap[key]; exists {
+				row[i] = value
+			} else {
+				row[i] = "" // Default to empty string if key not found
+			}
+		}
+
+		tc.Rows = append(tc.Rows, row)
+	}
+	return tc
+}
+
+// WithRowSlice adds a single row from a slice of values
+func (tc *TableComponent) WithRowSlice(row []any) *TableComponent {
+	tc.Rows = append(tc.Rows, row)
+	return tc
 }

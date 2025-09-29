@@ -14,7 +14,7 @@ func main() {
 	builder := pdf.NewBuilder()
 
 	// Configure document with headers and footers using api.Class styling
-	builder.Header = api.Text{
+	builder.SetHeader(api.Text{
 		Content: "PDF Widgets Demo",
 		Class: api.Class{
 			Font: &api.Font{
@@ -26,9 +26,9 @@ func main() {
 				Bottom: 0.5,
 			},
 		},
-	}
+	})
 
-	builder.Footer = api.Text{
+	builder.SetFooter(api.Text{
 		Content: "Generated with Clicky PDF Widgets",
 		Class: api.Class{
 			Font: &api.Font{
@@ -36,9 +36,9 @@ func main() {
 			},
 			Foreground: &api.Color{Hex: "#6b7280"}, // Gray-500
 		},
-	}
+	})
 
-	builder.PageNumbers = true
+	builder.EnablePageNumbers()
 
 	// Add first page
 	builder.AddPage()
@@ -67,7 +67,7 @@ func main() {
 		},
 	}
 
-	err := builder.DrawWidget(textWidget)
+	err := textWidget.Draw(builder)
 	if err != nil {
 		log.Fatalf("Failed to draw text widget: %v", err)
 	}
@@ -89,7 +89,7 @@ func main() {
 		},
 	}
 
-	err = builder.DrawWidget(tailwindTextWidget)
+	err = tailwindTextWidget.Draw(builder)
 	if err != nil {
 		log.Fatalf("Failed to draw Tailwind text widget: %v", err)
 	}
@@ -97,40 +97,43 @@ func main() {
 	// Move down a bit more
 	builder.MoveBy(0, 25)
 
-	// Example 3: Table Widget with styling
-	fmt.Println("Adding styled table widget...")
+	// Example 3: Unified Table Widget with Tailwind styling
+	fmt.Println("Adding unified table widget with Tailwind classes...")
 
 	tableWidget := pdf.Table{
-		Headers: []string{"Product", "Price", "Quantity", "Total"},
-		Rows: [][]any{
-			{"Widget A", "$10.99", 5, "$54.95"},
-			{"Widget B", "$15.50", 3, "$46.50"},
-			{"Widget C", "$8.75", 7, "$61.25"},
-			{"Widget D", "$22.00", 2, "$44.00"},
-		},
-		HeaderStyle: api.Class{
-			Font: &api.Font{
-				Bold: true,
-				Size: 1.0,
+		BaseTable: pdf.BaseTable{
+			Columns: []pdf.Column{
+				{
+					Label: "Product",
+					Style: "w-[20ch] text-left align-middle font-medium",
+				},
+				{
+					Label: "Price",
+					Style: "w-[10ch] text-right align-middle font-mono",
+				},
+				{
+					Label: "Quantity",
+					Style: "w-[8ch] text-center align-middle",
+				},
+				{
+					Label: "Total",
+					Style: "w-[12ch] text-right align-middle font-bold text-green-600",
+				},
 			},
-			Background: &api.Color{Hex: "#1f2937"}, // Gray-800
-			Foreground: &api.Color{Hex: "#ffffff"}, // White
-		},
-		RowStyle: api.Class{
-			Font: &api.Font{
-				Size: 0.9,
+			Rows: [][]any{
+				{"Widget A", "$10.99", 5, "$54.95"},
+				{"Widget B", "$15.50", 3, "$46.50"},
+				{"Widget C", "$8.75", 7, "$61.25"},
+				{"Widget D", "$22.00", 2, "$44.00"},
 			},
-			Foreground: &api.Color{Hex: "#374151"}, // Gray-700
-		},
-		CellPadding: api.Padding{
-			Top:    0.25,
-			Bottom: 0.25,
-			Left:   0.5,
-			Right:  0.5,
+			HeaderStyle:       "font-bold bg-gray-800 text-white text-center align-middle",
+			RowStyle:          "text-gray-700 align-middle",
+			AlternateRowStyle: "bg-gray-50",
+			ShowBorders:       true,
 		},
 	}
 
-	err = builder.DrawWidget(tableWidget)
+	err = tableWidget.Draw(builder)
 	if err != nil {
 		log.Fatalf("Failed to draw table widget: %v", err)
 	}
@@ -203,7 +206,7 @@ func main() {
 		},
 	}
 
-	err = builder.DrawWidget(boxWidget)
+	err = boxWidget.Draw(builder)
 	if err != nil {
 		log.Fatalf("Failed to draw box widget: %v", err)
 	}
@@ -221,7 +224,7 @@ func main() {
 		Height:  floatPtr(60),
 	}
 
-	err = builder.DrawWidget(imageWidget)
+	err = imageWidget.Draw(builder)
 	if err != nil {
 		log.Fatalf("Failed to draw image widget: %v", err)
 	}
@@ -287,14 +290,14 @@ func main() {
 		},
 	}
 
-	err = builder.DrawWidget(complexTextWidget)
+	err = complexTextWidget.Draw(builder)
 	if err != nil {
 		log.Fatalf("Failed to draw complex text widget: %v", err)
 	}
 
 	// Generate the final PDF
 	fmt.Println("Generating PDF...")
-	pdfData, err := builder.Output()
+	pdfData, err := builder.Build()
 	if err != nil {
 		log.Fatalf("Failed to generate PDF: %v", err)
 	}

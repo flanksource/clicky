@@ -110,21 +110,22 @@ textWidget := pdf.Text{
 
 ### Table Widget
 ```go
-tableWidget := pdf.TableImproved{
-    Headers: []string{"Name", "Age", "City"},
-    Rows: [][]any{
-        {"Alice", 30, "New York"},
-        {"Bob", 25, "Los Angeles"},
+tableWidget := pdf.Table{
+    BaseTable: pdf.BaseTable{
+        Columns: []pdf.Column{
+            {Label: "Name", Style: "w-[40%] text-left align-middle"},
+            {Label: "Age", Style: "w-[20%] text-center align-middle"},
+            {Label: "City", Style: "w-[40%] text-right align-middle"},
+        },
+        Rows: [][]any{
+            {"Alice", 30, "New York"},
+            {"Bob", 25, "Los Angeles"},
+        },
+        HeaderStyle: "font-bold bg-gray-100 text-center",
+        RowStyle: "text-gray-800",
+        AlternateRowStyle: "bg-gray-50",
+        ShowBorders: true,
     },
-    HeaderStyle: api.Class{
-        Font: &api.Font{Bold: true},
-        Background: &api.Color{Hex: "#f0f0f0"},
-    },
-    RowStyle: api.Class{
-        Font: &api.Font{Size: 0.9},
-    },
-    ShowBorders: true,
-    AlternateRowColor: true,
 }
 ```
 
@@ -167,7 +168,7 @@ imageWidget := pdf.Image{
 
 1. **Builder** (`builder.go`): Main PDF document builder with fpdf integration
 2. **StyleConverter** (`style.go`): Converts `api.Class` to fpdf styling
-3. **Widgets** (`text.go`, `table_improved.go`, `box.go`, `image.go`, `svg_box.go`): Individual widget implementations
+3. **Widgets** (`text.go`, `table.go`, `box.go`, `image.go`, `svg_box.go`): Individual widget implementations
 4. **Layout** (`layout.go`): Grid layout system
 
 ### Key Features
