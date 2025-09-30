@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0](https://github.com/flanksource/clicky/compare/v1.3.1...v1.4.0) (2025-09-30)
+
+
+### ✨ Features
+
+* add api.Code with chroma syntax highlighting ([978e839](https://github.com/flanksource/clicky/commit/978e83955532cb54e91a87505bee0faed58865eb))
+
+
+### 🐛 Bug Fixes
+
+* default yaml to use json tags ([5c11b99](https://github.com/flanksource/clicky/commit/5c11b993d29c19cf8ca3e57d57b82f65a50916fd))
+* tree printing in html ([179551a](https://github.com/flanksource/clicky/commit/179551adaa04898ab2756532fedb08e255fde743))
+
+
+### 🔧 Maintenance
+
+* add icons ([a48d833](https://github.com/flanksource/clicky/commit/a48d8339afb8480b10f63123e2a9a10f03932eba))
+* include iconify script ([9bcd758](https://github.com/flanksource/clicky/commit/9bcd758f85320603d5f820883dfd927e5405acf5))
+
 ## [1.3.1](https://github.com/flanksource/clicky/compare/v1.3.0...v1.3.1) (2025-09-29)
 
 
