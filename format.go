@@ -15,6 +15,18 @@ var (
 	defaultOpts FormatOptions
 )
 
+// func TreeOf[T any](nodes ...T) api.TreeNode {
+// 	tree := api.SimpleTreeNode{}
+// 	for _, n := range nodes {
+// 		if t, ok := n.(api.TreeNode); ok {
+// 			tree.Children = append(tree.Children, t)
+// 		} else {
+// 			logger.Errorf("unsupported type for TreeOf: %T", n)
+// 		}
+// 	}
+// 	return &tree
+// }
+
 func Format(o any, opts ...FormatOptions) (string, error) {
 	return Formatter.FormatWithOptions(formatters.MergeOptions(append([]FormatOptions{defaultOpts}, opts...)...), o)
 }

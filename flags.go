@@ -63,6 +63,10 @@ func BindAllFlags(flags *pflag.FlagSet, filters ...string) *AllFlags {
 		flags.BoolVar(&Flags.Pretty, "pretty", false, "Output in pretty format (default)")
 		flags.BoolVar(&Flags.HTML, "html", false, "Output in HTML format")
 		flags.BoolVar(&Flags.PDF, "pdf", false, "Output in PDF format")
+
+		// Display structure flags (additive with format)
+		flags.BoolVar(&Flags.Tree, "tree", false, "Display in tree structure (additive with format)")
+		flags.BoolVar(&Flags.Table, "table", false, "Display in table structure (additive with format)")
 	}
 
 	return Flags

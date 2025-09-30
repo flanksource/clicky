@@ -206,6 +206,53 @@ func TestTailwindStyles(t *testing.T) {
 	}
 }
 
+func TestTooltips(t *testing.T) {
+	fixtures := []struct {
+		name     string
+		input    Text
+		expected string
+	}{
+		{
+			name: "Simple tooltip",
+			input: Text{
+				Content: "Hover me",
+				Style:   "font-bold",
+			}.WithTooltip(Text{Content: "This is a tooltip"}),
+			expected: `<span title="This is a tooltip"><span class="font-bold"><strong>Hover me</strong></span></span>`,
+		},
+		{
+			name: "Tooltip with quotes",
+			input: Text{
+				Content: "Text",
+			}.WithTooltip(Text{Content: `Use "quotes" carefully`}),
+			expected: `<span title="Use &quot;quotes&quot; carefully">Text</span>`,
+		},
+		{
+			name: "Tooltip with special characters",
+			input: Text{
+				Content: "Info",
+			}.WithTooltip(Text{Content: "Value: 100% & more"}),
+			expected: `<span title="Value: 100% &amp; more">Info</span>`,
+		},
+		{
+			name: "No tooltip",
+			input: Text{
+				Content: "Plain text",
+			},
+			expected: "Plain text",
+		},
+	}
+
+	for _, fixture := range fixtures {
+		t.Run(fixture.name, func(t *testing.T) {
+			result := fixture.input.HTML()
+			if result != fixture.expected {
+				t.Errorf("Expected HTML %q, got %q", fixture.expected, result)
+			}
+		})
+	}
+}
+
 // Keep a simple benchmark for performance testing
 func BenchmarkTailwindStyles(b *testing.B) {
 	testText := Text{Content: "Hello World", Style: "uppercase text-blue-700 bg-gray-100 font-bold italic underline"}

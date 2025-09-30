@@ -30,6 +30,10 @@ type FormatOptions struct {
 	Pretty   bool
 	HTML     bool
 	PDF      bool
+
+	// Display structure flags (additive with format flags)
+	Tree  bool // Display in tree structure
+	Table bool // Display in table structure
 }
 
 func MergeOptions(opts ...FormatOptions) FormatOptions {
@@ -52,6 +56,12 @@ func MergeOptions(opts ...FormatOptions) FormatOptions {
 		}
 		if opt.Schema != nil {
 			merged.Schema = opt.Schema
+		}
+		if opt.Tree {
+			merged.Tree = true
+		}
+		if opt.Table {
+			merged.Table = true
 		}
 		if opt.JSON {
 			merged.JSON = true
@@ -101,6 +111,10 @@ func BindFlags(flags *flag.FlagSet, options *FormatOptions) {
 	flags.BoolVar(&options.Pretty, "pretty", false, "Output in pretty format (default)")
 	flags.BoolVar(&options.HTML, "html", false, "Output in HTML format")
 	flags.BoolVar(&options.PDF, "pdf", false, "Output in PDF format")
+
+	// Display structure flags (additive with format)
+	flags.BoolVar(&options.Tree, "tree", false, "Display in tree structure (additive with format)")
+	flags.BoolVar(&options.Table, "table", false, "Display in table structure (additive with format)")
 }
 
 // BindPFlags adds formatting flags to the provided pflag set (for cobra)
@@ -119,6 +133,10 @@ func BindPFlags(flags *pflag.FlagSet, options *FormatOptions) {
 	flags.BoolVar(&options.Pretty, "pretty", false, "Output in pretty format (default)")
 	flags.BoolVar(&options.HTML, "html", false, "Output in HTML format")
 	flags.BoolVar(&options.PDF, "pdf", false, "Output in PDF format")
+
+	// Display structure flags (additive with format)
+	flags.BoolVar(&options.Tree, "tree", false, "Display in tree structure (additive with format)")
+	flags.BoolVar(&options.Table, "table", false, "Display in table structure (additive with format)")
 }
 
 // ResolveFormat resolves the output format from format-specific flags

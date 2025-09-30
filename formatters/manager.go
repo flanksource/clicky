@@ -151,7 +151,45 @@ func (f FormatManager) FormatWithOptions(options FormatOptions, data interface{}
 	// Resolve format from boolean flags
 	format := options.ResolveFormat()
 
-	logger.Tracef("Formatting with %s", format)
+	logger.V(4).Infof("Formatting with %s (tree=%t, table=%t)", format, options.Tree, options.Table)
+
+	// Handle display structure overrides (additive flags)
+	// Tree flag: For text formats, use tree visual; for structured formats, pass tree data through
+	// Table flag: Convert to table structure before applying format
+	if options.Tree {
+		logger.V(4).Infof("Tree flag set with %s format", format)
+		// For text-based output (pretty/tree/empty), use tree visual formatter (ANSI output)
+		if format == "pretty" || format == "tree" || format == "" {
+			if f.treeFormatter == nil {
+				f.treeFormatter = NewTreeFormatter(api.DefaultTheme(), options.NoColor, nil)
+			}
+			return f.treeFormatter.Format(data)
+		}
+		// For other formats (HTML, JSON, YAML, etc.), let the formatter handle tree structure
+		// The data is already in tree form, just pass it through to the formatter
+		logger.V(4).Infof("Passing tree-structured data to %s formatter", format)
+	} else if options.Table {
+		logger.V(4).Infof("Applying table structure transformation before %s formatting", format)
+		// Convert data to table structure first, then apply the format
+		// For text-based formats, apply table formatting directly
+		if format == "pretty" || format == "table" || format == "" {
+			if f.prettyFormatter == nil {
+				f.prettyFormatter = NewPrettyFormatter()
+			}
+			f.prettyFormatter.NoColor = options.NoColor
+			prettyData, err := ToPrettyDataWithOptions(data, FormatOptions{Format: "table"})
+			if err != nil {
+				return f.prettyFormatter.Format(data)
+			}
+			return f.prettyFormatter.FormatPrettyData(prettyData)
+		}
+		// For other formats, convert data to table structure and pass through
+		prettyData, err := ToPrettyDataWithOptions(data, FormatOptions{Format: "table"})
+		if err == nil {
+			data = prettyData
+		}
+	}
+
 	// If schema is provided, delegate to external handler
 	// (the calling code should handle ParseDataWithSchema and call FormatWithSchema directly)
 

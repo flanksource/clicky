@@ -41,6 +41,9 @@ func (f *HTMLFormatter) getCSS() string {
     <link href="https://unpkg.com/gridjs/dist/theme/mermaid.min.css" rel="stylesheet" />
     <script src="https://unpkg.com/gridjs/dist/gridjs.umd.js"></script>
     <script src="https://code.iconify.design/iconify-icon/2.0.0/iconify-icon.min.js"></script>
+    <script src="https://unpkg.com/@popperjs/core@2"></script>
+    <script src="https://unpkg.com/tippy.js@6"></script>
+    <link rel="stylesheet" href="https://unpkg.com/tippy.js@6/dist/tippy.css" />
     <style>
         /* Grid.js theme customizations to match Tailwind */
         .gridjs-wrapper {
@@ -130,6 +133,9 @@ func (f *HTMLFormatter) getCSS() string {
             color: white;
             border-color: #3b82f6;
         }
+
+        /* Chroma syntax highlighting styles */
+` + api.GetChromaCSS() + `
     </style>`
 
 	if f.IsPDFMode {
@@ -139,6 +145,34 @@ func (f *HTMLFormatter) getCSS() string {
 	css += `
 </head>
 <body class="bg-gray-100 min-h-screen p-6">
+    <script>
+        // Global Tippy.js initialization function
+        function initTooltips(container) {
+            const target = container || document.body;
+            // Use singleton for better performance with many tooltips
+            tippy('[title]', {
+                content(reference) {
+                    const title = reference.getAttribute('title');
+                    reference.removeAttribute('title');
+                    reference.classList.add('tooltip-target');
+                    return title;
+                },
+                allowHTML: true,
+                theme: 'light-border',
+                placement: 'top',
+                arrow: true,
+                animation: 'shift-away',
+                duration: [200, 150],
+                delay: [0, 0],
+                appendTo: () => document.body,
+            });
+        }
+
+        // Initialize tooltips on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            initTooltips();
+        });
+    </script>
     <div class="mx-auto px-4 space-y-8">
 `
 	return css
@@ -802,7 +836,12 @@ func (f *HTMLFormatter) formatTableDataHTMLWithGridJS(rows []api.PrettyDataRow, 
 	result.WriteString("                            td: 'gridjs-td'\n")
 	result.WriteString("                        }\n")
 
-	result.WriteString(fmt.Sprintf("                    }).render(document.getElementById('%s'));\n", tableID))
+	result.WriteString(fmt.Sprintf("                    }).render(document.getElementById('%s')).then(() => {\n", tableID))
+	result.WriteString("                        // Reinitialize tooltips after Grid.js renders the table\n")
+	result.WriteString("                        if (typeof initTooltips === 'function') {\n")
+	result.WriteString("                            initTooltips();\n")
+	result.WriteString("                        }\n")
+	result.WriteString("                    });\n")
 	result.WriteString("                });\n")
 	result.WriteString("            </script>\n")
 

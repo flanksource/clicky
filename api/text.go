@@ -12,6 +12,58 @@ import (
 	"github.com/flanksource/clicky/api/tailwind"
 )
 
+type HtmlElement struct {
+	Tag        string
+	Attributes map[string]string
+	Content    string
+	Fallback   Textable
+}
+
+func (e HtmlElement) HTML() string {
+	return fmt.Sprintf("<%s %s>%s</%s>", e.Tag, formatAttributes(e.Attributes), e.Content, e.Tag)
+}
+
+func formatAttributes(attrs map[string]string) string {
+	var parts []string
+	for k, v := range attrs {
+		parts = append(parts, fmt.Sprintf(`%s="%s"`, k, v))
+	}
+	return strings.Join(parts, " ")
+}
+
+func (e HtmlElement) String() string {
+	return e.Fallback.String()
+}
+
+func (e HtmlElement) ANSI() string {
+	return e.Fallback.ANSI()
+}
+
+func (e HtmlElement) Markdown() string {
+	return e.Fallback.Markdown()
+}
+
+var BR = HtmlElement{
+	Tag:      "br",
+	Content:  "",
+	Fallback: Text{Content: "\n"},
+}
+
+type Comment string
+
+func (c Comment) String() string {
+	return ""
+}
+func (c Comment) ANSI() string {
+	return ""
+}
+func (c Comment) HTML() string {
+	return fmt.Sprintf("<!--\n %s \n//-->", string(c))
+}
+func (c Comment) Markdown() string {
+	return fmt.Sprintf("<!--\n %s \n//-->", string(c))
+}
+
 // Global cache for ResolveStyles to avoid repeated parsing
 var (
 	styleCache     = make(map[string]Class)
@@ -35,6 +87,16 @@ type Text struct {
 	Class    Class
 	Style    string
 	Children []Textable
+	Tooltip  Textable
+}
+
+func (t Text) WithStyles(styles ...string) Text {
+	return t.Styles(styles...)
+}
+
+func (t Text) WithTooltip(tooltip Textable) Text {
+	t.Tooltip = tooltip
+	return t
 }
 
 func (t Text) Add(child Textable) Text {
@@ -50,6 +112,92 @@ func (t Text) Prefix(prefix string) Text {
 func (t Text) Suffix(suffix string) Text {
 	t.Content = t.Content + suffix
 	return t
+}
+
+type List struct {
+	Items     []Textable
+	Bullet    Textable // Bullet character or icon
+	Numbered  bool     // Whether to use numbered list
+	Ordered   bool     // Alias for Numbered
+	Style     string   // Additional styles for the list container
+	Spacing   int      // Spaces between bullet and content
+	Indent    int
+	MaxInline int // Max items to render inline, else vertical
+}
+
+func (l List) String() string {
+	if len(l.Items) == 0 {
+		return ""
+	}
+	var parts []string
+	for _, item := range l.Items {
+
+		parts = append(parts, item.String())
+	}
+	return strings.Join(parts, "")
+}
+
+func (l List) Markdown() string {
+	if len(l.Items) == 0 {
+		return ""
+	}
+	var parts []string
+	for i, item := range l.Items {
+		var bullet string
+		if l.Numbered {
+			bullet = fmt.Sprintf("%d. ", i+1)
+		} else if l.Bullet != nil {
+			bullet = l.Bullet.Markdown()
+		}
+		parts = append(parts, fmt.Sprintf("%s%s", bullet, item.Markdown()))
+	}
+	return strings.Join(parts, "\n")
+}
+
+func (l List) ANSI() string {
+	if len(l.Items) == 0 {
+		return ""
+	}
+	var parts []string
+	for i, item := range l.Items {
+		var bullet string
+		if l.Numbered {
+			bullet = fmt.Sprintf("%d. ", i+1)
+		} else if l.Bullet != nil {
+			bullet = l.Bullet.ANSI()
+		}
+		parts = append(parts, fmt.Sprintf("%s%s", bullet, item.ANSI()))
+	}
+	if len(parts) > l.MaxInline && l.MaxInline > 0 || len(parts) > 3 {
+		return strings.Join(parts, "\n")
+	}
+	return strings.Join(parts, ", ")
+}
+
+func (l List) HTML() string {
+	if len(l.Items) == 0 {
+		return ""
+	}
+	var parts []string
+	for _, item := range l.Items {
+		parts = append(parts, item.HTML())
+	}
+	if len(parts) <= l.MaxInline {
+		return strings.Join(parts, ",")
+	}
+
+	var tag string
+	if l.Numbered {
+		tag = "ol"
+	} else {
+		tag = "ul"
+	}
+
+	parts = []string{}
+	for _, item := range l.Items {
+		parts = append(parts, fmt.Sprintf("<li>%s</li>", item.HTML()))
+	}
+	return fmt.Sprintf("<%s>%s</%s>", tag, strings.Join(parts, ""), tag)
 }
 
 // Text adds a new child Text with the specified content and styles.
@@ -307,10 +455,28 @@ func (t Text) HTML() string {
 		originalStyle = t.Style
 	} else {
 		// No style
-		return content
+		transformedText = content
 	}
 
-	return formatHTML(transformedText, style, originalStyle)
+	html := formatHTML(transformedText, style, originalStyle)
+
+	// Apply tooltip if present
+	if t.Tooltip != nil && t.Tooltip.String() != "" {
+		// HTML-escape the tooltip content using standard library
+		escapedTooltip := htmlEscapeString(t.Tooltip.String())
+		html = fmt.Sprintf(`<span title="%s">%s</span>`, escapedTooltip, html)
+	}
+	return html
+}
+
+// htmlEscapeString escapes special HTML characters for use in attributes
+func htmlEscapeString(s string) string {
+	s = strings.ReplaceAll(s, "&", "&amp;")
+	s = strings.ReplaceAll(s, "<", "&lt;")
+	s = strings.ReplaceAll(s, ">", "&gt;")
+	s = strings.ReplaceAll(s, `"`, "&quot;")
+	s = strings.ReplaceAll(s, "'", "&#39;")
+	return s
 }
 
 func ResolveStyles(styles ...string) Class {

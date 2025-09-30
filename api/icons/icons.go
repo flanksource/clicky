@@ -33,9 +33,9 @@ func (i Icon) Markdown() string {
 
 var (
 	Config                   = Icon{Unicode: "⚙️", Iconify: "codicon:gear", Style: "muted"}
-	Equals                   = Icon{Unicode: "=", Iconify: "codicon:symbol-operator", Style: "muted"}
+	Equals                   = Icon{Unicode: "=", Iconify: "mdi:assignment", Style: "muted"}
 	Loop                     = Icon{Unicode: "🔁", Iconify: "codicon:sync", Style: "muted"}
-	If                       = Icon{Unicode: "❓", Iconify: "codicon:question", Style: "muted"}
+	If                       = Icon{Unicode: "❓", Iconify: "mdi:call-split", Style: "muted"}
 	SQL                      = Icon{Unicode: "🛢️", Iconify: "codicon:database", Style: "muted"}
 	Success             Icon = Icon{Unicode: "✓", Iconify: "codicon:check", Style: "success"}
 	Error                    = Icon{Unicode: "✗", Iconify: "codicon:error", Style: "error"}
@@ -62,6 +62,7 @@ var (
 	ArrowRight               = Icon{Unicode: "→", Iconify: "codicon:arrow-right", Style: "muted"}
 	ChevronUp                = Icon{Unicode: "▲", Iconify: "codicon:chevron-up", Style: "muted"}
 	ChevronDown              = Icon{Unicode: "▼", Iconify: "codicon:chevron-down", Style: "muted"}
+	Number                   = Icon{Unicode: "#", Iconify: "fluent:number-symbol-16-regular", Style: "muted"}
 	ChevronLeft              = Icon{Unicode: "◀", Iconify: "codicon:chevron-left", Style: "muted"}
 	ChevronRight             = Icon{Unicode: "▶", Iconify: "codicon:chevron-right", Style: "muted"}
 	InfoAlt                  = Icon{Unicode: "ℹ️", Iconify: "codicon:info", Style: "info"}
@@ -71,17 +72,22 @@ var (
 	Golang                   = Icon{Unicode: "🐹", Iconify: "vscode-icons:file-type-go", Style: "muted"}
 	Python                   = Icon{Unicode: "🐍", Iconify: "vscode-icons:file-type-python", Style: "muted"}
 	JS                       = Icon{Unicode: "🟨", Iconify: "vscode-icons:file-type-js", Style: "muted"}
+	Plugin                   = Icon{Unicode: "🔌", Iconify: "ix:jigsaw-filled", Style: "muted"}
+	Math                     = Icon{Unicode: "🧮", Iconify: "ix:plus-minus-times-divide", Style: "muted"}
+	Boolean                  = Icon{Unicode: "⊨", Iconify: "ix:data-type-boolean", Style: "muted"}
 	Java                     = Icon{Unicode: "☕", Iconify: "vscode-icons:file-type-java", Style: "muted"}
+	XML                      = Icon{Unicode: "XML", Iconify: "carbon:xml", Style: "muted"}
 	TS                       = Icon{Unicode: "🟦", Iconify: "vscode-icons:file-type-typescript", Style: "muted"}
 	MD                       = Icon{Unicode: "📝", Iconify: "vscode-icons:file-type-markdown", Style: "muted"}
 	File                     = Icon{Unicode: "📄", Iconify: "codicon:file", Style: "muted"}
+	Not                      = Icon{Unicode: "≠", Iconify: "mdi:not-equal", Style: "muted"}
 	Folder                   = Icon{Unicode: "📁", Iconify: "codicon:folder", Style: "muted"}
 	Search                   = Icon{Unicode: "🔍", Iconify: "codicon:search", Style: "muted"}
 	Cloud                    = Icon{Unicode: "☁️", Iconify: "codicon:cloud", Style: "muted"}
 	Package                  = Icon{Unicode: "📦", Iconify: "codicon:package", Style: "muted"}
 	Lambda                   = Icon{Unicode: "λ", Iconify: "codicon:symbol-method", Style: "muted"}
-	Method                   = Icon{Unicode: "ƒ", Iconify: "codicon:symbol-method", Style: "muted"}
-	Variable                 = Icon{Unicode: "𝑣", Iconify: "codicon:symbol-variable", Style: "muted"}
+	Method                   = Icon{Unicode: "ƒ", Iconify: "gravity-ui:curly-brackets-function", Style: "muted"}
+	Variable                 = Icon{Unicode: "𝑣", Iconify: "mdi:variable-box", Style: "muted"}
 	Type                     = Icon{Unicode: "🏷️", Iconify: "codicon:symbol-class", Style: "muted"}
 	Interface                = Icon{Unicode: "🔗", Iconify: "codicon:symbol-interface", Style: "muted"}
 	Constant                 = Icon{Unicode: "π", Iconify: "codicon:symbol-constant", Style: "muted"}

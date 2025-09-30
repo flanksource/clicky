@@ -15,9 +15,9 @@ import (
 // Code represents source code that can be syntax-highlighted across
 // multiple output formats (ANSI terminal, HTML, Markdown).
 type Code struct {
-	Content  string // The source code content
-	Language string // Language identifier (sql, java, javascript, go, xml, xslt, etc.)
-	Style    string // Optional Tailwind CSS styling for wrapper (HTML only)
+	Content  string `json:"content,omitempty"`  // The source code content
+	Language string `json:"language,omitempty"` // Language identifier (sql, java, javascript, go, xml, xslt, etc.)
+	Style    string `json:"style,omitempty"`    // Optional Tailwind CSS styling for wrapper (HTML only)
 }
 
 // NewCode creates a new Code instance with the given content and language.
@@ -90,9 +90,9 @@ func (c Code) HTML() string {
 		style = styles.Fallback
 	}
 
-	// Use inline styles for better compatibility
+	// Use CSS classes for cleaner HTML
 	formatter := chromahtml.New(
-		chromahtml.WithClasses(false),
+		chromahtml.WithClasses(true),
 		chromahtml.WithLineNumbers(false),
 		chromahtml.TabWidth(4),
 	)
@@ -214,4 +214,41 @@ func detectLanguage(content string) string {
 
 	// Default to empty if no detection
 	return ""
+}
+
+// GetChromaCSS returns the CSS stylesheet for chroma syntax highlighting
+// with line wrapping support. This should be included in HTML documents
+// that use Code.HTML() output.
+func GetChromaCSS() string {
+	style := styles.Get("github")
+	if style == nil {
+		style = styles.Fallback
+	}
+
+	formatter := chromahtml.New(
+		chromahtml.WithClasses(true),
+		chromahtml.TabWidth(4),
+	)
+
+	var buf bytes.Buffer
+	if err := formatter.WriteCSS(&buf, style); err != nil {
+		return ""
+	}
+
+	// Add custom CSS for line wrapping and inline display
+	buf.WriteString("\n/* Custom line wrapping and inline display for code */\n")
+	buf.WriteString(".chroma {\n")
+	buf.WriteString("    display: inline !important;\n")
+	buf.WriteString("    white-space: pre-wrap !important;\n")
+	buf.WriteString("    word-break: keep-all;\n")
+	buf.WriteString("    overflow-wrap: break-word;\n")
+	buf.WriteString("}\n")
+	buf.WriteString(".chroma code {\n")
+	buf.WriteString("    display: inline !important;\n")
+	buf.WriteString("}\n")
+	buf.WriteString(".chroma .line {\n")
+	buf.WriteString("    display: inline !important;\n")
+	buf.WriteString("}\n")
+
+	return buf.String()
 }

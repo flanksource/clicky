@@ -873,7 +873,7 @@ func (p *StructParser) StructToRowWithOptions(val reflect.Value, opts interface{
 	// Check if the struct implements PrettyRow interface
 	if val.CanInterface() {
 		if prettyRowInterface, ok := val.Interface().(PrettyRow); ok {
-			logger.Debugf("Struct %s implements PrettyRow interface - using custom implementation", structType.Name())
+			logger.V(5).Infof("Struct %s implements PrettyRow interface - using custom implementation", structType.Name())
 
 			// Use the custom PrettyRow implementation
 			prettyRowMap := prettyRowInterface.PrettyRow(opts)
@@ -897,7 +897,7 @@ func (p *StructParser) StructToRowWithOptions(val reflect.Value, opts interface{
 	}
 
 	// Fall back to reflection-based approach
-	logger.Debugf("Falling back to reflection-based parsing for struct %s (no PrettyRow interface)", structType.Name())
+	logger.V(4).Infof("Falling back to reflection-based parsing for struct %s (no PrettyRow interface)", structType.Name())
 	return p.StructToRow(val)
 }
 
