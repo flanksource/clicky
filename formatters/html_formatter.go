@@ -40,6 +40,7 @@ func (f *HTMLFormatter) getCSS() string {
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://unpkg.com/gridjs/dist/theme/mermaid.min.css" rel="stylesheet" />
     <script src="https://unpkg.com/gridjs/dist/gridjs.umd.js"></script>
+    <script src="https://code.iconify.design/iconify-icon/2.0.0/iconify-icon.min.js"></script>
     <style>
         /* Grid.js theme customizations to match Tailwind */
         .gridjs-wrapper {
