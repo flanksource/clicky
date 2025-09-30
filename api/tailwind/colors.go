@@ -293,6 +293,11 @@ var TailwindColors = map[string]map[string]string{
 // Special Tailwind colors
 var TailwindSpecialColors = map[string]string{
 	"transparent": "transparent",
+	"success":     "#22c55e", // green-500
+	"error":       "#ef4444", // red-500
+	"info":        "#3b82f6", // blue-500
+	"warning":     "#f59e0b", // yellow-500
+	"muted":       "#6b7280", // gray-400
 	"current":     "currentColor",
 	"black":       "#000000",
 	"white":       "#ffffff",

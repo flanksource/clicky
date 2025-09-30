@@ -265,7 +265,13 @@ func (f *HTMLFormatter) getPDFCSS() string {
 
 // Format formats PrettyData into HTML output
 func (f *HTMLFormatter) Format(in interface{}) (string, error) {
-	// Check if input implements Pretty interface first
+	// Check if input is a TreeNode FIRST (before Pretty check)
+	// This handles single TreeNode structs like ASTNode that need recursive rendering
+	if treeNode, ok := in.(api.TreeNode); ok {
+		return f.formatSingleTreeNode(treeNode), nil
+	}
+
+	// Check if input implements Pretty interface
 	if pretty, ok := in.(api.Pretty); ok {
 		text := pretty.Pretty()
 		htmlContent := text.HTML()
@@ -889,6 +895,38 @@ func (f *HTMLFormatter) formatTreeNodeHTML(node api.TreeNode, depth int) string 
 
 		result.WriteString(`</div>`)
 		result.WriteString(`</li>`)
+	}
+
+	return result.String()
+}
+
+// formatSingleTreeNode handles rendering when a single TreeNode struct is passed
+// directly to Format(). It wraps the tree in proper HTML structure and recursively
+// renders all children.
+func (f *HTMLFormatter) formatSingleTreeNode(root api.TreeNode) string {
+	if root == nil {
+		return ""
+	}
+
+	var result strings.Builder
+
+	if f.IncludeCSS {
+		result.WriteString(f.getCSS())
+	}
+
+	// Wrap in card structure
+	result.WriteString("        <div class=\"bg-white rounded-lg shadow\">\n")
+	result.WriteString("            <div class=\"px-6 py-4\">\n")
+
+	// Render the tree recursively starting from root
+	treeHTML := f.formatTreeNodeHTML(root, 0)
+	result.WriteString(treeHTML)
+
+	result.WriteString("            </div>\n")
+	result.WriteString("        </div>\n")
+
+	if f.IncludeCSS {
+		result.WriteString("    </div>\n</body>\n</html>")
 	}
 
 	return result.String()
