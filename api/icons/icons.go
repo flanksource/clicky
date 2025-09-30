@@ -18,10 +18,10 @@ func (i Icon) ANSI() string {
 	return i.Unicode
 }
 
-// HTML returns an HTML representation using Iconify classes or Unicode fallback
+// HTML returns an HTML representation using Iconify web components or Unicode fallback
 func (i Icon) HTML() string {
 	if i.Iconify != "" {
-		return fmt.Sprintf(`<i class="iconify" data-icon="%s">%s</i>`, i.Iconify, i.Unicode)
+		return fmt.Sprintf(`<iconify-icon icon="%s"></iconify-icon>`, i.Iconify)
 	}
 	return i.Unicode
 }
