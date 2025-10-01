@@ -87,8 +87,8 @@ func ParsePadding(class string) (top, right, bottom, left *float64) {
 		return nil, nil, nil, nil
 	}
 
-	prefix := matches[1]    // p, px, py, pt, pr, pb, pl
-	valueStr := matches[2]  // the value part after the prefix
+	prefix := matches[1]   // p, px, py, pt, pr, pb, pl
+	valueStr := matches[2] // the value part after the prefix
 
 	// Parse the value
 	value, exists := TailwindSpacing[valueStr]

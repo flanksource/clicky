@@ -71,9 +71,9 @@ func TestNewCode(t *testing.T) {
 
 func TestCode_String(t *testing.T) {
 	tests := []struct {
-		name    string
-		code    Code
-		want    string
+		name string
+		code Code
+		want string
 	}{
 		{
 			name: "simple_code",
@@ -106,33 +106,33 @@ func TestCode_String(t *testing.T) {
 
 func TestCode_ANSI(t *testing.T) {
 	tests := []struct {
-		name    string
-		code    Code
+		name         string
+		code         Code
 		wantContains string
 	}{
 		{
-			name: "sql_with_ansi",
-			code: Code{Content: "SELECT * FROM users", Language: "sql"},
+			name:         "sql_with_ansi",
+			code:         Code{Content: "SELECT * FROM users", Language: "sql"},
 			wantContains: "SELECT",
 		},
 		{
-			name: "go_with_ansi",
-			code: Code{Content: "package main\n\nfunc main() {}", Language: "go"},
+			name:         "go_with_ansi",
+			code:         Code{Content: "package main\n\nfunc main() {}", Language: "go"},
 			wantContains: "package",
 		},
 		{
-			name: "javascript_with_ansi",
-			code: Code{Content: "const x = 1;", Language: "javascript"},
+			name:         "javascript_with_ansi",
+			code:         Code{Content: "const x = 1;", Language: "javascript"},
 			wantContains: "const",
 		},
 		{
-			name: "empty_code",
-			code: Code{Content: "", Language: "sql"},
+			name:         "empty_code",
+			code:         Code{Content: "", Language: "sql"},
 			wantContains: "",
 		},
 		{
-			name: "unknown_language",
-			code: Code{Content: "some code", Language: "unknownlang"},
+			name:         "unknown_language",
+			code:         Code{Content: "some code", Language: "unknownlang"},
 			wantContains: "some code",
 		},
 	}
@@ -161,38 +161,38 @@ func TestCode_HTML(t *testing.T) {
 		wantContains []string
 	}{
 		{
-			name: "sql_html",
-			code: Code{Content: "SELECT * FROM users", Language: "sql"},
+			name:         "sql_html",
+			code:         Code{Content: "SELECT * FROM users", Language: "sql"},
 			wantContains: []string{"SELECT", "FROM", "users"},
 		},
 		{
-			name: "go_html",
-			code: Code{Content: "package main", Language: "go"},
+			name:         "go_html",
+			code:         Code{Content: "package main", Language: "go"},
 			wantContains: []string{"package", "main"},
 		},
 		{
-			name: "java_html",
-			code: Code{Content: "public class Test {}", Language: "java"},
+			name:         "java_html",
+			code:         Code{Content: "public class Test {}", Language: "java"},
 			wantContains: []string{"public", "class", "Test"},
 		},
 		{
-			name: "javascript_html",
-			code: Code{Content: "const x = 1;", Language: "javascript"},
+			name:         "javascript_html",
+			code:         Code{Content: "const x = 1;", Language: "javascript"},
 			wantContains: []string{"const", "x"},
 		},
 		{
-			name: "xml_html",
-			code: Code{Content: "<?xml version=\"1.0\"?>\n<root></root>", Language: "xml"},
+			name:         "xml_html",
+			code:         Code{Content: "<?xml version=\"1.0\"?>\n<root></root>", Language: "xml"},
 			wantContains: []string{"xml", "root"},
 		},
 		{
-			name: "empty_code",
-			code: Code{Content: "", Language: "sql"},
+			name:         "empty_code",
+			code:         Code{Content: "", Language: "sql"},
 			wantContains: []string{},
 		},
 		{
-			name: "unknown_language_escapes_html",
-			code: Code{Content: "<script>alert('xss')</script>", Language: "unknownlang"},
+			name:         "unknown_language_escapes_html",
+			code:         Code{Content: "<script>alert('xss')</script>", Language: "unknownlang"},
 			wantContains: []string{"&lt;script&gt;", "&lt;/script&gt;"},
 		},
 	}

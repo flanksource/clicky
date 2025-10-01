@@ -626,8 +626,9 @@ func (p *PrettyFormatter) formatMapWithVisited(val reflect.Value, visited map[ui
 
 // formatSliceWithVisited formats a slice value with circular reference detection
 func (p *PrettyFormatter) formatSliceWithVisited(val reflect.Value, visited map[uintptr]bool) string {
-	if val.IsNil() || val.Len() == 0 {
-		return "[]"
+
+	if val.Len() == 0 || (val.Kind() == reflect.Slice && val.IsNil()) {
+		return ""
 	}
 
 	// Check for circular references

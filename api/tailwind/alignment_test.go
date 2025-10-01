@@ -8,10 +8,10 @@ import (
 
 func TestParseAlignment(t *testing.T) {
 	tests := []struct {
-		name             string
-		input            string
-		expectedHoriz    align.Type
-		expectedVert     VerticalAlign
+		name          string
+		input         string
+		expectedHoriz align.Type
+		expectedVert  VerticalAlign
 	}{
 		// Basic horizontal alignments
 		{
@@ -147,10 +147,10 @@ func TestParseAlignment(t *testing.T) {
 
 func TestRealWorldStyleStrings(t *testing.T) {
 	tests := []struct {
-		name             string
-		input            string
-		expectedHoriz    align.Type
-		expectedVert     VerticalAlign
+		name          string
+		input         string
+		expectedHoriz align.Type
+		expectedVert  VerticalAlign
 	}{
 		{
 			name:          "table header style",

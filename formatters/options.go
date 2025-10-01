@@ -34,6 +34,10 @@ type FormatOptions struct {
 	// Display structure flags (additive with format flags)
 	Tree  bool // Display in tree structure
 	Table bool // Display in table structure
+
+	// Paging options
+	Page  int // Current page (1-indexed)
+	Limit int // Items per page
 }
 
 func MergeOptions(opts ...FormatOptions) FormatOptions {
@@ -62,6 +66,12 @@ func MergeOptions(opts ...FormatOptions) FormatOptions {
 		}
 		if opt.Table {
 			merged.Table = true
+		}
+		if opt.Page > 0 {
+			merged.Page = opt.Page
+		}
+		if opt.Limit > 0 {
+			merged.Limit = opt.Limit
 		}
 		if opt.JSON {
 			merged.JSON = true

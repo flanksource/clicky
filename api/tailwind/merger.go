@@ -8,7 +8,7 @@ import (
 // Property classification for efficient lookup
 var (
 	// Width/height prefixes
-	widthPrefixes = []string{"w-", "min-w-", "max-w-"}
+	widthPrefixes  = []string{"w-", "min-w-", "max-w-"}
 	heightPrefixes = []string{"h-", "min-h-", "max-h-"}
 
 	// Text alignment keywords
@@ -31,7 +31,7 @@ var (
 
 	// Padding/margin prefixes
 	paddingPrefixes = []string{"p-", "px-", "py-", "pt-", "pr-", "pb-", "pl-"}
-	marginPrefixes = []string{"m-", "mx-", "my-", "mt-", "mr-", "mb-", "ml-"}
+	marginPrefixes  = []string{"m-", "mx-", "my-", "mt-", "mr-", "mb-", "ml-"}
 
 	// Border width keywords
 	borderWidthKeywords = []string{"0", "2", "4", "8"}
@@ -55,10 +55,10 @@ func (sm *StyleMerger) MergeStyles(styles ...string) string {
 
 	// Parse all classes and create property map with order preservation
 	propertyMap := make(map[string]string)
-	propertyOrder := make([]string, 0)        // Track property insertion order
+	propertyOrder := make([]string, 0)         // Track property insertion order
 	propertyFirstSeen := make(map[string]bool) // Track which properties we've seen
-	uniqueClassSet := make(map[string]bool)   // For deduplication
-	var uniqueClasses []string                // Preserve order
+	uniqueClassSet := make(map[string]bool)    // For deduplication
+	var uniqueClasses []string                 // Preserve order
 
 	for _, styleStr := range styles {
 		if styleStr == "" {

@@ -23,12 +23,12 @@ var (
 	italicStyles = []string{"italic", "font-italic"}
 
 	// Text decoration classes
-	underlineClasses = []string{"underline"}
+	underlineClasses     = []string{"underline"}
 	strikethroughClasses = []string{"line-through", "strikethrough"}
 
 	// Text transform classes
-	uppercaseClasses = []string{"uppercase"}
-	lowercaseClasses = []string{"lowercase"}
+	uppercaseClasses  = []string{"uppercase"}
+	lowercaseClasses  = []string{"lowercase"}
 	capitalizeClasses = []string{"capitalize"}
 
 	// Opacity classes that make text faint
@@ -316,6 +316,8 @@ func ParseStyle(styleStr string) Style {
 			style.TextTransform = "lowercase"
 		} else if slices.Contains(capitalizeClasses, class) {
 			style.TextTransform = "capitalize"
+		} else if class == "wrap-space" {
+			style.TextTransform = "wrap-space"
 		} else if class == "normal-case" {
 			style.TextTransform = ""
 		}
@@ -375,6 +377,8 @@ func TransformText(text, transform string) string {
 		return strings.ToLower(text)
 	case "capitalize":
 		return capitalizeWords(text)
+	case "wrap-space":
+		return " " + text + " "
 	default:
 		return text
 	}

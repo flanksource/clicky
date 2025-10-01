@@ -9,44 +9,44 @@ import (
 // TestRegexBasedSpacingParser tests the refactored spacing parser using regex
 func TestRegexBasedSpacingParser(t *testing.T) {
 	tests := []struct {
-		name             string
-		class            string
-		expectedTop      *float64
-		expectedRight    *float64
-		expectedBottom   *float64
-		expectedLeft     *float64
+		name           string
+		class          string
+		expectedTop    *float64
+		expectedRight  *float64
+		expectedBottom *float64
+		expectedLeft   *float64
 	}{
 		{
-			name:             "p-4 using regex",
-			class:            "p-4",
-			expectedTop:      floatPtr(1.0),
-			expectedRight:    floatPtr(1.0),
-			expectedBottom:   floatPtr(1.0),
-			expectedLeft:     floatPtr(1.0),
+			name:           "p-4 using regex",
+			class:          "p-4",
+			expectedTop:    floatPtr(1.0),
+			expectedRight:  floatPtr(1.0),
+			expectedBottom: floatPtr(1.0),
+			expectedLeft:   floatPtr(1.0),
 		},
 		{
-			name:             "px-8 using regex",
-			class:            "px-8",
-			expectedTop:      nil,
-			expectedRight:    floatPtr(2.0),
-			expectedBottom:   nil,
-			expectedLeft:     floatPtr(2.0),
+			name:           "px-8 using regex",
+			class:          "px-8",
+			expectedTop:    nil,
+			expectedRight:  floatPtr(2.0),
+			expectedBottom: nil,
+			expectedLeft:   floatPtr(2.0),
 		},
 		{
-			name:             "py-2 using regex",
-			class:            "py-2",
-			expectedTop:      floatPtr(0.5),
-			expectedRight:    nil,
-			expectedBottom:   floatPtr(0.5),
-			expectedLeft:     nil,
+			name:           "py-2 using regex",
+			class:          "py-2",
+			expectedTop:    floatPtr(0.5),
+			expectedRight:  nil,
+			expectedBottom: floatPtr(0.5),
+			expectedLeft:   nil,
 		},
 		{
-			name:             "invalid class",
-			class:            "not-padding",
-			expectedTop:      nil,
-			expectedRight:    nil,
-			expectedBottom:   nil,
-			expectedLeft:     nil,
+			name:           "invalid class",
+			class:          "not-padding",
+			expectedTop:    nil,
+			expectedRight:  nil,
+			expectedBottom: nil,
+			expectedLeft:   nil,
 		},
 	}
 
@@ -132,39 +132,39 @@ func TestRegexBasedAlignmentParser(t *testing.T) {
 // TestSliceBasedFontWeightDetection tests the refactored font weight detection using slices
 func TestSliceBasedFontWeightDetection(t *testing.T) {
 	tests := []struct {
-		name         string
-		styleString  string
-		expectedBold bool
+		name          string
+		styleString   string
+		expectedBold  bool
 		expectedFaint bool
 	}{
 		{
-			name:         "bold detection using slices",
-			styleString:  "bold text-red-500",
-			expectedBold: true,
+			name:          "bold detection using slices",
+			styleString:   "bold text-red-500",
+			expectedBold:  true,
 			expectedFaint: false,
 		},
 		{
-			name:         "font-semibold detection using slices",
-			styleString:  "font-semibold bg-blue-200",
-			expectedBold: true,
+			name:          "font-semibold detection using slices",
+			styleString:   "font-semibold bg-blue-200",
+			expectedBold:  true,
 			expectedFaint: false,
 		},
 		{
-			name:         "font-light detection using slices",
-			styleString:  "font-light text-gray-600",
-			expectedBold: false,
+			name:          "font-light detection using slices",
+			styleString:   "font-light text-gray-600",
+			expectedBold:  false,
 			expectedFaint: true,
 		},
 		{
-			name:         "font-thin detection using slices",
-			styleString:  "font-thin underline",
-			expectedBold: false,
+			name:          "font-thin detection using slices",
+			styleString:   "font-thin underline",
+			expectedBold:  false,
 			expectedFaint: true,
 		},
 		{
-			name:         "no font weight",
-			styleString:  "text-center bg-white",
-			expectedBold: false,
+			name:          "no font weight",
+			styleString:   "text-center bg-white",
+			expectedBold:  false,
 			expectedFaint: false,
 		},
 	}
@@ -274,43 +274,43 @@ func TestMapBasedBorderParsing(t *testing.T) {
 // TestOptimizedPropertyDetection tests the refactored property type detection
 func TestOptimizedPropertyDetection(t *testing.T) {
 	tests := []struct {
-		name           string
-		class          string
+		name             string
+		class            string
 		expectedProperty string
 	}{
 		{
-			name:           "width detection using helper",
-			class:          "w-full",
+			name:             "width detection using helper",
+			class:            "w-full",
 			expectedProperty: "width",
 		},
 		{
-			name:           "min-width detection using helper",
-			class:          "min-w-0",
+			name:             "min-width detection using helper",
+			class:            "min-w-0",
 			expectedProperty: "width",
 		},
 		{
-			name:           "font-weight detection using slice",
-			class:          "font-bold",
+			name:             "font-weight detection using slice",
+			class:            "font-bold",
 			expectedProperty: "font-weight",
 		},
 		{
-			name:           "font-size detection using slice",
-			class:          "text-xl",
+			name:             "font-size detection using slice",
+			class:            "text-xl",
 			expectedProperty: "font-size",
 		},
 		{
-			name:           "display detection using slice",
-			class:          "flex",
+			name:             "display detection using slice",
+			class:            "flex",
 			expectedProperty: "display",
 		},
 		{
-			name:           "position detection using slice",
-			class:          "absolute",
+			name:             "position detection using slice",
+			class:            "absolute",
 			expectedProperty: "position",
 		},
 		{
-			name:           "padding detection using helper",
-			class:          "p-4",
+			name:             "padding detection using helper",
+			class:            "p-4",
 			expectedProperty: "unique",
 		},
 	}
