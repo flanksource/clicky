@@ -411,3 +411,58 @@ func TestEscaping(t *testing.T) {
 		})
 	}
 }
+
+func TestArrayFromFile(t *testing.T) {
+	tmpDir := t.TempDir()
+
+	// Create test file with multiple lines
+	linesFile := tmpDir + "/policies.txt"
+	fileContent := `P001
+P002
+# This is a comment
+P003
+
+P004
+`
+	if err := os.WriteFile(linesFile, []byte(fileContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	tests := []struct {
+		name     string
+		args     []string
+		expected map[string]any
+		wantErr  bool
+	}{
+		{
+			name:     "array from file with []key=@file syntax",
+			args:     []string{"[]PolicyNumber=@" + linesFile},
+			expected: map[string]any{"PolicyNumber": []string{"P001", "P002", "P003", "P004"}},
+			wantErr:  false,
+		},
+		{
+			name:     "array from file with key[]=@file syntax",
+			args:     []string{"PolicyNumber[]=@" + linesFile},
+			expected: map[string]any{"PolicyNumber": []string{"P001", "P002", "P003", "P004"}},
+			wantErr:  false,
+		},
+		{
+			name:    "nonexistent file",
+			args:    []string{"[]PolicyNumber=@/nonexistent/file.txt"},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := ParseArgumentsAsMap(tt.args)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("ParseArgumentsAsMap() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !tt.wantErr && !reflect.DeepEqual(result, tt.expected) {
+				t.Errorf("ParseArgumentsAsMap() = %v, want %v", result, tt.expected)
+			}
+		})
+	}
+}

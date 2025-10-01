@@ -103,6 +103,52 @@ func ParseArgumentsWithQuery(args []string) (data map[string]any, query map[stri
 func parseArgumentEnhanced(rawArg string) (string, any, string, error) {
 	// Work with the raw argument for position detection, but unescape for final values
 
+	// Array from stdin: []key=- or key[]=-
+	if strings.Contains(rawArg, "=-") {
+		var key string
+		if strings.HasPrefix(rawArg, "[]") && strings.Contains(rawArg, "=-") {
+			// []key=- format
+			idx := strings.Index(rawArg, "=-")
+			key = unescapeArgument(rawArg[2:idx])
+		} else if strings.Contains(rawArg, "[]=-") {
+			// key[]=- format
+			idx := strings.Index(rawArg, "[]=-")
+			key = unescapeArgument(rawArg[:idx])
+		}
+
+		if key != "" {
+			lines, err := readLinesFromFile("-")
+			if err != nil {
+				return "", nil, "", fmt.Errorf("reading stdin: %w", err)
+			}
+			return key, lines, "data", nil
+		}
+	}
+
+	// Array from file: []key=@file or key[]=@file
+	if strings.Contains(rawArg, "=@") && !strings.Contains(rawArg, ":=@") {
+		var key, filepath string
+		if strings.HasPrefix(rawArg, "[]") {
+			// []key=@file format
+			idx := strings.Index(rawArg, "=@")
+			key = unescapeArgument(rawArg[2:idx])
+			filepath = rawArg[idx+2:] // Skip the =@
+		} else if strings.Contains(rawArg, "[]=@") {
+			// key[]=@file format
+			idx := strings.Index(rawArg, "[]=@")
+			key = unescapeArgument(rawArg[:idx])
+			filepath = rawArg[idx+4:] // Skip the []=@
+		}
+
+		if key != "" && filepath != "" {
+			lines, err := readLinesFromFile(filepath)
+			if err != nil {
+				return "", nil, "", fmt.Errorf("reading file %s: %w", filepath, err)
+			}
+			return key, lines, "data", nil
+		}
+	}
+
 	// JSON from file: key:=@file.json
 	if idx := strings.Index(rawArg, ":=@"); idx > 0 {
 		key := unescapeArgument(rawArg[:idx])
@@ -188,6 +234,35 @@ func readFileAsStringOrBase64(filepath string) (string, error) {
 
 	// For binary files, return as base64
 	return base64.StdEncoding.EncodeToString(content), nil
+}
+
+// readLinesFromFile reads lines from a file or stdin and returns them as a slice
+// Skips empty lines and lines starting with #
+func readLinesFromFile(filepath string) ([]string, error) {
+	var content []byte
+	var err error
+
+	if filepath == "-" {
+		// Read from stdin
+		content, err = os.ReadFile("/dev/stdin")
+	} else {
+		// Read from file
+		content, err = os.ReadFile(filepath)
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	var lines []string
+	for _, line := range strings.Split(string(content), "\n") {
+		line = strings.TrimSpace(line)
+		if line != "" && !strings.HasPrefix(line, "#") {
+			lines = append(lines, line)
+		}
+	}
+
+	return lines, nil
 }
 
 // isQueryParameter checks if an argument is a query parameter (key==value) and not escaped
