@@ -3,6 +3,7 @@ package clicky
 import (
 	"github.com/flanksource/commons/collections"
 	"github.com/flanksource/commons/logger"
+	"github.com/flanksource/commons/properties"
 	"github.com/spf13/pflag"
 )
 
@@ -82,4 +83,6 @@ func (a *AllFlags) UseFlags() {
 	logger.V(4).Infof("Using logger flags: %s", a)
 	a.Apply()
 	UseFormatter(a.FormatOptions)
+	properties.Set("log.level", "trace")
+	properties.Set("log.color", "true")
 }

@@ -126,6 +126,8 @@ require (
 	github.com/tidwall/pretty v1.2.1 // indirect
 	github.com/tidwall/sjson v1.0.4 // indirect
 	github.com/tiendc/go-deepcopy v1.6.0 // indirect
+	github.com/timberio/go-datemath v0.1.0 // indirect
+	github.com/tj/go-naturaldate v1.3.0 // indirect
 	github.com/tklauser/go-sysconf v0.3.12 // indirect
 	github.com/tklauser/numcpus v0.6.1 // indirect
 	github.com/ugorji/go/codec v1.2.12 // indirect

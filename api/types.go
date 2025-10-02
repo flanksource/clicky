@@ -83,7 +83,7 @@ type PrettyObject struct {
 // while maintaining the original value and supporting rich text output.
 type FieldValue struct {
 	Field        PrettyField
-	Value        interface{}
+	Value        interface{} // Can be *PrettyData for nested structures
 	StringValue  *string
 	IntValue     *int64
 	FloatValue   *float64
@@ -91,7 +91,6 @@ type FieldValue struct {
 	TimeValue    *time.Time
 	ArrayValue   []interface{}
 	MapValue     map[string]interface{}
-	NestedFields map[string]FieldValue
 	Text         *Text
 }
 
@@ -99,6 +98,18 @@ func (v FieldValue) Formatted() string {
 	// Use Text object if available
 	if v.Text != nil {
 		return v.Text.String()
+	}
+
+	// Handle PrettyData values (nested structures)
+	if prettyData, ok := v.Value.(*PrettyData); ok {
+		// Format as a simple string representation of the nested data
+		var parts []string
+		for key, fieldValue := range prettyData.Values {
+			// Prettify the key name
+			prettyKey := PrettifyFieldName(key)
+			parts = append(parts, fmt.Sprintf("%s: %s", prettyKey, fieldValue.Formatted()))
+		}
+		return fmt.Sprintf("{%s}", strings.Join(parts, ", "))
 	}
 
 	// Fallback for legacy cases
@@ -220,43 +231,6 @@ func (v FieldValue) Time() *time.Time {
 	return nil
 }
 
-// formatNestedFields formats nested fields as struct-like fields (no braces)
-func (v FieldValue) formatNestedFields() string {
-	if len(v.NestedFields) == 0 {
-		return EmptyValue
-	}
-
-	// Get sorted keys
-	keys := make([]string, 0, len(v.NestedFields))
-	for k := range v.NestedFields {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-
-	var lines []string
-	for _, key := range keys {
-		fieldValue := v.NestedFields[key]
-		// Pretty print the key name
-		prettyKey := v.Field.prettifyFieldName(key)
-		formatted := fieldValue.Formatted()
-
-		// Handle nested formatting with proper indentation
-		if strings.Contains(formatted, "\n") {
-			// Multi-line value, indent it
-			indentedLines := strings.Split(formatted, "\n")
-			for i := range indentedLines {
-				if i > 0 && indentedLines[i] != "" {
-					indentedLines[i] = "\t" + indentedLines[i]
-				}
-			}
-			formatted = "\n" + strings.Join(indentedLines, "\n")
-		}
-
-		lines = append(lines, fmt.Sprintf("%s: %s", prettyKey, formatted))
-	}
-
-	return strings.Join(lines, "\n")
-}
 
 func (v FieldValue) Float() *float64 {
 
@@ -511,6 +485,23 @@ func (f PrettyField) Parse(value interface{}) (FieldValue, error) {
 		return v, nil
 	}
 
+	// Check if value implements TreeNode interface - if so, preserve the pointer
+	if _, ok := value.(TreeNode); ok {
+		// Store TreeNode as-is without dereferencing
+		return v, nil
+	}
+
+	// Dereference pointer values before processing
+	val := reflect.ValueOf(value)
+	for val.Kind() == reflect.Ptr {
+		if val.IsNil() {
+			return v, nil
+		}
+		val = val.Elem()
+		value = val.Interface()
+		v.Value = value
+	}
+
 	// Get the actual type for parsing
 	actualType := f.Type
 	if actualType == "" {
@@ -647,6 +638,28 @@ func (f PrettyField) Parse(value interface{}) (FieldValue, error) {
 		}
 	}
 
+	// Ensure ArrayValue and MapValue are always populated for arrays and maps,
+	// regardless of the actualType in the switch above
+	valType := reflect.ValueOf(value)
+	if valType.Kind() == reflect.Slice || valType.Kind() == reflect.Array {
+		if v.ArrayValue == nil {
+			v.ArrayValue = make([]interface{}, valType.Len())
+			for i := 0; i < valType.Len(); i++ {
+				v.ArrayValue[i] = valType.Index(i).Interface()
+			}
+		}
+	} else if valType.Kind() == reflect.Map {
+		if v.MapValue == nil {
+			// Convert any map type to map[string]interface{}
+			v.MapValue = make(map[string]interface{})
+			iter := valType.MapRange()
+			for iter.Next() {
+				k := iter.Key()
+				v.MapValue[fmt.Sprintf("%v", k.Interface())] = iter.Value().Interface()
+			}
+		}
+	}
+
 	// Create Text object with appropriate formatting and styling
 	v.Text = v.createText()
 
@@ -663,34 +676,46 @@ func (v FieldValue) createText() *Text {
 		}
 	}
 
-	// Handle nested fields specially
-	if len(v.NestedFields) > 0 {
-		content := v.formatNestedFields()
+	// Handle nested PrettyData structures
+	if prettyData, ok := v.Value.(*PrettyData); ok {
+		// Recursively format the nested PrettyData
+		// This will be handled by the formatter calling code
+		// For now, just indicate it's a nested structure
 		return &Text{
-			Content: content,
+			Content: fmt.Sprintf("(nested: %d fields)", len(prettyData.Values)),
 		}
 	}
 
 	var content string
 	var style string
 
-	// Format based on field format
-	switch v.Field.Format {
-	case "currency":
-		content = v.formatCurrency()
-		style = "text-green-600 font-medium" // Green for currency
-	case FieldTypeDate:
-		content = v.formatDate()
-		style = "text-blue-600" // Blue for dates
-	case FieldTypeFloat:
-		content = v.formatFloat()
-		style = "text-purple-600" // Purple for numbers
-	case FieldTypeDuration:
-		content = v.formatDuration()
-		style = "text-orange-600" // Orange for durations
-	case FieldTypeArray:
+	// Check for MapValue and ArrayValue first (populated regardless of field type)
+	if v.MapValue != nil {
+		pairs := make([]string, 0, len(v.MapValue))
+		for k, val := range v.MapValue {
+			pairs = append(pairs, fmt.Sprintf("%s: %v", k, val))
+		}
+		content = "{" + strings.Join(pairs, ", ") + "}"
+	} else if v.ArrayValue != nil {
 		content = v.formatArray()
-	default:
+	} else {
+		// Format based on field format
+		switch v.Field.Format {
+		case "currency":
+			content = v.formatCurrency()
+			style = "text-green-600 font-medium" // Green for currency
+		case FieldTypeDate:
+			content = v.formatDate()
+			style = "text-blue-600" // Blue for dates
+		case FieldTypeFloat:
+			content = v.formatFloat()
+			style = "text-purple-600" // Purple for numbers
+		case FieldTypeDuration:
+			content = v.formatDuration()
+			style = "text-orange-600" // Orange for durations
+		case FieldTypeArray:
+			content = v.formatArray()
+		default:
 		// Default formatting based on type
 		switch v.Field.Type {
 		case FieldTypeString:
@@ -734,6 +759,7 @@ func (v FieldValue) createText() *Text {
 			}
 		default:
 			content = fmt.Sprintf("%v", v.Value)
+		}
 		}
 	}
 
@@ -951,31 +977,6 @@ func (f PrettyField) splitCamelCase(s string) []string {
 	}
 
 	return words
-}
-
-// GetNestedFieldKeys returns sorted keys for nested fields
-func (v FieldValue) GetNestedFieldKeys() []string {
-	if len(v.NestedFields) == 0 {
-		return nil
-	}
-
-	keys := make([]string, 0, len(v.NestedFields))
-	for k := range v.NestedFields {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	return keys
-}
-
-// GetNestedField returns a nested field by key
-func (v FieldValue) GetNestedField(key string) (FieldValue, bool) {
-	field, exists := v.NestedFields[key]
-	return field, exists
-}
-
-// HasNestedFields returns true if the field has nested fields
-func (v FieldValue) HasNestedFields() bool {
-	return len(v.NestedFields) > 0
 }
 
 // IsTableField returns true if this field represents a table

@@ -215,7 +215,7 @@ func (f FormatManager) FormatWithOptions(options FormatOptions, data interface{}
 			// Fallback to direct formatting if PrettyData conversion fails
 			return f.markdownFormatter.Format(data)
 		}
-		return f.markdownFormatter.FormatPrettyData(prettyData)
+		return f.markdownFormatter.FormatPrettyData(prettyData, options)
 
 	case "html":
 		return f.HTML(data)
@@ -356,7 +356,7 @@ func (f FormatManager) FormatWithSchema(prettyData *api.PrettyData, options Form
 			f.markdownFormatter = NewMarkdownFormatter()
 		}
 		f.markdownFormatter.NoColor = options.NoColor
-		return f.markdownFormatter.FormatPrettyData(prettyData)
+		return f.markdownFormatter.FormatPrettyData(prettyData, options)
 	case "html":
 		if f.htmlFormatter == nil {
 			f.htmlFormatter = NewHTMLFormatter()

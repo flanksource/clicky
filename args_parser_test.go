@@ -466,3 +466,124 @@ P004
 		})
 	}
 }
+
+func TestArgsType(t *testing.T) {
+	t.Run("GetString from string value", func(t *testing.T) {
+		args := Args{"name": "john", "city": "boston"}
+		if got := args.GetString("name"); got != "john" {
+			t.Errorf("GetString() = %v, want john", got)
+		}
+	})
+
+	t.Run("GetString from string slice returns first", func(t *testing.T) {
+		args := Args{"names": []string{"john", "jane"}}
+		if got := args.GetString("names"); got != "john" {
+			t.Errorf("GetString() = %v, want john", got)
+		}
+	})
+
+	t.Run("GetString from interface slice", func(t *testing.T) {
+		args := Args{"names": []interface{}{"john", "jane"}}
+		if got := args.GetString("names"); got != "john" {
+			t.Errorf("GetString() = %v, want john", got)
+		}
+	})
+
+	t.Run("GetString from missing key", func(t *testing.T) {
+		args := Args{"name": "john"}
+		if got := args.GetString("missing"); got != "" {
+			t.Errorf("GetString() = %v, want empty string", got)
+		}
+	})
+
+	t.Run("GetString from number", func(t *testing.T) {
+		args := Args{"age": 30}
+		if got := args.GetString("age"); got != "30" {
+			t.Errorf("GetString() = %v, want 30", got)
+		}
+	})
+
+	t.Run("GetStringSlice from string slice", func(t *testing.T) {
+		args := Args{"names": []string{"john", "jane", "joe"}}
+		got := args.GetStringSlice("names")
+		want := []string{"john", "jane", "joe"}
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("GetStringSlice() = %v, want %v", got, want)
+		}
+	})
+
+	t.Run("GetStringSlice from single string", func(t *testing.T) {
+		args := Args{"name": "john"}
+		got := args.GetStringSlice("name")
+		want := []string{"john"}
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("GetStringSlice() = %v, want %v", got, want)
+		}
+	})
+
+	t.Run("GetStringSlice from interface slice", func(t *testing.T) {
+		args := Args{"values": []interface{}{"a", "b", "c"}}
+		got := args.GetStringSlice("values")
+		want := []string{"a", "b", "c"}
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("GetStringSlice() = %v, want %v", got, want)
+		}
+	})
+
+	t.Run("GetStringSlice from missing key", func(t *testing.T) {
+		args := Args{"name": "john"}
+		got := args.GetStringSlice("missing")
+		if len(got) != 0 {
+			t.Errorf("GetStringSlice() = %v, want empty slice", got)
+		}
+	})
+
+	t.Run("JSON marshaling", func(t *testing.T) {
+		args := Args{"name": "john", "age": 30, "active": true}
+		data, err := args.MarshalJSON()
+		if err != nil {
+			t.Fatalf("Marshal() error = %v", err)
+		}
+
+		var decoded Args
+		if err := decoded.UnmarshalJSON(data); err != nil {
+			t.Fatalf("Unmarshal() error = %v", err)
+		}
+
+		if decoded.GetString("name") != "john" {
+			t.Errorf("After unmarshal, name = %v, want john", decoded.GetString("name"))
+		}
+	})
+
+	t.Run("ParseArguments function", func(t *testing.T) {
+		args, err := ParseArguments([]string{"name=john", "age:=30"})
+		if err != nil {
+			t.Fatalf("ParseArguments() error = %v", err)
+		}
+
+		if args.GetString("name") != "john" {
+			t.Errorf("name = %v, want john", args.GetString("name"))
+		}
+
+		if args["age"] != float64(30) {
+			t.Errorf("age = %v, want 30", args["age"])
+		}
+	})
+
+	t.Run("MustParseArguments panics on error", func(t *testing.T) {
+		defer func() {
+			if r := recover(); r == nil {
+				t.Errorf("MustParseArguments() should have panicked")
+			}
+		}()
+
+		MustParseArguments([]string{"invalid:={bad json}"})
+	})
+
+	t.Run("MustParseArguments success", func(t *testing.T) {
+		args := MustParseArguments([]string{"name=john", "age:=30"})
+		if args.GetString("name") != "john" {
+			t.Errorf("name = %v, want john", args.GetString("name"))
+		}
+	})
+}

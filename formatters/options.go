@@ -38,6 +38,9 @@ type FormatOptions struct {
 	// Paging options
 	Page  int // Current page (1-indexed)
 	Limit int // Items per page
+
+	// Internal fields (not exposed via flags)
+	depth int // Hidden field for tracking nesting depth in recursive formatting
 }
 
 func MergeOptions(opts ...FormatOptions) FormatOptions {
@@ -72,6 +75,9 @@ func MergeOptions(opts ...FormatOptions) FormatOptions {
 		}
 		if opt.Limit > 0 {
 			merged.Limit = opt.Limit
+		}
+		if opt.depth > 0 {
+			merged.depth = opt.depth
 		}
 		if opt.JSON {
 			merged.JSON = true
@@ -181,4 +187,15 @@ func (options *FormatOptions) ResolveFormat() string {
 	}
 
 	return options.Format
+}
+
+// IncreaseDepth returns a copy of FormatOptions with depth incremented by 1
+func (o FormatOptions) IncreaseDepth() FormatOptions {
+	o.depth++
+	return o
+}
+
+// Depth returns the current depth (for internal use by formatters)
+func (o FormatOptions) Depth() int {
+	return o.depth
 }

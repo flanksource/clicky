@@ -89,13 +89,21 @@ func (p *PrettyFormatter) FormatPrettyData(data *api.PrettyData) (string, error)
 				label = api.PrettifyFieldName(field.Name)
 			}
 
-			// Handle nested map fields - check Format, Type, or presence of NestedFields (for schema mismatches)
-			if (field.Format == "map" || field.Type == "map" || fieldValue.NestedFields != nil) && fieldValue.NestedFields != nil {
+			// Handle nested PrettyData structures
+			if nestedData, ok := fieldValue.Value.(*api.PrettyData); ok {
 				// Add the field label first
 				result = append(result, label+":")
-				// Format nested fields with indentation
-				nestedLines := p.formatNestedFields(fieldValue, field, 1)
-				result = append(result, nestedLines...)
+				// Recursively format the nested PrettyData with indentation
+				nestedOutput, err := p.FormatPrettyData(nestedData)
+				if err == nil {
+					// Add indentation to each line
+					lines := strings.Split(nestedOutput, "\n")
+					for _, line := range lines {
+						if line != "" {
+							result = append(result, "\t"+line)
+						}
+					}
+				}
 			} else {
 				formatted := p.formatField(label, reflect.ValueOf(fieldValue.Value), field)
 				result = append(result, formatted)
@@ -134,77 +142,6 @@ func (p *PrettyFormatter) FormatPrettyData(data *api.PrettyData) (string, error)
 	}
 
 	return strings.Join(result, "\n"), nil
-}
-
-// formatNestedFields formats nested map fields recursively
-func (p *PrettyFormatter) formatNestedFields(fieldValue api.FieldValue, field api.PrettyField, indent int) []string {
-	var result []string
-
-	// Check if the value is a map with nested values
-	if fieldValue.NestedFields != nil {
-		if len(fieldValue.NestedFields) == 0 {
-			// Empty map case
-			indentStr := strings.Repeat("\t", indent)
-			result = append(result, indentStr+"(empty)")
-			return result
-		}
-		nestedMap := fieldValue.NestedFields
-
-		// If schema has field definitions, use those for ordering and metadata
-		if len(field.Fields) > 0 {
-			// Format each nested field using schema definitions
-			for _, nestedField := range field.Fields {
-				if nestedValue, ok := nestedMap[nestedField.Name]; ok {
-					label := nestedField.Label
-					if label == "" {
-						label = api.PrettifyFieldName(nestedField.Name)
-					}
-
-					// Add indentation with tabs
-					indentStr := strings.Repeat("\t", indent)
-
-					// Check if this field has further nesting
-					if (nestedField.Format == "map" || nestedField.Type == "map") && nestedValue.NestedFields != nil {
-						// Recursive formatting
-						result = append(result, indentStr+label+":")
-						subLines := p.formatNestedFields(nestedValue, nestedField, indent+1)
-						result = append(result, subLines...)
-					} else {
-						// Format the field value
-						formatted := p.formatField(label, reflect.ValueOf(nestedValue.Value), nestedField)
-						result = append(result, indentStr+formatted)
-					}
-				}
-			}
-		} else {
-			// No schema definitions - iterate over all nested fields
-			for fieldName, nestedValue := range nestedMap {
-				label := api.PrettifyFieldName(fieldName)
-
-				// Add indentation with tabs
-				indentStr := strings.Repeat("\t", indent)
-
-				// Check if this field has further nesting
-				if nestedValue.NestedFields != nil {
-					// Recursive formatting - create a minimal field definition
-					nestedField := api.PrettyField{Name: fieldName, Type: "map"}
-					result = append(result, indentStr+label+":")
-					subLines := p.formatNestedFields(nestedValue, nestedField, indent+1)
-					result = append(result, subLines...)
-				} else {
-					// Format the field value with empty field definition
-					formatted := p.formatField(label, reflect.ValueOf(nestedValue.Value), api.PrettyField{})
-					result = append(result, indentStr+formatted)
-				}
-			}
-		}
-	} else {
-		// Fall back to simple formatting
-		formatted := p.formatField(field.Label, reflect.ValueOf(fieldValue.Value), field)
-		result = append(result, formatted)
-	}
-
-	return result
 }
 
 // renderTableFromData renders a table from map items using field definitions

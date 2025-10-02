@@ -657,6 +657,57 @@ func ToPrettyData(data interface{}) (*api.PrettyData, error) {
 				rows = append(rows, row)
 			}
 			prettyData.Tables[field.Name] = rows
+		} else if field.Format == api.FormatTree {
+			// Handle tree fields - convert to SimpleTreeNode for consistent formatting
+			var treeNode api.TreeNode
+			if tn, ok := fieldVal.Interface().(api.TreeNode); ok {
+				treeNode = api.TreeNodeToSimple(tn)
+			}
+
+			if treeNode != nil {
+				prettyData.Values[field.Name] = api.FieldValue{
+					Value: treeNode,
+					Field: field,
+				}
+			}
+		} else if (field.Type == "map" || field.Type == "struct") && (fieldVal.Kind() == reflect.Map || fieldVal.Kind() == reflect.Struct) {
+			// Handle nested map/struct - recursively create PrettyData
+			parser := api.NewStructParser()
+
+			// Create schema for nested structure
+			var nestedSchema *api.PrettyObject
+			if len(field.Fields) > 0 {
+				nestedSchema = &api.PrettyObject{Fields: field.Fields}
+			} else {
+				// Auto-generate schema
+				if fieldVal.Kind() == reflect.Struct {
+					nestedSchema, _ = parser.ParseStructSchema(fieldVal)
+				} else if fieldVal.Kind() == reflect.Map {
+					nestedSchema = &api.PrettyObject{Fields: []api.PrettyField{}}
+					for _, key := range fieldVal.MapKeys() {
+						if key.Kind() == reflect.String {
+							mapValue := fieldVal.MapIndex(key)
+							if mapValue.IsValid() {
+								nestedSchema.Fields = append(nestedSchema.Fields, api.PrettyField{
+									Name: key.String(),
+									Type: api.InferValueType(mapValue.Interface()),
+								})
+							}
+						}
+					}
+				}
+			}
+
+			// Recursively parse
+			if nestedSchema != nil {
+				nestedData, err := parser.ParseDataWithSchema(fieldVal.Interface(), nestedSchema)
+				if err == nil {
+					prettyData.Values[field.Name] = api.FieldValue{
+						Value: nestedData,
+						Field: field,
+					}
+				}
+			}
 		} else {
 			// Regular field value - use processFieldValue to handle pointers
 			prettyData.Values[field.Name] = api.FieldValue{

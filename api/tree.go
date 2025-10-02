@@ -94,6 +94,43 @@ func (n *SimpleTreeNode) GetChildren() []TreeNode {
 	return n.Children
 }
 
+// TreeNodeToSimple recursively converts any TreeNode implementation to SimpleTreeNode.
+// This normalizes different TreeNode implementations into a concrete type for consistent formatting.
+func TreeNodeToSimple(node TreeNode) *SimpleTreeNode {
+	if node == nil {
+		return nil
+	}
+
+	// If already SimpleTreeNode, return as-is
+	if simple, ok := node.(*SimpleTreeNode); ok {
+		return simple
+	}
+
+	// Extract Pretty() information
+	pretty := node.Pretty()
+
+	// Create new SimpleTreeNode
+	simple := &SimpleTreeNode{
+		Label: pretty.Content,
+	}
+
+	// Preserve style if available
+	if pretty.Style != "" {
+		simple.Style = pretty.Style
+	}
+
+	// Recursively convert children
+	children := node.GetChildren()
+	if len(children) > 0 {
+		simple.Children = make([]TreeNode, len(children))
+		for i, child := range children {
+			simple.Children[i] = TreeNodeToSimple(child)
+		}
+	}
+
+	return simple
+}
+
 // CompactListNode renders multiple items inline rather than as nested children,
 // useful for displaying arrays or lists within tree structures.
 type CompactListNode struct {

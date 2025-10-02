@@ -8,7 +8,13 @@ import (
 	"regexp"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/flanksource/clicky/api"
 )
+
+type Help interface {
+	Help() api.Textable
+}
 
 // ParseArgumentsAsMap parses HTTPie-style command line arguments into a map
 // Supports:
@@ -404,6 +410,96 @@ func setNestedValue(data map[string]any, key string, value any) error {
 // MustParseArgumentsAsMap is like ParseArgumentsAsMap but panics on error
 func MustParseArgumentsAsMap(args []string) map[string]any {
 	result, err := ParseArgumentsAsMap(args)
+	if err != nil {
+		panic(err)
+	}
+	return result
+}
+
+// Args is a custom map type for parsed arguments with helper methods
+type Args map[string]any
+
+// GetString returns the string value for a key, or empty string if not found or wrong type
+func (a Args) GetString(key string) string {
+	val, ok := a[key]
+	if !ok {
+		return ""
+	}
+
+	switch v := val.(type) {
+	case string:
+		return v
+	case []string:
+		if len(v) > 0 {
+			return v[0]
+		}
+		return ""
+	case []interface{}:
+		if len(v) > 0 {
+			if str, ok := v[0].(string); ok {
+				return str
+			}
+		}
+		return ""
+	default:
+		return fmt.Sprintf("%v", v)
+	}
+}
+
+// GetStringSlice returns the string slice value for a key, or empty slice if not found
+func (a Args) GetStringSlice(key string) []string {
+	val, ok := a[key]
+	if !ok {
+		return []string{}
+	}
+
+	switch v := val.(type) {
+	case []string:
+		return v
+	case string:
+		return []string{v}
+	case []interface{}:
+		result := make([]string, 0, len(v))
+		for _, item := range v {
+			if str, ok := item.(string); ok {
+				result = append(result, str)
+			} else {
+				result = append(result, fmt.Sprintf("%v", item))
+			}
+		}
+		return result
+	default:
+		return []string{fmt.Sprintf("%v", v)}
+	}
+}
+
+// MarshalJSON implements json.Marshaler interface
+func (a Args) MarshalJSON() ([]byte, error) {
+	return json.Marshal(map[string]any(a))
+}
+
+// UnmarshalJSON implements json.Unmarshaler interface
+func (a *Args) UnmarshalJSON(data []byte) error {
+	var m map[string]any
+	if err := json.Unmarshal(data, &m); err != nil {
+		return err
+	}
+	*a = Args(m)
+	return nil
+}
+
+// ParseArguments parses HTTPie-style arguments and returns an Args type
+func ParseArguments(args []string) (Args, error) {
+	data, err := ParseArgumentsAsMap(args)
+	if err != nil {
+		return nil, err
+	}
+	return Args(data), nil
+}
+
+// MustParseArguments is like ParseArguments but panics on error
+func MustParseArguments(args []string) Args {
+	result, err := ParseArguments(args)
 	if err != nil {
 		panic(err)
 	}

@@ -184,9 +184,9 @@ func (sf *SchemaFormatter) formatPrettyDataToMap(data *api.PrettyData) map[strin
 
 	// Add all values using Formatted() for consistency with other formatters
 	for key, fieldValue := range data.Values {
-		if len(fieldValue.NestedFields) > 0 {
-			// Handle nested fields recursively
-			output[key] = sf.convertNestedFieldsToMap(fieldValue)
+		if nestedData, ok := fieldValue.Value.(*api.PrettyData); ok {
+			// Handle nested PrettyData recursively
+			output[key] = sf.convertPrettyDataToMap(nestedData)
 		} else {
 			output[key] = fieldValue.Formatted()
 		}
@@ -208,24 +208,34 @@ func (sf *SchemaFormatter) formatPrettyDataToMap(data *api.PrettyData) map[strin
 	return output
 }
 
-// convertNestedFieldsToMap recursively converts nested FieldValue structures to nested maps
-func (sf *SchemaFormatter) convertNestedFieldsToMap(fieldValue api.FieldValue) interface{} {
-	if len(fieldValue.NestedFields) > 0 {
-		nestedOutput := make(map[string]interface{})
-		for nestedKey, nestedFieldValue := range fieldValue.NestedFields {
-			if len(nestedFieldValue.NestedFields) > 0 {
-				// Recursive case - convert nested fields to map
-				nestedOutput[nestedKey] = sf.convertNestedFieldsToMap(nestedFieldValue)
-			} else {
-				// Base case - format the value
-				nestedOutput[nestedKey] = nestedFieldValue.Formatted()
-			}
+// convertPrettyDataToMap recursively converts PrettyData to a map
+func (sf *SchemaFormatter) convertPrettyDataToMap(data *api.PrettyData) map[string]interface{} {
+	output := make(map[string]interface{})
+
+	for key, fieldValue := range data.Values {
+		if nestedData, ok := fieldValue.Value.(*api.PrettyData); ok {
+			// Recursive case - convert nested PrettyData to map
+			output[key] = sf.convertPrettyDataToMap(nestedData)
+		} else {
+			// Base case - format the value
+			output[key] = fieldValue.Formatted()
 		}
-		return nestedOutput
-	} else {
-		// No nested fields - just format the value
-		return fieldValue.Formatted()
 	}
+
+	// Include tables if any
+	for key, tableRows := range data.Tables {
+		tableData := make([]map[string]interface{}, len(tableRows))
+		for i, row := range tableRows {
+			rowData := make(map[string]interface{})
+			for fieldName, fieldValue := range row {
+				rowData[fieldName] = fieldValue.Formatted()
+			}
+			tableData[i] = rowData
+		}
+		output[key] = tableData
+	}
+
+	return output
 }
 
 // generateOutputFilename generates output filename based on pattern

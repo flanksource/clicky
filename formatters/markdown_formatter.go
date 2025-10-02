@@ -38,11 +38,11 @@ func (f *MarkdownFormatter) Format(data interface{}) (string, error) {
 		return "", nil
 	}
 
-	return f.FormatPrettyData(prettyData)
+	return f.FormatPrettyData(prettyData, FormatOptions{})
 }
 
 // FormatPrettyData formats PrettyData as Markdown
-func (f *MarkdownFormatter) FormatPrettyData(data *api.PrettyData) (string, error) {
+func (f *MarkdownFormatter) FormatPrettyData(data *api.PrettyData, opts FormatOptions) (string, error) {
 	var sections []string
 	var summaryFields []api.PrettyField
 	var tableFields []api.PrettyField
@@ -62,7 +62,7 @@ func (f *MarkdownFormatter) FormatPrettyData(data *api.PrettyData) (string, erro
 
 	// Format summary fields as definition list
 	if len(summaryFields) > 0 {
-		summaryOutput := f.formatSummaryFieldsData(summaryFields, data.Values)
+		summaryOutput := f.formatSummaryFieldsData(summaryFields, data.Values, opts)
 		if summaryOutput != "" {
 			sections = append(sections, summaryOutput)
 		}
@@ -72,7 +72,7 @@ func (f *MarkdownFormatter) FormatPrettyData(data *api.PrettyData) (string, erro
 	for _, field := range tableFields {
 		tableData, exists := data.Tables[field.Name]
 		if exists && len(tableData) > 0 {
-			tableOutput, err := f.formatTableData(tableData, field)
+			tableOutput, err := f.formatTableData(tableData, field, opts)
 			if err != nil {
 				return "", err
 			}
@@ -83,7 +83,7 @@ func (f *MarkdownFormatter) FormatPrettyData(data *api.PrettyData) (string, erro
 	// Format tree fields
 	for _, field := range treeFields {
 		if fieldValue, exists := data.Values[field.Name]; exists {
-			treeOutput := f.formatTreeData(field, fieldValue)
+			treeOutput := f.formatTreeData(field, fieldValue, opts)
 			if treeOutput != "" {
 				sections = append(sections, treeOutput)
 			}
@@ -94,8 +94,9 @@ func (f *MarkdownFormatter) FormatPrettyData(data *api.PrettyData) (string, erro
 }
 
 // formatSummaryFieldsData formats summary fields as Markdown definition list
-func (f *MarkdownFormatter) formatSummaryFieldsData(fields []api.PrettyField, values map[string]api.FieldValue) string {
+func (f *MarkdownFormatter) formatSummaryFieldsData(fields []api.PrettyField, values map[string]api.FieldValue, opts FormatOptions) string {
 	var result strings.Builder
+	depth := opts.Depth()
 
 	for _, field := range fields {
 		fieldValue, exists := values[field.Name]
@@ -109,11 +110,45 @@ func (f *MarkdownFormatter) formatSummaryFieldsData(fields []api.PrettyField, va
 			fieldName = field.Label
 		}
 
+		// Check for nested PrettyData
+		if nestedData, ok := fieldValue.Value.(*api.PrettyData); ok {
+			// Recursively format with increased depth
+			nestedOutput, _ := f.FormatPrettyData(nestedData, opts.IncreaseDepth())
+
+			// Add section heading based on depth
+			heading := strings.Repeat("#", depth+2) + " " + fieldName
+			result.WriteString(heading + "\n\n" + nestedOutput + "\n\n")
+			continue
+		}
+
 		// Check if this is an image field
 		if f.isImageField(fieldValue, field) {
 			imageMarkdown := f.formatImageMarkdown(fieldValue, field)
 			if imageMarkdown != "" {
 				result.WriteString(fmt.Sprintf("**%s**: %s\n\n", fieldName, imageMarkdown))
+				continue
+			}
+		}
+
+		// Handle maps - ProcessFieldValue already normalizes maps
+		if mapVal, ok := fieldValue.Value.(map[string]interface{}); ok {
+			mapOutput := f.formatMapMarkdown(mapVal, opts)
+			result.WriteString(fmt.Sprintf("**%s**:\n\n%s\n", fieldName, mapOutput))
+			continue
+		}
+
+		// Handle slices - ProcessFieldValue already normalizes slices
+		if sliceVal, ok := fieldValue.Value.([]interface{}); ok {
+			sliceOutput := f.formatSliceMarkdown(sliceVal, opts)
+			result.WriteString(fmt.Sprintf("**%s**: %s\n\n", fieldName, sliceOutput))
+			continue
+		}
+
+		// Handle TreeNode fields
+		if field.Format == api.FormatTree {
+			if treeNode, ok := fieldValue.Value.(api.TreeNode); ok {
+				treeOutput := f.formatTreeNode(treeNode, depth)
+				result.WriteString(fmt.Sprintf("**%s**:\n\n%s\n", fieldName, treeOutput))
 				continue
 			}
 		}
@@ -212,7 +247,7 @@ func (f *MarkdownFormatter) formatImageMarkdown(fieldValue api.FieldValue, field
 }
 
 // formatTableData formats table data as Markdown table
-func (f *MarkdownFormatter) formatTableData(tableData []api.PrettyDataRow, _ api.PrettyField) (string, error) {
+func (f *MarkdownFormatter) formatTableData(tableData []api.PrettyDataRow, _ api.PrettyField, opts FormatOptions) (string, error) {
 	if len(tableData) == 0 {
 		return "*No data*", nil
 	}
@@ -271,7 +306,7 @@ func (f *MarkdownFormatter) formatTableData(tableData []api.PrettyDataRow, _ api
 }
 
 // formatTreeData formats tree data as a Markdown tree structure
-func (f *MarkdownFormatter) formatTreeData(field api.PrettyField, fieldValue api.FieldValue) string {
+func (f *MarkdownFormatter) formatTreeData(field api.PrettyField, fieldValue api.FieldValue, opts FormatOptions) string {
 	// Check if the value implements TreeNode interface
 	if treeNode, ok := fieldValue.Value.(api.TreeNode); ok {
 		// Format the tree using TreeNode methods
@@ -311,6 +346,128 @@ func (f *MarkdownFormatter) formatTreeNode(node api.TreeNode, depth int) string 
 	for _, child := range children {
 		childOutput := f.formatTreeNode(child, depth+1)
 		result.WriteString(childOutput)
+	}
+
+	return result.String()
+}
+
+// formatMapMarkdown formats a map with proper indentation based on depth
+func (f *MarkdownFormatter) formatMapMarkdown(mapVal map[string]interface{}, opts FormatOptions) string {
+	if len(mapVal) == 0 {
+		return "{}"
+	}
+
+	depth := opts.Depth()
+	indent := strings.Repeat("  ", depth)
+
+	// Sort keys for consistent output
+	keys := make([]string, 0, len(mapVal))
+	for k := range mapVal {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	var result strings.Builder
+	for _, key := range keys {
+		value := mapVal[key]
+
+		// Check if value is nested PrettyData
+		if nestedData, ok := value.(*api.PrettyData); ok {
+			nestedOutput, _ := f.FormatPrettyData(nestedData, opts.IncreaseDepth())
+			result.WriteString(fmt.Sprintf("%s**%s**:\n\n%s\n", indent, key, nestedOutput))
+			continue
+		}
+
+		// Check if value is nested map
+		if nestedMap, ok := value.(map[string]interface{}); ok {
+			nestedOutput := f.formatMapMarkdown(nestedMap, opts.IncreaseDepth())
+			result.WriteString(fmt.Sprintf("%s**%s**:\n%s\n", indent, key, nestedOutput))
+			continue
+		}
+
+		// Handle nil values - ProcessFieldValue already normalizes nil pointers to nil
+		if value == nil {
+			result.WriteString(fmt.Sprintf("%s**%s**: —\n", indent, key))
+			continue
+		}
+
+		// Handle slices - ProcessFieldValue already normalizes to []interface{}
+		if sliceVal, ok := value.([]interface{}); ok {
+			sliceOutput := f.formatSliceMarkdown(sliceVal, opts.IncreaseDepth())
+			result.WriteString(fmt.Sprintf("%s**%s**: %s\n", indent, key, sliceOutput))
+			continue
+		}
+
+		// Simple value
+		result.WriteString(fmt.Sprintf("%s**%s**: %v\n", indent, key, value))
+	}
+
+	return result.String()
+}
+
+// formatSliceMarkdown formats a slice based on element types and depth
+func (f *MarkdownFormatter) formatSliceMarkdown(arrayVal []interface{}, opts FormatOptions) string {
+	if len(arrayVal) == 0 {
+		return "[]"
+	}
+
+	depth := opts.Depth()
+	indent := strings.Repeat("  ", depth)
+
+	// Check if all elements are primitives
+	// ProcessFieldValue normalizes structs to maps and dereferences pointers,
+	// so we only need to check for maps and slices
+	allPrimitives := true
+	for _, elem := range arrayVal {
+		if elem == nil {
+			continue
+		}
+		_, isMap := elem.(map[string]interface{})
+		_, isSlice := elem.([]interface{})
+		if isMap || isSlice {
+			allPrimitives = false
+			break
+		}
+	}
+
+	// Inline for primitive slices with 5 or fewer elements
+	if allPrimitives && len(arrayVal) <= 5 {
+		strs := make([]string, len(arrayVal))
+		for i, v := range arrayVal {
+			if v == nil {
+				strs[i] = "—"
+			} else {
+				strs[i] = fmt.Sprintf("%v", v)
+			}
+		}
+		return "[" + strings.Join(strs, ", ") + "]"
+	}
+
+	// Bullet list for complex types or long lists
+	var result strings.Builder
+	for _, elem := range arrayVal {
+		// Check for nested PrettyData
+		if nestedData, ok := elem.(*api.PrettyData); ok {
+			nestedOutput, _ := f.FormatPrettyData(nestedData, opts.IncreaseDepth())
+			result.WriteString(fmt.Sprintf("%s- %s\n", indent, nestedOutput))
+			continue
+		}
+
+		// Check for nested map
+		if nestedMap, ok := elem.(map[string]interface{}); ok {
+			mapOutput := f.formatMapMarkdown(nestedMap, opts.IncreaseDepth())
+			result.WriteString(fmt.Sprintf("%s- \n%s", indent, mapOutput))
+			continue
+		}
+
+		// Handle nil
+		if elem == nil {
+			result.WriteString(fmt.Sprintf("%s- —\n", indent))
+			continue
+		}
+
+		// Simple value
+		result.WriteString(fmt.Sprintf("%s- %v\n", indent, elem))
 	}
 
 	return result.String()

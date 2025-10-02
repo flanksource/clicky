@@ -377,10 +377,17 @@ func (p *StructParser) ParseDataWithSchema(data interface{}, schema *PrettyObjec
 			tableRows := p.parseTableData(fieldVal, field)
 			result.Tables[field.Name] = tableRows
 		} else if field.Format == FormatTree {
-			// For tree fields, store the value directly (preserve TreeNode interface)
-			fieldValue, err := field.Parse(fieldVal.Interface())
-			if err == nil {
-				result.Values[field.Name] = fieldValue
+			// For tree fields, convert to SimpleTreeNode for consistent formatting
+			var treeNode TreeNode
+			if tn, ok := fieldVal.Interface().(TreeNode); ok {
+				treeNode = TreeNodeToSimple(tn)
+			}
+
+			if treeNode != nil {
+				fieldValue, err := field.Parse(treeNode)
+				if err == nil {
+					result.Values[field.Name] = fieldValue
+				}
 			}
 		} else {
 			// Handle nested struct/map fields - recursively create PrettyData
