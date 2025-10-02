@@ -641,9 +641,9 @@ func (f *HTMLFormatter) formatFieldValueHTMLWithStyle(fieldValue api.FieldValue,
 		return f.formatImageHTML(fieldValue, field)
 	}
 
-	// Handle nested fields by formatting them as HTML
-	if fieldValue.HasNestedFields() {
-		return f.formatNestedFieldValue(fieldValue)
+	// Handle nested PrettyData structures
+	if nestedData, ok := fieldValue.Value.(*api.PrettyData); ok {
+		return f.formatNestedPrettyData(nestedData)
 	}
 
 	formatted := fieldValue.Formatted()
@@ -670,27 +670,36 @@ func (f *HTMLFormatter) formatFieldValueHTMLWithStyle(fieldValue api.FieldValue,
 	return fmt.Sprintf("<span class=\"text-gray-900\">%s</span>", html.EscapeString(formatted))
 }
 
-// formatNestedFieldValue formats a FieldValue with nested fields as HTML
-func (f *HTMLFormatter) formatNestedFieldValue(fieldValue api.FieldValue) string {
+// formatNestedPrettyData formats a PrettyData structure as nested HTML
+func (f *HTMLFormatter) formatNestedPrettyData(data *api.PrettyData) string {
 	var result strings.Builder
 	result.WriteString(`<div class="space-y-1">`)
 
-	keys := fieldValue.GetNestedFieldKeys()
-	for _, key := range keys {
-		nestedField, _ := fieldValue.GetNestedField(key)
-		prettyKey := f.prettifyFieldName(key)
-
-		result.WriteString(`<div class="flex">`)
-		result.WriteString(fmt.Sprintf(`<span class="text-gray-600 font-medium w-32 flex-shrink-0">%s:</span>`, html.EscapeString(prettyKey)))
-
-		if nestedField.HasNestedFields() {
-			result.WriteString(`<div class="ml-4">`)
-			result.WriteString(f.formatNestedFieldValue(nestedField))
-			result.WriteString("</div>")
-		} else {
-			result.WriteString(f.formatFieldValueHTML(nestedField))
+	// Format regular fields
+	for _, field := range data.Schema.Fields {
+		if field.Format == api.FormatTable {
+			continue // Skip tables in nested view
 		}
-		result.WriteString("</div>")
+
+		if fieldValue, ok := data.Values[field.Name]; ok {
+			label := field.Label
+			if label == "" {
+				label = f.prettifyFieldName(field.Name)
+			}
+
+			result.WriteString(`<div class="flex">`)
+			result.WriteString(fmt.Sprintf(`<span class="text-gray-600 font-medium w-32 flex-shrink-0">%s:</span>`, html.EscapeString(label)))
+
+			// Check for further nesting
+			if nestedData, ok := fieldValue.Value.(*api.PrettyData); ok {
+				result.WriteString(`<div class="ml-4">`)
+				result.WriteString(f.formatNestedPrettyData(nestedData))
+				result.WriteString("</div>")
+			} else {
+				result.WriteString(f.formatFieldValueHTML(fieldValue))
+			}
+			result.WriteString("</div>")
+		}
 	}
 
 	result.WriteString("</div>")
@@ -827,7 +836,7 @@ func (f *HTMLFormatter) formatTableDataHTMLWithGridJS(rows []api.PrettyDataRow, 
 
 	// Configure Grid.js options
 	result.WriteString("                        search: true,\n")
-
+	result.WriteString("                        pagination: false,\n")
 	result.WriteString("                        sort: true,\n")
 	result.WriteString("                        resizable: true,\n")
 	result.WriteString("                        className: {\n")

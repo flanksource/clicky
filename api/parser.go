@@ -376,12 +376,55 @@ func (p *StructParser) ParseDataWithSchema(data interface{}, schema *PrettyObjec
 			// Parse table data
 			tableRows := p.parseTableData(fieldVal, field)
 			result.Tables[field.Name] = tableRows
+		} else if field.Format == FormatTree {
+			// For tree fields, store the value directly (preserve TreeNode interface)
+			fieldValue, err := field.Parse(fieldVal.Interface())
+			if err == nil {
+				result.Values[field.Name] = fieldValue
+			}
 		} else {
-			// Handle nested struct/map fields - create nested FieldValues instead of string formatting
+			// Handle nested struct/map fields - recursively create PrettyData
 			if (field.Type == "struct" || field.Type == "map") && (fieldVal.Kind() == reflect.Map || fieldVal.Kind() == reflect.Struct) {
-				// For nested structures, we create a special FieldValue that contains nested fields
-				nestedFieldValue := p.createNestedFieldValue(field, fieldVal)
-				result.Values[field.Name] = nestedFieldValue
+				// Create a schema for the nested structure
+				var nestedSchema *PrettyObject
+				if len(field.Fields) > 0 {
+					// Use the fields defined in the parent schema
+					nestedSchema = &PrettyObject{Fields: field.Fields}
+				} else {
+					// Auto-generate schema from the structure
+					var err error
+					if fieldVal.Kind() == reflect.Struct {
+						nestedSchema, err = p.ParseStructSchema(fieldVal)
+						if err != nil {
+							// Skip if we can't parse the schema
+							continue
+						}
+					} else if fieldVal.Kind() == reflect.Map {
+						// For maps without schema, create fields dynamically
+						nestedSchema = &PrettyObject{Fields: []PrettyField{}}
+						for _, key := range fieldVal.MapKeys() {
+							if key.Kind() == reflect.String {
+								mapValue := fieldVal.MapIndex(key)
+								if mapValue.IsValid() {
+									nestedSchema.Fields = append(nestedSchema.Fields, PrettyField{
+										Name: key.String(),
+										Type: p.inferType(mapValue),
+									})
+								}
+							}
+						}
+					}
+				}
+
+				// Recursively parse the nested structure
+				nestedPrettyData, err := p.ParseDataWithSchema(fieldVal.Interface(), nestedSchema)
+				if err == nil {
+					// Store the nested PrettyData in the FieldValue
+					result.Values[field.Name] = FieldValue{
+						Field: field,
+						Value: nestedPrettyData,
+					}
+				}
 			} else {
 				// Parse regular field
 				fieldValue, err := field.Parse(fieldVal.Interface())
@@ -607,161 +650,6 @@ func (p *StructParser) inferColorOptions(fieldName string, val reflect.Value) ma
 	return colorOptions
 }
 
-// createNestedFieldValue creates a FieldValue with nested fields for struct/map types
-func (p *StructParser) createNestedFieldValue(field PrettyField, val reflect.Value) FieldValue {
-	nestedFields := make(map[string]FieldValue)
-
-	if val.Kind() == reflect.Map {
-		// Handle map as nested fields - combine schema definitions with existing map data
-		if len(field.Fields) > 0 {
-			// Create a map of schema field definitions for quick lookup
-			schemaFields := make(map[string]PrettyField)
-			for _, fieldDef := range field.Fields {
-				schemaFields[fieldDef.Name] = fieldDef
-			}
-
-			// Process all keys in the map
-			for _, key := range val.MapKeys() {
-				if key.Kind() == reflect.String {
-					keyStr := key.String()
-					mapValue := val.MapIndex(key)
-
-					if mapValue.IsValid() {
-						if mapValue.Kind() == reflect.Interface && !mapValue.IsNil() {
-							mapValue = mapValue.Elem()
-						}
-
-						var nestedField PrettyField
-
-						// Use schema definition if available, otherwise create a default one
-						if schemaDef, exists := schemaFields[keyStr]; exists {
-							nestedField = schemaDef
-
-							// Handle date format options
-							if nestedField.DateFormat != "" {
-								if nestedField.FormatOptions == nil {
-									nestedField.FormatOptions = make(map[string]string)
-								}
-								nestedField.FormatOptions["format"] = nestedField.DateFormat
-								if nestedField.Format == "" {
-									nestedField.Format = "date"
-								}
-							}
-						} else {
-							// Create a simple PrettyField for keys not in schema
-							nestedField = PrettyField{
-								Name: keyStr,
-								Type: InferValueType(mapValue.Interface()),
-							}
-						}
-
-						// Recursively handle nested maps/structs
-						if mapValue.Kind() == reflect.Map || mapValue.Kind() == reflect.Struct {
-							nestedFieldValue := p.createNestedFieldValue(nestedField, mapValue)
-							nestedFields[keyStr] = nestedFieldValue
-						} else {
-							// Parse as regular field value with schema formatting
-							fieldValue, err := nestedField.Parse(mapValue.Interface())
-							if err == nil {
-								nestedFields[keyStr] = fieldValue
-							}
-						}
-					}
-				}
-			}
-		} else {
-			// Fallback to dynamic field discovery
-			for _, key := range val.MapKeys() {
-				if key.Kind() == reflect.String {
-					keyStr := key.String()
-					mapValue := val.MapIndex(key)
-
-					if mapValue.IsValid() {
-						if mapValue.Kind() == reflect.Interface && !mapValue.IsNil() {
-							mapValue = mapValue.Elem()
-						}
-
-						// Create a simple PrettyField for each map key
-						nestedField := PrettyField{
-							Name: keyStr,
-							Type: InferValueType(mapValue.Interface()),
-						}
-
-						// Recursively handle nested maps/structs
-						if mapValue.Kind() == reflect.Map || mapValue.Kind() == reflect.Struct {
-							nestedFieldValue := p.createNestedFieldValue(nestedField, mapValue)
-							nestedFields[keyStr] = nestedFieldValue
-						} else {
-							// Parse as regular field value
-							fieldValue, err := nestedField.Parse(mapValue.Interface())
-							if err == nil {
-								nestedFields[keyStr] = fieldValue
-							}
-						}
-					}
-				}
-			}
-		}
-	} else if val.Kind() == reflect.Struct {
-		// Handle struct as nested fields
-		typ := val.Type()
-		for i := 0; i < val.NumField(); i++ {
-			structField := typ.Field(i)
-			fieldVal := val.Field(i)
-
-			if !fieldVal.CanInterface() {
-				continue
-			}
-
-			// Get field name (prefer JSON tag)
-			fieldName := structField.Name
-			jsonTag := structField.Tag.Get("json")
-			if jsonTag != "" && jsonTag != "-" {
-				if parts := strings.Split(jsonTag, ","); parts[0] != "" {
-					fieldName = parts[0]
-				}
-			}
-
-			// Create PrettyField for struct field
-			nestedField := PrettyField{
-				Name: fieldName,
-				Type: p.inferType(fieldVal),
-			}
-
-			// Recursively handle nested maps/structs
-			if fieldVal.Kind() == reflect.Map || fieldVal.Kind() == reflect.Struct {
-				nestedFieldValue := p.createNestedFieldValue(nestedField, fieldVal)
-				nestedFields[fieldName] = nestedFieldValue
-			} else {
-				// Parse as regular field value
-				fieldValue, err := nestedField.Parse(fieldVal.Interface())
-				if err == nil {
-					nestedFields[fieldName] = fieldValue
-				}
-			}
-		}
-	}
-
-	// Create a formatted text representation for nested fields
-	var textLines []string
-	for fieldName, nestedValue := range nestedFields {
-		label := PrettifyFieldName(fieldName)
-		formatted := nestedValue.Formatted()
-		textLines = append(textLines, fmt.Sprintf("%s: %s", label, formatted))
-	}
-
-	textObj := &Text{
-		Content: strings.Join(textLines, "\n"),
-	}
-
-	return FieldValue{
-		Field:        field,
-		Value:        val.Interface(),
-		NestedFields: nestedFields,
-		Text:         textObj,
-	}
-}
-
 // ParseStructSchema creates a PrettyObject schema from struct tags
 func (p *StructParser) ParseStructSchema(val reflect.Value) (*PrettyObject, error) {
 	if val.Kind() != reflect.Struct {
@@ -791,6 +679,12 @@ func (p *StructParser) ParseStructSchema(val reflect.Value) (*PrettyObject, erro
 
 		// Check if it's a table field (slice/array of structs)
 		fieldVal := val.Field(i)
+
+		// Infer Type if not already set in the tag
+		if prettyField.Type == "" {
+			prettyField.Type = p.inferType(fieldVal)
+		}
+
 		if strings.Contains(prettyTag, "table") && (fieldVal.Kind() == reflect.Slice || fieldVal.Kind() == reflect.Array) {
 			prettyField.Format = FormatTable
 			// Parse table schema from first element if available
@@ -803,6 +697,9 @@ func (p *StructParser) ParseStructSchema(val reflect.Value) (*PrettyObject, erro
 					tableFields, err := p.GetTableFields(firstElem)
 					if err == nil {
 						prettyField.Fields = tableFields
+						prettyField.TableOptions = PrettyTable{
+							Fields: tableFields,
+						}
 					}
 				}
 			}
@@ -944,11 +841,21 @@ func (p *StructParser) StructToRow(val reflect.Value) (PrettyDataRow, error) {
 		fieldVal := val.Field(i)
 		prettyField := ParsePrettyTagWithName(fieldName, prettyTag)
 
-		// Process field value
-		row[fieldName] = FieldValue{
-			Value: p.ProcessFieldValue(fieldVal),
+		// Process field value - this normalizes pointers, structs, Pretty implementations, etc.
+		processedValue := p.ProcessFieldValue(fieldVal)
+
+		// Create FieldValue
+		fv := FieldValue{
+			Value: processedValue,
 			Field: prettyField,
 		}
+
+		// If the processed value is a Text object (from Pretty interface), store it
+		if text, ok := processedValue.(Text); ok {
+			fv.Text = &text
+		}
+
+		row[fieldName] = fv
 	}
 
 	return row, nil
@@ -1008,36 +915,39 @@ func (p *StructParser) getMapFieldValue(val reflect.Value, fieldName string) ref
 }
 
 // ProcessFieldValue processes a field value, handling pointers and returning the appropriate value
+// This is the central normalization function that converts all values to simple types:
+// - Pointers are dereferenced (nil pointers return nil)
+// - Pretty implementations are converted to Text objects
+// - Structs are converted to maps recursively
+// - Slices and maps are processed recursively
 func (p *StructParser) ProcessFieldValue(fieldVal reflect.Value) interface{} {
-	// Handle nil pointers
-	if fieldVal.Kind() == reflect.Ptr && fieldVal.IsNil() {
-		return nil
-	}
-
-	// Dereference pointers
-	if fieldVal.Kind() == reflect.Ptr {
+	// Recursively dereference all pointer levels
+	for fieldVal.Kind() == reflect.Ptr {
+		if fieldVal.IsNil() {
+			return nil
+		}
 		fieldVal = fieldVal.Elem()
 	}
 
-	// Handle slices - dereference pointer elements
+	// Check if the dereferenced value implements Pretty interface
+	if fieldVal.IsValid() && fieldVal.CanInterface() {
+		if pretty, ok := fieldVal.Interface().(Pretty); ok {
+			return pretty.Pretty()
+		}
+	}
+
+	// Handle slices - recursively process all elements
 	if fieldVal.Kind() == reflect.Slice {
 		result := make([]interface{}, fieldVal.Len())
 		for i := 0; i < fieldVal.Len(); i++ {
 			elem := fieldVal.Index(i)
-			if elem.Kind() == reflect.Ptr {
-				if elem.IsNil() {
-					result[i] = nil
-				} else {
-					result[i] = elem.Elem().Interface()
-				}
-			} else {
-				result[i] = elem.Interface()
-			}
+			// Recursively process each element (handles pointers, structs, Pretty, etc.)
+			result[i] = p.ProcessFieldValue(elem)
 		}
 		return result
 	}
 
-	// Handle maps - dereference pointer values
+	// Handle maps - recursively process all values
 	if fieldVal.Kind() == reflect.Map {
 		result := make(map[string]interface{})
 		iter := fieldVal.MapRange()
@@ -1046,21 +956,13 @@ func (p *StructParser) ProcessFieldValue(fieldVal reflect.Value) interface{} {
 			v := iter.Value()
 
 			keyStr := fmt.Sprintf("%v", k.Interface())
-
-			if v.Kind() == reflect.Ptr {
-				if v.IsNil() {
-					result[keyStr] = nil
-				} else {
-					result[keyStr] = v.Elem().Interface()
-				}
-			} else {
-				result[keyStr] = v.Interface()
-			}
+			// Recursively process each value (handles pointers, Pretty, etc.)
+			result[keyStr] = p.ProcessFieldValue(v)
 		}
 		return result
 	}
 
-	// Return the interface value
+	// Return the interface value for primitives (string, int, float, bool, etc.)
 	if fieldVal.IsValid() {
 		return fieldVal.Interface()
 	}
