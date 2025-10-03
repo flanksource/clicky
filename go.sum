@@ -11,8 +11,12 @@ github.com/ajstarks/deck v0.0.0-20200831202436-30c9fc6549a9/go.mod h1:JynElWSGnm
 github.com/ajstarks/deck/generate v0.0.0-20210309230005-c3f852c02e19/go.mod h1:T13YZdzov6OU0A1+RfKZiZN9ca6VeKdBdyDV+BY97Tk=
 github.com/ajstarks/svgo v0.0.0-20211024235047-1546f124cd8b h1:slYM766cy2nI3BwyRiyQj/Ud48djTMtMebDqepE95rw=
 github.com/ajstarks/svgo v0.0.0-20211024235047-1546f124cd8b/go.mod h1:1KcenG0jGWcpt8ov532z81sp/kMMUG485J2InIOyADM=
+github.com/alecthomas/assert/v2 v2.11.0 h1:2Q9r3ki8+JYXvGsDyBXwH3LcJ+WK5D0gc5E8vS6K3D0=
+github.com/alecthomas/assert/v2 v2.11.0/go.mod h1:Bze95FyfUr7x34QZrjL+XP+0qgp/zg8yS+TtBj1WA3k=
 github.com/alecthomas/chroma/v2 v2.20.0 h1:sfIHpxPyR07/Oylvmcai3X/exDlE8+FA820NTz+9sGw=
 github.com/alecthomas/chroma/v2 v2.20.0/go.mod h1:e7tViK0xh/Nf4BYHl00ycY6rV7b8iXBksI9E359yNmA=
+github.com/alecthomas/repr v0.5.1 h1:E3G4t2QbHTSNpPKBgMTln5KLkZHLOcU7r37J4pXBuIg=
+github.com/alecthomas/repr v0.5.1/go.mod h1:Fr0507jx4eOXV7AlPV6AVZLYrLIuIeSOWtW57eE/O/4=
 github.com/antlr4-go/antlr/v4 v4.13.0 h1:lxCg3LAv+EUK6t1i0y1V6/SLeUi0eKEKdhQAlS8TVTI=
 github.com/antlr4-go/antlr/v4 v4.13.0/go.mod h1:pfChB/xh/Unjila75QW7+VU4TSnWnnk9UTnmpPaOR2g=
 github.com/aymanbagabas/go-osc52/v2 v2.0.1 h1:HwpRHbFMcZLEVr42D4p7XBqjyuxQH5SMiErDT4WkJ2k=
@@ -108,8 +112,8 @@ github.com/gosimple/unidecode v1.0.1 h1:hZzFTMMqSswvf0LBJZCZgThIZrpDHFXux9KeGmn6
 github.com/gosimple/unidecode v1.0.1/go.mod h1:CP0Cr1Y1kogOtx0bJblKzsVWrqYaqfNOnHzpgWw4Awc=
 github.com/hairyhenderson/toml v0.4.2-0.20210923231440-40456b8e66cf h1:I1sbT4ZbIt9i+hB1zfKw2mE8C12TuGxPiW7YmtLbPa4=
 github.com/hairyhenderson/toml v0.4.2-0.20210923231440-40456b8e66cf/go.mod h1:jDHmWDKZY6MIIYltYYfW4Rs7hQ50oS4qf/6spSiZAxY=
-github.com/hairyhenderson/yaml v0.0.0-20220618171115-2d35fca545ce h1:cVkYhlWAxwuS2/Yp6qPtcl0fGpcWxuZNonywHZ6/I+s=
-github.com/hairyhenderson/yaml v0.0.0-20220618171115-2d35fca545ce/go.mod h1:7TyiGlHI+IO+iJbqRZ82QbFtvgj/AIcFm5qc9DLn7Kc=
+github.com/hairyhenderson/yaml v2.1.0+incompatible h1:7VxcV0eaG+8Du4HvuOBrhz2f2D3Q2Q8l3Z+Nye/yA64=
+github.com/hairyhenderson/yaml v2.1.0+incompatible/go.mod h1:FGftq+LRPYH6wiBS2yUmcxT1FrloDiyxq3SzjmTQzXM=
 github.com/henvic/httpretty v0.1.4 h1:Jo7uwIRWVFxkqOnErcoYfH90o3ddQyVrSANeS4cxYmU=
 github.com/henvic/httpretty v0.1.4/go.mod h1:Dn60sQTZfbt2dYsdUSNsCljyF4AfdqnuJFDLJA1I4AM=
 github.com/hexops/gotextdiff v1.0.3 h1:gitA9+qJrrTCsiCl7+kh75nPqQt1cx4ZkudSTLoUqJM=
@@ -280,6 +284,7 @@ github.com/tiendc/go-deepcopy v1.6.0 h1:0UtfV/imoCwlLxVsyfUd4hNHnB3drXsfle+wzSCA
 github.com/tiendc/go-deepcopy v1.6.0/go.mod h1:toXoeQoUqXOOS/X4sKuiAoSk6elIdqc0pN7MTgOOo2I=
 github.com/timberio/go-datemath v0.1.0 h1:1OUCvSIX1qXLJ57h12OWfgt6MNpJnsdNvrp8dLIUFtg=
 github.com/timberio/go-datemath v0.1.0/go.mod h1:m7kjsbCuO4QKP3KLfnxiUZWiOiFXmxj30HeexjL3lc0=
+github.com/tj/assert v0.0.0-20190920132354-ee03d75cd160 h1:NSWpaDaurcAJY7PkL8Xt0PhZE7qpvbZl5ljd8r6U0bI=
 github.com/tj/assert v0.0.0-20190920132354-ee03d75cd160/go.mod h1:mZ9/Rh9oLWpLLDRpvE+3b7gP/C2YyLFYxNmcLnPTMe0=
 github.com/tj/go-naturaldate v1.3.0 h1:OgJIPkR/Jk4bFMBLbxZ8w+QUxwjqSvzd9x+yXocY4RI=
 github.com/tj/go-naturaldate v1.3.0/go.mod h1:rpUbjivDKiS1BlfMGc2qUKNZ/yxgthOfmytQs8d8hKk=
