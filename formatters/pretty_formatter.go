@@ -618,9 +618,22 @@ func (p *PrettyFormatter) formatStructWithVisited(val reflect.Value, visited map
 			continue
 		}
 
-		// Format field value with visited tracking
-		valueStr := p.formatValueWithVisited(fieldVal, api.PrettyField{}, visited)
-		parts = append(parts, fmt.Sprintf("%s:%s", field.Name, valueStr))
+		jsonTag := field.Tag.Get("json")
+
+		// Get field name from JSON tag or use field name
+		fieldName := field.Name
+		if jsonTag != "" && jsonTag != "-" {
+			if parts := strings.Split(jsonTag, ","); parts[0] != "" {
+				fieldName = parts[0]
+			}
+		}
+
+		// Parse pretty tag to get formatting configuration
+		prettyField := api.ParsePrettyTagWithName(fieldName, prettyTag)
+
+		// Format field value with visited tracking and proper formatting
+		valueStr := p.formatValueWithVisited(fieldVal, prettyField, visited)
+		parts = append(parts, fmt.Sprintf("%s:%s", fieldName, valueStr))
 	}
 
 	return fmt.Sprintf("{%s}", strings.Join(parts, " "))
