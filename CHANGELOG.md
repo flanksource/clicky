@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.5.0](https://github.com/flanksource/clicky/compare/v1.4.0...v1.5.0) (2025-10-03)
+
+
+### ✅ Tests
+
+* add comprehensive uber-demo integration tests for all formats ([ce4da59](https://github.com/flanksource/clicky/commit/ce4da59ec233984ad33f20240d3ab8556213bb52))
+
+
+### ✨ Features
+
+* add array loading from file/stdin in args parser ([1d2a0a4](https://github.com/flanksource/clicky/commit/1d2a0a4f012456a49f8dd9927215a9bca7f432a2))
+* add cobra command ([f98f64e](https://github.com/flanksource/clicky/commit/f98f64e1489a8dc7ab87adf3ba3b149e04dae8b8))
+
+
+### 🐛 Bug Fixes
+
+* populate TableOptions.Fields for HTML table rendering ([04b593a](https://github.com/flanksource/clicky/commit/04b593a68ea1a9dfa4197f767fcc3e0a9d1cdf80))
+* preserve pretty tag formatting for nested structs in slices/maps ([ac064a5](https://github.com/flanksource/clicky/commit/ac064a52dd10de05ace67fc8bbedced517ad3aaa))
+
 ## [1.4.0](https://github.com/flanksource/clicky/compare/v1.3.1...v1.4.0) (2025-09-30)
 
 
