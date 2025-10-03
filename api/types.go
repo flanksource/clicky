@@ -2,6 +2,7 @@ package api
 
 import (
 	"fmt"
+	"html"
 	"reflect"
 	"sort"
 	"strconv"
@@ -112,6 +113,24 @@ func (v FieldValue) Formatted() string {
 		return fmt.Sprintf("{%s}", strings.Join(parts, ", "))
 	}
 
+	// Handle map values - format as key-value pairs
+	if m, ok := v.Value.(map[string]interface{}); ok {
+		if len(m) == 0 {
+			return "{}"
+		}
+		keys := make([]string, 0, len(m))
+		for k := range m {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys) // Consistent ordering
+
+		var parts []string
+		for _, k := range keys {
+			parts = append(parts, fmt.Sprintf("%s: %v", k, m[k]))
+		}
+		return strings.Join(parts, ", ")
+	}
+
 	// Fallback for legacy cases
 	return fmt.Sprintf("%v", v.Value)
 }
@@ -131,12 +150,65 @@ func (v FieldValue) Plain() string {
 	if v.Text != nil {
 		return v.Text.String()
 	}
+	// Handle map values - format as key-value pairs
+	if m, ok := v.Value.(map[string]interface{}); ok {
+		if len(m) == 0 {
+			return "{}"
+		}
+		keys := make([]string, 0, len(m))
+		for k := range m {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys) // Consistent ordering
+
+		var parts []string
+		for _, k := range keys {
+			parts = append(parts, fmt.Sprintf("%s: %v", k, m[k]))
+		}
+		return strings.Join(parts, ", ")
+	}
+	// Handle slice values - format as simple list or table
+	if slice, ok := v.Value.([]interface{}); ok {
+		if len(slice) == 0 {
+			return "[]"
+		}
+		// Check if this is a slice of maps (should be rendered as table)
+		if len(slice) > 0 {
+			if _, isMap := slice[0].(map[string]interface{}); isMap {
+				return formatSliceOfMapsPlain(slice)
+			}
+		}
+		// For primitive slices, just join values
+		var parts []string
+		for _, item := range slice {
+			parts = append(parts, fmt.Sprintf("%v", item))
+		}
+		return strings.Join(parts, ", ")
+	}
 	return fmt.Sprintf("%v", v.Value)
 }
 
 func (v FieldValue) ANSI() string {
 	if v.Text != nil {
 		return v.Text.ANSI()
+	}
+	// Handle map values - format with muted keys
+	if m, ok := v.Value.(map[string]interface{}); ok {
+		if len(m) == 0 {
+			return "{}"
+		}
+		keys := make([]string, 0, len(m))
+		for k := range m {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys) // Consistent ordering
+
+		var parts []string
+		for _, k := range keys {
+			// Muted key (gray), normal value
+			parts = append(parts, fmt.Sprintf("\033[2m%s:\033[0m %v", k, m[k]))
+		}
+		return strings.Join(parts, ", ")
 	}
 	return fmt.Sprintf("%v", v.Value)
 }
@@ -145,12 +217,90 @@ func (v FieldValue) HTML() string {
 	if v.Text != nil {
 		return v.Text.HTML()
 	}
+	// Handle map values - format as definition list
+	if m, ok := v.Value.(map[string]interface{}); ok {
+		if len(m) == 0 {
+			return "<span class=\"text-gray-400\">{}</span>"
+		}
+
+		keys := make([]string, 0, len(m))
+		for k := range m {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys) // Consistent ordering
+
+		var result strings.Builder
+		result.WriteString(`<dl class="inline-flex flex-wrap gap-x-4 gap-y-1">`)
+		for _, k := range keys {
+			result.WriteString(fmt.Sprintf(
+				`<div class="inline-flex gap-1"><dt class="text-gray-500 font-medium">%s:</dt><dd class="text-gray-900">%v</dd></div>`,
+				html.EscapeString(k),
+				html.EscapeString(fmt.Sprintf("%v", m[k])),
+			))
+		}
+		result.WriteString(`</dl>`)
+		return result.String()
+	}
+	// Handle slice values - format as inline table for slices of maps
+	if slice, ok := v.Value.([]interface{}); ok {
+		if len(slice) == 0 {
+			return "<span class=\"text-gray-400\">[]</span>"
+		}
+		// Check if this is a slice of maps (should be rendered as table)
+		if len(slice) > 0 {
+			if _, isMap := slice[0].(map[string]interface{}); isMap {
+				return formatSliceOfMapsHTML(slice)
+			}
+		}
+		// For primitive slices, just join values
+		var parts []string
+		for _, item := range slice {
+			parts = append(parts, html.EscapeString(fmt.Sprintf("%v", item)))
+		}
+		return strings.Join(parts, ", ")
+	}
 	return fmt.Sprintf("%v", v.Value)
 }
 
 func (v FieldValue) Markdown() string {
 	if v.Text != nil {
 		return v.Text.Markdown()
+	}
+	// Handle map values - format as markdown definition list
+	if m, ok := v.Value.(map[string]interface{}); ok {
+		if len(m) == 0 {
+			return "{}"
+		}
+
+		keys := make([]string, 0, len(m))
+		for k := range m {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys) // Consistent ordering
+
+		var parts []string
+		for _, k := range keys {
+			parts = append(parts, fmt.Sprintf("**%s**: %v", k, m[k]))
+		}
+		return strings.Join(parts, ", ")
+	}
+	// Handle slice values - format as markdown table for slices of maps
+	if slice, ok := v.Value.([]interface{}); ok {
+		if len(slice) == 0 {
+			return "[]"
+		}
+		// Check if this is a slice of maps (should be rendered as table)
+		if len(slice) > 0 {
+			if _, isMap := slice[0].(map[string]interface{}); isMap {
+				return formatSliceOfMapsMarkdown(slice)
+			}
+		}
+		// For primitive slices, just join values
+		var parts []string
+		for _, item := range slice {
+			parts = append(parts, fmt.Sprintf("%v", item))
+		}
+		return strings.Join(parts, ", ")
 	}
 	return fmt.Sprintf("%v", v.Value)
 }
@@ -1172,6 +1322,170 @@ func (d *PrettyData) GetValueKeys() []string {
 func (d *PrettyData) GetValue(key string) (FieldValue, bool) {
 	value, exists := d.Values[key]
 	return value, exists
+}
+
+// formatSliceOfMapsMarkdown formats a slice of maps as a Markdown table
+func formatSliceOfMapsMarkdown(slice []interface{}) string {
+	if len(slice) == 0 {
+		return "[]"
+	}
+
+	// Extract all unique keys from all maps
+	keysSet := make(map[string]bool)
+	for _, item := range slice {
+		if m, ok := item.(map[string]interface{}); ok {
+			for k := range m {
+				keysSet[k] = true
+			}
+		}
+	}
+
+	// Convert to sorted slice
+	keys := make([]string, 0, len(keysSet))
+	for k := range keysSet {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	// Format as Markdown table
+	var result strings.Builder
+
+	// Header row
+	result.WriteString("| ")
+	for _, k := range keys {
+		result.WriteString(k)
+		result.WriteString(" | ")
+	}
+	result.WriteString("\n")
+
+	// Separator row
+	result.WriteString("| ")
+	for range keys {
+		result.WriteString("--- | ")
+	}
+	result.WriteString("\n")
+
+	// Data rows
+	for _, item := range slice {
+		if m, ok := item.(map[string]interface{}); ok {
+			result.WriteString("| ")
+			for _, k := range keys {
+				val := ""
+				if v, exists := m[k]; exists {
+					val = fmt.Sprintf("%v", v)
+				}
+				result.WriteString(val)
+				result.WriteString(" | ")
+			}
+			result.WriteString("\n")
+		}
+	}
+
+	return result.String()
+}
+
+// formatSliceOfMapsHTML formats a slice of maps as an inline Tailwind HTML table
+func formatSliceOfMapsHTML(slice []interface{}) string {
+	if len(slice) == 0 {
+		return "<span class=\"text-gray-400\">[]</span>"
+	}
+
+	// Extract all unique keys from all maps
+	keysSet := make(map[string]bool)
+	for _, item := range slice {
+		if m, ok := item.(map[string]interface{}); ok {
+			for k := range m {
+				keysSet[k] = true
+			}
+		}
+	}
+
+	// Convert to sorted slice
+	keys := make([]string, 0, len(keysSet))
+	for k := range keysSet {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	// Format as inline Tailwind table
+	var result strings.Builder
+	result.WriteString(`<div class="overflow-x-auto"><table class="min-w-full divide-y divide-gray-200 text-sm">`)
+
+	// Table header
+	result.WriteString(`<thead class="bg-gray-50"><tr>`)
+	for _, k := range keys {
+		result.WriteString(fmt.Sprintf(`<th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">%s</th>`, html.EscapeString(k)))
+	}
+	result.WriteString(`</tr></thead>`)
+
+	// Table body
+	result.WriteString(`<tbody class="bg-white divide-y divide-gray-200">`)
+	for _, item := range slice {
+		if m, ok := item.(map[string]interface{}); ok {
+			result.WriteString(`<tr>`)
+			for _, k := range keys {
+				val := ""
+				if v, exists := m[k]; exists {
+					val = fmt.Sprintf("%v", v)
+				}
+				result.WriteString(fmt.Sprintf(`<td class="px-3 py-2 whitespace-nowrap text-gray-900">%s</td>`, html.EscapeString(val)))
+			}
+			result.WriteString(`</tr>`)
+		}
+	}
+	result.WriteString(`</tbody>`)
+	result.WriteString(`</table></div>`)
+
+	return result.String()
+}
+
+// formatSliceOfMapsPlain formats a slice of maps as plain text table
+func formatSliceOfMapsPlain(slice []interface{}) string {
+	if len(slice) == 0 {
+		return "[]"
+	}
+
+	// Extract all unique keys from all maps
+	keysSet := make(map[string]bool)
+	for _, item := range slice {
+		if m, ok := item.(map[string]interface{}); ok {
+			for k := range m {
+				keysSet[k] = true
+			}
+		}
+	}
+
+	// Convert to sorted slice
+	keys := make([]string, 0, len(keysSet))
+	for k := range keysSet {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	// Format as simple text table
+	var result strings.Builder
+	result.WriteString("[")
+	for i, item := range slice {
+		if i > 0 {
+			result.WriteString(", ")
+		}
+		if m, ok := item.(map[string]interface{}); ok {
+			result.WriteString("{")
+			first := true
+			for _, k := range keys {
+				if v, exists := m[k]; exists {
+					if !first {
+						result.WriteString(", ")
+					}
+					first = false
+					result.WriteString(fmt.Sprintf("%s: %v", k, v))
+				}
+			}
+			result.WriteString("}")
+		}
+	}
+	result.WriteString("]")
+	return result.String()
 }
 
 // FormatManager defines the interface for converting data to various output formats.

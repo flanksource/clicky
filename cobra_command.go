@@ -7,10 +7,10 @@ import (
 	"strings"
 
 	"github.com/flanksource/clicky/flags"
+	"github.com/flanksource/commons/logger"
 	"github.com/samber/lo"
 	"github.com/spf13/cobra"
 )
-
 
 // AddCommand creates a Cobra command with automatic flag parsing from struct tags,
 // execution, and result formatting.
@@ -139,6 +139,7 @@ func AddCommand[T any](parent *cobra.Command, opts T, fn func(opts T) (any, erro
 		if err != nil {
 			return fmt.Errorf("formatting result: %w", err)
 		}
+		logger.Infof("Output of %d bytes", len(output))
 
 		fmt.Println(output)
 		return nil

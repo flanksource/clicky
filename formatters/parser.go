@@ -3,6 +3,7 @@ package formatters
 import (
 	"fmt"
 	"reflect"
+	"sort"
 	"strings"
 
 	"github.com/flanksource/clicky/api"
@@ -354,15 +355,47 @@ func convertSliceToPrettyDataWithOptions(val reflect.Value, opts FormatOptions) 
 	firstElem := val.Index(0)
 	firstElem, _ = safeDerefPointer(firstElem)
 
-	// We only handle slices of structs
-	if firstElem.Kind() != reflect.Struct {
-		return nil, fmt.Errorf("can only convert slice of structs to PrettyData, got slice of %s", firstElem.Kind())
+	// Handle slices of structs or maps
+	if firstElem.Kind() != reflect.Struct && firstElem.Kind() != reflect.Map {
+		return nil, fmt.Errorf("can only convert slice of structs or maps to PrettyData, got slice of %s", firstElem.Kind())
 	}
 
 	// Convert all elements to rows using options-aware method
 	var rows []api.PrettyDataRow
 	var tableFields []api.PrettyField
 	parser := api.NewStructParser()
+
+	// For slices of maps, extract all distinct keys from all maps
+	if firstElem.Kind() == reflect.Map {
+		keysSet := make(map[string]bool)
+		for i := 0; i < val.Len(); i++ {
+			elem := val.Index(i)
+			elem, isNil := safeDerefPointer(elem)
+			if isNil {
+				continue
+			}
+			if elem.Kind() == reflect.Map {
+				for _, key := range elem.MapKeys() {
+					if key.Kind() == reflect.String {
+						keysSet[key.String()] = true
+					}
+				}
+			}
+		}
+		// Convert to sorted slice of fields
+		keys := make([]string, 0, len(keysSet))
+		for k := range keysSet {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			tableFields = append(tableFields, api.PrettyField{
+				Name:  k,
+				Label: k,
+				Type:  "string",
+			})
+		}
+	}
 
 	// Statistics for PrettyRow usage
 	prettyRowCount := 0
@@ -393,7 +426,7 @@ func convertSliceToPrettyDataWithOptions(val reflect.Value, opts FormatOptions) 
 			continue // Skip elements that can't be converted
 		}
 
-		// Extract table schema from the first successful row
+		// Extract table schema from the first successful row (for structs)
 		// This ensures schema matches PrettyRow columns
 		if i == 0 && len(tableFields) == 0 {
 			for columnName := range row {
@@ -408,8 +441,8 @@ func convertSliceToPrettyDataWithOptions(val reflect.Value, opts FormatOptions) 
 		rows = append(rows, row)
 	}
 
-	// Fallback to struct reflection if no rows were generated
-	if len(rows) == 0 || len(tableFields) == 0 {
+	// Fallback to struct reflection if no rows were generated (structs only)
+	if len(rows) == 0 || (len(tableFields) == 0 && firstElem.Kind() == reflect.Struct) {
 		var err error
 		tableFields, err = GetTableFields(firstElem)
 		if err != nil {
@@ -777,15 +810,50 @@ func convertSliceToPrettyData(val reflect.Value) (*api.PrettyData, error) {
 	firstElem := val.Index(0)
 	firstElem, _ = safeDerefPointer(firstElem)
 
-	// We only handle slices of structs
-	if firstElem.Kind() != reflect.Struct {
-		return nil, fmt.Errorf("can only convert slice of structs to PrettyData, got slice of %s", firstElem.Kind())
+	// Handle slices of structs or maps
+	if firstElem.Kind() != reflect.Struct && firstElem.Kind() != reflect.Map {
+		return nil, fmt.Errorf("can only convert slice of structs or maps to PrettyData, got slice of %s", firstElem.Kind())
 	}
 
-	// Get the table schema from the first element
-	tableFields, err := GetTableFields(firstElem)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get table fields: %w", err)
+	var tableFields []api.PrettyField
+	var err error
+
+	// For slices of maps, extract all distinct keys from all maps
+	if firstElem.Kind() == reflect.Map {
+		keysSet := make(map[string]bool)
+		for i := 0; i < val.Len(); i++ {
+			elem := val.Index(i)
+			elem, isNil := safeDerefPointer(elem)
+			if isNil {
+				continue
+			}
+			if elem.Kind() == reflect.Map {
+				for _, key := range elem.MapKeys() {
+					if key.Kind() == reflect.String {
+						keysSet[key.String()] = true
+					}
+				}
+			}
+		}
+		// Convert to sorted slice of fields
+		keys := make([]string, 0, len(keysSet))
+		for k := range keysSet {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			tableFields = append(tableFields, api.PrettyField{
+				Name:  k,
+				Label: k,
+				Type:  "string",
+			})
+		}
+	} else {
+		// Get the table schema from the first struct element
+		tableFields, err = GetTableFields(firstElem)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get table fields: %w", err)
+		}
 	}
 
 	// Convert all elements to rows

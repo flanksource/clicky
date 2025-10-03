@@ -16,7 +16,7 @@ import (
 // are defined in pointer_formatting_test.go and reused here.
 
 // Additional helper functions not in pointer_formatting_test.go
-func int64Ptr(i int64) *int64    { return &i }
+func int64Ptr(i int64) *int64       { return &i }
 func float64Ptr(f float64) *float64 { return floatPtr(f) }
 
 // NestedStruct demonstrates nested structure handling
@@ -228,11 +228,11 @@ func createDemoData() *UberDemo {
 		// Nested maps
 		NestedMap: map[string]map[string]interface{}{
 			"database": {
-				"host":     "localhost",
-				"port":     5432,
-				"name":     "mydb",
-				"ssl":      true,
-				"timeout":  30,
+				"host":    "localhost",
+				"port":    5432,
+				"name":    "mydb",
+				"ssl":     true,
+				"timeout": 30,
 			},
 			"cache": {
 				"type":    "redis",
@@ -413,7 +413,7 @@ func TestUberDemoNoPointerAddresses(t *testing.T) {
 		{"CSV", manager.CSV},
 		{"Markdown", manager.Markdown},
 		{"Pretty", manager.Pretty},
-		// HTML is excluded from pointer check as it may contain valid hex colors
+		{"HTML", manager.HTML},
 	}
 
 	for _, tc := range testCases {

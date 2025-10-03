@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"reflect"
+	"sort"
 	"strings"
 	"time"
 
@@ -259,7 +260,7 @@ func (p *StructParser) structToRow(val reflect.Value) (map[string]interface{}, e
 			}
 		}
 
-		row[fieldName] = fieldVal.Interface()
+		row[fieldName] = p.ProcessFieldValue(fieldVal)
 	}
 
 	return row, nil
@@ -433,8 +434,9 @@ func (p *StructParser) ParseDataWithSchema(data interface{}, schema *PrettyObjec
 					}
 				}
 			} else {
-				// Parse regular field
-				fieldValue, err := field.Parse(fieldVal.Interface())
+				// Parse regular field - use ProcessFieldValue to handle pointers and structs
+				processedValue := p.ProcessFieldValue(fieldVal)
+				fieldValue, err := field.Parse(processedValue)
 				if err != nil {
 					// Skip fields that can't be parsed
 					continue
@@ -482,7 +484,9 @@ func (p *StructParser) parseTableData(val reflect.Value, field PrettyField) []Pr
 				if fieldVal.Kind() == reflect.Interface && !fieldVal.IsNil() {
 					fieldVal = fieldVal.Elem()
 				}
-				fieldValue, err := tableField.Parse(fieldVal.Interface())
+				// Use ProcessFieldValue to handle pointers and structs
+				processedValue := p.ProcessFieldValue(fieldVal)
+				fieldValue, err := tableField.Parse(processedValue)
 				if err == nil {
 					row[tableField.Name] = fieldValue
 				}
@@ -700,9 +704,49 @@ func (p *StructParser) ParseStructSchema(val reflect.Value) (*PrettyObject, erro
 				if firstElem.Kind() == reflect.Ptr {
 					firstElem = firstElem.Elem()
 				}
+				if firstElem.Kind() == reflect.Interface && !firstElem.IsNil() {
+					firstElem = firstElem.Elem()
+				}
 				if firstElem.Kind() == reflect.Struct {
 					tableFields, err := p.GetTableFields(firstElem)
 					if err == nil {
+						prettyField.Fields = tableFields
+						prettyField.TableOptions = PrettyTable{
+							Fields: tableFields,
+						}
+					}
+				} else if firstElem.Kind() == reflect.Map {
+					// Handle slices of maps - extract map keys as table columns
+					tableFields := p.GetTableFieldsFromMap(firstElem)
+					prettyField.Fields = tableFields
+					prettyField.TableOptions = PrettyTable{
+						Fields: tableFields,
+					}
+				}
+			}
+		} else if prettyField.Format != FormatTable && (fieldVal.Kind() == reflect.Slice || fieldVal.Kind() == reflect.Array) {
+			// Auto-detect slices of maps or structs as tables (even without explicit "table" tag)
+			if fieldVal.Len() > 0 {
+				firstElem := fieldVal.Index(0)
+				if firstElem.Kind() == reflect.Ptr {
+					firstElem = firstElem.Elem()
+				}
+				if firstElem.Kind() == reflect.Interface && !firstElem.IsNil() {
+					firstElem = firstElem.Elem()
+				}
+				if firstElem.Kind() == reflect.Map || firstElem.Kind() == reflect.Struct {
+					prettyField.Format = FormatTable
+					var tableFields []PrettyField
+					if firstElem.Kind() == reflect.Map {
+						tableFields = p.GetTableFieldsFromMap(firstElem)
+					} else {
+						var err error
+						tableFields, err = p.GetTableFields(firstElem)
+						if err != nil {
+							tableFields = nil
+						}
+					}
+					if len(tableFields) > 0 {
 						prettyField.Fields = tableFields
 						prettyField.TableOptions = PrettyTable{
 							Fields: tableFields,
@@ -757,6 +801,35 @@ func (p *StructParser) GetTableFields(val reflect.Value) ([]PrettyField, error) 
 	return fields, nil
 }
 
+// GetTableFieldsFromMap extracts fields from a map for table formatting
+func (p *StructParser) GetTableFieldsFromMap(val reflect.Value) []PrettyField {
+	if val.Kind() != reflect.Map {
+		return nil
+	}
+
+	var fields []PrettyField
+	keys := val.MapKeys()
+
+	// Sort keys for consistent ordering
+	sort.Slice(keys, func(i, j int) bool {
+		return fmt.Sprint(keys[i].Interface()) < fmt.Sprint(keys[j].Interface())
+	})
+
+	for _, key := range keys {
+		if key.Kind() == reflect.String {
+			keyStr := key.String()
+			// Create a PrettyField for each map key
+			fields = append(fields, PrettyField{
+				Name:  keyStr,
+				Label: keyStr,
+				Type:  "string", // Default type, could be enhanced by inspecting values
+			})
+		}
+	}
+
+	return fields
+}
+
 // StructToRowWithOptions converts a struct to a PrettyDataRow, checking for PrettyRow interface first
 func (p *StructParser) StructToRowWithOptions(val reflect.Value, opts interface{}) (PrettyDataRow, error) {
 	// Dereference pointer if needed
@@ -767,8 +840,27 @@ func (p *StructParser) StructToRowWithOptions(val reflect.Value, opts interface{
 		val = val.Elem()
 	}
 
+	// Handle maps as rows
+	if val.Kind() == reflect.Map {
+		row := make(PrettyDataRow)
+		for _, key := range val.MapKeys() {
+			if key.Kind() == reflect.String {
+				mapValue := val.MapIndex(key)
+				processedValue := p.ProcessFieldValue(mapValue)
+				row[key.String()] = FieldValue{
+					Value: processedValue,
+					Field: PrettyField{
+						Name: key.String(),
+						Type: "string",
+					},
+				}
+			}
+		}
+		return row, nil
+	}
+
 	if val.Kind() != reflect.Struct {
-		return nil, fmt.Errorf("expected struct, got %s", val.Kind())
+		return nil, fmt.Errorf("expected struct or map, got %s", val.Kind())
 	}
 
 	structType := val.Type()
@@ -815,8 +907,27 @@ func (p *StructParser) StructToRow(val reflect.Value) (PrettyDataRow, error) {
 		val = val.Elem()
 	}
 
+	// Handle maps as rows
+	if val.Kind() == reflect.Map {
+		row := make(PrettyDataRow)
+		for _, key := range val.MapKeys() {
+			if key.Kind() == reflect.String {
+				mapValue := val.MapIndex(key)
+				processedValue := p.ProcessFieldValue(mapValue)
+				row[key.String()] = FieldValue{
+					Value: processedValue,
+					Field: PrettyField{
+						Name: key.String(),
+						Type: "string",
+					},
+				}
+			}
+		}
+		return row, nil
+	}
+
 	if val.Kind() != reflect.Struct {
-		return nil, fmt.Errorf("expected struct, got %s", val.Kind())
+		return nil, fmt.Errorf("expected struct or map, got %s", val.Kind())
 	}
 
 	row := make(PrettyDataRow)
@@ -965,6 +1076,58 @@ func (p *StructParser) ProcessFieldValue(fieldVal reflect.Value) interface{} {
 			keyStr := fmt.Sprintf("%v", k.Interface())
 			// Recursively process each value (handles pointers, Pretty, etc.)
 			result[keyStr] = p.ProcessFieldValue(v)
+		}
+		return result
+	}
+
+	// Handle structs - convert to map with recursively processed fields
+	if fieldVal.Kind() == reflect.Struct {
+		// Check if this is a FieldValue struct - if so, extract the Value field
+		if fieldVal.Type().Name() == "FieldValue" {
+			// This is a FieldValue - extract and process its Value field
+			valueField := fieldVal.FieldByName("Value")
+			if valueField.IsValid() && valueField.CanInterface() {
+				return p.ProcessFieldValue(valueField)
+			}
+		}
+
+		result := make(map[string]interface{})
+		typ := fieldVal.Type()
+
+		for i := 0; i < fieldVal.NumField(); i++ {
+			field := typ.Field(i)
+			fVal := fieldVal.Field(i)
+
+			// Skip unexported fields
+			if !fVal.CanInterface() {
+				continue
+			}
+
+			prettyTag := field.Tag.Get("pretty")
+			jsonTag := field.Tag.Get("json")
+
+			// Skip hidden fields
+			if prettyTag == FormatHide {
+				continue
+			}
+
+			// Skip omitempty fields if empty
+			if jsonTag != "" && strings.Contains(jsonTag, "omitempty") {
+				if p.isEmptyValue(fVal) {
+					continue
+				}
+			}
+
+			// Get field name from json tag, fallback to field name
+			fieldName := field.Name
+			if jsonTag != "" && jsonTag != "-" {
+				if parts := strings.Split(jsonTag, ","); parts[0] != "" {
+					fieldName = parts[0]
+				}
+			}
+
+			// Recursively process the field value
+			result[fieldName] = p.ProcessFieldValue(fVal)
 		}
 		return result
 	}
