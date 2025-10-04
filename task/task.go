@@ -674,6 +674,10 @@ func (t *Task) Pretty() api.Text {
 		if level <= log.Level {
 			continue
 		}
+		// Hide info logs when task completed successfully and log level is Info (0) or higher
+		if t.status == StatusSuccess && level <= logger.Info && log.Level == logger.Info {
+			continue
+		}
 		var logStyle string
 
 		switch log.Level {

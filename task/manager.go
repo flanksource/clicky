@@ -16,9 +16,17 @@ import (
 	"github.com/flanksource/commons/collections"
 	flanksourceContext "github.com/flanksource/commons/context"
 	"github.com/flanksource/commons/logger"
+	"github.com/muesli/termenv"
 	"golang.org/x/sync/semaphore"
 	"golang.org/x/term"
 )
+
+// OutputEntry represents a captured stdout/stderr line with metadata
+type OutputEntry struct {
+	Timestamp time.Time
+	Stream    string // "stdout" or "stderr"
+	Line      string
+}
 
 // Manager manages and displays multiple tasks with progress bars
 type Manager struct {
@@ -50,6 +58,15 @@ type Manager struct {
 
 	// Task identity tracking for deduplication
 	tasksByIdentity sync.Map // map[string]*Task
+
+	// Output buffering
+	outputBuffer     []OutputEntry
+	bufferMutex      sync.Mutex
+	renderMutex      sync.Mutex
+	altScreenActive  bool
+	originalStdout   *os.File
+	originalStderr   *os.File
+	capturingOutput  bool
 }
 
 var global *Manager
@@ -302,6 +319,25 @@ func (tm *Manager) stopRenderAndWait() {
 	// Wait for render loop to complete by polling the atomic bool
 	for !tm.renderDone.Load() {
 		time.Sleep(10 * time.Millisecond)
+	}
+
+	// Exit alternate screen if it was active
+	if tm.altScreenActive {
+		tm.bufferMutex.Lock()
+		var outputWriter *os.File
+		if tm.capturingOutput && tm.originalStderr != nil {
+			outputWriter = tm.originalStderr
+		} else {
+			outputWriter = os.Stderr
+		}
+		tm.bufferMutex.Unlock()
+
+		output := termenv.NewOutput(outputWriter)
+		output.ExitAltScreen()
+		tm.altScreenActive = false
+
+		// Render final task status to primary screen
+		tm.renderFinal()
 	}
 }
 
@@ -644,4 +680,149 @@ func WaitForAllTasks() {
 
 	// Force a final render to ensure all task status is displayed
 	global.Render()
+}
+
+// bufferingWriter captures writes to a buffer with timestamps
+type bufferingWriter struct {
+	stream  string
+	manager *Manager
+}
+
+func (w *bufferingWriter) Write(p []byte) (n int, err error) {
+	w.manager.bufferMutex.Lock()
+	defer w.manager.bufferMutex.Unlock()
+
+	// Split by newlines and add each line to buffer
+	lines := strings.Split(string(p), "\n")
+	for i, line := range lines {
+		// Skip empty lines except the last one (which might be incomplete)
+		if line == "" && i < len(lines)-1 {
+			continue
+		}
+		if line != "" {
+			w.manager.outputBuffer = append(w.manager.outputBuffer, OutputEntry{
+				Timestamp: time.Now(),
+				Stream:    w.stream,
+				Line:      line,
+			})
+		}
+	}
+
+	return len(p), nil
+}
+
+// StartCapturingOutput redirects stdout/stderr to internal buffer
+func (tm *Manager) StartCapturingOutput() {
+	tm.bufferMutex.Lock()
+	defer tm.bufferMutex.Unlock()
+
+	if tm.capturingOutput {
+		return
+	}
+
+	tm.originalStdout = os.Stdout
+	tm.originalStderr = os.Stderr
+	tm.outputBuffer = []OutputEntry{}
+
+	// Create pipes for stdout and stderr
+	stdoutReader, stdoutWriter, _ := os.Pipe()
+	stderrReader, stderrWriter, _ := os.Pipe()
+
+	os.Stdout = stdoutWriter
+	os.Stderr = stderrWriter
+
+	// Start goroutines to read from pipes and buffer output
+	go func() {
+		scanner := make([]byte, 4096)
+		for {
+			n, err := stdoutReader.Read(scanner)
+			if err != nil {
+				return
+			}
+			(&bufferingWriter{stream: "stdout", manager: tm}).Write(scanner[:n])
+		}
+	}()
+
+	go func() {
+		scanner := make([]byte, 4096)
+		for {
+			n, err := stderrReader.Read(scanner)
+			if err != nil {
+				return
+			}
+			(&bufferingWriter{stream: "stderr", manager: tm}).Write(scanner[:n])
+		}
+	}()
+
+	tm.capturingOutput = true
+}
+
+// StopCapturingOutput restores stdout/stderr and prints buffered output
+func (tm *Manager) StopCapturingOutput() {
+	tm.renderMutex.Lock()
+	defer tm.renderMutex.Unlock()
+
+	tm.bufferMutex.Lock()
+	capturing := tm.capturingOutput
+	tm.capturingOutput = false
+	tm.bufferMutex.Unlock()
+
+	if !capturing {
+		return
+	}
+
+	// Exit alternate screen if active before restoring output
+	if tm.altScreenActive {
+		var outputWriter *os.File
+		if tm.originalStderr != nil {
+			outputWriter = tm.originalStderr
+		} else {
+			outputWriter = os.Stderr
+		}
+		output := termenv.NewOutput(outputWriter)
+		output.ExitAltScreen()
+		tm.altScreenActive = false
+	}
+
+	// Restore original stdout/stderr
+	os.Stdout = tm.originalStdout
+	os.Stderr = tm.originalStderr
+
+	// Print all buffered output
+	tm.bufferMutex.Lock()
+	buffer := make([]OutputEntry, len(tm.outputBuffer))
+	copy(buffer, tm.outputBuffer)
+	tm.bufferMutex.Unlock()
+
+	for _, entry := range buffer {
+		if entry.Stream == "stdout" {
+			fmt.Fprintln(os.Stdout, entry.Line)
+		} else {
+			fmt.Fprintln(os.Stderr, entry.Line)
+		}
+	}
+
+	// Final task render to primary screen without alternate screen
+	tm.renderFinal()
+}
+
+// renderFinal renders task status to primary screen without using alternate screen
+func (tm *Manager) renderFinal() {
+	// Create a snapshot of tasks
+	tm.mu.RLock()
+	if len(tm.tasks) == 0 {
+		tm.mu.RUnlock()
+		return
+	}
+	taskSnapshot := make([]*Task, len(tm.tasks))
+	copy(taskSnapshot, tm.tasks)
+	tm.mu.RUnlock()
+
+	// Render to stderr without markers or alternate screen
+	rendered := tm.prettyFromTasks(taskSnapshot)
+	if tm.noColor {
+		fmt.Fprintln(os.Stderr, rendered.String())
+	} else {
+		fmt.Fprintln(os.Stderr, rendered.ANSI())
+	}
 }

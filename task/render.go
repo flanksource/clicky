@@ -10,8 +10,21 @@ import (
 )
 
 func (tm *Manager) Render() {
-	output := termenv.NewOutput(os.Stderr)
-	isInteractive := tm.isInteractive
+	// Lock rendering to prevent concurrent renders
+	tm.renderMutex.Lock()
+	defer tm.renderMutex.Unlock()
+
+	// Determine the output writer - use original stderr if capturing, otherwise os.Stderr
+	var outputWriter *os.File
+	tm.bufferMutex.Lock()
+	if tm.capturingOutput && tm.originalStderr != nil {
+		outputWriter = tm.originalStderr
+	} else {
+		outputWriter = os.Stderr
+	}
+	tm.bufferMutex.Unlock()
+
+	output := termenv.NewOutput(outputWriter)
 	noProgress := tm.noProgress
 
 	// Create a snapshot of tasks to avoid holding lock during I/O
@@ -26,28 +39,38 @@ func (tm *Manager) Render() {
 	copy(taskSnapshot, tm.tasks)
 	tm.mu.RUnlock()
 
-	// Handle rendering based on interactive mode and progress settings
-	if isInteractive && !noProgress {
-		// Interactive mode with progress: clear screen and full redraw
+	// Handle rendering based on progress settings
+	if !noProgress {
+		// Enable alternate screen on first render to avoid scrollback pollution
+		if !tm.altScreenActive {
+			output.AltScreen()
+			tm.altScreenActive = true
+		}
+
+		// Clear screen and reset cursor
 		output.ClearScreen()
-		rendered := tm.prettyFromTasks(taskSnapshot).ANSI()
-		fmt.Fprint(os.Stderr, rendered)
-	} else if !noProgress {
-		// Non-interactive but progress enabled: print full state
+		output.MoveCursor(1, 1)
+
+		// Render begin marker
+		fmt.Fprintln(outputWriter, "--- BEGIN RENDER ---")
+
 		rendered := tm.prettyFromTasks(taskSnapshot)
 		if tm.noColor {
-			fmt.Fprint(os.Stderr, rendered.String())
+			fmt.Fprint(outputWriter, rendered.String())
 		} else {
-			fmt.Fprint(os.Stderr, rendered.ANSI())
+			fmt.Fprint(outputWriter, rendered.ANSI())
 		}
+
+		// Render end marker
+		fmt.Fprintln(outputWriter, "--- END RENDER ---")
 	} else {
 		// noProgress mode: only print dirty tasks, never clear screen
 		for _, task := range taskSnapshot {
 			if task.PopDirty() {
 				if tm.noColor {
-					fmt.Fprintf(os.Stderr, "%s\n", task.Pretty().String())
+					fmt.Fprintf(outputWriter, "%s\n", task.Pretty().String())
 				} else {
-					fmt.Fprintf(os.Stderr, "%s\n", task.Pretty().ANSI())
+					fmt.Fprintf(outputWriter, "%s\n", task.Pretty().ANSI())
 				}
 			}
 		}
@@ -96,9 +119,38 @@ func (tm *Manager) prettyFromTasks(tasks []*Task) api.Text {
 		return api.Text{Content: "No tasks running"}
 	}
 
-	text := api.Text{Content: ""}
+	// Separate pending and non-pending tasks
+	var pendingTasks, nonPendingTasks []*Task
 	for _, task := range tasks {
+		if task.Status() == StatusPending {
+			pendingTasks = append(pendingTasks, task)
+		} else {
+			nonPendingTasks = append(nonPendingTasks, task)
+		}
+	}
+
+	text := api.Text{Content: ""}
+
+	// Show all non-pending tasks
+	for _, task := range nonPendingTasks {
 		text.Children = append(text.Children, task.Pretty().Append("\n", "").Indent(2))
+	}
+
+	// Show only first 5 pending tasks if there are more than 5
+	maxPending := 5
+	if len(pendingTasks) > maxPending {
+		for i := 0; i < maxPending; i++ {
+			text.Children = append(text.Children, pendingTasks[i].Pretty().Append("\n", "").Indent(2))
+		}
+		remaining := len(pendingTasks) - maxPending
+		text.Children = append(text.Children, api.Text{
+			Content: fmt.Sprintf("... %d more pending\n", remaining),
+			Style:   "text-gray-400",
+		}.Indent(2))
+	} else {
+		for _, task := range pendingTasks {
+			text.Children = append(text.Children, task.Pretty().Append("\n", "").Indent(2))
+		}
 	}
 
 	return text
