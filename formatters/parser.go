@@ -281,6 +281,11 @@ func parseSliceDataWithOptions(val reflect.Value, opts FormatOptions) (*api.Pret
 
 	// Handle slices/arrays - default to table format unless items have tree structure
 	if val.Kind() == reflect.Slice || val.Kind() == reflect.Array {
+		// If --table is explicitly set, force table format even for TreeNodes
+		if opts.Table {
+			return convertSliceToPrettyDataWithOptions(val, opts)
+		}
+		// Otherwise, detect tree structure and use tree format if applicable
 		if hasTreeStructure(val) {
 			return convertSliceToTreeData(val)
 		}
@@ -759,6 +764,11 @@ func hasTreeStructure(val reflect.Value) bool {
 		return false
 	}
 
+	// Check if this is a slice of TreeNode instances
+	if isTreeNodeSlice(val) {
+		return true
+	}
+
 	// Get the first element to check the type
 	firstElem := val.Index(0)
 	firstElem, _ = safeDerefPointer(firstElem)
@@ -784,10 +794,69 @@ func hasTreeStructure(val reflect.Value) bool {
 	return false
 }
 
-// convertSliceToTreeData converts a slice to tree-formatted PrettyData (placeholder)
+// isTreeNodeSlice checks if a slice contains api.TreeNode instances
+func isTreeNodeSlice(val reflect.Value) bool {
+	if val.Len() == 0 {
+		return false
+	}
+
+	// Get the first element to check if it implements TreeNode
+	firstElem := val.Index(0)
+	firstElem, _ = safeDerefPointer(firstElem)
+
+	if !firstElem.CanInterface() {
+		return false
+	}
+
+	// Check if it implements api.TreeNode interface
+	_, ok := firstElem.Interface().(api.TreeNode)
+	return ok
+}
+
+// convertSliceToTreeData converts a slice to tree-formatted PrettyData
 func convertSliceToTreeData(val reflect.Value) (*api.PrettyData, error) {
-	// For now, just delegate to table format
-	// This can be expanded later to handle tree structures properly
+	// Check if this is a slice of TreeNode instances
+	if isTreeNodeSlice(val) {
+		// Create a root SimpleTreeNode with all items as children
+		rootNode := &api.SimpleTreeNode{
+			Label:    "",
+			Children: make([]api.TreeNode, val.Len()),
+		}
+
+		for i := 0; i < val.Len(); i++ {
+			elem := val.Index(i)
+			elem, _ = safeDerefPointer(elem)
+
+			if elem.CanInterface() {
+				if treeNode, ok := elem.Interface().(api.TreeNode); ok {
+					rootNode.Children[i] = treeNode
+				}
+			}
+		}
+
+		// Return PrettyData with the tree structure
+		return &api.PrettyData{
+			Schema: &api.PrettyObject{Fields: []api.PrettyField{{
+				Name:   "tree",
+				Format: "tree",
+				Label:  "Tree",
+			}}},
+			Values: map[string]api.FieldValue{
+				"tree": {
+					Value: rootNode,
+					Field: api.PrettyField{
+						Name:   "tree",
+						Format: "tree",
+						Label:  "Tree",
+					},
+				},
+			},
+			Tables:   make(map[string][]api.PrettyDataRow),
+			Original: val.Interface(),
+		}, nil
+	}
+
+	// For other tree structures, delegate to table format for now
 	return convertSliceToPrettyData(val)
 }
 

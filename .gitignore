@@ -67,3 +67,4 @@ clicky
 *.csv
 *.yaml
 .playwright-mcp/
+*-demo

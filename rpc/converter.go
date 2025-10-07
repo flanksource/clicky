@@ -36,19 +36,40 @@ func (c *Converter) ConvertCommand(cmd *cobra.Command) (*RPCOperation, error) {
 	var parameters []RPCParameter
 
 	// Add positional arguments
+	// Extract parameter name from Use field if available
+	positionalParamName := ""
 	if cmd.Args != nil {
-		argParam := RPCParameter{
-			Name:        "args",
-			Type:        "array",
-			Description: "Positional arguments for the command",
-			Required:    false,
-			In:          "query",
-		}
-		parameters = append(parameters, argParam)
+		positionalParamName = extractParameterName(cmd.Use)
+		if positionalParamName != "" {
+			// Add named path parameter for single positional arg
+			argParam := RPCParameter{
+				Name:        positionalParamName,
+				Type:        "string",
+				Description: "Positional argument from command",
+				Required:    false,
+				In:          "query", // Will be updated to "path" later if in URL
+			}
+			parameters = append(parameters, argParam)
 
-		schema.Properties["args"] = Property{
-			Type:        "array",
-			Description: "Positional arguments for the command",
+			schema.Properties[positionalParamName] = Property{
+				Type:        "string",
+				Description: "Positional argument from command",
+			}
+		} else {
+			// Fallback to generic args array
+			argParam := RPCParameter{
+				Name:        "args",
+				Type:        "array",
+				Description: "Positional arguments for the command",
+				Required:    false,
+				In:          "query",
+			}
+			parameters = append(parameters, argParam)
+
+			schema.Properties["args"] = Property{
+				Type:        "array",
+				Description: "Positional arguments for the command",
+			}
 		}
 	}
 
@@ -117,8 +138,11 @@ func (c *Converter) ConvertCommand(cmd *cobra.Command) (*RPCOperation, error) {
 	// Generate REST path if enabled
 	path := ""
 	if c.config.AutoGeneratePaths {
-		path = c.generateRESTPath(cmdPath)
+		path = c.generateRESTPath(cmd, cmdPath)
 	}
+
+	// Update parameter locations based on path
+	c.updateParameterLocations(&parameters, path)
 
 	// Combine default tags with command-specific tags
 	tags := append([]string{}, c.config.DefaultTags...)
@@ -231,10 +255,11 @@ func (c *Converter) inferHTTPMethod(cmd *cobra.Command, cmdPath string) string {
 }
 
 // generateRESTPath generates a REST API path from command hierarchy
-func (c *Converter) generateRESTPath(cmdPath string) string {
+func (c *Converter) generateRESTPath(cmd *cobra.Command, cmdPath string) string {
 	// Convert command path to REST path
 	// e.g., "user create" -> "/api/v1/user"
-	// e.g., "config set" -> "/api/v1/config"
+	// e.g., "user get [id]" -> "/api/v1/user/{id}"
+	// e.g., "policy activities --policy" -> "/api/v1/policy/{policyNumber}/activities"
 
 	parts := strings.Split(cmdPath, " ")
 
@@ -245,6 +270,14 @@ func (c *Converter) generateRESTPath(cmdPath string) string {
 		// Skip the last part if it's a CRUD operation
 		if i == len(parts)-1 {
 			if isCRUDOperation(part) {
+				// If this CRUD operation has positional args, add path parameter
+				if cmd.Args != nil {
+					// Extract parameter name from Use field (e.g., "get [policyNumber]")
+					paramName := extractParameterName(cmd.Use)
+					if paramName != "" {
+						pathParts = append(pathParts, "{"+paramName+"}")
+					}
+				}
 				break
 			}
 		}
@@ -255,7 +288,54 @@ func (c *Converter) generateRESTPath(cmdPath string) string {
 		}
 	}
 
+	// Handle nested resources that require ID in path (e.g., "policy activities")
+	// Check if parent command has a required flag that should be a path param
+	if cmd.Parent() != nil && !isCRUDOperation(cmd.Name()) {
+		parentName := cmd.Parent().Name()
+		// Check for common ID flags that should be path parameters
+		idFlagNames := []string{parentName, parentName + "Number", "id"}
+		for _, flagName := range idFlagNames {
+			if flag := cmd.Flags().Lookup(flagName); flag != nil {
+				// Insert the ID parameter before the current command
+				// e.g., /api/v1/policy/activities -> /api/v1/policy/{policyNumber}/activities
+				if len(pathParts) >= 2 {
+					// Insert ID param after the resource name
+					newParts := make([]string, 0, len(pathParts)+1)
+					newParts = append(newParts, pathParts[:len(pathParts)-1]...)
+					newParts = append(newParts, "{"+flagName+"}")
+					newParts = append(newParts, pathParts[len(pathParts)-1:]...)
+					pathParts = newParts
+					break
+				}
+			}
+		}
+	}
+
 	return strings.Join(pathParts, "/")
+}
+
+// extractParameterName extracts parameter name from Use field
+// e.g., "get [policyNumber]" -> "policyNumber"
+// e.g., "get [id]" -> "id"
+func extractParameterName(use string) string {
+	start := strings.Index(use, "[")
+	end := strings.Index(use, "]")
+	if start != -1 && end != -1 && end > start {
+		return strings.TrimSpace(use[start+1 : end])
+	}
+	return ""
+}
+
+// updateParameterLocations updates parameter "In" field to "path" for parameters that appear in the URL path
+func (c *Converter) updateParameterLocations(parameters *[]RPCParameter, path string) {
+	for i := range *parameters {
+		param := &(*parameters)[i]
+		// Check if parameter name appears in path as {paramName}
+		if strings.Contains(path, "{"+param.Name+"}") {
+			param.In = "path"
+			param.Required = true // Path parameters are always required
+		}
+	}
 }
 
 // isCRUDOperation checks if a command part represents a CRUD operation

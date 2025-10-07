@@ -328,9 +328,9 @@ func TestSwaggerServer_Integration(t *testing.T) {
 			path:   "/health",
 			method: "GET",
 			contains: []string{
-				`"status":"healthy"`,
-				`"version":"1.5.0"`,
-				`"server":"OpenAPI Documentation Server"`,
+				`"status": "healthy"`,
+				`"version": "1.5.0"`,
+				`"server": "OpenAPI Documentation Server"`,
 			},
 		},
 	}

@@ -77,24 +77,30 @@ func (e *CommandExecutor) FindOperation(method, path string) *RPCOperation {
 }
 
 // ExecuteCommand executes a Cobra command with the given parameters
-func (e *CommandExecutor) ExecuteCommand(op *RPCOperation, req *ExecutionRequest) (*ExecutionResponse, error) {
+// Returns: (parsedData, metadata, error)
+// - parsedData: The actual command output (parsed if possible, or ExecutionResponse wrapper)
+// - metadata: Execution metadata for HTTP headers (CLI command, exit code, success)
+// - error: Execution error if any
+func (e *CommandExecutor) ExecuteCommand(op *RPCOperation, req *ExecutionRequest) (any, *ExecutionResponse, error) {
 	if !e.config.Enabled {
-		return &ExecutionResponse{
+		resp := &ExecutionResponse{
 			Success: false,
 			Error:   "Command execution is disabled",
-			Input:   req,                      // Include input for debugging
-			CLI:     buildCLICommand(op, req), // Include CLI command for debugging
-		}, fmt.Errorf("command execution is disabled")
+			Input:   req,
+			CLI:     buildCLICommand(op, req),
+		}
+		return resp, resp, fmt.Errorf("command execution is disabled")
 	}
 
 	cmd := op.Command
 	if cmd == nil {
-		return &ExecutionResponse{
+		resp := &ExecutionResponse{
 			Success: false,
 			Error:   "No command associated with operation",
-			Input:   req,                      // Include input for debugging
-			CLI:     buildCLICommand(op, req), // Include CLI command for debugging
-		}, fmt.Errorf("no command found for operation %s", op.Name)
+			Input:   req,
+			CLI:     buildCLICommand(op, req),
+		}
+		return resp, resp, fmt.Errorf("no command found for operation %s", op.Name)
 	}
 
 	// Store original hooks if we need to skip pre-runs
@@ -133,12 +139,13 @@ func (e *CommandExecutor) ExecuteCommand(op *RPCOperation, req *ExecutionRequest
 		for flagName, flagValue := range req.Flags {
 			if flag := cmd.Flags().Lookup(flagName); flag != nil {
 				if err := flag.Value.Set(flagValue); err != nil {
-					return &ExecutionResponse{
+					resp := &ExecutionResponse{
 						Success: false,
 						Error:   fmt.Sprintf("Invalid value for flag %s: %v", flagName, err),
-						Input:   req,                      // Include input for debugging
-						CLI:     buildCLICommand(op, req), // Include CLI command for debugging
-					}, err
+						Input:   req,
+						CLI:     buildCLICommand(op, req),
+					}
+					return resp, resp, err
 				}
 				// IMPORTANT: Mark the flag as changed so required flag validation passes
 				flag.Changed = true
@@ -173,28 +180,57 @@ func (e *CommandExecutor) ExecuteCommand(op *RPCOperation, req *ExecutionRequest
 	// Extract exit code
 	exitCode := extractExitCode(err)
 
-	// Combine stdout and stderr for backward compatibility
-	combinedOutput := stdoutStr + stderrStr
+	// Parse the output to return actual data instead of wrapper
+	parsedData, parseErr := parseCommandOutput(stdoutStr, stderrStr, req)
 
-	// Build response with captured output
+	// Build response with metadata for headers
 	response := &ExecutionResponse{
 		Success:  err == nil,
 		Stdout:   stdoutStr,
 		Stderr:   stderrStr,
-		Output:   combinedOutput,
+		Output:   stdoutStr + stderrStr,
 		ExitCode: exitCode,
-		CLI:      buildCLICommand(op, req), // Include CLI command for reproduction
+		CLI:      buildCLICommand(op, req),
 	}
 
 	if err != nil {
 		response.Error = err.Error()
 		response.Message = "Command execution failed"
-		response.Input = req // Include input for debugging
-		return response, err
+		response.Input = req
+		// Return error response for failed commands
+		return response, response, err
 	}
 
+	// If parse succeeded, return the parsed data directly with metadata
+	if parseErr == nil && parsedData != nil {
+		return parsedData, response, nil
+	}
+
+	// Fallback to response wrapper if parsing failed
 	response.Message = "Command executed successfully"
-	return response, nil
+	return response, response, nil
+}
+
+// parseCommandOutput attempts to parse command output into structured data
+func parseCommandOutput(stdout, stderr string, req *ExecutionRequest) (any, error) {
+	// If there's no stdout, nothing to parse
+	if stdout == "" {
+		return nil, fmt.Errorf("no output to parse")
+	}
+
+	// Try to detect format from output content
+	trimmed := strings.TrimSpace(stdout)
+
+	// Try JSON first (most common for CLI tools)
+	if strings.HasPrefix(trimmed, "{") || strings.HasPrefix(trimmed, "[") {
+		var data any
+		if err := json.Unmarshal([]byte(trimmed), &data); err == nil {
+			return data, nil
+		}
+	}
+
+	// If parsing fails, return nil to fallback to wrapper
+	return nil, fmt.Errorf("unable to parse output")
 }
 
 // executeWithGlobalCapture executes a command while capturing ALL output including direct os.Stdout/os.Stderr writes

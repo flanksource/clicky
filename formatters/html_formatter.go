@@ -136,6 +136,47 @@ func (f *HTMLFormatter) getCSS() string {
 
         /* Chroma syntax highlighting styles */
 ` + api.GetChromaCSS() + `
+
+        /* Tree expand/collapse styles */
+        .tree-toggle {
+            cursor: pointer;
+            user-select: none;
+            display: inline-block;
+            width: 1em;
+            margin-right: 0.25em;
+            transition: transform 0.2s ease;
+            color: #6b7280;
+        }
+
+        .tree-toggle:hover {
+            color: #374151;
+        }
+
+        .tree-toggle.expanded {
+            transform: rotate(90deg);
+        }
+
+        .tree-children {
+            transition: max-height 0.3s ease, opacity 0.2s ease;
+            overflow: hidden;
+        }
+
+        .tree-children.collapsed {
+            max-height: 0 !important;
+            opacity: 0;
+            display: none;
+        }
+
+        .tree-node-wrapper {
+            position: relative;
+        }
+
+        .tree-leaf-indicator {
+            display: inline-block;
+            width: 1em;
+            margin-right: 0.25em;
+            color: #9ca3af;
+        }
     </style>`
 
 	if f.IsPDFMode {
@@ -168,9 +209,34 @@ func (f *HTMLFormatter) getCSS() string {
             });
         }
 
-        // Initialize tooltips on page load
+        // Tree expand/collapse functionality
+        function toggleTreeNode(toggleElement) {
+            const isExpanded = toggleElement.classList.contains('expanded');
+            const childrenContainer = toggleElement.parentElement.nextElementSibling;
+
+            if (childrenContainer && childrenContainer.classList.contains('tree-children')) {
+                if (isExpanded) {
+                    // Collapse
+                    toggleElement.classList.remove('expanded');
+                    childrenContainer.classList.add('collapsed');
+                } else {
+                    // Expand
+                    toggleElement.classList.add('expanded');
+                    childrenContainer.classList.remove('collapsed');
+                }
+            }
+        }
+
+        // Initialize tooltips and tree toggles on page load
         document.addEventListener('DOMContentLoaded', function() {
             initTooltips();
+
+            // Add click handlers for tree toggles using event delegation
+            document.body.addEventListener('click', function(e) {
+                if (e.target.classList.contains('tree-toggle')) {
+                    toggleTreeNode(e.target);
+                }
+            });
         });
     </script>
     <div class="mx-auto px-4 space-y-8">
@@ -272,6 +338,11 @@ func (f *HTMLFormatter) getPDFCSS() string {
 
             .tree-node {
                 font-size: 11px !important;
+            }
+
+            /* Tree expand/collapse - disable in PDF mode */
+            .tree-toggle {
+                display: none !important;
             }
 
             /* Header adjustments */
@@ -904,12 +975,20 @@ func (f *HTMLFormatter) formatTreeNodeHTML(node api.TreeNode, depth int) string 
 	if depth == 0 {
 		// Root node - start the tree
 		result.WriteString(`<div class="tree-view">`)
-		result.WriteString(`<div class="tree-node font-semibold text-lg mb-2">`)
+		result.WriteString(`<div class="tree-node-wrapper">`)
+
+		if len(children) > 0 && !f.IsPDFMode {
+			// Add toggle for nodes with children (interactive mode)
+			result.WriteString(`<span class="tree-toggle expanded">▸</span>`)
+		}
+
+		result.WriteString(`<span class="tree-node font-semibold text-lg mb-2">`)
 		result.WriteString(node.Pretty().HTML())
+		result.WriteString(`</span>`)
 		result.WriteString(`</div>`)
 
 		if len(children) > 0 {
-			result.WriteString(`<ul class="ml-4 space-y-1">`)
+			result.WriteString(`<ul class="tree-children ml-4 space-y-1">`)
 			for _, child := range children {
 				childHTML := f.formatTreeNodeHTML(child, depth+1)
 				result.WriteString(childHTML)
@@ -920,21 +999,23 @@ func (f *HTMLFormatter) formatTreeNodeHTML(node api.TreeNode, depth int) string 
 		result.WriteString(`</div>`)
 	} else {
 		// Child node
-		result.WriteString(`<li class="flex items-start">`)
-		result.WriteString(`<span class="text-gray-400 mr-2">`)
-		if len(children) > 0 {
-			result.WriteString(`▸`) // or use a different tree connector symbol
+		result.WriteString(`<li class="flex items-start tree-node-wrapper">`)
+
+		if len(children) > 0 && !f.IsPDFMode {
+			// Interactive toggle for nodes with children
+			result.WriteString(`<span class="tree-toggle expanded">▸</span>`)
 		} else {
-			result.WriteString(`•`) // leaf node indicator
+			// Static indicator for leaf nodes
+			result.WriteString(`<span class="tree-leaf-indicator">•</span>`)
 		}
-		result.WriteString(`</span>`)
+
 		result.WriteString(`<div class="flex-1">`)
-		result.WriteString(`<div class="tree-node">`)
+		result.WriteString(`<span class="tree-node">`)
 		result.WriteString(node.Pretty().HTML())
-		result.WriteString(`</div>`)
+		result.WriteString(`</span>`)
 
 		if len(children) > 0 {
-			result.WriteString(`<ul class="ml-4 mt-1 space-y-1">`)
+			result.WriteString(`<ul class="tree-children ml-4 mt-1 space-y-1">`)
 			for _, child := range children {
 				childHTML := f.formatTreeNodeHTML(child, depth+1)
 				result.WriteString(childHTML)

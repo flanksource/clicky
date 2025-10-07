@@ -12,6 +12,7 @@ import (
 // based on the HTTP request (Accept header, query params, URL extension)
 func FormatHandler(fn func(*http.Request) (any, error)) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+
 		// Call user function to get data
 		data, err := fn(r)
 		if err != nil {
@@ -28,6 +29,8 @@ func FormatHandler(fn func(*http.Request) (any, error)) http.HandlerFunc {
 
 		// Extract format options from request
 		opts := extractFormatOptions(r)
+
+		logger.Debugf("")
 
 		// Format the data
 		manager := NewFormatManager()
@@ -169,8 +172,6 @@ func acceptToFormat(accept string) string {
 		contentType := trimQuality(part)
 
 		switch contentType {
-		case "application/json":
-			return "json"
 		case "application/yaml", "text/yaml", "application/x-yaml":
 			return "yaml"
 		case "text/csv", "application/csv":
@@ -185,12 +186,10 @@ func acceptToFormat(accept string) string {
 			return "excel"
 		case "text/plain":
 			return "pretty"
-		case "*/*", "":
-			return ""
 		}
 	}
 
-	return ""
+	return "json"
 }
 
 // splitAccept splits Accept header by comma

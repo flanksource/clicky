@@ -148,6 +148,10 @@ func (f FormatManager) Format(format string, data interface{}) (string, error) {
 
 // FormatWithOptions formats data using the specified format options
 func (f FormatManager) FormatWithOptions(options FormatOptions, data interface{}) (string, error) {
+
+	if s, ok := data.(string); ok {
+		return s, nil
+	}
 	// Resolve format from boolean flags
 	format := options.ResolveFormat()
 
@@ -252,16 +256,41 @@ func (f FormatManager) FormatWithOptions(options FormatOptions, data interface{}
 		return f.excelFormatter.Format(data)
 
 	case "pretty":
+		// Convert to PrettyData first to detect structure (tree vs table)
+		prettyData, err := ToPrettyDataWithOptions(data, FormatOptions{})
+		if err != nil {
+			// Fallback to direct formatting if PrettyData conversion fails
+			if f.prettyFormatter == nil {
+				f.prettyFormatter = NewPrettyFormatter()
+			}
+			f.prettyFormatter.NoColor = options.NoColor
+			return f.prettyFormatter.Format(data)
+		}
+
+		// Check if data has tree fields - if so, use tree formatter
+		hasTreeField := false
+		if prettyData != nil && prettyData.Schema != nil {
+			for _, field := range prettyData.Schema.Fields {
+				if field.Format == api.FormatTree {
+					hasTreeField = true
+					break
+				}
+			}
+		}
+
+		if hasTreeField {
+			// Use tree formatter for tree-structured data
+			if f.treeFormatter == nil {
+				f.treeFormatter = NewTreeFormatter(api.DefaultTheme(), options.NoColor, nil)
+			}
+			return f.treeFormatter.FormatPrettyData(prettyData)
+		}
+
+		// Otherwise use pretty formatter with table structure
 		if f.prettyFormatter == nil {
 			f.prettyFormatter = NewPrettyFormatter()
 		}
 		f.prettyFormatter.NoColor = options.NoColor
-		// Convert to PrettyData first to handle pretty tags, default slices to table
-		prettyData, err := ToPrettyDataWithOptions(data, FormatOptions{Format: "table"})
-		if err != nil {
-			// Fallback to direct formatting if PrettyData conversion fails
-			return f.prettyFormatter.Format(data)
-		}
 		return f.prettyFormatter.FormatPrettyData(prettyData)
 
 	default:

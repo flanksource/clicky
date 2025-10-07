@@ -20,6 +20,11 @@ type SortField struct {
 func ExtractSortFields(typ reflect.Type) []SortField {
 	var sortFields []SortField
 
+	// Check if the type is a struct
+	if typ.Kind() != reflect.Struct {
+		return sortFields
+	}
+
 	for i := 0; i < typ.NumField(); i++ {
 		field := typ.Field(i)
 

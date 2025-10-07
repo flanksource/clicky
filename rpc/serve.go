@@ -9,9 +9,11 @@ import (
 	"net/http"
 	"os/exec"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 
+	"github.com/flanksource/clicky/formatters"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 )
@@ -235,20 +237,24 @@ func (s *SwaggerServer) handleOpenAPIYAML(w http.ResponseWriter, r *http.Request
 	}
 }
 
+// HealthResponse represents the health check response
+type HealthResponse struct {
+	Status    string `json:"status"`
+	Timestamp string `json:"timestamp"`
+	Server    string `json:"server"`
+	Version   string `json:"version"`
+}
+
 // handleHealth serves a simple health check endpoint
 func (s *SwaggerServer) handleHealth(w http.ResponseWriter, r *http.Request) {
-	health := map[string]interface{}{
-		"status":    "healthy",
-		"timestamp": time.Now().Format(time.RFC3339),
-		"server":    "OpenAPI Documentation Server",
-		"version":   s.config.Version,
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(health); err != nil {
-		// Log error but response already started
-		fmt.Printf("Warning: failed to encode health response: %v\n", err)
-	}
+	formatters.FormatHandler(func(*http.Request) (any, error) {
+		return &HealthResponse{
+			Status:    "healthy",
+			Timestamp: time.Now().Format(time.RFC3339),
+			Server:    "OpenAPI Documentation Server",
+			Version:   s.config.Version,
+		}, nil
+	})(w, r)
 }
 
 // openBrowser opens the default browser to the specified URL
@@ -377,10 +383,22 @@ func (s *SwaggerServer) registerExecutionRoutes(mux *http.ServeMux) {
 		return
 	}
 
+	registered := make(map[string]string)
+
 	// Register a route for each operation
 	for _, op := range s.executor.service.Operations {
 		path := op.Path
 		method := strings.ToUpper(op.Method)
+
+		// Check for duplicate path
+		if existingOp, found := registered[path]; found {
+			fmt.Printf("⚠️  Warning: Duplicate endpoint detected\n")
+			fmt.Printf("    Path: %s %s\n", method, path)
+			fmt.Printf("    Already registered by: %s\n", existingOp)
+			fmt.Printf("    Skipping: %s\n", op.Name)
+			continue
+		}
+		registered[path] = op.Name
 
 		// Register the route with a method-specific handler
 		switch method {
@@ -432,6 +450,51 @@ func (s *SwaggerServer) handleExecuteDELETE(w http.ResponseWriter, r *http.Reque
 	s.handleExecuteCommand(w, r)
 }
 
+// executeCommandCore contains the core execution logic without HTTP handling
+// Returns: (data, metadata, statusCode, error)
+func (s *SwaggerServer) executeCommandCore(r *http.Request) (any, *ExecutionResponse, int, error) {
+	// Find the operation for this path and method
+	op := s.executor.FindOperation(r.Method, r.URL.Path)
+	if op == nil {
+		resp := &ExecutionResponse{
+			Success: false,
+			Error:   fmt.Sprintf("No operation found for %s %s", r.Method, r.URL.Path),
+		}
+		return resp, resp, http.StatusNotFound, fmt.Errorf("operation not found")
+	}
+
+	// Extract request parameters
+	req, err := s.executor.ExtractRequestFromHTTP(r, op)
+	if err != nil {
+		resp := &ExecutionResponse{
+			Success: false,
+			Error:   fmt.Sprintf("Failed to extract parameters: %v", err),
+			Input:   req,
+		}
+		return resp, resp, http.StatusBadRequest, err
+	}
+
+	// Validate parameters
+	if err := s.executor.ValidateParameters(req, op); err != nil {
+		resp := &ExecutionResponse{
+			Success: false,
+			Error:   fmt.Sprintf("Parameter validation failed: %v", err),
+			Input:   req,
+		}
+		return resp, resp, http.StatusBadRequest, err
+	}
+
+	// Execute the command
+	data, metadata, err := s.executor.ExecuteCommand(op, req)
+	if err != nil {
+		// Return metadata for error headers
+		return data, metadata, http.StatusInternalServerError, err
+	}
+
+	// Return both data and metadata
+	return data, metadata, http.StatusOK, nil
+}
+
 // handleExecuteCommand is the main handler for command execution
 func (s *SwaggerServer) handleExecuteCommand(w http.ResponseWriter, r *http.Request) {
 	// Set CORS headers
@@ -444,61 +507,28 @@ func (s *SwaggerServer) handleExecuteCommand(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	// Find the operation for this path and method
-	op := s.executor.FindOperation(r.Method, r.URL.Path)
-	if op == nil {
-		http.Error(w, fmt.Sprintf("No operation found for %s %s", r.Method, r.URL.Path), http.StatusNotFound)
-		return
-	}
+	// Use FormatHandler to handle formatting automatically
+	formatters.FormatHandler(func(req *http.Request) (any, error) {
+		// Execute command and get data + metadata
+		data, metadata, statusCode, err := s.executeCommandCore(req)
 
-	// Extract request parameters
-	req, err := s.executor.ExtractRequestFromHTTP(r, op)
-	if err != nil {
-		// Return structured error response with partial input if available
-		errorResp := &ExecutionResponse{
-			Success: false,
-			Error:   fmt.Sprintf("Failed to extract parameters: %v", err),
-			Input:   req, // May be nil or partial if extraction failed
+		// Add execution metadata headers
+		if metadata != nil {
+			w.Header().Set("X-CLI-Command", metadata.CLI)
+			w.Header().Set("X-Exit-Code", strconv.Itoa(metadata.ExitCode))
+			w.Header().Set("X-Execution-Success", strconv.FormatBool(metadata.Success))
 		}
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		if err := json.NewEncoder(w).Encode(errorResp); err != nil {
-			fmt.Printf("Warning: failed to encode error response: %v\n", err)
-		}
-		return
-	}
 
-	// Validate parameters
-	if err := s.executor.ValidateParameters(req, op); err != nil {
-		// Return structured error response with processed input for debugging
-		errorResp := &ExecutionResponse{
-			Success: false,
-			Error:   fmt.Sprintf("Parameter validation failed: %v", err),
-			Input:   req, // Include processed parameters for debugging
+		// Set non-200 status codes before FormatHandler writes response
+		if statusCode != http.StatusOK {
+			w.WriteHeader(statusCode)
 		}
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		if err := json.NewEncoder(w).Encode(errorResp); err != nil {
-			fmt.Printf("Warning: failed to encode error response: %v\n", err)
-		}
-		return
-	}
 
-	// Execute the command
-	resp, err := s.executor.ExecuteCommand(op, req)
-	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusInternalServerError)
-		if err := json.NewEncoder(w).Encode(resp); err != nil {
-			fmt.Printf("Warning: failed to encode error response: %v\n", err)
+		if err != nil {
+			return data, err
 		}
-		return
-	}
 
-	// Return successful response
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	if err := json.NewEncoder(w).Encode(resp); err != nil {
-		fmt.Printf("Warning: failed to encode response: %v\n", err)
-	}
+		// Return the actual data (not the ExecutionResponse wrapper)
+		return metadata.Stdout, nil
+	})(w, r)
 }
