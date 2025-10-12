@@ -151,6 +151,10 @@ func TestIsTailwindColor(t *testing.T) {
 	}{
 		{"red-500", true},
 		{"bg-blue-700", true},
+		{"muted", true},
+		{"success", true},
+		{"warning", true},
+		{"error", true},
 		{"black", true},
 		{"transparent", true},
 		{"", false},

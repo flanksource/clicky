@@ -88,6 +88,7 @@ type Text struct {
 	Style    string
 	Children []Textable
 	Tooltip  Textable
+	indent   int // internal use for tracking indentation level
 }
 
 func (t Text) WithStyles(styles ...string) Text {
@@ -200,6 +201,10 @@ func (l List) HTML() string {
 	return fmt.Sprintf("<%s>%s</%s>", tag, strings.Join(parts, ""), tag)
 }
 
+func (t Text) NewLine() Text {
+	return t.Add(BR).Indent(t.indent)
+}
+
 // Text adds a new child Text with the specified content and styles.
 func (t Text) Text(text string, styles ...string) Text {
 	return t.Add(Text{Content: text, Style: strings.Join(styles, " ")})
@@ -231,7 +236,13 @@ func (t Text) WrapSpace() Text {
 }
 
 // Wrap adds a prefix and suffix to the content
-func (t Text) Wrap(prefix, suffix string) Text {
+func (t Text) Wrap(prefix, suffix string, style ...string) Text {
+	if len(style) > 0 {
+		return t.Add(Text{Content: prefix, Style: style[0]}).
+			Add(t).
+			Add(Text{Content: suffix, Style: style[0]})
+	}
+
 	t.Content = prefix + t.Content + suffix
 	return t
 }
@@ -245,8 +256,16 @@ func (t Text) Append(text string, styles ...string) Text {
 // Indent adds spaces before every line in content and recursively indents children
 // with additional spacing, creating proper hierarchical indentation.
 func (t Text) Indent(spaces int) Text {
+	if spaces <= 0 {
+		return t
+	}
+	t.indent = spaces
 	indentation := strings.Repeat(" ", spaces)
-	t.Content = indentation + strings.ReplaceAll(t.Content, "\n", "\n"+indentation)
+
+	// if strings.HasPrefix(t.Content, "\n") {
+	// t.Content = indentation + t.Content
+	// }
+	t.Content = strings.ReplaceAll(t.Content, "\n", "\n"+indentation)
 	for i := range t.Children {
 		// Only indent if the child is a Text type that supports Indent
 		if textChild, ok := t.Children[i].(Text); ok {

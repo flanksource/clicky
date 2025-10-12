@@ -18,6 +18,46 @@ type PrettyNode interface {
 	Pretty() Text
 }
 
+type ConcreteTreeNode struct {
+	Node Pretty
+}
+
+func (c *ConcreteTreeNode) GetChildren() []TreeNode {
+	var children []TreeNode
+	switch n := c.Node.(type) {
+	case TreeNode:
+		for _, child := range n.GetChildren() {
+			children = append(children, &ConcreteTreeNode{Node: child})
+		}
+	}
+	return children
+}
+
+func (c *ConcreteTreeNode) Pretty() Text {
+	return c.Node.Pretty()
+}
+
+type ConcreteBranchNode struct {
+	Children []TreeNode `json:"children,omitempty"`
+}
+
+func (c *ConcreteBranchNode) GetChildren() []TreeNode {
+	return c.Children
+}
+func (c *ConcreteBranchNode) Pretty() Text {
+	return Text{Content: ""}
+}
+
+func NewConcreteTree(nodes ...TreeNode) TreeNode {
+	if len(nodes) == 0 {
+		return nil
+	}
+	if len(nodes) == 1 {
+		return &ConcreteTreeNode{Node: nodes[0]}
+	}
+	return &ConcreteBranchNode{Children: nodes}
+}
+
 // TreeOptions controls tree rendering behavior including visual styling,
 // depth limits, and character sets for drawing tree connections.
 type TreeOptions struct {
