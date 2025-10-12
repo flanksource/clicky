@@ -147,31 +147,31 @@ func (f FormatManager) Format(format string, data interface{}) (string, error) {
 }
 
 // FormatWithOptions formats data using the specified format options
-func (f FormatManager) FormatWithOptions(options FormatOptions, data interface{}) (string, error) {
+func (f FormatManager) FormatWithOptions(options FormatOptions, data ...any) (string, error) {
 
-	if s, ok := data.(string); ok {
-		return s, nil
+	if len(data) == 0 {
+		return "", fmt.Errorf("no data provided for formatting")
 	}
-	// Resolve format from boolean flags
+	// Resolve format from boolean flags first to check for custom formatters
 	format := options.ResolveFormat()
 
-	logger.V(4).Infof("Formatting with %s (tree=%t, table=%t)", format, options.Tree, options.Table)
+	// Check for custom formatters BEFORE the string shortcut
+	// This allows custom formatters to process strings
+	if customFn, exists := GetCustomFormatter(format); exists {
+		return customFn(data, options)
+	}
+
+	if len(data) == 1 {
+		if s, ok := data[0].(string); ok {
+			return s, nil
+		}
+	}
 
 	// Handle display structure overrides (additive flags)
 	// Tree flag: For text formats, use tree visual; for structured formats, pass tree data through
 	// Table flag: Convert to table structure before applying format
 	if options.Tree {
-		logger.V(4).Infof("Tree flag set with %s format", format)
-		// For text-based output (pretty/tree/empty), use tree visual formatter (ANSI output)
-		if format == "pretty" || format == "tree" || format == "" {
-			if f.treeFormatter == nil {
-				f.treeFormatter = NewTreeFormatter(api.DefaultTheme(), options.NoColor, nil)
-			}
-			return f.treeFormatter.Format(data)
-		}
-		// For other formats (HTML, JSON, YAML, etc.), let the formatter handle tree structure
-		// The data is already in tree form, just pass it through to the formatter
-		logger.V(4).Infof("Passing tree-structured data to %s formatter", format)
+		return f.treeFormatter.Format(data...)
 	} else if options.Table {
 		logger.V(4).Infof("Applying table structure transformation before %s formatting", format)
 		// Convert data to table structure first, then apply the format
@@ -190,7 +190,9 @@ func (f FormatManager) FormatWithOptions(options FormatOptions, data interface{}
 		// For other formats, convert data to table structure and pass through
 		prettyData, err := ToPrettyDataWithOptions(data, FormatOptions{Format: "table"})
 		if err == nil {
-			data = prettyData
+			data = []any{prettyData}
+		} else {
+			return "", fmt.Errorf("failed to convert data to table structure: %w", err)
 		}
 	}
 

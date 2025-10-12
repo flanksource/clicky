@@ -27,24 +27,33 @@ func NewTreeFormatter(theme api.Theme, noColor bool, options *api.TreeOptions) *
 }
 
 // Format formats data as a tree structure
-func (f *TreeFormatter) Format(data interface{}) (string, error) {
-	// Check if data is directly a TreeNode first (more specific than Pretty)
-	if treeNode, ok := data.(api.TreeNode); ok {
-		return f.FormatTreeFromRoot(treeNode), nil
+func (f *TreeFormatter) Format(data ...any) (string, error) {
+	if nodes, ok := ToSlice[api.TreeNode](data...); ok {
+		return f.FormatTreeFromRoot(api.NewConcreteTree(nodes...)), nil
 	}
 
-	// Check if data implements Pretty interface
-	if pretty, ok := data.(api.Pretty); ok {
-		text := pretty.Pretty()
-		if f.NoColor {
-			return text.String(), nil
-		} else {
-			return text.ANSI(), nil
+	if len(data) == 1 {
+		if node, ok := data[0].(api.TreeNode); ok {
+			return f.FormatTreeFromRoot(node), nil
+		} else if pretty, ok := data[0].(api.Pretty); ok {
+			text := pretty.Pretty()
+			if f.NoColor {
+				return text.String(), nil
+			} else {
+				return text.ANSI(), nil
+			}
 		}
 	}
 
 	// Convert to PrettyData
-	prettyData, err := ToPrettyData(data)
+	// Unwrap varargs if single element to avoid double-wrapping
+	var dataToConvert any
+	if len(data) == 1 {
+		dataToConvert = data[0]
+	} else {
+		dataToConvert = data
+	}
+	prettyData, err := ToPrettyData(dataToConvert)
 	if err != nil {
 		return "", fmt.Errorf("failed to convert to PrettyData: %w", err)
 	}

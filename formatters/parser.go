@@ -232,6 +232,73 @@ func processFieldValue(fieldVal reflect.Value) interface{} {
 	return parser.ProcessFieldValue(fieldVal)
 }
 
+// FlattenSlice flattens a slice of slices into a single-level slice.
+// If the input is not a slice of slices, it returns the input unchanged.
+// This allows safe use on any slice without pre-checking.
+func FlattenSlice(val reflect.Value) reflect.Value {
+	// Check if input is a slice or array
+	if val.Kind() != reflect.Slice && val.Kind() != reflect.Array {
+		return val
+	}
+
+	// Empty slice - return as-is
+	if val.Len() == 0 {
+		return val
+	}
+
+	// Get the first element to check if this is a slice of slices
+	firstElem := val.Index(0)
+	firstElem, _ = safeDerefPointer(firstElem)
+
+	// Dereference interface to get underlying concrete type
+	if firstElem.Kind() == reflect.Interface && !firstElem.IsNil() {
+		firstElem = firstElem.Elem()
+	}
+
+	// Not a slice of slices - return input unchanged
+	if firstElem.Kind() != reflect.Slice && firstElem.Kind() != reflect.Array {
+		return val
+	}
+
+	// It's a slice of slices - flatten it
+	var flattened []reflect.Value
+	for i := 0; i < val.Len(); i++ {
+		elem := val.Index(i)
+		elem, isNil := safeDerefPointer(elem)
+		if isNil {
+			continue // Skip nil outer elements
+		}
+
+		// Dereference interface
+		if elem.Kind() == reflect.Interface && !elem.IsNil() {
+			elem = elem.Elem()
+		}
+
+		// Iterate inner slice and collect all elements
+		if elem.Kind() == reflect.Slice || elem.Kind() == reflect.Array {
+			for j := 0; j < elem.Len(); j++ {
+				innerElem := elem.Index(j)
+				flattened = append(flattened, innerElem)
+			}
+		}
+	}
+
+	// If no elements were collected, return empty slice of same type as input
+	if len(flattened) == 0 {
+		return reflect.MakeSlice(val.Type(), 0, 0)
+	}
+
+	// Create a new slice with the flattened elements
+	// Determine the element type from the first flattened element
+	elemType := flattened[0].Type()
+	newSlice := reflect.MakeSlice(reflect.SliceOf(elemType), len(flattened), len(flattened))
+	for i, elem := range flattened {
+		newSlice.Index(i).Set(elem)
+	}
+
+	return newSlice
+}
+
 // ToPrettyDataWithOptions converts various input types to PrettyData using format options
 func ToPrettyDataWithOptions(data interface{}, opts FormatOptions) (*api.PrettyData, error) {
 	// Handle nil data at root level
@@ -278,6 +345,7 @@ func ToPrettyDataWithOptions(data interface{}, opts FormatOptions) (*api.PrettyD
 func parseSliceDataWithOptions(val reflect.Value, opts FormatOptions) (*api.PrettyData, error) {
 	// Safely dereference root level pointer
 	val, _ = safeDerefPointer(val)
+	val = FlattenSlice(val)
 
 	// Handle slices/arrays - default to table format unless items have tree structure
 	if val.Kind() == reflect.Slice || val.Kind() == reflect.Array {
@@ -346,6 +414,9 @@ func convertSliceToPrettyDataWithOptions(val reflect.Value, opts FormatOptions) 
 	// Store the original interface value
 	originalData := val.Interface()
 
+	// Flatten slice of slices before processing
+	val = FlattenSlice(val)
+
 	if val.Len() == 0 {
 		// Empty slice - return empty PrettyData
 		return &api.PrettyData{
@@ -359,6 +430,11 @@ func convertSliceToPrettyDataWithOptions(val reflect.Value, opts FormatOptions) 
 	// Get the first element to check the type
 	firstElem := val.Index(0)
 	firstElem, _ = safeDerefPointer(firstElem)
+
+	// Dereference interface to get underlying concrete type
+	if firstElem.Kind() == reflect.Interface && !firstElem.IsNil() {
+		firstElem = firstElem.Elem()
+	}
 
 	// Handle slices of structs or maps
 	if firstElem.Kind() != reflect.Struct && firstElem.Kind() != reflect.Map {
@@ -643,6 +719,7 @@ func ToPrettyData(data interface{}) (*api.PrettyData, error) {
 		}
 	}
 
+	val = FlattenSlice(val)
 	// Handle slices/arrays - default to table format unless items have tree structure
 	if val.Kind() == reflect.Slice || val.Kind() == reflect.Array {
 		if hasTreeStructure(val) {
@@ -794,23 +871,102 @@ func hasTreeStructure(val reflect.Value) bool {
 	return false
 }
 
-// isTreeNodeSlice checks if a slice contains api.TreeNode instances
+// ToSlice converts variadic any arguments to a slice of type T if all elements implement T.
+// It handles:
+// - Single slice argument: []T or []any where elements are T
+// - Multiple arguments: each implementing T
+// - Nested slices: flattens one level if first arg is a slice
+func ToSlice[T any](data ...any) ([]T, bool) {
+	if len(data) == 0 {
+		return nil, false
+	}
+
+	var result []T
+
+	// Case 1: Single argument that is already a slice
+	if len(data) == 1 {
+		val := reflect.ValueOf(data[0])
+		logger.Infof("ToSlice: len(data)=1, data[0] type=%T, kind=%v", data[0], val.Kind())
+		if val.Kind() == reflect.Slice || val.Kind() == reflect.Array {
+			// It's a slice, try to convert each element
+			logger.Infof("ToSlice: unwrapping slice of %d elements", val.Len())
+			for i := 0; i < val.Len(); i++ {
+				elem := val.Index(i)
+				if elem.CanInterface() {
+					logger.Infof("ToSlice: checking elem[%d] type=%T for type T", i, elem.Interface())
+					if typed, ok := elem.Interface().(T); ok {
+						result = append(result, typed)
+						logger.Infof("ToSlice: elem[%d] implements T", i)
+					} else {
+						logger.Infof("ToSlice: elem[%d] does NOT implement T", i)
+						return nil, false // Not all elements are T
+					}
+				} else {
+					logger.Infof("ToSlice: elem[%d] CanInterface=false", i)
+					return nil, false
+				}
+			}
+			return result, len(result) > 0
+		}
+	}
+
+	// Case 2: Multiple arguments or single non-slice argument
+	for _, item := range data {
+		// Check if this item is a slice (nested slice case)
+		val := reflect.ValueOf(item)
+		if val.Kind() == reflect.Slice || val.Kind() == reflect.Array {
+			// Flatten one level
+			for i := 0; i < val.Len(); i++ {
+				elem := val.Index(i)
+				if elem.CanInterface() {
+					if typed, ok := elem.Interface().(T); ok {
+						result = append(result, typed)
+					} else {
+						return nil, false
+					}
+				} else {
+					return nil, false
+				}
+			}
+		} else {
+			// Single item
+			if typed, ok := item.(T); ok {
+				result = append(result, typed)
+			} else {
+				return nil, false
+			}
+		}
+	}
+
+	return result, len(result) > 0
+}
+
+// isTreeNodeSlice checks if ALL elements in a slice implement api.TreeNode
 func isTreeNodeSlice(val reflect.Value) bool {
 	if val.Len() == 0 {
 		return false
 	}
 
-	// Get the first element to check if it implements TreeNode
-	firstElem := val.Index(0)
-	firstElem, _ = safeDerefPointer(firstElem)
+	// Check ALL elements, not just the first
+	for i := 0; i < val.Len(); i++ {
+		elem := val.Index(i)
 
-	if !firstElem.CanInterface() {
-		return false
+		// Check for TreeNode interface BEFORE dereferencing
+		// This is important because TreeNode methods may be defined on pointer receivers
+		if !elem.CanInterface() {
+			logger.Infof("isTreeNodeSlice: elem[%d] CanInterface=false", i)
+			return false
+		}
+
+		// Check if it implements api.TreeNode interface (works for both *T and T)
+		if _, ok := elem.Interface().(api.TreeNode); !ok {
+			logger.Infof("isTreeNodeSlice: elem[%d] type=%T does not implement TreeNode", i, elem.Interface())
+			return false // Found an element that doesn't implement TreeNode
+		}
 	}
 
-	// Check if it implements api.TreeNode interface
-	_, ok := firstElem.Interface().(api.TreeNode)
-	return ok
+	logger.Infof("isTreeNodeSlice: all %d elements implement TreeNode", val.Len())
+	return true // All elements implement TreeNode
 }
 
 // convertSliceToTreeData converts a slice to tree-formatted PrettyData
@@ -825,12 +981,18 @@ func convertSliceToTreeData(val reflect.Value) (*api.PrettyData, error) {
 
 		for i := 0; i < val.Len(); i++ {
 			elem := val.Index(i)
-			elem, _ = safeDerefPointer(elem)
 
+			// Don't dereference - keep as pointer type to preserve TreeNode interface
 			if elem.CanInterface() {
 				if treeNode, ok := elem.Interface().(api.TreeNode); ok {
 					rootNode.Children[i] = treeNode
+				} else {
+					// This should not happen due to prior checks
+					return nil, fmt.Errorf("element at index %d does not implement TreeNode", i)
 				}
+			} else {
+				// This should not happen due to prior checks
+				return nil, fmt.Errorf("element at index %d cannot interface", i)
 			}
 		}
 
@@ -865,6 +1027,9 @@ func convertSliceToPrettyData(val reflect.Value) (*api.PrettyData, error) {
 	// Store the original interface value
 	originalData := val.Interface()
 
+	// Flatten slice of slices before processing
+	val = FlattenSlice(val)
+
 	if val.Len() == 0 {
 		// Empty slice - return empty PrettyData
 		return &api.PrettyData{
@@ -878,6 +1043,11 @@ func convertSliceToPrettyData(val reflect.Value) (*api.PrettyData, error) {
 	// Get the first element to check the type
 	firstElem := val.Index(0)
 	firstElem, _ = safeDerefPointer(firstElem)
+
+	// Dereference interface to get underlying concrete type
+	if firstElem.Kind() == reflect.Interface && !firstElem.IsNil() {
+		firstElem = firstElem.Elem()
+	}
 
 	// Handle slices of structs or maps
 	if firstElem.Kind() != reflect.Struct && firstElem.Kind() != reflect.Map {
