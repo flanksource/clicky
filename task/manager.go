@@ -60,13 +60,13 @@ type Manager struct {
 	tasksByIdentity sync.Map // map[string]*Task
 
 	// Output buffering
-	outputBuffer     []OutputEntry
-	bufferMutex      sync.Mutex
-	renderMutex      sync.Mutex
-	altScreenActive  bool
-	originalStdout   *os.File
-	originalStderr   *os.File
-	capturingOutput  bool
+	outputBuffer    []OutputEntry
+	bufferMutex     sync.Mutex
+	renderMutex     sync.Mutex
+	altScreenActive bool
+	originalStdout  *os.File
+	originalStderr  *os.File
+	capturingOutput bool
 }
 
 var global *Manager
