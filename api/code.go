@@ -10,6 +10,7 @@ import (
 	chromahtml "github.com/alecthomas/chroma/v2/formatters/html"
 	"github.com/alecthomas/chroma/v2/lexers"
 	"github.com/alecthomas/chroma/v2/styles"
+	"github.com/go-xmlfmt/xmlfmt"
 )
 
 // Code represents source code that can be syntax-highlighted across
@@ -77,6 +78,10 @@ func (c Code) ANSI() string {
 func (c Code) HTML() string {
 	if c.Content == "" {
 		return ""
+	}
+
+	if strings.Trim(c.Language, ".") == "xml" {
+		c.Content = xmlfmt.FormatXML(c.Content, "", "  ")
 	}
 
 	lexer := getLexer(c.Language)

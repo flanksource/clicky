@@ -13,8 +13,8 @@ type MapRenderNestedStruct struct {
 }
 
 type MapRenderTestStruct struct {
-	StringMap  map[string]string              `json:"string_map" pretty:"label=String Map"`
-	StructMap  map[string]MapRenderNestedStruct `json:"struct_map" pretty:"label=Struct Map"`
+	StringMap  map[string]string                 `json:"string_map" pretty:"label=String Map"`
+	StructMap  map[string]MapRenderNestedStruct  `json:"struct_map" pretty:"label=Struct Map"`
 	PointerMap map[string]*MapRenderNestedStruct `json:"pointer_map" pretty:"label=Pointer Map"`
 }
 

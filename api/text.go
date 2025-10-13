@@ -9,8 +9,41 @@ import (
 	commonsText "github.com/flanksource/commons/text"
 	"github.com/muesli/termenv"
 
+	"github.com/flanksource/clicky/api/icons"
 	"github.com/flanksource/clicky/api/tailwind"
 )
+
+func Human(content any, styles ...string) Text {
+	switch t := content.(type) {
+	case Textable:
+		return Text{}.Add(t)
+	case Text:
+		return t
+	case time.Time, *time.Time:
+		return Text{
+			Content: t.(time.Time).Format(time.RFC3339),
+			Style:   strings.Join(append(styles, "date"), " "),
+		}
+	case time.Duration, *time.Duration:
+		return Text{
+			Content: commonsText.HumanizeDuration(t.(time.Duration)),
+			Style:   strings.Join(append(styles, "duration"), " "),
+		}
+	case float32, float64:
+		return Text{
+			Content: fmt.Sprintf("%.2f", t),
+			Style:   strings.Join(append(styles, "number"), " ")}
+
+	case bool:
+		if t {
+			return Text{}.Add(icons.Success)
+		} else {
+			return Text{}.Add(icons.Fail)
+		}
+	}
+
+	return Text{Content: fmt.Sprintf("%v", content), Style: strings.Join(styles, " ")}
+}
 
 type HtmlElement struct {
 	Tag        string
@@ -89,6 +122,10 @@ type Text struct {
 	Children []Textable
 	Tooltip  Textable
 	indent   int // internal use for tracking indentation level
+}
+
+func (t Text) Human(o any, styles ...string) Text {
+	return t.Add(Text{Content: fmt.Sprintf("%v", o), Style: strings.Join(styles, " ")})
 }
 
 func (t Text) WithStyles(styles ...string) Text {
@@ -840,4 +877,127 @@ func formatHTML(text string, style TailwindStyle, originalStyle string) string {
 	}
 
 	return result
+}
+
+// KeyValuePair represents a single key-value pair that can be rendered to multiple output formats.
+// It supports two styles: "compact" (default, inline with minimal spacing) and "badge" (pill-shaped badges).
+type KeyValuePair struct {
+	Key   string
+	Value any
+	Style string // "compact" (default) or "badge"
+}
+
+func (kv KeyValuePair) String() string {
+	return fmt.Sprintf("%s: %v", kv.Key, kv.Value)
+}
+
+func (kv KeyValuePair) ANSI() string {
+	// Muted key (gray), normal value
+	output := termenv.NewOutput(termenv.DefaultOutput().Writer(), termenv.WithProfile(termenv.ANSI))
+	keyStyle := output.String(kv.Key + ":").Faint()
+	return fmt.Sprintf("%s %v", keyStyle.String(), kv.Value)
+}
+
+func (kv KeyValuePair) HTML() string {
+	// Determine style
+	style := kv.Style
+	if style == "" {
+		style = "compact"
+	}
+
+	// HTML-escape the key and value
+	escapedKey := htmlEscapeString(kv.Key)
+	escapedValue := htmlEscapeString(fmt.Sprintf("%v", kv.Value))
+
+	if strings.Contains(style, "badge") {
+		// Badge style: pill-shaped badge
+		return fmt.Sprintf(
+			`<span class="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-gray-100"><dt class="text-xs font-medium text-gray-600">%s:</dt><dd class="text-xs font-semibold text-gray-900">%s</dd></span>`,
+			escapedKey,
+			escapedValue,
+		)
+	}
+
+	// Compact style (default): inline with minimal spacing
+	return fmt.Sprintf(
+		`<div class="inline-flex gap-1"><dt class="text-gray-500 font-medium">%s:</dt><dd class="text-gray-900">%s</dd></div>`,
+		escapedKey,
+		escapedValue,
+	)
+}
+
+func (kv KeyValuePair) Markdown() string {
+	return fmt.Sprintf("**%s**: %v", kv.Key, kv.Value)
+}
+
+// DescriptionList represents a collection of key-value pairs rendered as an HTML description list.
+// It supports two styles: "compact" (default, inline flex layout) and "badge" (pill-shaped badges).
+type DescriptionList struct {
+	Items []KeyValuePair
+	Style string // "compact" (default) or "badge"
+}
+
+func (dl DescriptionList) String() string {
+	if len(dl.Items) == 0 {
+		return ""
+	}
+	var parts []string
+	for _, item := range dl.Items {
+		parts = append(parts, item.String())
+	}
+	return strings.Join(parts, ", ")
+}
+
+func (dl DescriptionList) ANSI() string {
+	if len(dl.Items) == 0 {
+		return ""
+	}
+	var parts []string
+	for _, item := range dl.Items {
+		parts = append(parts, item.ANSI())
+	}
+	return strings.Join(parts, ", ")
+}
+
+func (dl DescriptionList) HTML() string {
+	if len(dl.Items) == 0 {
+		return `<span class="text-gray-400">{}</span>`
+	}
+
+	// Determine style
+	style := dl.Style
+	if style == "" {
+		style = "compact"
+	}
+
+	if strings.Contains(style, "badge") {
+		// Badge style: wrap in flex container
+		var parts []string
+		for _, item := range dl.Items {
+			// Ensure each item uses badge style
+			item.Style = "badge"
+			parts = append(parts, item.HTML())
+		}
+		return fmt.Sprintf(`<div class="inline-flex flex-wrap gap-2">%s</div>`, strings.Join(parts, ""))
+	}
+
+	// Compact style (default): description list with inline-flex
+	var parts []string
+	for _, item := range dl.Items {
+		// Ensure each item uses compact style
+		item.Style = "compact"
+		parts = append(parts, item.HTML())
+	}
+	return fmt.Sprintf(`<dl class="inline-flex flex-wrap gap-x-4 gap-y-1">%s</dl>`, strings.Join(parts, ""))
+}
+
+func (dl DescriptionList) Markdown() string {
+	if len(dl.Items) == 0 {
+		return ""
+	}
+	var parts []string
+	for _, item := range dl.Items {
+		parts = append(parts, item.Markdown())
+	}
+	return strings.Join(parts, ", ")
 }

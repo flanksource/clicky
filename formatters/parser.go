@@ -886,23 +886,20 @@ func ToSlice[T any](data ...any) ([]T, bool) {
 	// Case 1: Single argument that is already a slice
 	if len(data) == 1 {
 		val := reflect.ValueOf(data[0])
-		logger.Infof("ToSlice: len(data)=1, data[0] type=%T, kind=%v", data[0], val.Kind())
 		if val.Kind() == reflect.Slice || val.Kind() == reflect.Array {
 			// It's a slice, try to convert each element
-			logger.Infof("ToSlice: unwrapping slice of %d elements", val.Len())
 			for i := 0; i < val.Len(); i++ {
 				elem := val.Index(i)
 				if elem.CanInterface() {
-					logger.Infof("ToSlice: checking elem[%d] type=%T for type T", i, elem.Interface())
 					if typed, ok := elem.Interface().(T); ok {
 						result = append(result, typed)
-						logger.Infof("ToSlice: elem[%d] implements T", i)
+
 					} else {
-						logger.Infof("ToSlice: elem[%d] does NOT implement T", i)
+
 						return nil, false // Not all elements are T
 					}
 				} else {
-					logger.Infof("ToSlice: elem[%d] CanInterface=false", i)
+
 					return nil, false
 				}
 			}
@@ -954,18 +951,15 @@ func isTreeNodeSlice(val reflect.Value) bool {
 		// Check for TreeNode interface BEFORE dereferencing
 		// This is important because TreeNode methods may be defined on pointer receivers
 		if !elem.CanInterface() {
-			logger.Infof("isTreeNodeSlice: elem[%d] CanInterface=false", i)
 			return false
 		}
 
 		// Check if it implements api.TreeNode interface (works for both *T and T)
 		if _, ok := elem.Interface().(api.TreeNode); !ok {
-			logger.Infof("isTreeNodeSlice: elem[%d] type=%T does not implement TreeNode", i, elem.Interface())
 			return false // Found an element that doesn't implement TreeNode
 		}
 	}
 
-	logger.Infof("isTreeNodeSlice: all %d elements implement TreeNode", val.Len())
 	return true // All elements implement TreeNode
 }
 

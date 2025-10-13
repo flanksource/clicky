@@ -381,7 +381,6 @@ func (v FieldValue) Time() *time.Time {
 	return nil
 }
 
-
 func (v FieldValue) Float() *float64 {
 
 	if v.FloatValue != nil {
@@ -866,50 +865,50 @@ func (v FieldValue) createText() *Text {
 		case FieldTypeArray:
 			content = v.formatArray()
 		default:
-		// Default formatting based on type
-		switch v.Field.Type {
-		case FieldTypeString:
-			if v.StringValue != nil {
-				content = *v.StringValue
-			} else {
-				content = fmt.Sprintf("%v", v.Value)
-			}
-		case FieldTypeInt:
-			if v.IntValue != nil {
-				content = fmt.Sprintf("%d", *v.IntValue)
-			} else {
-				content = fmt.Sprintf("%v", v.Value)
-			}
-		case FieldTypeFloat:
-			if v.FloatValue != nil {
-				content = fmt.Sprintf("%.6g", *v.FloatValue)
-			} else {
-				content = fmt.Sprintf("%v", v.Value)
-			}
-		case FieldTypeBoolean:
-			if v.BooleanValue != nil {
-				content = fmt.Sprintf("%v", *v.BooleanValue)
-			} else {
-				content = fmt.Sprintf("%v", v.Value)
-			}
-		case FieldTypeDate:
-			content = v.formatDate()
-			style = "text-blue-600"
-		case FieldTypeArray:
-			content = v.formatArray()
-		case FieldTypeMap:
-			if v.MapValue != nil {
-				pairs := make([]string, 0, len(v.MapValue))
-				for k, val := range v.MapValue {
-					pairs = append(pairs, fmt.Sprintf("%s: %v", k, val))
+			// Default formatting based on type
+			switch v.Field.Type {
+			case FieldTypeString:
+				if v.StringValue != nil {
+					content = *v.StringValue
+				} else {
+					content = fmt.Sprintf("%v", v.Value)
 				}
-				content = "{" + strings.Join(pairs, ", ") + "}"
-			} else {
+			case FieldTypeInt:
+				if v.IntValue != nil {
+					content = fmt.Sprintf("%d", *v.IntValue)
+				} else {
+					content = fmt.Sprintf("%v", v.Value)
+				}
+			case FieldTypeFloat:
+				if v.FloatValue != nil {
+					content = fmt.Sprintf("%.6g", *v.FloatValue)
+				} else {
+					content = fmt.Sprintf("%v", v.Value)
+				}
+			case FieldTypeBoolean:
+				if v.BooleanValue != nil {
+					content = fmt.Sprintf("%v", *v.BooleanValue)
+				} else {
+					content = fmt.Sprintf("%v", v.Value)
+				}
+			case FieldTypeDate:
+				content = v.formatDate()
+				style = "text-blue-600"
+			case FieldTypeArray:
+				content = v.formatArray()
+			case FieldTypeMap:
+				if v.MapValue != nil {
+					pairs := make([]string, 0, len(v.MapValue))
+					for k, val := range v.MapValue {
+						pairs = append(pairs, fmt.Sprintf("%s: %v", k, val))
+					}
+					content = "{" + strings.Join(pairs, ", ") + "}"
+				} else {
+					content = fmt.Sprintf("%v", v.Value)
+				}
+			default:
 				content = fmt.Sprintf("%v", v.Value)
 			}
-		default:
-			content = fmt.Sprintf("%v", v.Value)
-		}
 		}
 	}
 

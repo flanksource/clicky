@@ -51,10 +51,10 @@ func TestFlattenSlice(t *testing.T) {
 			isFlat: false,
 		},
 		{
-			name: "empty slice",
-			input: [][]TestStruct{},
+			name:     "empty slice",
+			input:    [][]TestStruct{},
 			expected: [][]TestStruct{},
-			isFlat: false,
+			isFlat:   false,
 		},
 		{
 			name: "slice of slice of maps",
@@ -110,7 +110,7 @@ func TestFlattenSlice(t *testing.T) {
 				{},
 			},
 			expected: []TestStruct{},
-			isFlat: true,
+			isFlat:   true,
 		},
 	}
 

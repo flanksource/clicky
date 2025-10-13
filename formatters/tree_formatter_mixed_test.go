@@ -97,14 +97,14 @@ func TestToSliceWithMixedTypes(t *testing.T) {
 			wantOk:    true,
 		},
 		{
-			name: "empty slice",
-			input: []any{},
+			name:      "empty slice",
+			input:     []any{},
 			wantCount: 0,
 			wantOk:    false,
 		},
 		{
-			name: "non-TreeNode types",
-			input: []any{"string", 42},
+			name:      "non-TreeNode types",
+			input:     []any{"string", 42},
 			wantCount: 0,
 			wantOk:    false,
 		},
