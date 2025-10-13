@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.6.0](https://github.com/flanksource/clicky/compare/v1.5.0...v1.6.0) (2025-10-13)
+
+
+### ✨ Features
+
+* add clicky.CodeBlock/Map/Collapsed ([2fcda9a](https://github.com/flanksource/clicky/commit/2fcda9aef927b6a45fd1c2d84f738732fa90d68c))
+
+
+### 🐛 Bug Fixes
+
+* formatting issues ([a9cf960](https://github.com/flanksource/clicky/commit/a9cf9604eab846c447724e2b49493a9e0a5e3ebe))
+* formatting issues ([df0fffe](https://github.com/flanksource/clicky/commit/df0fffe8db3c406073bee305e94ccc476c362aa0))
+
+
+### 🔧 Maintenance
+
+* add pdf build tag ([44117f5](https://github.com/flanksource/clicky/commit/44117f55e152d75a7b673de2917f2723dbb736cc))
+* fix nested rendering ([9fec288](https://github.com/flanksource/clicky/commit/9fec2886491b426da8adc8d79528fd2debc90437))
+* fix task rendering ([72a0aa6](https://github.com/flanksource/clicky/commit/72a0aa6bd971c80cdb79f30c2266f13ff786b4ce))
+* fix test report ([f3e879a](https://github.com/flanksource/clicky/commit/f3e879ab60a35be17adce03a53cccd52ee0c49eb))
+
 ## [1.5.0](https://github.com/flanksource/clicky/compare/v1.4.0...v1.5.0) (2025-10-03)
 
 
