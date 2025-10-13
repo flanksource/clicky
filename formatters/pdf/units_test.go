@@ -1,3 +1,5 @@
+//go:build pdf
+
 package pdf
 
 import (

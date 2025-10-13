@@ -1,3 +1,5 @@
+//go:build pdf
+
 // Package pdf provides test utilities for validating PDF content and structure.
 //
 // This package includes utilities for PDF content verification with integration

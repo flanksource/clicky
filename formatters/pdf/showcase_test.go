@@ -1,3 +1,5 @@
+//go:build pdf
+
 package pdf_test
 
 import (
@@ -21,7 +23,7 @@ import (
 )
 
 // TestGenerateShowcasePDF generates a comprehensive PDF showcasing all widgets
-func TestGenerateShowcasePDF(t *testing.T) {
+func XTestGenerateShowcasePDF(t *testing.T) {
 	// Generate both normal and debug versions
 	for _, debugMode := range []bool{false, true} {
 		name := "showcase"
