@@ -479,4 +479,86 @@ echo line3`
 			Expect(p.GetTask()).ToNot(BeNil())
 		})
 	})
+
+	Describe("Shell Detection", func() {
+		Context("ContainsShellOperators", func() {
+			It("should detect pipe operator", func() {
+				Expect(exec.ContainsShellOperators("echo foo | grep bar")).To(BeTrue())
+			})
+
+			It("should detect output redirect", func() {
+				Expect(exec.ContainsShellOperators("echo foo > file.txt")).To(BeTrue())
+			})
+
+			It("should detect input redirect", func() {
+				Expect(exec.ContainsShellOperators("cat < file.txt")).To(BeTrue())
+			})
+
+			It("should detect stderr redirect", func() {
+				Expect(exec.ContainsShellOperators("command 2> error.log")).To(BeTrue())
+			})
+
+			It("should detect AND operator", func() {
+				Expect(exec.ContainsShellOperators("command1 && command2")).To(BeTrue())
+			})
+
+			It("should detect OR operator", func() {
+				Expect(exec.ContainsShellOperators("command1 || command2")).To(BeTrue())
+			})
+
+			It("should detect semicolon separator", func() {
+				Expect(exec.ContainsShellOperators("command1; command2")).To(BeTrue())
+			})
+
+			It("should detect backticks", func() {
+				Expect(exec.ContainsShellOperators("echo `date`")).To(BeTrue())
+			})
+
+			It("should detect command substitution", func() {
+				Expect(exec.ContainsShellOperators("echo $(date)")).To(BeTrue())
+			})
+
+			It("should not detect operators in simple commands", func() {
+				Expect(exec.ContainsShellOperators("echo hello world")).To(BeFalse())
+			})
+
+			It("should not detect operators in commands with args", func() {
+				Expect(exec.ContainsShellOperators("/usr/bin/command --option=value")).To(BeFalse())
+			})
+		})
+
+		Context("Shell Wrapping Behavior", func() {
+			It("should execute commands with pipes correctly", func() {
+				p := exec.Process{Cmd: "echo hello | tr h H"}.Run()
+				Expect(p.IsOK()).To(BeTrue())
+				Expect(p.Stdout.String()).To(Equal("Hello\n"))
+			})
+
+			It("should execute commands with redirects correctly", func() {
+				// Test stderr redirect to stdout
+				p := exec.Process{Cmd: "echo error >&2 | cat"}.Run()
+				Expect(p.IsOK()).To(BeTrue())
+				// Stderr should contain the error message
+				Expect(p.Stderr.String()).To(ContainSubstring("error"))
+			})
+
+			It("should execute commands with AND operator", func() {
+				p := exec.Process{Cmd: "echo first && echo second"}.Run()
+				Expect(p.IsOK()).To(BeTrue())
+				Expect(p.Stdout.String()).To(Equal("first\nsecond\n"))
+			})
+
+			It("should execute commands with OR operator", func() {
+				p := exec.Process{Cmd: "false || echo fallback"}.Run()
+				Expect(p.IsOK()).To(BeTrue())
+				Expect(p.Stdout.String()).To(Equal("fallback\n"))
+			})
+
+			It("should execute commands with command substitution", func() {
+				p := exec.Process{Cmd: "echo result: $(echo nested)"}.Run()
+				Expect(p.IsOK()).To(BeTrue())
+				Expect(p.Stdout.String()).To(Equal("result: nested\n"))
+			})
+		})
+	})
 })

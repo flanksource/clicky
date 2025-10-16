@@ -15,6 +15,18 @@ import (
 	"github.com/flanksource/commons/logger"
 )
 
+// ContainsShellOperators checks if a command contains shell-specific operators
+// that require wrapping in a shell (bash -c or sh -c)
+func ContainsShellOperators(cmd string) bool {
+	shellOps := []string{"|", ">", "<", "2>", "&&", "||", ";", "`", "$("}
+	for _, op := range shellOps {
+		if strings.Contains(cmd, op) {
+			return true
+		}
+	}
+	return false
+}
+
 type Process struct {
 	Started *time.Time
 	cmd     *exec.Cmd
@@ -49,6 +61,11 @@ func (p Process) WithCwd(cwd string) Process {
 
 func (p Process) WithLogger(log logger.Logger) Process {
 	p.Log = log
+	return p
+}
+
+func (p Process) WithTask(t *task.Task) Process {
+	p.task = t
 	return p
 }
 
@@ -101,12 +118,32 @@ func (p Process) Run() Process {
 
 	// If Args is empty, treat Cmd as a shell command
 	if len(p.Args) == 0 {
-		cmd = exec.Command("/bin/sh", "-c", p.Cmd)
+		// Check if command contains shell operators
+		if ContainsShellOperators(p.Cmd) {
+			// Try bash first, fall back to sh
+			shellBin := "bash"
+			if _, err := exec.LookPath("bash"); err != nil {
+				shellBin = "sh"
+				if p.task != nil {
+					p.task.V(5).Infof("bash not found, using sh instead")
+				}
+			} else if p.task != nil {
+				p.task.V(5).Infof("Using bash for shell command")
+			}
+			cmd = exec.Command(shellBin, "-c", p.Cmd)
+		} else {
+			// No shell operators, use sh
+			cmd = exec.Command("/bin/sh", "-c", p.Cmd)
+		}
 	} else {
 		cmd = exec.Command(p.Cmd, p.Args...)
 	}
 
 	cmd.Dir = p.Cwd
+	if p.Cwd != "" && p.task != nil {
+		p.task.V(4).Infof("Setting working directory to %s", p.Cwd)
+	}
+
 	cmd.Stderr = &p.Stderr
 	cmd.Stdout = &p.Stdout
 
