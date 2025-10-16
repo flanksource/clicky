@@ -561,4 +561,111 @@ echo line3`
 			})
 		})
 	})
+
+	Describe("Task-Aware Logging", func() {
+		Context("RunWithLogging", func() {
+			It("should execute command with task logger", func() {
+				p := &exec.Process{Cmd: "echo hello"}
+				t := p.AsTask("Test Task")
+
+				// Wait for task to complete
+				result := t.WaitFor()
+				Expect(result.Status).To(Equal(task.StatusSuccess))
+				Expect(p.Stdout.String()).To(Equal("hello\n"))
+			})
+
+			It("should fall back to Run() without task", func() {
+				p := exec.Process{Cmd: "echo no-task"}.RunWithLogging()
+				Expect(p.IsOK()).To(BeTrue())
+				Expect(p.Stdout.String()).To(Equal("no-task\n"))
+			})
+
+			It("should handle commands with args via RunWithLogging", func() {
+				// Create a simple task and use WithTask for testing
+				process := &exec.Process{Cmd: "true"}
+				t := process.AsTask("Setup Task")
+				t.WaitFor()
+
+				// Now test with task attached
+				p := exec.Process{
+					Cmd:  "echo",
+					Args: []string{"arg1", "arg2"},
+				}.WithTask(t).RunWithLogging()
+				Expect(p.IsOK()).To(BeTrue())
+			})
+
+			It("should handle failed commands", func() {
+				p := &exec.Process{Cmd: "false"}
+				t := p.AsTask("Failing Task")
+
+				result := t.WaitFor()
+				Expect(result.Status).To(Equal(task.StatusFailed))
+				Expect(p.Err).ToNot(BeNil())
+			})
+
+			It("should handle commands with output", func() {
+				cmd := "echo line1; echo line2; echo line3"
+				p := &exec.Process{Cmd: cmd}
+				t := p.AsTask("Multi-line Task")
+
+				result := t.WaitFor()
+				Expect(result.Status).To(Equal(task.StatusSuccess))
+				Expect(p.Stdout.String()).To(Equal("line1\nline2\nline3\n"))
+			})
+		})
+
+		Context("Truncation Helpers", func() {
+			It("should truncate output by line count", func() {
+				output := "line1\nline2\nline3\nline4\nline5\nline6"
+				truncated := exec.TruncateOutput(output, 3, 10000)
+				Expect(truncated).To(ContainSubstring("line1"))
+				Expect(truncated).To(ContainSubstring("line3"))
+				Expect(truncated).To(ContainSubstring("(3 more lines)"))
+				Expect(truncated).ToNot(ContainSubstring("line6"))
+			})
+
+			It("should truncate output by character count", func() {
+				output := "a very long string that exceeds the limit"
+				truncated := exec.TruncateOutput(output, 100, 20)
+				Expect(len(truncated)).To(BeNumerically("<", 50))
+				Expect(truncated).To(ContainSubstring("truncated"))
+			})
+
+			It("should not truncate short output", func() {
+				output := "short"
+				truncated := exec.TruncateOutput(output, 10, 1000)
+				Expect(truncated).To(Equal("short"))
+			})
+
+			It("should handle empty output", func() {
+				truncated := exec.TruncateOutput("", 10, 1000)
+				Expect(truncated).To(Equal(""))
+			})
+
+			It("should get first line correctly", func() {
+				output := "first line\nsecond line\nthird line"
+				firstLine := exec.GetFirstLine(output)
+				Expect(firstLine).To(Equal("first line"))
+			})
+
+			It("should handle single line", func() {
+				output := "only one line"
+				firstLine := exec.GetFirstLine(output)
+				Expect(firstLine).To(Equal("only one line"))
+			})
+
+			It("should truncate strings correctly", func() {
+				long := "this is a very long string that needs truncation"
+				truncated := exec.TruncateString(long, 20)
+				Expect(len(truncated)).To(BeNumerically("<=", 23)) // 20 + "..."
+				Expect(truncated).To(ContainSubstring("..."))
+			})
+
+			It("should not truncate short strings", func() {
+				short := "short"
+				truncated := exec.TruncateString(short, 100)
+				Expect(truncated).To(Equal("short"))
+			})
+		})
+	})
 })

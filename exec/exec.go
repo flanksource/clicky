@@ -161,6 +161,108 @@ func (p Process) Run() Process {
 	return p
 }
 
+// RunWithLogging executes the command with verbosity-aware logging
+func (p Process) RunWithLogging() Process {
+	if p.task == nil {
+		// No task logger, fall back to regular Run()
+		return p.Run()
+	}
+
+	// Log command before execution
+	cmdStr := p.Cmd
+	if len(p.Args) > 0 {
+		cmdStr = fmt.Sprintf("%s %s", p.Cmd, strings.Join(p.Args, " "))
+	}
+
+	// V(3): Log full command
+	p.task.V(3).Infof("Executing: %s", cmdStr)
+
+	// Debug: Log executing message
+	if p.task.IsDebugEnabled() {
+		p.task.Debugf("Executing: %s", cmdStr)
+	}
+
+	// Run the command
+	p = p.Run()
+
+	// Get exit code
+	exitCode := 0
+	if p.Err != nil {
+		if exitErr, ok := p.Err.(*exec.ExitError); ok {
+			exitCode = exitErr.ExitCode()
+		} else {
+			exitCode = -1
+		}
+	}
+
+	// Log output based on verbosity level
+	output := p.Out()
+
+	// V(3): Log complete output
+	if p.task.IsLevelEnabled(logger.Trace2) {
+		p.task.V(3).Infof("Command: %s\nExit code: %d\nOutput:\n%s", cmdStr, exitCode, output)
+	} else if p.task.IsLevelEnabled(logger.Trace) {
+		// Trace: up to 10 lines OR 1000 chars
+		truncated := TruncateOutput(output, 10, 1000)
+		p.task.Tracef("Command: %s\nExit code: %d\nOutput:\n%s", cmdStr, exitCode, truncated)
+	} else if p.task.IsDebugEnabled() {
+		// Debug: full output
+		p.task.Debugf("Output:\n%s", output)
+	} else if p.task.IsLevelEnabled(logger.Info) {
+		// Info: first line truncated to 100 chars
+		firstLine := GetFirstLine(output)
+		truncated := TruncateString(firstLine, 100)
+		p.task.Infof("$ %s (exit: %d) %s", cmdStr, exitCode, truncated)
+	}
+
+	return p
+}
+
+// TruncateOutput truncates output to maxLines or maxChars, whichever limit is hit first
+func TruncateOutput(output string, maxLines int, maxChars int) string {
+	if len(output) == 0 {
+		return output
+	}
+
+	lines := strings.Split(output, "\n")
+
+	// Check line limit
+	if len(lines) > maxLines {
+		truncated := strings.Join(lines[:maxLines], "\n")
+		remaining := len(lines) - maxLines
+		return fmt.Sprintf("%s\n... (%d more lines)", truncated, remaining)
+	}
+
+	// Check char limit
+	if len(output) > maxChars {
+		truncated := output[:maxChars]
+		remaining := len(output) - maxChars
+		return fmt.Sprintf("%s... (truncated %d chars)", truncated, remaining)
+	}
+
+	return output
+}
+
+// GetFirstLine extracts the first line from output
+func GetFirstLine(output string) string {
+	if output == "" {
+		return ""
+	}
+	lines := strings.Split(output, "\n")
+	if len(lines) > 0 {
+		return lines[0]
+	}
+	return output
+}
+
+// TruncateString truncates a string to maxLen characters
+func TruncateString(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen] + "..."
+}
+
 func (p Process) IsRunning() bool {
 	return p.cmd != nil && p.cmd.Process != nil && !p.cmd.ProcessState.Exited()
 }
