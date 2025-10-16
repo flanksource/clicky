@@ -19,6 +19,10 @@ func StartTask[T any](name string, taskFunc task.TaskFunc[T], opts ...TaskOption
 	return task.StartTask(name, taskFunc, opts...)
 }
 
+func StartGroup[T any](name string, opts ...task.TaskGroupOption) task.TypedGroup[T] {
+	return task.StartGroup[T](name, opts...)
+}
+
 // WaitForGlobalCompletion waits for all global tasks to complete and returns exit code
 func WaitForGlobalCompletion() int {
 	return task.Wait()

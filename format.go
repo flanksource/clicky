@@ -151,3 +151,24 @@ func CodeBlock(language, content string, styles ...string) api.Code {
 func UseFormatter(opts FormatOptions) {
 	defaultOpts = opts
 }
+
+// RegisterFormatter registers a custom formatter function that can be used
+// with Format() by specifying the format name in FormatOptions.
+// Custom formatters take precedence over built-in formatters with the same name.
+//
+// Example:
+//
+//	clicky.RegisterFormatter("upper", func(data interface{}, opts clicky.FormatOptions) (string, error) {
+//	    s := fmt.Sprintf("%v", data)
+//	    return strings.ToUpper(s), nil
+//	})
+//
+//	result, _ := clicky.Format(myData, clicky.FormatOptions{Format: "upper"})
+func RegisterFormatter(name string, fn func(data interface{}, options FormatOptions) (string, error)) {
+	formatters.RegisterFormatter(name, fn)
+}
+
+// ListCustomFormatters returns a sorted list of all registered custom formatter names.
+func ListCustomFormatters() []string {
+	return formatters.ListCustomFormatters()
+}
