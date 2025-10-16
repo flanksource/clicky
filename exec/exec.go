@@ -31,6 +31,7 @@ type Process struct {
 	Started *time.Time
 	cmd     *exec.Cmd
 	task    *task.Task
+	Timeout time.Duration
 	Env     map[string]string
 	Cwd     string
 	Err     error
@@ -46,7 +47,57 @@ func (p Process) Out() string {
 }
 
 func (p Process) Pretty() api.Text {
-	return api.Text{Content: p.Name()}
+	// Build command string
+	cmdStr := p.Cmd
+	if len(p.Args) > 0 {
+		cmdStr = fmt.Sprintf("%s %s", p.Cmd, strings.Join(p.Args, " "))
+	}
+
+	// Determine status
+	status := "pending"
+	exitCode := -1
+
+	if p.cmd != nil && p.cmd.ProcessState != nil {
+		if exitErr, ok := p.Err.(*exec.ExitError); ok {
+			exitCode = exitErr.ExitCode()
+		} else if p.Err == nil {
+			exitCode = 0
+		}
+
+		if p.Err == nil {
+			status = "success"
+		} else if strings.Contains(p.Err.Error(), "timed out") {
+			status = "timeout"
+		} else if strings.Contains(p.Err.Error(), "permission denied") {
+			status = "permission denied"
+		} else {
+			status = "failed"
+		}
+	}
+
+	// Get first line of output if available
+	output := p.Out()
+	firstLine := ""
+	if output != "" {
+		lines := strings.Split(output, "\n")
+		if len(lines) > 0 {
+			firstLine = TruncateString(lines[0], 100)
+		}
+	}
+
+	// Build pretty output
+	content := fmt.Sprintf("Command: %s\nStatus: %s", cmdStr, status)
+	if exitCode >= 0 {
+		content = fmt.Sprintf("%s (exit: %d)", content, exitCode)
+	}
+	if firstLine != "" {
+		content = fmt.Sprintf("%s\nOutput: %s", content, firstLine)
+	}
+	if p.Err != nil {
+		content = fmt.Sprintf("%s\nError: %v", content, p.Err)
+	}
+
+	return api.Text{Content: content}
 }
 
 func (p Process) WithEnv(env map[string]string) Process {
@@ -66,6 +117,11 @@ func (p Process) WithLogger(log logger.Logger) Process {
 
 func (p Process) WithTask(t *task.Task) Process {
 	p.task = t
+	return p
+}
+
+func (p Process) WithTimeout(timeout time.Duration) Process {
+	p.Timeout = timeout
 	return p
 }
 
@@ -156,63 +212,94 @@ func (p Process) Run() Process {
 	now := time.Now()
 	p.Started = &now
 	p.cmd = cmd
-	p.Err = cmd.Run()
 
-	return p
-}
+	// Log command before execution if task logger is available
+	if p.task != nil {
+		cmdStr := p.Cmd
+		if len(p.Args) > 0 {
+			cmdStr = fmt.Sprintf("%s %s", p.Cmd, strings.Join(p.Args, " "))
+		}
 
-// RunWithLogging executes the command with verbosity-aware logging
-func (p Process) RunWithLogging() Process {
-	if p.task == nil {
-		// No task logger, fall back to regular Run()
-		return p.Run()
-	}
+		// V(3): Log full command
+		p.task.V(3).Infof("Executing: %s", cmdStr)
 
-	// Log command before execution
-	cmdStr := p.Cmd
-	if len(p.Args) > 0 {
-		cmdStr = fmt.Sprintf("%s %s", p.Cmd, strings.Join(p.Args, " "))
-	}
-
-	// V(3): Log full command
-	p.task.V(3).Infof("Executing: %s", cmdStr)
-
-	// Debug: Log executing message
-	if p.task.IsDebugEnabled() {
-		p.task.Debugf("Executing: %s", cmdStr)
-	}
-
-	// Run the command
-	p = p.Run()
-
-	// Get exit code
-	exitCode := 0
-	if p.Err != nil {
-		if exitErr, ok := p.Err.(*exec.ExitError); ok {
-			exitCode = exitErr.ExitCode()
-		} else {
-			exitCode = -1
+		// Debug: Log executing message
+		if p.task.IsDebugEnabled() {
+			p.task.Debugf("Executing: %s", cmdStr)
 		}
 	}
 
-	// Log output based on verbosity level
-	output := p.Out()
+	// Handle timeout if configured
+	if p.Timeout > 0 {
+		resultChan := make(chan error, 1)
+		go func() {
+			resultChan <- cmd.Run()
+		}()
 
-	// V(3): Log complete output
-	if p.task.IsLevelEnabled(logger.Trace2) {
-		p.task.V(3).Infof("Command: %s\nExit code: %d\nOutput:\n%s", cmdStr, exitCode, output)
-	} else if p.task.IsLevelEnabled(logger.Trace) {
-		// Trace: up to 10 lines OR 1000 chars
-		truncated := TruncateOutput(output, 10, 1000)
-		p.task.Tracef("Command: %s\nExit code: %d\nOutput:\n%s", cmdStr, exitCode, truncated)
-	} else if p.task.IsDebugEnabled() {
-		// Debug: full output
-		p.task.Debugf("Output:\n%s", output)
-	} else if p.task.IsLevelEnabled(logger.Info) {
-		// Info: first line truncated to 100 chars
-		firstLine := GetFirstLine(output)
-		truncated := TruncateString(firstLine, 100)
-		p.task.Infof("$ %s (exit: %d) %s", cmdStr, exitCode, truncated)
+		select {
+		case err := <-resultChan:
+			p.Err = err
+		case <-time.After(p.Timeout):
+			// Try to kill the running process
+			_ = p.cmd.Process.Kill()
+			p.Err = fmt.Errorf("command timed out after %v", p.Timeout)
+			if p.task != nil {
+				p.task.V(4).Infof("Command timed out after %v", p.Timeout)
+			}
+		}
+	} else {
+		p.Err = cmd.Run()
+	}
+
+	// Enhance fork/exec permission errors with better messages
+	if p.Err != nil && strings.Contains(p.Err.Error(), "fork/exec") && strings.Contains(p.Err.Error(), "permission denied") {
+		// Check if the command file exists and get permissions
+		checkPath := p.Cmd
+		if info, statErr := os.Stat(checkPath); statErr == nil {
+			p.Err = fmt.Errorf("binary %s exists but is not executable (permissions: %s). Try: chmod +x %s",
+				checkPath, info.Mode().String(), checkPath)
+			if p.task != nil {
+				p.task.V(4).Infof("Permission error: %v", p.Err)
+			}
+		}
+	}
+
+	// Log output after execution if task logger is available
+	if p.task != nil {
+		cmdStr := p.Cmd
+		if len(p.Args) > 0 {
+			cmdStr = fmt.Sprintf("%s %s", p.Cmd, strings.Join(p.Args, " "))
+		}
+
+		// Get exit code
+		exitCode := 0
+		if p.Err != nil {
+			if exitErr, ok := p.Err.(*exec.ExitError); ok {
+				exitCode = exitErr.ExitCode()
+			} else {
+				exitCode = -1
+			}
+		}
+
+		// Log output based on verbosity level
+		output := p.Out()
+
+		// V(3): Log complete output
+		if p.task.IsLevelEnabled(logger.Trace2) {
+			p.task.V(3).Infof("Command: %s\nExit code: %d\nOutput:\n%s", cmdStr, exitCode, output)
+		} else if p.task.IsLevelEnabled(logger.Trace) {
+			// Trace: up to 10 lines OR 1000 chars
+			truncated := TruncateOutput(output, 10, 1000)
+			p.task.Tracef("Command: %s\nExit code: %d\nOutput:\n%s", cmdStr, exitCode, truncated)
+		} else if p.task.IsDebugEnabled() {
+			// Debug: full output
+			p.task.Debugf("Output:\n%s", output)
+		} else if p.task.IsLevelEnabled(logger.Info) {
+			// Info: first line truncated to 100 chars
+			firstLine := GetFirstLine(output)
+			truncated := TruncateString(firstLine, 100)
+			p.task.Infof("$ %s (exit: %d) %s", cmdStr, exitCode, truncated)
+		}
 	}
 
 	return p

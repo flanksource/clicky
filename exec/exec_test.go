@@ -575,7 +575,7 @@ echo line3`
 			})
 
 			It("should fall back to Run() without task", func() {
-				p := exec.Process{Cmd: "echo no-task"}.RunWithLogging()
+				p := exec.Process{Cmd: "echo no-task"}.Run()
 				Expect(p.IsOK()).To(BeTrue())
 				Expect(p.Stdout.String()).To(Equal("no-task\n"))
 			})
@@ -590,7 +590,7 @@ echo line3`
 				p := exec.Process{
 					Cmd:  "echo",
 					Args: []string{"arg1", "arg2"},
-				}.WithTask(t).RunWithLogging()
+				}.WithTask(t).Run()
 				Expect(p.IsOK()).To(BeTrue())
 			})
 
