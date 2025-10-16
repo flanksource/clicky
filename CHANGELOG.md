@@ -5,6 +5,44 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0](https://github.com/flanksource/clicky/compare/v1.6.0...v2.0.0) (2025-10-16)
+
+
+### ⚠ BREAKING CHANGES
+
+* **exec:** Remove RunWithLogging() method - use WithLogger().Run() instead
+
+- Integrate task-aware logging directly into Run() method
+  - Add pre-execution logging (V(3)/Debug levels)
+  - Add post-execution logging with verbosity-based output
+  - V(3): complete output, Trace: 10 lines/1000 chars, Debug: full, Info: first line
+- Add Timeout field and WithTimeout() method for built-in timeout handling
+  - Use goroutine+select pattern internally
+  - Eliminate need for manual timeout handling in calling code
+- Move fork/exec permission error enhancement to Run()
+  - Detect permission errors and check file permissions
+  - Suggest chmod +x command in error message
+- Enhance Pretty() to return detailed formatted output
+  - Show command, status, exit code, output preview, and errors
+  - Detect timeout, permission denied, and other failure states
+- Update tests to use Run() instead of RunWithLogging()
+
+### ♻️ Code Refactoring
+
+* **exec:** integrate logging into Run(), add timeout support ([7628d3f](https://github.com/flanksource/clicky/commit/7628d3fefad2ae00093db9f74744b7af454efcdc))
+
+
+### ✨ Features
+
+* **exec:** add automatic shell detection and wrapping ([c192e67](https://github.com/flanksource/clicky/commit/c192e67a480ab2267104458b21d9b89fa65ecbcc))
+* **exec:** add task-aware command execution with verbosity logging ([0c74e86](https://github.com/flanksource/clicky/commit/0c74e86fe0259499d68093755e7836d1e6abfe4e))
+
+
+### 🔧 Maintenance
+
+* add clicky.StartGroup ([cdff575](https://github.com/flanksource/clicky/commit/cdff57587004248a9a078f8d35b04e8dcb32083a))
+* misc updates ([d7cb0a4](https://github.com/flanksource/clicky/commit/d7cb0a46e736ecad1a0a89ba970ad0e4c308fe13))
+
 ## [1.6.0](https://github.com/flanksource/clicky/compare/v1.5.0...v1.6.0) (2025-10-13)
 
 
