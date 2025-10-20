@@ -3,6 +3,7 @@ package exec
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"strings"
@@ -200,34 +201,57 @@ func (p Process) Run() Process {
 		p.task.V(4).Infof("Setting working directory to %s", p.Cwd)
 	}
 
-	cmd.Stderr = &p.Stderr
-	cmd.Stdout = &p.Stdout
-
 	// Set environment variables
 	cmd.Env = os.Environ() // Start with current environment
 	for k, v := range p.Env {
 		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, v))
 	}
 
-	now := time.Now()
-	p.Started = &now
-	p.cmd = cmd
+	// Configure stdout/stderr with tee-ing based on verbosity
+	var stdoutWriter, stderrWriter io.Writer = &p.Stdout, &p.Stderr
 
-	// Log command before execution if task logger is available
 	if p.task != nil {
 		cmdStr := p.Cmd
 		if len(p.Args) > 0 {
 			cmdStr = fmt.Sprintf("%s %s", p.Cmd, strings.Join(p.Args, " "))
 		}
 
-		// V(3): Log full command
-		p.task.V(3).Infof("Executing: %s", cmdStr)
+		// V(1): Log command being run
+		if logger.V(1).Enabled() {
+			p.task.Infof("$ %s", cmdStr)
+		}
 
-		// Debug: Log executing message
-		if p.task.IsDebugEnabled() {
-			p.task.Debugf("Executing: %s", cmdStr)
+		// V(2): Log environment variables
+		if logger.V(2).Enabled() && len(p.Env) > 0 {
+			for k, v := range p.Env {
+				p.task.Infof("  %s=%s", k, v)
+			}
+		}
+
+		// Setup tee-ing for stdout based on verbosity
+		if logger.V(1).Enabled() {
+			taskWriter := &taskLogWriter{task: p.task}
+
+			// V(3): Tee all output
+			if logger.V(3).Enabled() {
+				stdoutWriter = io.MultiWriter(&p.Stdout, taskWriter)
+			} else {
+				// V(1-2): Tee up to 100 lines
+				limitedWriter := &lineLimitedWriter{
+					writer:   taskWriter,
+					maxLines: 100,
+				}
+				stdoutWriter = io.MultiWriter(&p.Stdout, limitedWriter)
+			}
 		}
 	}
+
+	cmd.Stderr = stderrWriter
+	cmd.Stdout = stdoutWriter
+
+	now := time.Now()
+	p.Started = &now
+	p.cmd = cmd
 
 	// Handle timeout if configured
 	if p.Timeout > 0 {
@@ -264,41 +288,20 @@ func (p Process) Run() Process {
 		}
 	}
 
-	// Log output after execution if task logger is available
-	if p.task != nil {
+	// Log exit code and errors after execution
+	if p.task != nil && p.Err != nil {
 		cmdStr := p.Cmd
 		if len(p.Args) > 0 {
 			cmdStr = fmt.Sprintf("%s %s", p.Cmd, strings.Join(p.Args, " "))
 		}
 
-		// Get exit code
-		exitCode := 0
-		if p.Err != nil {
-			if exitErr, ok := p.Err.(*exec.ExitError); ok {
-				exitCode = exitErr.ExitCode()
-			} else {
-				exitCode = -1
-			}
+		exitCode := -1
+		if exitErr, ok := p.Err.(*exec.ExitError); ok {
+			exitCode = exitErr.ExitCode()
 		}
 
-		// Log output based on verbosity level
-		output := p.Out()
-
-		// V(3): Log complete output
-		if p.task.IsLevelEnabled(logger.Trace2) {
-			p.task.V(3).Infof("Command: %s\nExit code: %d\nOutput:\n%s", cmdStr, exitCode, output)
-		} else if p.task.IsLevelEnabled(logger.Trace) {
-			// Trace: up to 10 lines OR 1000 chars
-			truncated := TruncateOutput(output, 10, 1000)
-			p.task.Tracef("Command: %s\nExit code: %d\nOutput:\n%s", cmdStr, exitCode, truncated)
-		} else if p.task.IsDebugEnabled() {
-			// Debug: full output
-			p.task.Debugf("Output:\n%s", output)
-		} else if p.task.IsLevelEnabled(logger.Info) {
-			// Info: first line truncated to 100 chars
-			firstLine := GetFirstLine(output)
-			truncated := TruncateString(firstLine, 100)
-			p.task.Infof("$ %s (exit: %d) %s", cmdStr, exitCode, truncated)
+		if logger.V(1).Enabled() {
+			p.task.Warnf("Command failed: %s (exit: %d)", cmdStr, exitCode)
 		}
 	}
 
@@ -348,6 +351,64 @@ func TruncateString(s string, maxLen int) string {
 		return s
 	}
 	return s[:maxLen] + "..."
+}
+
+// lineLimitedWriter wraps an io.Writer and stops writing after maxLines
+type lineLimitedWriter struct {
+	writer   io.Writer
+	maxLines int
+	lines    int
+	stopped  bool
+}
+
+func (w *lineLimitedWriter) Write(p []byte) (n int, err error) {
+	if w.stopped {
+		return len(p), nil
+	}
+
+	// Count newlines in this write
+	newlines := bytes.Count(p, []byte{'\n'})
+	w.lines += newlines
+
+	if w.lines >= w.maxLines {
+		w.stopped = true
+		// Write up to the last allowed line
+		remaining := w.maxLines - (w.lines - newlines)
+		if remaining > 0 {
+			lines := bytes.SplitN(p, []byte{'\n'}, remaining+1)
+			toWrite := bytes.Join(lines[:remaining], []byte{'\n'})
+			if len(toWrite) > 0 {
+				toWrite = append(toWrite, '\n')
+			}
+			_, err = w.writer.Write(toWrite)
+			if err != nil {
+				return 0, err
+			}
+		}
+		// Log truncation message
+		truncMsg := fmt.Sprintf("... (truncated after %d lines)\n", w.maxLines)
+		_, _ = w.writer.Write([]byte(truncMsg))
+		return len(p), nil
+	}
+
+	return w.writer.Write(p)
+}
+
+// taskLogWriter wraps a task logger as an io.Writer
+type taskLogWriter struct {
+	task *task.Task
+}
+
+func (w *taskLogWriter) Write(p []byte) (n int, err error) {
+	if w.task != nil {
+		// Remove trailing newline if present (logger adds its own)
+		text := string(p)
+		text = strings.TrimSuffix(text, "\n")
+		if text != "" {
+			w.task.Infof("%s", text)
+		}
+	}
+	return len(p), nil
 }
 
 func (p Process) IsRunning() bool {
