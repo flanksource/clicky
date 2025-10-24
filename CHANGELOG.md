@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.8.0](https://github.com/flanksource/clicky/compare/v1.7.1...v1.8.0) (2025-10-24)
+
+
+### ✨ Features
+
+* **exec:** add verbosity-based stdout tee-ing to Process.Run ([3ba991e](https://github.com/flanksource/clicky/commit/3ba991e0fc0c5fd9b88ac6b8a44c9c2d191eacb3))
+* **task:** add ClearLogs method to Task ([d3f4e23](https://github.com/flanksource/clicky/commit/d3f4e23b08346e3b5931249682f75dc66e96bdcb))
+
+
+### 🔧 Maintenance
+
+* misc fixes ([7b2616b](https://github.com/flanksource/clicky/commit/7b2616bf72e190452228061449fc46c4ae35eaa0))
+
 ## [1.7.1](https://github.com/flanksource/clicky/compare/v1.7.0...v1.7.1) (2025-10-16)
 
 
