@@ -68,3 +68,4 @@ clicky
 *.yaml
 .playwright-mcp/
 *-demo
+formatters/.playwright-mcp/

@@ -892,10 +892,7 @@ func (kv KeyValuePair) String() string {
 }
 
 func (kv KeyValuePair) ANSI() string {
-	// Muted key (gray), normal value
-	output := termenv.NewOutput(termenv.DefaultOutput().Writer(), termenv.WithProfile(termenv.ANSI))
-	keyStyle := output.String(kv.Key + ":").Faint()
-	return fmt.Sprintf("%s %v", keyStyle.String(), kv.Value)
+	return Text{}.Append(kv.Key+": ", "text-muted").Add(Human(kv.Value, kv.Style)).ANSI()
 }
 
 func (kv KeyValuePair) HTML() string {

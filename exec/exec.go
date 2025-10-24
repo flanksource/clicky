@@ -298,6 +298,8 @@ func (p Process) Run() Process {
 		exitCode := -1
 		if exitErr, ok := p.Err.(*exec.ExitError); ok {
 			exitCode = exitErr.ExitCode()
+			// nil out the error since we are just reporting exit code
+			p.Err = nil
 		}
 
 		if logger.V(1).Enabled() {

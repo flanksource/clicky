@@ -5,6 +5,7 @@ import (
 
 	flanksourceContext "github.com/flanksource/commons/context"
 
+	"github.com/flanksource/clicky/exec"
 	"github.com/flanksource/clicky/task"
 )
 
@@ -51,6 +52,13 @@ var (
 	BindTaskManagerFlags      = task.BindManagerFlags
 	BindTaskManagerPFlags     = task.BindManagerPFlags
 )
+
+func Exec(cmd string, args ...string) exec.Process {
+	return exec.Process{
+		Cmd:  cmd,
+		Args: args,
+	}
+}
 
 // StartWithResultTyped creates and starts tracking a new task with generic typed result handling
 func StartWithResultTyped[T any](tm *TaskManager, name string, taskFunc task.TaskFunc[T], opts ...TaskOption) *task.Task {

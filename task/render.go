@@ -51,9 +51,6 @@ func (tm *Manager) Render() {
 		output.ClearScreen()
 		output.MoveCursor(1, 1)
 
-		// Render begin marker
-		fmt.Fprintln(outputWriter, "--- BEGIN RENDER ---")
-
 		rendered := tm.prettyFromTasks(taskSnapshot)
 		if tm.noColor {
 			fmt.Fprint(outputWriter, rendered.String())
@@ -61,8 +58,6 @@ func (tm *Manager) Render() {
 			fmt.Fprint(outputWriter, rendered.ANSI())
 		}
 
-		// Render end marker
-		fmt.Fprintln(outputWriter, "--- END RENDER ---")
 	} else {
 		// noProgress mode: only print dirty tasks, never clear screen
 		for _, task := range taskSnapshot {

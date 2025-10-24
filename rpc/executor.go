@@ -353,25 +353,32 @@ func (e *CommandExecutor) ExtractRequestFromHTTP(r *http.Request, op *RPCOperati
 	}
 
 	// Extract query parameters LAST (so they take precedence over JSON body)
+	// First, handle "args" specially since it's a common parameter
+	if r.URL.Query().Has("args") {
+		value := r.URL.Query().Get("args")
+		// Special handling for args parameter - goes to Args array, not Flags map
+		req.Args = []string{} // Clear existing args for precedence
+		if value != "" {
+			// Handle comma-separated values or single value
+			req.Args = strings.Split(value, ",")
+			// Trim whitespace from each arg
+			for i := range req.Args {
+				req.Args[i] = strings.TrimSpace(req.Args[i])
+			}
+		}
+	}
+
+	// Then handle all other query parameters defined in the operation
 	for _, param := range op.Parameters {
 		if param.In == "query" {
 			value := r.URL.Query().Get(param.Name)
+			// Skip "args" since we already handled it above
+			if param.Name == "args" {
+				continue
+			}
 			// Always check if the parameter exists in the query, even if empty
 			if r.URL.Query().Has(param.Name) {
-				if param.Name == "args" {
-					// Special handling for args parameter - goes to Args array, not Flags map
-					req.Args = []string{} // Clear existing args for precedence
-					if value != "" {
-						// Handle comma-separated values or single value
-						req.Args = strings.Split(value, ",")
-						// Trim whitespace from each arg
-						for i := range req.Args {
-							req.Args[i] = strings.TrimSpace(req.Args[i])
-						}
-					}
-				} else {
-					req.Flags[param.Name] = value // Override body value, even if empty
-				}
+				req.Flags[param.Name] = value // Override body value, even if empty
 			} else if param.Required {
 				return nil, fmt.Errorf("required parameter %s is missing", param.Name)
 			}

@@ -98,6 +98,7 @@ var (
 	Variable            = Icon{Unicode: "𝑣", Iconify: "mdi:variable-box", Style: "muted"}
 	Type                = Icon{Unicode: "🏷️", Iconify: "codicon:symbol-class", Style: "muted"}
 	Interface           = Icon{Unicode: "🔗", Iconify: "codicon:symbol-interface", Style: "muted"}
+	Table               = Icon{Unicode: "📋", Iconify: "codicon:table", Style: "muted"}
 	Constant            = Icon{Unicode: "π", Iconify: "codicon:symbol-constant", Style: "muted"}
 	Http                = Icon{Unicode: "🌐", Iconify: "codicon:globe", Style: "muted"}
 	Queue               = Icon{Unicode: "📥", Iconify: "codicon:inbox", Style: "muted"}
