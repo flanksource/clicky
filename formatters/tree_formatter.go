@@ -82,8 +82,46 @@ func (f *TreeFormatter) FormatPrettyData(data *api.PrettyData) (string, error) {
 		}
 	}
 
-	// No tree fields found - fall back to a simple representation
-	return fmt.Sprintf("No tree data found in: %v", data), nil
+	// No tree fields found - provide detailed diagnostic information
+	return buildNoTreeDataMessage(data), nil
+}
+
+// buildNoTreeDataMessage creates a helpful error message when no tree data is found
+func buildNoTreeDataMessage(data *api.PrettyData) string {
+	var msg strings.Builder
+	msg.WriteString("No tree data found.\n\n")
+
+	// Show available fields
+	if len(data.Schema.Fields) > 0 {
+		msg.WriteString("Available fields:\n")
+		for _, field := range data.Schema.Fields {
+			msg.WriteString(fmt.Sprintf("  - %s (format: %s", field.Name, field.Format))
+			if field.Label != "" && field.Label != field.Name {
+				msg.WriteString(fmt.Sprintf(", label: %s", field.Label))
+			}
+			msg.WriteString(")\n")
+		}
+		msg.WriteString("\n")
+	} else {
+		msg.WriteString("No fields found in schema.\n\n")
+	}
+
+	// Show available tables
+	if len(data.Tables) > 0 {
+		msg.WriteString("Available tables:\n")
+		for name, rows := range data.Tables {
+			msg.WriteString(fmt.Sprintf("  - %s (%d rows)\n", name, len(rows)))
+		}
+		msg.WriteString("\n")
+	}
+
+	// Show original data type if available
+	if data.Original != nil {
+		msg.WriteString(fmt.Sprintf("Original data type: %T\n", data.Original))
+	}
+
+	msg.WriteString("\nExpected: At least one field with format='tree'")
+	return msg.String()
 }
 
 // FormatTree formats a tree node and its children recursively
