@@ -21,6 +21,7 @@ type FormatOptions struct {
 	Verbose    bool
 	DumpSchema bool
 	Schema     *api.PrettyObject // Schema for schema-aware formatting
+	Filter     string            // CEL expression for filtering table rows and tree nodes
 
 	// Format-specific boolean flags (mutually exclusive)
 	JSON     bool
@@ -63,6 +64,9 @@ func MergeOptions(opts ...FormatOptions) FormatOptions {
 		}
 		if opt.Schema != nil {
 			merged.Schema = opt.Schema
+		}
+		if opt.Filter != "" {
+			merged.Filter = opt.Filter
 		}
 		if opt.Tree {
 			merged.Tree = true
@@ -118,6 +122,7 @@ func BindFlags(flags *flag.FlagSet, options *FormatOptions) {
 	flags.BoolVar(&options.NoColor, "no-color", false, "Disable colored output")
 	flags.BoolVar(&options.Verbose, "verbose", false, "Enable verbose output")
 	flags.BoolVar(&options.DumpSchema, "dump-schema", false, "Dump the schema to stderr for debugging")
+	flags.StringVar(&options.Filter, "filter", "", "CEL expression for filtering table rows and tree nodes (e.g., \"status == 'active' && age > 30\")")
 
 	// Format-specific flags (mutually exclusive)
 	flags.BoolVar(&options.JSON, "json", false, "Output in JSON format")
@@ -140,6 +145,7 @@ func BindPFlags(flags *pflag.FlagSet, options *FormatOptions) {
 	flags.BoolVar(&options.NoColor, "no-color", false, "Disable colored output")
 	flags.BoolVar(&options.Verbose, "verbose", false, "Enable verbose output")
 	flags.BoolVar(&options.DumpSchema, "dump-schema", false, "Dump the schema to stderr for debugging")
+	flags.StringVar(&options.Filter, "filter", "", "CEL expression for filtering table rows and tree nodes (e.g., \"status == 'active' && age > 30\")")
 
 	// Format-specific flags (mutually exclusive)
 	flags.BoolVar(&options.JSON, "json", false, "Output in JSON format")
