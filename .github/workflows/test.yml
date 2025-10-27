@@ -71,7 +71,7 @@ jobs:
           ./clicky --version || echo "Version command may not be implemented yet"
 
       - name: Upload binary artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: clicky-linux-amd64
           path: clicky
