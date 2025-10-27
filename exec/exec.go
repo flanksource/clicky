@@ -2,6 +2,7 @@ package exec
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -12,7 +13,7 @@ import (
 	"github.com/flanksource/clicky/api"
 	"github.com/flanksource/clicky/shutdown"
 	"github.com/flanksource/clicky/task"
-	"github.com/flanksource/commons/context"
+	cctx "github.com/flanksource/commons/context"
 	"github.com/flanksource/commons/logger"
 )
 
@@ -41,6 +42,224 @@ type Process struct {
 	Stdout  bytes.Buffer
 	Cmd     string
 	Args    []string
+	// Consider a non-zero exit code as an error
+	ErrorOnNonZero bool
+}
+
+// ExecResult contains the result of a command execution with structured output and metadata.
+type ExecResult struct {
+	Stdout   string
+	Stderr   string
+	Status   string
+	ExitCode int
+	Started  *time.Time
+	Duration time.Duration
+	PID      int
+	Command  string
+	Args     []string
+	Error    error
+}
+
+func (r ExecResult) IsOk() bool {
+	return r.Error == nil && r.ExitCode == 0
+}
+
+func (r ExecResult) IsPending() bool {
+	return r.Status == "pending"
+}
+
+func (r ExecResult) IsCompleted() bool {
+	return r.ExitCode >= 0
+}
+
+func (r ExecResult) Pretty() api.Text {
+
+	t := api.Text{Content: r.Command, Style: api.Clz(r.IsOk(), "text-green-500")}
+
+	if !r.IsCompleted() {
+		t = t.Space().Append(r.Status, "text-yellow-500")
+	} else if !r.IsOk() {
+		t = t.Space().Append(fmt.Sprintf("exit: %d", r.ExitCode), "text-red-500")
+
+	}
+
+	if r.Duration > 1*time.Second {
+		t = t.Space().Append(r.Duration, "text-orange-500")
+	}
+	if r.Error != nil {
+		t = t.Space().Appendf("error: ", "text-muted").Append(r.Error.Error(), "text-red-500")
+	}
+
+	// Build command string
+	if len(r.Args) > 0 {
+		t = t.Space().Append(strings.Join(r.Args, " "), "text-muted")
+	}
+
+	return t
+
+}
+
+// WrapperFunc is a function type returned by AsWrapper that executes commands
+// with pre-configured settings from a template Process.
+type WrapperFunc func(...any) (*ExecResult, error)
+
+// WrapperOption is a functional option that modifies a Process for a single execution.
+type WrapperOption interface {
+	apply(*Process)
+}
+
+type wrapperOptionFunc func(*Process)
+
+func (f wrapperOptionFunc) apply(p *Process) {
+	f(p)
+}
+
+// WithTimeout returns a WrapperOption that overrides the execution timeout.
+func WithTimeout(timeout time.Duration) WrapperOption {
+	return wrapperOptionFunc(func(p *Process) {
+		p.Timeout = timeout
+	})
+}
+
+// WithContext returns a WrapperOption that sets a context for cancellation/deadline.
+// Note: Currently not fully implemented for context-based cancellation.
+func WithContext(ctx context.Context) WrapperOption {
+	return wrapperOptionFunc(func(p *Process) {
+		if deadline, ok := ctx.Deadline(); ok {
+			p.Timeout = time.Until(deadline)
+		}
+	})
+}
+
+// WithEnv returns a WrapperOption that adds or overrides an environment variable.
+func WithEnv(key, value string) WrapperOption {
+	return wrapperOptionFunc(func(p *Process) {
+		if p.Env == nil {
+			p.Env = make(map[string]string)
+		}
+		p.Env[key] = value
+	})
+}
+
+// WithDir returns a WrapperOption that overrides the working directory.
+func WithDir(path string) WrapperOption {
+	return wrapperOptionFunc(func(p *Process) {
+		p.Cwd = path
+	})
+}
+
+// WithErrOnNonZero returns a WrapperOption that makes non-zero exit codes return an error.
+func WithErrOnNonZero() WrapperOption {
+	return wrapperOptionFunc(func(p *Process) {
+		p.ErrorOnNonZero = true
+	})
+}
+
+func (p Process) clone() Process {
+	cloned := Process{
+		Cwd:     p.Cwd,
+		Cmd:     p.Cmd,
+		Args:    make([]string, len(p.Args)),
+		Timeout: p.Timeout,
+
+		Log:            p.Log,
+		ErrorOnNonZero: p.ErrorOnNonZero,
+	}
+
+	if p.Env != nil {
+		cloned.Env = make(map[string]string, len(p.Env))
+		for k, v := range p.Env {
+			cloned.Env[k] = v
+		}
+	}
+
+	copy(cloned.Args, p.Args)
+	return cloned
+}
+
+// AsWrapper converts the Process into a reusable WrapperFunc that executes commands
+// with the template's configuration. Each invocation creates a new Process instance
+// by copying the template's settings.
+//
+// Example:
+//
+//	docker := clicky.Exec("docker", "-v").AsWrapper()
+//	result, err := docker("ps", "-a")
+//	if err != nil {
+//	    log.Fatal(err)
+//	}
+//	fmt.Println(result.Stdout)
+func (p Process) AsWrapper() WrapperFunc {
+	return func(args ...any) (*ExecResult, error) {
+		var stringArgs []string
+
+		newProc := p.clone()
+
+		for _, arg := range args {
+			switch v := arg.(type) {
+			case WrapperOption:
+				v.apply(&newProc)
+			case string:
+				stringArgs = append(stringArgs, v)
+			default:
+				stringArgs = append(stringArgs, fmt.Sprintf("%v", v))
+			}
+		}
+
+		newProc.Args = append(newProc.Args, stringArgs...)
+
+		result := newProc.Run()
+		return result.Result(), nil
+	}
+}
+
+func (p Process) Result() *ExecResult {
+
+	r := &ExecResult{
+		Stdout:   p.Stdout.String(),
+		Stderr:   p.Stderr.String(),
+		ExitCode: -1,
+		Error:    p.Err,
+		Status:   "pending",
+		Started:  p.Started,
+		Command:  p.Cmd,
+	}
+
+	if len(p.Args) > 0 {
+		r.Command = fmt.Sprintf("%s %s", p.Cmd, strings.Join(p.Args, " "))
+	}
+
+	if p.Err != nil {
+		if exitErr, ok := p.Err.(*exec.ExitError); ok {
+			r.ExitCode = exitErr.ExitCode()
+			if !p.ErrorOnNonZero {
+				// Clear error if non-zero exit codes are not considered errors
+				r.Error = nil
+			}
+		}
+	}
+
+	if p.cmd != nil && p.cmd.ProcessState != nil {
+
+		if p.Err == nil {
+			r.Status = "success"
+		} else if strings.Contains(p.Err.Error(), "timed out") {
+			r.Status = "timeout"
+		} else if strings.Contains(p.Err.Error(), "permission denied") {
+			r.Status = "permission denied"
+		} else {
+			r.Status = "failed"
+		}
+	}
+
+	if p.cmd != nil && p.cmd.Process != nil {
+		r.PID = p.cmd.Process.Pid
+	}
+
+	if p.Started != nil {
+		r.Duration = time.Since(*p.Started)
+	}
+	return r
 }
 
 func (p Process) Out() string {
@@ -48,6 +267,8 @@ func (p Process) Out() string {
 }
 
 func (p Process) Pretty() api.Text {
+
+	return p.Result().Pretty()
 	// Build command string
 	cmdStr := p.Cmd
 	if len(p.Args) > 0 {
@@ -298,8 +519,6 @@ func (p Process) Run() Process {
 		exitCode := -1
 		if exitErr, ok := p.Err.(*exec.ExitError); ok {
 			exitCode = exitErr.ExitCode()
-			// nil out the error since we are just reporting exit code
-			p.Err = nil
 		}
 
 		if logger.V(1).Enabled() {
@@ -477,7 +696,7 @@ func (p *Process) GetTask() *task.Task {
 
 // AsTask converts the Process into a Task that can be managed by TaskManager
 func (p *Process) AsTask(name string, opts ...task.Option) *task.Task {
-	taskFunc := func(ctx context.Context, t *task.Task) (*Process, error) {
+	taskFunc := func(ctx cctx.Context, t *task.Task) (*Process, error) {
 		// Store the task reference immediately
 		p.task = t
 
@@ -513,7 +732,7 @@ func (p *Process) AsTask(name string, opts ...task.Option) *task.Task {
 
 // StartAsTask creates and starts a Task for this Process with typed result handling
 func (p *Process) StartAsTask(name string, opts ...task.Option) task.TypedTask[Process] {
-	taskFunc := func(ctx context.Context, t *task.Task) (Process, error) {
+	taskFunc := func(ctx cctx.Context, t *task.Task) (Process, error) {
 		// Store the task reference
 		p.task = t
 

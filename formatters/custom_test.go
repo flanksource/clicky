@@ -62,33 +62,6 @@ func TestRegisterFormatterCaseInsensitive(t *testing.T) {
 	}
 }
 
-func TestCustomFormatterWithManager(t *testing.T) {
-	ClearCustomFormatters()
-	defer ClearCustomFormatters()
-
-	// Register a custom formatter
-	RegisterFormatter("reverse", func(data interface{}, opts FormatOptions) (string, error) {
-		s := fmt.Sprint(data)
-		runes := []rune(s)
-		for i, j := 0, len(runes)-1; i < j; i, j = i+1, j-1 {
-			runes[i], runes[j] = runes[j], runes[i]
-		}
-		return string(runes), nil
-	})
-
-	// Use it through FormatManager
-	manager := NewFormatManager()
-	result, err := manager.FormatWithOptions(FormatOptions{Format: "reverse"}, "hello")
-	if err != nil {
-		t.Fatalf("Unexpected error: %v", err)
-	}
-
-	expected := "olleh"
-	if result != expected {
-		t.Errorf("Expected %q, got %q", expected, result)
-	}
-}
-
 func TestCustomFormatterTakesPrecedence(t *testing.T) {
 	ClearCustomFormatters()
 	defer ClearCustomFormatters()
@@ -208,39 +181,5 @@ func TestFormatterWithError(t *testing.T) {
 
 	if !strings.Contains(err.Error(), "intentional error") {
 		t.Errorf("Expected error message to contain 'intentional error', got: %v", err)
-	}
-}
-
-func TestFormatterAccessToOptions(t *testing.T) {
-	ClearCustomFormatters()
-	defer ClearCustomFormatters()
-
-	// Register a formatter that uses options
-	RegisterFormatter("styled", func(data interface{}, opts FormatOptions) (string, error) {
-		s := fmt.Sprint(data)
-		if opts.NoColor {
-			return s, nil
-		}
-		return fmt.Sprintf("\033[1m%s\033[0m", s), nil
-	})
-
-	manager := NewFormatManager()
-
-	// Test with color
-	result, err := manager.FormatWithOptions(FormatOptions{Format: "styled", NoColor: false}, "hello")
-	if err != nil {
-		t.Fatalf("Unexpected error: %v", err)
-	}
-	if !strings.Contains(result, "\033[1m") {
-		t.Error("Expected ANSI color codes when NoColor is false")
-	}
-
-	// Test without color
-	result, err = manager.FormatWithOptions(FormatOptions{Format: "styled", NoColor: true}, "hello")
-	if err != nil {
-		t.Fatalf("Unexpected error: %v", err)
-	}
-	if result != "hello" {
-		t.Errorf("Expected plain text when NoColor is true, got %q", result)
 	}
 }

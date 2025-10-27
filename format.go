@@ -68,6 +68,7 @@ func Collapsed(label string, content api.Textable, styles ...string) api.Collaps
 
 var Map = api.Map
 var KeyValue = api.KeyValue
+var CodeBlock = api.CodeBlock
 
 func UseFormatter(opts FormatOptions) {
 	defaultOpts = opts
