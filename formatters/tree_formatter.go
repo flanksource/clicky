@@ -137,23 +137,26 @@ func (f *TreeFormatter) FormatTree(node api.TreeNode, depth int, prefix string, 
 
 	var result strings.Builder
 
+	_prefix := prefix
 	// Build the current line prefix
 	if depth > 0 {
-		result.WriteString(prefix)
 		if isLast {
-			result.WriteString(f.Options.LastPrefix)
+			_prefix += f.Options.LastPrefix
 		} else {
-			result.WriteString(f.Options.BranchPrefix)
+			_prefix += f.Options.BranchPrefix
 		}
 	}
+	result.WriteString(_prefix)
 
 	// All TreeNodes now implement Pretty(), so use it for formatting
 	prettyText := node.Pretty()
 	// Convert Text to string with appropriate formatting
 	if f.NoColor {
-		result.WriteString(prettyText.String())
+		result.WriteString(strings.ReplaceAll(prettyText.String(), "\n", "\n"+_prefix))
 	} else {
-		result.WriteString(prettyText.ANSI())
+
+		// FIXME parse for text for ANSI colors, and then reset the ANSI to print the prefix, and then reset back to the original ansi color
+		result.WriteString(strings.ReplaceAll(prettyText.ANSI(), "\n", "\n"+api.Text{Content: _prefix, Style: "text-white"}.ANSI()))
 	}
 
 	// Handle compact list node specially

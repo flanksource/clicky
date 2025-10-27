@@ -2,6 +2,7 @@ package api
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -285,8 +286,36 @@ func (t Text) Wrap(prefix, suffix string, style ...string) Text {
 }
 
 // Append adds a new child Text with the specified content and styles.
-func (t Text) Append(text string, styles ...string) Text {
-	t.Children = append(t.Children, Text{Content: text, Style: strings.Join(styles, " ")})
+func (t Text) Appendf(format string, args ...interface{}) Text {
+	return t.Append(fmt.Sprintf(format, args...))
+}
+
+func (t Text) Space() Text {
+	return t.Append(" ")
+}
+
+// Append adds a new child Text with the specified content and styles.
+func (t Text) Append(text any, styles ...string) Text {
+
+	if text == nil {
+		return t
+	}
+
+	switch v := text.(type) {
+	case Pretty:
+		t.Children = append(t.Children, v.Pretty())
+	case Textable:
+		t.Children = append(t.Children, v)
+	case string:
+		t.Children = append(t.Children, Text{Content: v, Style: strings.Join(styles, " ")})
+	case time.Time, *time.Time, *time.Duration, time.Duration, float64, float32:
+		t.Children = append(t.Children, Human(v, styles...))
+	case map[string]any:
+		t.Children = append(t.Children, Map(v, styles...))
+	default:
+		t.Children = append(t.Children, Text{Content: fmt.Sprintf("%v", text), Style: strings.Join(styles, " ")})
+	}
+
 	return t
 }
 
@@ -997,4 +1026,96 @@ func (dl DescriptionList) Markdown() string {
 		parts = append(parts, item.Markdown())
 	}
 	return strings.Join(parts, ", ")
+}
+
+func KeyValue(key string, value any, styles ...string) KeyValuePair {
+	style := "compact"
+	if len(styles) > 0 {
+		style = strings.Join(styles, " ")
+	}
+	return KeyValuePair{
+		Key:   key,
+		Value: value,
+		Style: style,
+	}
+}
+
+func Map(m map[string]any, styles ...string) DescriptionList {
+	style := "compact"
+	if len(styles) > 0 {
+		style = strings.Join(styles, " ")
+	}
+
+	// Sort keys for consistent ordering
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	items := make([]KeyValuePair, 0, len(m))
+	for _, k := range keys {
+		items = append(items, KeyValuePair{
+			Key:   k,
+			Value: m[k],
+			Style: style,
+		})
+	}
+
+	return DescriptionList{
+		Items: items,
+		Style: style,
+	}
+}
+func CodeBlock(language, content string, styles ...string) Code {
+	return Code{
+		Content:  content,
+		Language: mimeTypeToLanguage(language),
+		Style:    strings.Join(styles, " "),
+	}
+}
+
+func Clz(v bool, clz string, elseClz ...string) string {
+	if v {
+		return clz
+	}
+	if len(elseClz) > 0 {
+		return strings.Join(elseClz, " ")
+	}
+	return ""
+}
+
+func mimeTypeToLanguage(mime string) string {
+	switch {
+	case strings.Contains(mime, "json"):
+		return "json"
+	case strings.Contains(mime, "xml"):
+		return "xml"
+	case strings.Contains(mime, "yaml") || strings.Contains(mime, "yml"):
+		return "yaml"
+	case strings.Contains(mime, "html"):
+		return "html"
+	case strings.Contains(mime, "text/html"):
+		return "html"
+	case strings.Contains(mime, "text/plain"):
+		return "txt"
+	case strings.Contains(mime, "javascript"):
+		return "javascript"
+	case strings.Contains(mime, "css"):
+		return "css"
+	case strings.Contains(mime, "csv"):
+		return "csv"
+	case strings.Contains(mime, "markdown") || strings.Contains(mime, "md"):
+		return "markdown"
+	case strings.Contains(mime, "sql"):
+		return "sql"
+	case strings.Contains(mime, "graphql"):
+		return "graphql"
+	case strings.Contains(mime, "python"):
+		return "python"
+	case strings.Contains(mime, "java"):
+		return "java"
+	}
+	return ""
+
 }
