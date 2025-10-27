@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.9.0](https://github.com/flanksource/clicky/compare/v1.8.0...v1.9.0) (2025-10-27)
+
+
+### ✨ Features
+
+* new formatting helpers ([01b9ab0](https://github.com/flanksource/clicky/commit/01b9ab0c7d8e6fe10de256716acaace8c7f8620a))
+
+
+### 🐛 Bug Fixes
+
+* **formatters:** improve tree formatter error message with detailed info ([f6f425e](https://github.com/flanksource/clicky/commit/f6f425eb68fe0b1e51c3a6143a4fea163516a6f7))
+* **formatters:** support slices of pointers in ToPrettyData ([51a3ecc](https://github.com/flanksource/clicky/commit/51a3ecc2a3cdcedbe3e8a91273dd1d83b4e37532))
+
+
+### 🔧 Maintenance
+
+* exec improvements ([19158a0](https://github.com/flanksource/clicky/commit/19158a0e5180b78c299371b0f78bfe71de5cc7a4))
+* filter api ([f4b07bf](https://github.com/flanksource/clicky/commit/f4b07bfcd2c5c06e8d06ab26e6bd10e0fd845ce1))
+
 ## [1.8.0](https://github.com/flanksource/clicky/compare/v1.7.1...v1.8.0) (2025-10-24)
 
 
