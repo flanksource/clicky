@@ -341,6 +341,81 @@ func ToPrettyDataWithOptions(data interface{}, opts FormatOptions) (*api.PrettyD
 	return parseStructDataWithOptions(val, opts)
 }
 
+// hasPrettyImplementers checks if slice elements implement api.Pretty interface
+func hasPrettyImplementers(val reflect.Value) bool {
+	if val.Len() == 0 {
+		return false
+	}
+
+	// Check first few elements to see if they implement Pretty
+	checkCount := val.Len()
+	if checkCount > 3 {
+		checkCount = 3
+	}
+	prettyCount := 0
+
+	for i := 0; i < checkCount; i++ {
+		elem := val.Index(i)
+		elem, isNil := safeDerefPointer(elem)
+		if isNil {
+			continue
+		}
+
+		if elem.CanInterface() {
+			if _, ok := elem.Interface().(api.Pretty); ok {
+				prettyCount++
+			}
+		}
+	}
+
+	// If all checked elements implement Pretty, treat as Pretty slice
+	return prettyCount == checkCount
+}
+
+// convertSliceToPrettyList converts a slice of Pretty implementers to PrettyData as a list
+func convertSliceToPrettyList(val reflect.Value) (*api.PrettyData, error) {
+	prettyData := &api.PrettyData{
+		Schema:   &api.PrettyObject{Fields: []api.PrettyField{}},
+		Values:   make(map[string]api.FieldValue),
+		Tables:   make(map[string][]api.PrettyDataRow),
+		Original: val.Interface(),
+	}
+
+	// Create a field that holds all the pretty items
+	items := make([]api.Text, 0, val.Len())
+
+	for i := 0; i < val.Len(); i++ {
+		elem := val.Index(i)
+		elem, isNil := safeDerefPointer(elem)
+		if isNil {
+			continue
+		}
+
+		if elem.CanInterface() {
+			if pretty, ok := elem.Interface().(api.Pretty); ok {
+				items = append(items, pretty.Pretty())
+			}
+		}
+	}
+
+	// Store as a list field value
+	prettyData.Schema.Fields = append(prettyData.Schema.Fields, api.PrettyField{
+		Name:   "items",
+		Format: "list",
+		Label:  "Items",
+	})
+
+	prettyData.Values["items"] = api.FieldValue{
+		Value: items,
+		Field: api.PrettyField{
+			Name:   "items",
+			Format: "list",
+		},
+	}
+
+	return prettyData, nil
+}
+
 // parseSliceDataWithOptions handles slice/array data with format options
 func parseSliceDataWithOptions(val reflect.Value, opts FormatOptions) (*api.PrettyData, error) {
 	// Safely dereference root level pointer
@@ -433,6 +508,14 @@ func convertSliceToPrettyDataWithOptions(val reflect.Value, opts FormatOptions) 
 
 	// Dereference interface to get underlying concrete type
 	if firstElem.Kind() == reflect.Interface && !firstElem.IsNil() {
+		firstElem = firstElem.Elem()
+	}
+
+	// Recursively dereference all pointer layers until we reach a non-pointer type
+	for firstElem.Kind() == reflect.Ptr {
+		if firstElem.IsNil() {
+			return nil, fmt.Errorf("cannot convert slice with nil pointer element")
+		}
 		firstElem = firstElem.Elem()
 	}
 
@@ -1040,6 +1123,14 @@ func convertSliceToPrettyData(val reflect.Value) (*api.PrettyData, error) {
 
 	// Dereference interface to get underlying concrete type
 	if firstElem.Kind() == reflect.Interface && !firstElem.IsNil() {
+		firstElem = firstElem.Elem()
+	}
+
+	// Recursively dereference all pointer layers until we reach a non-pointer type
+	for firstElem.Kind() == reflect.Ptr {
+		if firstElem.IsNil() {
+			return nil, fmt.Errorf("cannot convert slice with nil pointer element")
+		}
 		firstElem = firstElem.Elem()
 	}
 
