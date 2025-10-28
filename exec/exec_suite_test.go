@@ -1,4 +1,4 @@
-package exec_test
+package exec
 
 import (
 	"testing"
@@ -9,5 +9,5 @@ import (
 
 func TestExec(t *testing.T) {
 	RegisterFailHandler(Fail)
-	RunSpecs(t, "Exec Suite")
+	RunSpecs(t, "Process")
 }

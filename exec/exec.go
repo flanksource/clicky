@@ -1,12 +1,12 @@
 package exec
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -15,6 +15,9 @@ import (
 	"github.com/flanksource/clicky/task"
 	cctx "github.com/flanksource/commons/context"
 	"github.com/flanksource/commons/logger"
+	"github.com/flanksource/commons/properties"
+	"github.com/onsi/ginkgo/v2"
+	"github.com/samber/lo"
 )
 
 // ContainsShellOperators checks if a command contains shell-specific operators
@@ -30,6 +33,11 @@ func ContainsShellOperators(cmd string) bool {
 }
 
 type Process struct {
+	log logger.Logger
+	// For streaming and capturing output
+	captureOutput *ExecLogger
+	// For verbose / error logging
+
 	Started *time.Time
 	cmd     *exec.Cmd
 	task    *task.Task
@@ -37,27 +45,25 @@ type Process struct {
 	Env     map[string]string
 	Cwd     string
 	Err     error
-	Log     logger.Logger
-	Stderr  bytes.Buffer
-	Stdout  bytes.Buffer
 	Cmd     string
 	Args    []string
 	// Consider a non-zero exit code as an error
 	ErrorOnNonZero bool
+	exitCode       *int
 }
 
 // ExecResult contains the result of a command execution with structured output and metadata.
 type ExecResult struct {
-	Stdout   string
-	Stderr   string
-	Status   string
-	ExitCode int
-	Started  *time.Time
-	Duration time.Duration
-	PID      int
-	Command  string
-	Args     []string
-	Error    error
+	Stdout   string        `json:"stdout,omitempty"`
+	Stderr   string        `json:"stderr,omitempty"`
+	Status   string        `json:"status,omitempty"`
+	ExitCode int           `json:"exit_code,omitempty"`
+	Started  *time.Time    `json:"started,omitempty"`
+	Duration time.Duration `json:"duration,omitempty"`
+	PID      int           `json:"pid,omitempty"`
+	Command  string        `json:"command,omitempty"`
+	Args     []string      `json:"args,omitempty"`
+	Error    error         `json:"error,omitempty"`
 }
 
 func (r ExecResult) IsOk() bool {
@@ -70,6 +76,10 @@ func (r ExecResult) IsPending() bool {
 
 func (r ExecResult) IsCompleted() bool {
 	return r.ExitCode >= 0
+}
+
+func (r ExecResult) Output() string {
+	return r.Stderr + r.Stdout
 }
 
 func (r ExecResult) Pretty() api.Text {
@@ -87,7 +97,7 @@ func (r ExecResult) Pretty() api.Text {
 		t = t.Space().Append(r.Duration, "text-orange-500")
 	}
 	if r.Error != nil {
-		t = t.Space().Appendf("error: ", "text-muted").Append(r.Error.Error(), "text-red-500")
+		t = t.Space().Append("error: ", "text-muted").Append(r.Error.Error(), "text-red-500")
 	}
 
 	// Build command string
@@ -131,6 +141,21 @@ func WithContext(ctx context.Context) WrapperOption {
 	})
 }
 
+func WithTee(stdout, stderr io.Writer) WrapperOption {
+	return wrapperOptionFunc(func(p *Process) {
+		if p.captureOutput == nil {
+			p.captureOutput = NewExecLogger()
+		}
+		p.captureOutput.Tee(stdout, stderr)
+	})
+}
+
+func WithLogger(log logger.Logger) WrapperOption {
+	return wrapperOptionFunc(func(p *Process) {
+		p.log = log
+	})
+}
+
 // WithEnv returns a WrapperOption that adds or overrides an environment variable.
 func WithEnv(key, value string) WrapperOption {
 	return wrapperOptionFunc(func(p *Process) {
@@ -157,12 +182,11 @@ func WithErrOnNonZero() WrapperOption {
 
 func (p Process) clone() Process {
 	cloned := Process{
-		Cwd:     p.Cwd,
-		Cmd:     p.Cmd,
-		Args:    make([]string, len(p.Args)),
-		Timeout: p.Timeout,
-
-		Log:            p.Log,
+		Cwd:            p.Cwd,
+		Cmd:            p.Cmd,
+		Args:           make([]string, len(p.Args)),
+		Timeout:        p.Timeout,
+		captureOutput:  p.captureOutput,
 		ErrorOnNonZero: p.ErrorOnNonZero,
 	}
 
@@ -216,8 +240,8 @@ func (p Process) AsWrapper() WrapperFunc {
 func (p Process) Result() *ExecResult {
 
 	r := &ExecResult{
-		Stdout:   p.Stdout.String(),
-		Stderr:   p.Stderr.String(),
+		Stdout:   p.captureOutput.GetStdout(),
+		Stderr:   p.captureOutput.GetStderr(),
 		ExitCode: -1,
 		Error:    p.Err,
 		Status:   "pending",
@@ -229,18 +253,7 @@ func (p Process) Result() *ExecResult {
 		r.Command = fmt.Sprintf("%s %s", p.Cmd, strings.Join(p.Args, " "))
 	}
 
-	if p.Err != nil {
-		if exitErr, ok := p.Err.(*exec.ExitError); ok {
-			r.ExitCode = exitErr.ExitCode()
-			if !p.ErrorOnNonZero {
-				// Clear error if non-zero exit codes are not considered errors
-				r.Error = nil
-			}
-		}
-	}
-
 	if p.cmd != nil && p.cmd.ProcessState != nil {
-
 		if p.Err == nil {
 			r.Status = "success"
 		} else if strings.Contains(p.Err.Error(), "timed out") {
@@ -263,63 +276,11 @@ func (p Process) Result() *ExecResult {
 }
 
 func (p Process) Out() string {
-	return p.Stderr.String() + p.Stdout.String()
+	return p.captureOutput.GetOutput()
 }
 
 func (p Process) Pretty() api.Text {
-
 	return p.Result().Pretty()
-	// Build command string
-	cmdStr := p.Cmd
-	if len(p.Args) > 0 {
-		cmdStr = fmt.Sprintf("%s %s", p.Cmd, strings.Join(p.Args, " "))
-	}
-
-	// Determine status
-	status := "pending"
-	exitCode := -1
-
-	if p.cmd != nil && p.cmd.ProcessState != nil {
-		if exitErr, ok := p.Err.(*exec.ExitError); ok {
-			exitCode = exitErr.ExitCode()
-		} else if p.Err == nil {
-			exitCode = 0
-		}
-
-		if p.Err == nil {
-			status = "success"
-		} else if strings.Contains(p.Err.Error(), "timed out") {
-			status = "timeout"
-		} else if strings.Contains(p.Err.Error(), "permission denied") {
-			status = "permission denied"
-		} else {
-			status = "failed"
-		}
-	}
-
-	// Get first line of output if available
-	output := p.Out()
-	firstLine := ""
-	if output != "" {
-		lines := strings.Split(output, "\n")
-		if len(lines) > 0 {
-			firstLine = TruncateString(lines[0], 100)
-		}
-	}
-
-	// Build pretty output
-	content := fmt.Sprintf("Command: %s\nStatus: %s", cmdStr, status)
-	if exitCode >= 0 {
-		content = fmt.Sprintf("%s (exit: %d)", content, exitCode)
-	}
-	if firstLine != "" {
-		content = fmt.Sprintf("%s\nOutput: %s", content, firstLine)
-	}
-	if p.Err != nil {
-		content = fmt.Sprintf("%s\nError: %v", content, p.Err)
-	}
-
-	return api.Text{Content: content}
 }
 
 func (p Process) WithEnv(env map[string]string) Process {
@@ -329,11 +290,6 @@ func (p Process) WithEnv(env map[string]string) Process {
 
 func (p Process) WithCwd(cwd string) Process {
 	p.Cwd = cwd
-	return p
-}
-
-func (p Process) WithLogger(log logger.Logger) Process {
-	p.Log = log
 	return p
 }
 
@@ -378,11 +334,46 @@ func (p Process) Stop() error {
 	return nil
 }
 
-func (p Process) Kill() error {
-	if p.cmd == nil || p.cmd.Process == nil {
-		return nil
+func (p Process) GetOutput() string {
+	return p.captureOutput.GetOutput()
+}
+
+func (p Process) GetStdout() string {
+	return p.captureOutput.GetStdout()
+}
+
+func (p Process) GetStderr() string {
+	return p.captureOutput.GetStderr()
+}
+
+func (p Process) Debug() Process {
+	if p.log == nil {
+		p.log = logger.GetLogger()
 	}
-	return p.cmd.Process.Kill()
+	p.log = p.log.WithV(logger.Debug)
+	if p.captureOutput == nil {
+		p.captureOutput = NewExecLogger()
+	}
+	p.captureOutput = p.captureOutput.Tee(os.Stdout, os.Stdin)
+	return p
+}
+
+func (p Process) Short() api.Text {
+	t := api.Text{Content: p.Cmd, Style: api.Clz(p.IsOK(), "text-green-500")}
+	t.Append(strings.Join(p.Args, " "), "text-muted max-width-[10ch]")
+
+	if p.log.V(1).Enabled() && p.Cwd != "" {
+		wd, _ := os.Getwd()
+		if p.Cwd != wd {
+			rel, _ := filepath.Rel(wd, p.Cwd)
+			if strings.HasPrefix(rel, "..") {
+				rel = p.Cwd
+			}
+			t = t.Space().Append(fmt.Sprintf("(cwd: %s)", rel), "text-muted")
+		}
+	}
+
+	return t
 }
 
 // Runf runs the process and returns the result
@@ -392,6 +383,17 @@ func (p Process) Runf(sh string, args ...interface{}) Process {
 }
 
 func (p Process) Run() Process {
+	if p.log == nil {
+		p.log = logger.GetLogger()
+	}
+	if p.captureOutput == nil {
+		p.captureOutput = NewExecLogger()
+	}
+
+	if properties.On(true, "exec.log") {
+		p.log = p.log.WithV(logger.Trace)
+	}
+
 	var cmd *exec.Cmd
 
 	// If Args is empty, treat Cmd as a shell command
@@ -402,11 +404,6 @@ func (p Process) Run() Process {
 			shellBin := "bash"
 			if _, err := exec.LookPath("bash"); err != nil {
 				shellBin = "sh"
-				if p.task != nil {
-					p.task.V(5).Infof("bash not found, using sh instead")
-				}
-			} else if p.task != nil {
-				p.task.V(5).Infof("Using bash for shell command")
 			}
 			cmd = exec.Command(shellBin, "-c", p.Cmd)
 		} else {
@@ -417,58 +414,21 @@ func (p Process) Run() Process {
 		cmd = exec.Command(p.Cmd, p.Args...)
 	}
 
-	cmd.Dir = p.Cwd
-	if p.Cwd != "" && p.task != nil {
-		p.task.V(4).Infof("Setting working directory to %s", p.Cwd)
+	if p.Cwd != "" {
+		cmd.Dir = p.Cwd
 	}
 
 	// Set environment variables
 	cmd.Env = os.Environ() // Start with current environment
 	for k, v := range p.Env {
 		cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, v))
+
 	}
 
-	// Configure stdout/stderr with tee-ing based on verbosity
-	var stdoutWriter, stderrWriter io.Writer = &p.Stdout, &p.Stderr
+	cmd.Stderr = p.captureOutput.GetStderrWriter()
+	cmd.Stdout = p.captureOutput.GetStdoutWriter()
 
-	if p.task != nil {
-		cmdStr := p.Cmd
-		if len(p.Args) > 0 {
-			cmdStr = fmt.Sprintf("%s %s", p.Cmd, strings.Join(p.Args, " "))
-		}
-
-		// V(1): Log command being run
-		if logger.V(1).Enabled() {
-			p.task.Infof("$ %s", cmdStr)
-		}
-
-		// V(2): Log environment variables
-		if logger.V(2).Enabled() && len(p.Env) > 0 {
-			for k, v := range p.Env {
-				p.task.Infof("  %s=%s", k, v)
-			}
-		}
-
-		// Setup tee-ing for stdout based on verbosity
-		if logger.V(1).Enabled() {
-			taskWriter := &taskLogWriter{task: p.task}
-
-			// V(3): Tee all output
-			if logger.V(3).Enabled() {
-				stdoutWriter = io.MultiWriter(&p.Stdout, taskWriter)
-			} else {
-				// V(1-2): Tee up to 100 lines
-				limitedWriter := &lineLimitedWriter{
-					writer:   taskWriter,
-					maxLines: 100,
-				}
-				stdoutWriter = io.MultiWriter(&p.Stdout, limitedWriter)
-			}
-		}
-	}
-
-	cmd.Stderr = stderrWriter
-	cmd.Stdout = stdoutWriter
+	p.log.Debugf(api.Text{Content: "Executing: "}.Add(p.Short()).ANSI())
 
 	now := time.Now()
 	p.Started = &now
@@ -485,151 +445,42 @@ func (p Process) Run() Process {
 		case err := <-resultChan:
 			p.Err = err
 		case <-time.After(p.Timeout):
-			// Try to kill the running process
-			_ = p.cmd.Process.Kill()
-			p.Err = fmt.Errorf("command timed out after %v", p.Timeout)
-			if p.task != nil {
-				p.task.V(4).Infof("Command timed out after %v", p.Timeout)
-			}
+			_ = p.Kill(5 * time.Second)
+			p.Err = fmt.Errorf("command timed out after %v", time.Since(*p.Started))
 		}
 	} else {
 		p.Err = cmd.Run()
 	}
 
-	// Enhance fork/exec permission errors with better messages
-	if p.Err != nil && strings.Contains(p.Err.Error(), "fork/exec") && strings.Contains(p.Err.Error(), "permission denied") {
-		// Check if the command file exists and get permissions
-		checkPath := p.Cmd
-		if info, statErr := os.Stat(checkPath); statErr == nil {
-			p.Err = fmt.Errorf("binary %s exists but is not executable (permissions: %s). Try: chmod +x %s",
-				checkPath, info.Mode().String(), checkPath)
-			if p.task != nil {
-				p.task.V(4).Infof("Permission error: %v", p.Err)
-			}
+	switch v := p.Err.(type) {
+	case *exec.ExitError:
+		p.exitCode = lo.ToPtr(v.ExitCode())
+		// nil out error if non-zero exit codes are not considered errors
+		if p.ErrorOnNonZero {
+			p.Err = fmt.Errorf("exit code: %d", *p.exitCode)
+		} else {
+			// non-zero exit codes are not considered errors
+			p.Err = nil
+		}
+		// Enhance fork/exec permission errors with better messages
+		if v.ExitCode() == 126 {
+			p.Err = fmt.Errorf("permission denied: %s", p.Cmd)
 		}
 	}
-
-	// Log exit code and errors after execution
-	if p.task != nil && p.Err != nil {
-		cmdStr := p.Cmd
-		if len(p.Args) > 0 {
-			cmdStr = fmt.Sprintf("%s %s", p.Cmd, strings.Join(p.Args, " "))
-		}
-
-		exitCode := -1
-		if exitErr, ok := p.Err.(*exec.ExitError); ok {
-			exitCode = exitErr.ExitCode()
-		}
-
-		if logger.V(1).Enabled() {
-			p.task.Warnf("Command failed: %s (exit: %d)", cmdStr, exitCode)
-		}
+	if p.Err != nil {
+		p.log.Warnf(p.Pretty().ANSI())
+	} else {
+		p.log.Tracef(p.Pretty().ANSI())
 	}
 
 	return p
 }
 
-// TruncateOutput truncates output to maxLines or maxChars, whichever limit is hit first
-func TruncateOutput(output string, maxLines int, maxChars int) string {
-	if len(output) == 0 {
-		return output
+func (p Process) ExitCode() int {
+	if p.cmd != nil && p.cmd.ProcessState != nil {
+		return p.cmd.ProcessState.ExitCode()
 	}
-
-	lines := strings.Split(output, "\n")
-
-	// Check line limit
-	if len(lines) > maxLines {
-		truncated := strings.Join(lines[:maxLines], "\n")
-		remaining := len(lines) - maxLines
-		return fmt.Sprintf("%s\n... (%d more lines)", truncated, remaining)
-	}
-
-	// Check char limit
-	if len(output) > maxChars {
-		truncated := output[:maxChars]
-		remaining := len(output) - maxChars
-		return fmt.Sprintf("%s... (truncated %d chars)", truncated, remaining)
-	}
-
-	return output
-}
-
-// GetFirstLine extracts the first line from output
-func GetFirstLine(output string) string {
-	if output == "" {
-		return ""
-	}
-	lines := strings.Split(output, "\n")
-	if len(lines) > 0 {
-		return lines[0]
-	}
-	return output
-}
-
-// TruncateString truncates a string to maxLen characters
-func TruncateString(s string, maxLen int) string {
-	if len(s) <= maxLen {
-		return s
-	}
-	return s[:maxLen] + "..."
-}
-
-// lineLimitedWriter wraps an io.Writer and stops writing after maxLines
-type lineLimitedWriter struct {
-	writer   io.Writer
-	maxLines int
-	lines    int
-	stopped  bool
-}
-
-func (w *lineLimitedWriter) Write(p []byte) (n int, err error) {
-	if w.stopped {
-		return len(p), nil
-	}
-
-	// Count newlines in this write
-	newlines := bytes.Count(p, []byte{'\n'})
-	w.lines += newlines
-
-	if w.lines >= w.maxLines {
-		w.stopped = true
-		// Write up to the last allowed line
-		remaining := w.maxLines - (w.lines - newlines)
-		if remaining > 0 {
-			lines := bytes.SplitN(p, []byte{'\n'}, remaining+1)
-			toWrite := bytes.Join(lines[:remaining], []byte{'\n'})
-			if len(toWrite) > 0 {
-				toWrite = append(toWrite, '\n')
-			}
-			_, err = w.writer.Write(toWrite)
-			if err != nil {
-				return 0, err
-			}
-		}
-		// Log truncation message
-		truncMsg := fmt.Sprintf("... (truncated after %d lines)\n", w.maxLines)
-		_, _ = w.writer.Write([]byte(truncMsg))
-		return len(p), nil
-	}
-
-	return w.writer.Write(p)
-}
-
-// taskLogWriter wraps a task logger as an io.Writer
-type taskLogWriter struct {
-	task *task.Task
-}
-
-func (w *taskLogWriter) Write(p []byte) (n int, err error) {
-	if w.task != nil {
-		// Remove trailing newline if present (logger adds its own)
-		text := string(p)
-		text = strings.TrimSuffix(text, "\n")
-		if text != "" {
-			w.task.Infof("%s", text)
-		}
-	}
-	return len(p), nil
+	return -1
 }
 
 func (p Process) IsRunning() bool {
@@ -658,6 +509,29 @@ func (p Process) Terminate() error {
 	return err
 }
 
+func (p Process) Kill(timeout time.Duration) error {
+	if p.cmd == nil || p.cmd.Process == nil {
+		return nil
+	}
+
+	if err := p.cmd.Process.Signal(os.Interrupt); err != nil {
+		return err
+	}
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := p.cmd.Process.Wait()
+		done <- err
+	}()
+
+	select {
+	case <-time.After(timeout):
+		return p.ForceKill()
+	case err := <-done:
+		return err
+	}
+}
+
 func (p Process) ForceKill() error {
 	if p.cmd == nil || p.cmd.Process == nil {
 		return nil
@@ -677,7 +551,7 @@ func (p *Process) WaitForStdout(message string, timeout time.Duration) error {
 		}
 
 		// Check stdout buffer for the message
-		stdout := p.Stdout.String()
+		stdout := p.GetStdout()
 		if strings.Contains(stdout, message) {
 			return nil
 		}
@@ -694,71 +568,35 @@ func (p *Process) GetTask() *task.Task {
 	return p.task
 }
 
-// AsTask converts the Process into a Task that can be managed by TaskManager
-func (p *Process) AsTask(name string, opts ...task.Option) *task.Task {
-	taskFunc := func(ctx cctx.Context, t *task.Task) (*Process, error) {
-		// Store the task reference immediately
+// StartAsTask creates and starts a Task for this Process with typed result handling
+func (p *Process) RunAsTask(name string, opts ...task.Option) task.TypedTask[ExecResult] {
+	taskFunc := func(ctx cctx.Context, t *task.Task) (ExecResult, error) {
 		p.task = t
+		ginkgo.GinkgoWriter.Write([]byte("before:" + p.Pretty().ANSI() + "\n"))
+		out := p.Run()
+		*p = out
+		ginkgo.GinkgoWriter.Write([]byte("oput:" + out.Pretty().ANSI() + "\n"))
+		ginkgo.GinkgoWriter.Write([]byte("p:" + p.Pretty().ANSI() + "\n"))
 
-		// Run the process
-		result := p.Run()
-
-		// Log the output if there's any
-		if output := result.Out(); output != "" {
-			t.Infof("Process output: %s", output)
-		}
-
-		// Update the original process with results while preserving task reference
-		p.Started = result.Started
-		p.cmd = result.cmd
-		p.Env = result.Env
-		p.Cwd = result.Cwd
-		p.Err = result.Err
-		p.Log = result.Log
-		p.Stderr = result.Stderr
-		p.Stdout = result.Stdout
-		p.Cmd = result.Cmd
-		p.Args = result.Args
-		// Keep p.task as it is
-
+		err := p.Err
 		// Return the result and error
-		return p, result.Err
+		return *out.Result(), err
 	}
 
-	// Use StartTask and return the underlying Task
-	typedTask := task.StartTask(name, taskFunc, opts...)
-	return typedTask.GetTask()
+	return task.StartTask(name, taskFunc, opts...)
+
 }
 
 // StartAsTask creates and starts a Task for this Process with typed result handling
-func (p *Process) StartAsTask(name string, opts ...task.Option) task.TypedTask[Process] {
-	taskFunc := func(ctx cctx.Context, t *task.Task) (Process, error) {
-		// Store the task reference
+func (p *Process) StartAsTask(name string, opts ...task.Option) task.TypedTask[*Process] {
+	taskFunc := func(ctx cctx.Context, t *task.Task) (*Process, error) {
 		p.task = t
-
 		// Run the process
-		result := p.Run()
+		*p = p.Run()
 
-		// Log the output if there's any
-		if output := result.Out(); output != "" {
-			t.Infof("Process output: %s", output)
-		}
-
-		// Update the original process with results while preserving task reference
-		p.Started = result.Started
-		p.cmd = result.cmd
-		p.Env = result.Env
-		p.Cwd = result.Cwd
-		p.Err = result.Err
-		p.Log = result.Log
-		p.Stderr = result.Stderr
-		p.Stdout = result.Stdout
-		p.Cmd = result.Cmd
-		p.Args = result.Args
-		// Keep p.task as it is
-
+		err := p.Err
 		// Return the result and error
-		return result, result.Err
+		return p, err
 	}
 
 	return task.StartTask(name, taskFunc, opts...)
