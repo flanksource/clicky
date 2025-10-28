@@ -15,6 +15,7 @@ type HTMLFormatter struct {
 	IncludeCSS   bool
 	IsPDFMode    bool
 	tableCounter int // Counter for generating unique table IDs
+	nodeCounter  int // Counter for generating unique tree node IDs
 }
 
 // NewHTMLFormatter creates a new HTML formatter
@@ -44,6 +45,8 @@ func (f *HTMLFormatter) getCSS() string {
     <script src="https://unpkg.com/@popperjs/core@2"></script>
     <script src="https://unpkg.com/tippy.js@6"></script>
     <link rel="stylesheet" href="https://unpkg.com/tippy.js@6/dist/tippy.css" />
+    <script defer src="https://cdn.jsdelivr.net/npm/@alpinejs/collapse@3.x.x/dist/cdn.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
     <style>
         /* Grid.js theme customizations to match Tailwind */
         .gridjs-wrapper {
@@ -156,17 +159,6 @@ func (f *HTMLFormatter) getCSS() string {
             transform: rotate(90deg);
         }
 
-        .tree-children {
-            transition: max-height 0.3s ease, opacity 0.2s ease;
-            overflow: hidden;
-        }
-
-        .tree-children.collapsed {
-            max-height: 0 !important;
-            opacity: 0;
-            display: none;
-        }
-
         .tree-node-wrapper {
             position: relative;
         }
@@ -209,34 +201,9 @@ func (f *HTMLFormatter) getCSS() string {
             });
         }
 
-        // Tree expand/collapse functionality
-        function toggleTreeNode(toggleElement) {
-            const isExpanded = toggleElement.classList.contains('expanded');
-            const childrenContainer = toggleElement.parentElement.nextElementSibling;
-
-            if (childrenContainer && childrenContainer.classList.contains('tree-children')) {
-                if (isExpanded) {
-                    // Collapse
-                    toggleElement.classList.remove('expanded');
-                    childrenContainer.classList.add('collapsed');
-                } else {
-                    // Expand
-                    toggleElement.classList.add('expanded');
-                    childrenContainer.classList.remove('collapsed');
-                }
-            }
-        }
-
-        // Initialize tooltips and tree toggles on page load
+        // Initialize tooltips on page load
         document.addEventListener('DOMContentLoaded', function() {
             initTooltips();
-
-            // Add click handlers for tree toggles using event delegation
-            document.body.addEventListener('click', function(e) {
-                if (e.target.classList.contains('tree-toggle')) {
-                    toggleTreeNode(e.target);
-                }
-            });
         });
     </script>
     <div class="mx-auto px-4 space-y-8">
@@ -961,6 +928,12 @@ func (f *HTMLFormatter) formatTreeFieldHTML(fieldValue api.FieldValue, _ api.Pre
 	return f.formatTreeNodeHTML(node, 0)
 }
 
+// generateNodeID generates a unique node ID for tree nodes
+func (f *HTMLFormatter) generateNodeID() string {
+	f.nodeCounter++
+	return fmt.Sprintf("node-%d", f.nodeCounter)
+}
+
 // formatTreeNodeHTML recursively formats a tree node as HTML
 func (f *HTMLFormatter) formatTreeNodeHTML(node api.TreeNode, depth int) string {
 	if node == nil {
@@ -973,13 +946,50 @@ func (f *HTMLFormatter) formatTreeNodeHTML(node api.TreeNode, depth int) string 
 	children := node.GetChildren()
 
 	if depth == 0 {
-		// Root node - start the tree
-		result.WriteString(`<div class="tree-view">`)
+		// Root node - start the tree with Alpine.js data
+		if !f.IsPDFMode {
+			// Interactive mode with Alpine.js
+			result.WriteString(`<div class="tree-view" x-data="{`)
+			result.WriteString(`expandedNodes: new Set(),`)
+			result.WriteString(`expandAll() {`)
+			result.WriteString(`const nodes = this.$el.querySelectorAll('[data-node-id]');`)
+			result.WriteString(`nodes.forEach(n => this.expandedNodes.add(n.dataset.nodeId));`)
+			result.WriteString(`},`)
+			result.WriteString(`collapseAll() {`)
+			result.WriteString(`this.expandedNodes.clear();`)
+			result.WriteString(`},`)
+			result.WriteString(`toggleNode(id) {`)
+			result.WriteString(`if (this.expandedNodes.has(id)) {`)
+			result.WriteString(`this.expandedNodes.delete(id);`)
+			result.WriteString(`} else {`)
+			result.WriteString(`this.expandedNodes.add(id);`)
+			result.WriteString(`}`)
+			result.WriteString(`},`)
+			result.WriteString(`isExpanded(id) {`)
+			result.WriteString(`return this.expandedNodes.has(id);`)
+			result.WriteString(`}`)
+			result.WriteString(`}" x-init="expandAll()">`)
+
+			// Add Expand All / Collapse All buttons
+			result.WriteString(`<div class="tree-controls mb-3 flex gap-2">`)
+			result.WriteString(`<button @click="expandAll()" class="px-3 py-1 text-sm bg-blue-500 hover:bg-blue-600 text-white rounded">`)
+			result.WriteString(`Expand All`)
+			result.WriteString(`</button>`)
+			result.WriteString(`<button @click="collapseAll()" class="px-3 py-1 text-sm bg-gray-500 hover:bg-gray-600 text-white rounded">`)
+			result.WriteString(`Collapse All`)
+			result.WriteString(`</button>`)
+			result.WriteString(`</div>`)
+		} else {
+			// PDF mode - static tree
+			result.WriteString(`<div class="tree-view">`)
+		}
+
 		result.WriteString(`<div class="tree-node-wrapper">`)
 
 		if len(children) > 0 && !f.IsPDFMode {
-			// Add toggle for nodes with children (interactive mode)
-			result.WriteString(`<span class="tree-toggle expanded">▸</span>`)
+			// Add Alpine.js toggle for nodes with children
+			nodeID := f.generateNodeID()
+			result.WriteString(fmt.Sprintf(`<span class="tree-toggle" :class="isExpanded('%s') ? 'expanded' : ''" @click="toggleNode('%s')" data-node-id="%s">▸</span>`, nodeID, nodeID, nodeID))
 		}
 
 		result.WriteString(`<span class="tree-node font-semibold text-lg mb-2">`)
@@ -988,7 +998,12 @@ func (f *HTMLFormatter) formatTreeNodeHTML(node api.TreeNode, depth int) string 
 		result.WriteString(`</div>`)
 
 		if len(children) > 0 {
-			result.WriteString(`<ul class="tree-children ml-4 space-y-1">`)
+			if !f.IsPDFMode {
+				nodeID := fmt.Sprintf("node-%d", f.nodeCounter)
+				result.WriteString(fmt.Sprintf(`<ul class="tree-children ml-4 space-y-1" x-show="isExpanded('%s')" x-transition>`, nodeID))
+			} else {
+				result.WriteString(`<ul class="tree-children ml-4 space-y-1">`)
+			}
 			for _, child := range children {
 				childHTML := f.formatTreeNodeHTML(child, depth+1)
 				result.WriteString(childHTML)
@@ -1002,8 +1017,9 @@ func (f *HTMLFormatter) formatTreeNodeHTML(node api.TreeNode, depth int) string 
 		result.WriteString(`<li class="flex items-start tree-node-wrapper">`)
 
 		if len(children) > 0 && !f.IsPDFMode {
-			// Interactive toggle for nodes with children
-			result.WriteString(`<span class="tree-toggle expanded">▸</span>`)
+			// Alpine.js toggle for nodes with children
+			nodeID := f.generateNodeID()
+			result.WriteString(fmt.Sprintf(`<span class="tree-toggle" :class="isExpanded('%s') ? 'expanded' : ''" @click="toggleNode('%s')" data-node-id="%s">▸</span>`, nodeID, nodeID, nodeID))
 		} else {
 			// Static indicator for leaf nodes
 			result.WriteString(`<span class="tree-leaf-indicator">•</span>`)
@@ -1015,7 +1031,12 @@ func (f *HTMLFormatter) formatTreeNodeHTML(node api.TreeNode, depth int) string 
 		result.WriteString(`</span>`)
 
 		if len(children) > 0 {
-			result.WriteString(`<ul class="tree-children ml-4 mt-1 space-y-1">`)
+			if !f.IsPDFMode {
+				nodeID := fmt.Sprintf("node-%d", f.nodeCounter)
+				result.WriteString(fmt.Sprintf(`<ul class="tree-children ml-4 mt-1 space-y-1" x-show="isExpanded('%s')" x-transition>`, nodeID))
+			} else {
+				result.WriteString(`<ul class="tree-children ml-4 mt-1 space-y-1">`)
+			}
 			for _, child := range children {
 				childHTML := f.formatTreeNodeHTML(child, depth+1)
 				result.WriteString(childHTML)

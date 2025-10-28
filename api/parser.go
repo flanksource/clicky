@@ -375,7 +375,9 @@ func (p *StructParser) ParseDataWithSchema(data interface{}, schema *PrettyObjec
 		// Check if this is a table field
 		if field.Format == FormatTable && (fieldVal.Kind() == reflect.Slice || fieldVal.Kind() == reflect.Array) {
 			// Parse table data
-			tableRows := p.parseTableData(fieldVal, field)
+			// Check for filter in FormatOptions
+			filterExpr := field.FormatOptions["filter"]
+			tableRows := p.parseTableData(fieldVal, field, filterExpr)
 			result.Tables[field.Name] = tableRows
 		} else if field.Format == FormatTree {
 			// For tree fields, convert to SimpleTreeNode for consistent formatting
@@ -385,9 +387,23 @@ func (p *StructParser) ParseDataWithSchema(data interface{}, schema *PrettyObjec
 			}
 
 			if treeNode != nil {
-				fieldValue, err := field.Parse(treeNode)
-				if err == nil {
-					result.Values[field.Name] = fieldValue
+				// Apply filtering if filter expression provided
+				filterExpr := field.FormatOptions["filter"]
+				if filterExpr != "" {
+					filteredNode, err := FilterTreeNode(treeNode, filterExpr)
+					if err != nil {
+						logger.Errorf("Failed to apply filter '%s' to tree: %v", filterExpr, err)
+					} else {
+						treeNode = filteredNode
+					}
+				}
+
+				// Only store if we have a non-nil tree after filtering
+				if treeNode != nil {
+					fieldValue, err := field.Parse(treeNode)
+					if err == nil {
+						result.Values[field.Name] = fieldValue
+					}
 				}
 			}
 		} else {
@@ -450,7 +466,7 @@ func (p *StructParser) ParseDataWithSchema(data interface{}, schema *PrettyObjec
 }
 
 // parseTableData parses slice data into table rows
-func (p *StructParser) parseTableData(val reflect.Value, field PrettyField) []PrettyDataRow {
+func (p *StructParser) parseTableData(val reflect.Value, field PrettyField, filterExpr string) []PrettyDataRow {
 	if val.Kind() != reflect.Slice && val.Kind() != reflect.Array {
 		return nil
 	}
@@ -494,6 +510,17 @@ func (p *StructParser) parseTableData(val reflect.Value, field PrettyField) []Pr
 		}
 
 		rows = append(rows, row)
+	}
+
+	// Apply filtering if filter expression provided
+	if filterExpr != "" {
+		filtered, err := FilterTableRows(rows, filterExpr)
+		if err != nil {
+			// Log error but don't fail - return unfiltered rows
+			logger.Errorf("Failed to apply filter '%s': %v", filterExpr, err)
+		} else {
+			rows = filtered
+		}
 	}
 
 	return rows
@@ -1038,7 +1065,28 @@ func (p *StructParser) getMapFieldValue(val reflect.Value, fieldName string) ref
 // - Pretty implementations are converted to Text objects
 // - Structs are converted to maps recursively
 // - Slices and maps are processed recursively
+// - Circular references are detected and returned as "[circular reference]"
 func (p *StructParser) ProcessFieldValue(fieldVal reflect.Value) interface{} {
+	visited := make(map[uintptr]bool)
+	return p.processFieldValueWithVisited(fieldVal, visited)
+}
+
+// processFieldValueWithVisited is the internal implementation that tracks visited pointers
+func (p *StructParser) processFieldValueWithVisited(fieldVal reflect.Value, visited map[uintptr]bool) interface{} {
+	// Track the original pointer address before dereferencing to detect circular references
+	var ptrAddr uintptr
+	if fieldVal.Kind() == reflect.Ptr && !fieldVal.IsNil() && fieldVal.Elem().Kind() == reflect.Struct {
+		ptrAddr = fieldVal.Pointer()
+		// Check if we've already visited this pointer (circular reference detected)
+		if visited[ptrAddr] {
+			return "[circular reference]"
+		}
+		// Mark this pointer as visited before processing
+		visited[ptrAddr] = true
+		// Defer cleanup so we can process the same struct in different branches
+		defer delete(visited, ptrAddr)
+	}
+
 	// Recursively dereference all pointer levels
 	for fieldVal.Kind() == reflect.Ptr {
 		if fieldVal.IsNil() {
@@ -1060,7 +1108,7 @@ func (p *StructParser) ProcessFieldValue(fieldVal reflect.Value) interface{} {
 		for i := 0; i < fieldVal.Len(); i++ {
 			elem := fieldVal.Index(i)
 			// Recursively process each element (handles pointers, structs, Pretty, etc.)
-			result[i] = p.ProcessFieldValue(elem)
+			result[i] = p.processFieldValueWithVisited(elem, visited)
 		}
 		return result
 	}
@@ -1075,7 +1123,7 @@ func (p *StructParser) ProcessFieldValue(fieldVal reflect.Value) interface{} {
 
 			keyStr := fmt.Sprintf("%v", k.Interface())
 			// Recursively process each value (handles pointers, Pretty, etc.)
-			result[keyStr] = p.ProcessFieldValue(v)
+			result[keyStr] = p.processFieldValueWithVisited(v, visited)
 		}
 		return result
 	}
@@ -1087,7 +1135,7 @@ func (p *StructParser) ProcessFieldValue(fieldVal reflect.Value) interface{} {
 			// This is a FieldValue - extract and process its Value field
 			valueField := fieldVal.FieldByName("Value")
 			if valueField.IsValid() && valueField.CanInterface() {
-				return p.ProcessFieldValue(valueField)
+				return p.processFieldValueWithVisited(valueField, visited)
 			}
 		}
 
@@ -1127,7 +1175,7 @@ func (p *StructParser) ProcessFieldValue(fieldVal reflect.Value) interface{} {
 			}
 
 			// Recursively process the field value
-			result[fieldName] = p.ProcessFieldValue(fVal)
+			result[fieldName] = p.processFieldValueWithVisited(fVal, visited)
 		}
 		return result
 	}

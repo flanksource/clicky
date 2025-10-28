@@ -57,6 +57,7 @@ func Exec(cmd string, args ...string) exec.Process {
 	return exec.Process{
 		Cmd:  cmd,
 		Args: args,
+		Env:  map[string]string{},
 	}
 }
 

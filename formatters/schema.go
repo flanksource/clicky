@@ -45,8 +45,11 @@ func (sf *SchemaFormatter) FormatFile(dataFile string, options FormatOptions) (s
 		return "", fmt.Errorf("failed to load data file %s: %w", dataFile, err)
 	}
 
+	// Apply global filter from FormatOptions to all table fields in schema
+	schema := sf.applyFilterToSchema(sf.Schema, options.Filter)
+
 	// Parse data with schema into PrettyData
-	prettyData, err := sf.Parser.ParseDataWithSchema(data, sf.Schema)
+	prettyData, err := sf.Parser.ParseDataWithSchema(data, schema)
 	if err != nil {
 		return "", fmt.Errorf("failed to parse data with schema: %w", err)
 	}
@@ -296,4 +299,40 @@ func (sf *SchemaFormatter) writeToFile(filename, content string) error {
 
 	_, err = file.WriteString(content)
 	return err
+}
+
+// applyFilterToSchema creates a copy of the schema with filter applied to all table fields
+func (sf *SchemaFormatter) applyFilterToSchema(schema *api.PrettyObject, filter string) *api.PrettyObject {
+	if schema == nil || filter == "" {
+		return schema
+	}
+
+	// Create a deep copy of the schema
+	schemaCopy := &api.PrettyObject{
+		Fields: make([]api.PrettyField, len(schema.Fields)),
+	}
+
+	// Copy all fields and inject filter into table fields
+	for i, field := range schema.Fields {
+		fieldCopy := field
+
+		// Initialize FormatOptions if nil
+		if fieldCopy.FormatOptions == nil {
+			fieldCopy.FormatOptions = make(map[string]string)
+		}
+
+		// Apply filter to table fields (only if not already set in schema)
+		if fieldCopy.Format == api.FormatTable && fieldCopy.FormatOptions["filter"] == "" {
+			fieldCopy.FormatOptions["filter"] = filter
+		}
+
+		// Apply filter to tree fields (only if not already set in schema)
+		if fieldCopy.Format == api.FormatTree && fieldCopy.FormatOptions["filter"] == "" {
+			fieldCopy.FormatOptions["filter"] = filter
+		}
+
+		schemaCopy.Fields[i] = fieldCopy
+	}
+
+	return schemaCopy
 }
