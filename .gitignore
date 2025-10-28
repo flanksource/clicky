@@ -69,3 +69,5 @@ clicky
 .playwright-mcp/
 *-demo
 formatters/.playwright-mcp/
+__debug*
+

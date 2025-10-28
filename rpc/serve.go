@@ -13,7 +13,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/flanksource/clicky/formatters"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 )
@@ -247,14 +246,21 @@ type HealthResponse struct {
 
 // handleHealth serves a simple health check endpoint
 func (s *SwaggerServer) handleHealth(w http.ResponseWriter, r *http.Request) {
-	formatters.FormatHandler(func(*http.Request) (any, error) {
-		return &HealthResponse{
-			Status:    "healthy",
-			Timestamp: time.Now().Format(time.RFC3339),
-			Server:    "OpenAPI Documentation Server",
-			Version:   s.config.Version,
-		}, nil
-	})(w, r)
+	health := HealthResponse{
+		Status:    "healthy",
+		Timestamp: time.Now().Format(time.RFC3339),
+		Server:    "OpenAPI Documentation Server",
+		Version:   s.config.Version,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+
+	encoder := json.NewEncoder(w)
+	encoder.SetIndent("", "  ")
+	if err := encoder.Encode(health); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to encode health response: %v", err), http.StatusInternalServerError)
+	}
 }
 
 // openBrowser opens the default browser to the specified URL
@@ -507,28 +513,27 @@ func (s *SwaggerServer) handleExecuteCommand(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	// Use FormatHandler to handle formatting automatically
-	formatters.FormatHandler(func(req *http.Request) (any, error) {
-		// Execute command and get data + metadata
-		data, metadata, statusCode, err := s.executeCommandCore(req)
+	// Execute command and get data + metadata
+	data, metadata, statusCode, _ := s.executeCommandCore(r)
 
-		// Add execution metadata headers
-		if metadata != nil {
-			w.Header().Set("X-CLI-Command", metadata.CLI)
-			w.Header().Set("X-Exit-Code", strconv.Itoa(metadata.ExitCode))
-			w.Header().Set("X-Execution-Success", strconv.FormatBool(metadata.Success))
-		}
+	// Add execution metadata headers
+	if metadata != nil {
+		w.Header().Set("X-CLI-Command", metadata.CLI)
+		w.Header().Set("X-Exit-Code", strconv.Itoa(metadata.ExitCode))
+		w.Header().Set("X-Execution-Success", strconv.FormatBool(metadata.Success))
+	}
 
-		// Set non-200 status codes before FormatHandler writes response
-		if statusCode != http.StatusOK {
-			w.WriteHeader(statusCode)
-		}
+	// Set content type
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(statusCode)
 
-		if err != nil {
-			return data, err
-		}
+	// Encode response as JSON
+	encoder := json.NewEncoder(w)
+	encoder.SetIndent("", "  ")
 
-		// Return the actual data (not the ExecutionResponse wrapper)
-		return metadata.Stdout, nil
-	})(w, r)
+	// Encode and return the response data (ExecutionResponse)
+	// Always return 'data' which contains the ExecutionResponse with all fields
+	if encErr := encoder.Encode(data); encErr != nil {
+		http.Error(w, fmt.Sprintf("Failed to encode response: %v", encErr), http.StatusInternalServerError)
+	}
 }

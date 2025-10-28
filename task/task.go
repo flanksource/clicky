@@ -228,26 +228,26 @@ func (t *Task) GetTask() *Task {
 
 // GetResult retrieves the typed result from a TypedTask
 func (t TypedTask[T]) GetResult() (T, error) {
+	// wait for task to complete
 	wait := t.WaitFor()
+
+	// get the result (if any)
+	result, err := t.Task.GetResult()
+	// Handle nil result explicitly
+	if result != nil {
+		typedResult, ok := result.(T)
+		if !ok {
+			return *new(T), fmt.Errorf("result type mismatch: expected %T, got %T", *new(T), result)
+		}
+		return typedResult, err
+	}
+
 	if wait != nil && wait.Error != nil {
+		// wait error takes precedence over GetResult error
 		return *new(T), wait.Error
 	}
+	return *new(T), err
 
-	result, err := t.Task.GetResult()
-	if err != nil {
-		return *new(T), err
-	}
-
-	// Handle nil result explicitly
-	if result == nil {
-		return *new(T), nil
-	}
-
-	typedResult, ok := result.(T)
-	if !ok {
-		return *new(T), fmt.Errorf("result type mismatch: expected %T, got %T", *new(T), result)
-	}
-	return typedResult, nil
 }
 
 // Identity returns the task's unique identifier for deduplication
@@ -547,12 +547,8 @@ func (t *Task) GetTypedResult(target interface{}) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
-	if t.err != nil {
-		return t.err
-	}
-
 	if t.result == nil {
-		return nil
+		return t.err
 	}
 
 	// Use reflection to set the target value
@@ -569,7 +565,7 @@ func (t *Task) GetTypedResult(target interface{}) error {
 	}
 
 	targetElement.Set(resultValue)
-	return nil
+	return t.err
 }
 
 // Duration returns the task duration

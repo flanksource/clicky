@@ -1085,6 +1085,12 @@ func Clz(v bool, clz string, elseClz ...string) string {
 	return ""
 }
 
+func HumanizeBytes(bytes int64) Text {
+	return Text{
+		Content: commonsText.HumanizeBytes(bytes),
+	}
+}
+
 func mimeTypeToLanguage(mime string) string {
 	switch {
 	case strings.Contains(mime, "json"):

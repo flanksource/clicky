@@ -484,7 +484,7 @@ func TestExecuteCommand(t *testing.T) {
 		},
 	}
 
-	resp, err := executor.ExecuteCommand(op, req)
+	_, resp, err := executor.ExecuteCommand(op, req)
 	if err != nil {
 		t.Fatalf("Failed to execute command: %v", err)
 	}
@@ -514,7 +514,7 @@ func TestExecuteCommandDisabled(t *testing.T) {
 
 	req := &ExecutionRequest{}
 
-	resp, err := executor.ExecuteCommand(op, req)
+	_, resp, err := executor.ExecuteCommand(op, req)
 	if err == nil {
 		t.Error("Expected error when executor is disabled")
 	}
@@ -555,7 +555,7 @@ func TestExecuteCommandWithOutput(t *testing.T) {
 
 	req := &ExecutionRequest{}
 
-	resp, err := executor.ExecuteCommand(op, req)
+	_, resp, err := executor.ExecuteCommand(op, req)
 	if err != nil {
 		t.Fatalf("Failed to execute command: %v", err)
 	}
@@ -613,7 +613,7 @@ func TestExecuteCommandWithError(t *testing.T) {
 
 	req := &ExecutionRequest{}
 
-	resp, err := executor.ExecuteCommand(op, req)
+	_, resp, err := executor.ExecuteCommand(op, req)
 	if err == nil {
 		t.Error("Expected command to return an error")
 	}
@@ -673,7 +673,7 @@ func TestExecuteCommandStdoutOnly(t *testing.T) {
 
 	req := &ExecutionRequest{}
 
-	resp, err := executor.ExecuteCommand(op, req)
+	_, resp, err := executor.ExecuteCommand(op, req)
 	if err != nil {
 		t.Fatalf("Failed to execute command: %v", err)
 	}
@@ -725,7 +725,7 @@ func TestExecuteCommandStderrOnly(t *testing.T) {
 
 	req := &ExecutionRequest{}
 
-	resp, err := executor.ExecuteCommand(op, req)
+	_, resp, err := executor.ExecuteCommand(op, req)
 	if err != nil {
 		t.Fatalf("Failed to execute command: %v", err)
 	}
@@ -779,7 +779,7 @@ func TestExecuteCommandWithDirectOutput(t *testing.T) {
 
 	req := &ExecutionRequest{}
 
-	resp, err := executor.ExecuteCommand(op, req)
+	_, resp, err := executor.ExecuteCommand(op, req)
 	if err != nil {
 		t.Fatalf("Failed to execute command: %v", err)
 	}
@@ -835,7 +835,7 @@ func TestExecuteCommandWithMixedOutput(t *testing.T) {
 
 	req := &ExecutionRequest{}
 
-	resp, err := executor.ExecuteCommand(op, req)
+	_, resp, err := executor.ExecuteCommand(op, req)
 	if err != nil {
 		t.Fatalf("Failed to execute command: %v", err)
 	}
@@ -888,7 +888,7 @@ func TestExecuteCommandWithPrintfVariants(t *testing.T) {
 
 	req := &ExecutionRequest{}
 
-	resp, err := executor.ExecuteCommand(op, req)
+	_, resp, err := executor.ExecuteCommand(op, req)
 	if err != nil {
 		t.Fatalf("Failed to execute command: %v", err)
 	}
@@ -934,7 +934,7 @@ func TestExecuteCommandWithDirectErrorOutput(t *testing.T) {
 
 	req := &ExecutionRequest{}
 
-	resp, err := executor.ExecuteCommand(op, req)
+	_, resp, err := executor.ExecuteCommand(op, req)
 	if err == nil {
 		t.Error("Expected command to return an error")
 	}
@@ -1004,7 +1004,7 @@ func TestConcurrentCommandExecution(t *testing.T) {
 			req := &ExecutionRequest{
 				Args: []string{fmt.Sprintf("test%d", index)},
 			}
-			resp, err := executor.ExecuteCommand(op, req)
+			_, resp, err := executor.ExecuteCommand(op, req)
 			errors[index] = err
 			if resp != nil {
 				results[index] = resp.Stdout
@@ -1120,7 +1120,7 @@ func TestExecuteCommandWithErrorIncludesInput(t *testing.T) {
 		},
 	}
 
-	resp, err := executor.ExecuteCommand(op, req)
+	_, resp, err := executor.ExecuteCommand(op, req)
 	if err == nil {
 		t.Error("Expected command to return an error")
 	}
@@ -1171,7 +1171,7 @@ func TestExecuteCommandDisabledIncludesInput(t *testing.T) {
 		},
 	}
 
-	resp, err := executor.ExecuteCommand(op, req)
+	_, resp, err := executor.ExecuteCommand(op, req)
 	if err == nil {
 		t.Error("Expected error when executor is disabled")
 	}
@@ -1235,7 +1235,7 @@ func TestExecuteCommandInvalidFlagIncludesInput(t *testing.T) {
 		},
 	}
 
-	resp, err := executor.ExecuteCommand(op, req)
+	_, resp, err := executor.ExecuteCommand(op, req)
 	if err == nil {
 		t.Error("Expected error for invalid flag value")
 	}
@@ -1547,7 +1547,7 @@ func TestExecuteCommandIncludesCLI(t *testing.T) {
 		},
 	}
 
-	resp, err := executor.ExecuteCommand(op, req)
+	_, resp, err := executor.ExecuteCommand(op, req)
 	if err != nil {
 		t.Fatalf("Expected no error, got %v", err)
 	}
@@ -1575,7 +1575,7 @@ func TestExecuteCommandIncludesCLI(t *testing.T) {
 		return fmt.Errorf("test error")
 	}
 
-	resp, err = executor.ExecuteCommand(op, req)
+	_, resp, err = executor.ExecuteCommand(op, req)
 	if err == nil {
 		t.Error("Expected error")
 	}
@@ -1593,7 +1593,7 @@ func TestExecuteCommandIncludesCLI(t *testing.T) {
 	config.Enabled = false
 	executor = NewCommandExecutor(&RPCService{Operations: []RPCOperation{*op}}, config)
 
-	resp, err = executor.ExecuteCommand(op, req)
+	_, resp, err = executor.ExecuteCommand(op, req)
 	if err == nil {
 		t.Error("Expected error for disabled executor")
 	}

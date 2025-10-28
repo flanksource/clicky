@@ -42,8 +42,8 @@ func (i Icon) WithStyle(classes ...string) Icon {
 var (
 	Config              = Icon{Unicode: "⚙️", Iconify: "codicon:gear", Style: "muted"}
 	Equals              = Icon{Unicode: "=", Iconify: "mdi:assignment", Style: "muted"}
-	Loop                = Icon{Unicode: "🔁", Iconify: "codicon:sync", Style: "muted"}
-	If                  = Icon{Unicode: "❓", Iconify: "mdi:call-split", Style: "muted"}
+	Loop                = Icon{Unicode: "🔄", Iconify: "codicon:sync", Style: "muted"}
+	If                  = QuestionRed
 	SQL                 = Icon{Unicode: "🛢️", Iconify: "codicon:database", Style: "muted"}
 	Success             = Icon{Unicode: "✓", Iconify: "codicon:check", Style: "success"}
 	Error               = Icon{Unicode: "✗", Iconify: "codicon:error", Style: "error"}
@@ -80,7 +80,6 @@ var (
 	Golang              = Icon{Unicode: "🐹", Iconify: "vscode-icons:file-type-go", Style: "muted"}
 	Python              = Icon{Unicode: "🐍", Iconify: "vscode-icons:file-type-python", Style: "muted"}
 	JS                  = Icon{Unicode: "🟨", Iconify: "vscode-icons:file-type-js", Style: "muted"}
-	Plugin              = Icon{Unicode: "🔌", Iconify: "ix:jigsaw-filled", Style: "muted"}
 	Math                = Icon{Unicode: "🧮", Iconify: "ix:plus-minus-times-divide", Style: "muted"}
 	Boolean             = Icon{Unicode: "⊨", Iconify: "ix:data-type-boolean", Style: "muted"}
 	Java                = Icon{Unicode: "☕", Iconify: "vscode-icons:file-type-java", Style: "muted"}
@@ -103,4 +102,21 @@ var (
 	Http                = Icon{Unicode: "🌐", Iconify: "codicon:globe", Style: "muted"}
 	Queue               = Icon{Unicode: "📥", Iconify: "codicon:inbox", Style: "muted"}
 	DB                  = Icon{Unicode: "🗄️", Iconify: "codicon:database", Style: "muted"}
+	Zombie              = Icon{Unicode: "💀", Iconify: "codicon:skull", Style: "muted"}
+	Target              = Icon{Unicode: "🎯", Iconify: "codicon:target", Style: "muted"}
+	Plugin              = Icon{Unicode: "🧩", Iconify: "ix:jigsaw-filled", Style: "muted"}
+	QuestionRed         = Icon{Unicode: "❓", Iconify: "codicon:question", Style: "error"}
+	Idea                = Icon{Unicode: "💡", Iconify: "codicon:light-bulb", Style: "info"}
+	Wrench              = Icon{Unicode: "🔧", Iconify: "codicon:wrench", Style: "muted"}
+	Config2             = Icon{Unicode: "🛠️", Iconify: "codicon:gear", Style: "muted"}
+	Clean               = Icon{Unicode: "🧹", Iconify: "mdi:broom", Style: "muted"}
+	Launch              = Icon{Unicode: "🎉", Iconify: "codicon:rocket", Style: "muted"}
+	Stop                = Icon{Unicode: "🛑", Iconify: "codicon:stop", Style: "muted"}
+	Test                = Icon{Unicode: "🧪", Iconify: "codicon:beaker", Style: "muted"}
+	AI                  = Icon{Unicode: "✨", Iconify: "codicon:robot", Style: "muted"}
+	Robot               = Icon{Unicode: "🤖", Iconify: "codicon:robot", Style: "muted"}
+	Start               = Play
+	Play                = Icon{Unicode: "▶️", Iconify: "codicon:play", Style: "muted"}
+	Pause               = Icon{Unicode: "⏸️", Iconify: "codicon:debug-pause", Style: "muted"}
+	Reload              = Icon{Unicode: "🔄", Iconify: "codicon:refresh", Style: "muted"}
 )

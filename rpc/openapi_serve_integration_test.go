@@ -650,10 +650,10 @@ func TestOpenAPIServe_E2E_WithBinary(t *testing.T) {
 			client := commonshttp.NewClient().Timeout(10 * time.Second)
 
 			// Test 1: Args from query parameter only
-			queryURL := fmt.Sprintf("%s/api/v1/pretty?args=%s&schema=%s&format=json",
+			queryURL := fmt.Sprintf("%s/api/v1/pretty?args=%s&schema=%s&format=pretty",
 				baseURL,
-				url.QueryEscape("../examples/example-data.json"),
-				url.QueryEscape("../examples/order-schema.yaml"))
+				url.QueryEscape(dataFile),
+				url.QueryEscape(schemaFile))
 
 			resp, err := client.R(context.Background()).
 				Header("Accept", "application/json").
@@ -664,21 +664,30 @@ func TestOpenAPIServe_E2E_WithBinary(t *testing.T) {
 			var response ExecutionResponse
 			respBody, err := io.ReadAll(resp.Body)
 			require.NoError(t, err, "Should read response body")
+			t.Logf("Response body: %s", string(respBody))
 			err = json.Unmarshal(respBody, &response)
 			require.NoError(t, err, "Response should be valid JSON")
+			if !response.Success {
+				t.Logf("Command failed. Error: %s", response.Error)
+				t.Logf("CLI command: %s", response.CLI)
+				if response.Input != nil {
+					t.Logf("Input Args: %v", response.Input.Args)
+					t.Logf("Input Flags: %v", response.Input.Flags)
+				}
+			}
 			assert.True(t, response.Success, "Command should succeed with args from query")
 			assert.Contains(t, response.Output, "ORD-2024-4567", "Should process the data file")
 
 			// Test 2: Args precedence - query parameter overrides body
 			bodyWithArgs := map[string]interface{}{
-				"args":   []string{"../examples/non-existent.json"}, // This should be overridden
-				"schema": "../examples/order-schema.yaml",
-				"format": "json",
+				"args":   []string{"/non-existent.json"}, // This should be overridden
+				"schema": schemaFile,
+				"format": "pretty",
 			}
 
 			queryURL = fmt.Sprintf("%s/api/v1/pretty?args=%s",
 				baseURL,
-				url.QueryEscape("../examples/example-data.json")) // This should override body args
+				url.QueryEscape(dataFile)) // This should override body args
 
 			resp, err = client.R(context.Background()).
 				Header("Accept", "application/json").
@@ -689,16 +698,25 @@ func TestOpenAPIServe_E2E_WithBinary(t *testing.T) {
 
 			respBody, err = io.ReadAll(resp.Body)
 			require.NoError(t, err, "Should read response body")
+			t.Logf("Test 2 Response body: %s", string(respBody))
 			err = json.Unmarshal(respBody, &response)
 			require.NoError(t, err, "Response should be valid JSON")
+			if !response.Success {
+				t.Logf("Test 2 Command failed. Error: %s", response.Error)
+				t.Logf("Test 2 CLI command: %s", response.CLI)
+				if response.Input != nil {
+					t.Logf("Test 2 Input Args: %v", response.Input.Args)
+					t.Logf("Test 2 Input Flags: %v", response.Input.Flags)
+				}
+			}
 			assert.True(t, response.Success, "Command should succeed with query args precedence")
 			assert.Contains(t, response.Output, "ORD-2024-4567", "Should use query args, not body args")
 
 			// Test 3: Comma-separated args in query parameter
-			queryURL = fmt.Sprintf("%s/api/v1/pretty?args=%s&schema=%s&format=json",
+			queryURL = fmt.Sprintf("%s/api/v1/pretty?args=%s&schema=%s&format=pretty",
 				baseURL,
-				url.QueryEscape("../examples/example-data.json,../examples/example-data.json"),
-				url.QueryEscape("../examples/order-schema.yaml"))
+				url.QueryEscape(dataFile+","+dataFile),
+				url.QueryEscape(schemaFile))
 
 			_, err = client.R(context.Background()).
 				Header("Accept", "application/json").
@@ -709,9 +727,9 @@ func TestOpenAPIServe_E2E_WithBinary(t *testing.T) {
 
 			// Test 4: Empty args query parameter should clear body args and cause error
 			bodyWithValidArgs := map[string]interface{}{
-				"args":   []string{"../examples/example-data.json"},
-				"schema": "../examples/order-schema.yaml",
-				"format": "json",
+				"args":   []string{dataFile},
+				"schema": schemaFile,
+				"format": "pretty",
 			}
 
 			queryURL = fmt.Sprintf("%s/api/v1/pretty?args=", baseURL) // Empty args should override body
