@@ -11,6 +11,7 @@ const (
 	FieldTypeArray    = "array"
 	FieldTypeMap      = "map"
 	FieldTypeStruct   = "struct"
+	FieldTypeBytes    = "bytes"
 )
 
 // Format constants

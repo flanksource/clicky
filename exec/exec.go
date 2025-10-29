@@ -24,10 +24,10 @@ import (
 // NewExecf creates a new Process with formatted command string
 func NewExecf(cmd string, args ...any) *Process {
 	return &Process{
-		Cmd: fmt.Sprintf(cmd, args...),
-		log: logger.GetLogger("exec"),
-
-		Env: map[string]string{},
+		Cmd:  fmt.Sprintf(cmd, args...),
+		log:  logger.GetLogger("exec"),
+		Env:  map[string]string{},
+		done: make(chan struct{}),
 	}
 }
 
@@ -38,6 +38,7 @@ func NewExec(cmd string, args ...string) *Process {
 		log:  logger.GetLogger("exec"),
 		Args: args,
 		Env:  map[string]string{},
+		done: make(chan struct{}),
 	}
 }
 
@@ -72,6 +73,7 @@ type Process struct {
 	// Consider a non-zero exit code as an error
 	SucceedOnNonZero bool
 	exitCode         *int
+	done             chan struct{} // Closed when Run() completes
 }
 
 // ExecResult contains the result of a command execution with structured output and metadata.
@@ -86,6 +88,7 @@ type ExecResult struct {
 	Command  string        `json:"command,omitempty"`
 	Args     []string      `json:"args,omitempty"`
 	Error    error         `json:"error,omitempty"`
+	short    api.Text      `json:"-"`
 }
 
 func (r ExecResult) IsOk() bool {
@@ -215,6 +218,7 @@ func (p Process) clone() Process {
 		SucceedOnNonZero: p.SucceedOnNonZero,
 		log:              p.log,
 		Shell:            p.Shell,
+		done:             make(chan struct{}),
 	}
 
 	if p.Env != nil {
@@ -295,10 +299,7 @@ func (p Process) Result() *ExecResult {
 		Error:    p.Err,
 		Started:  p.Started,
 		Command:  p.Cmd,
-	}
-
-	if len(p.Args) > 0 {
-		r.Command = fmt.Sprintf("%s %s", p.Cmd, strings.Join(p.Args, " "))
+		short:    p.Short(),
 	}
 
 	if p.cmd != nil && p.cmd.ProcessState != nil {
@@ -406,12 +407,23 @@ func (p *Process) Debug() *Process {
 }
 
 func (p Process) Short() api.Text {
-	t := api.Text{Content: p.Cmd, Style: "italic font-mono"}
+	path, args, _ := p.parseCommand()
+
+	t := api.Text{Content: lo.CoalesceOrEmpty(p.Shell, path), Style: "font-bold text-orange-600"}
 
 	if p.cmd != nil && p.cmd.Process != nil {
-		t = t.Space().Append("[pid:", "text-muted").Append(p.cmd.Process.Pid).Append("]", "text-muted")
+		t = t.Space().Append("[", "text-muted").Append(p.cmd.Process.Pid).Append("]", "text-muted")
 	}
-	t.Append(strings.Join(p.Args, " "), "text-muted max-width-[10ch]")
+	if p.Shell != "" {
+		t = t.Space().Append(p.Shell)
+	}
+	if len(args) > 0 {
+		t = t.Space().Append("[", "text-muted")
+		for _, arg := range args {
+			t = t.Append(arg, "max-w-[10ch] truncate").Append(",", "text-muted")
+		}
+		t = t.Append("]", "text-muted")
+	}
 
 	if p.log.V(1).Enabled() && p.Cwd != "" {
 		wd, _ := os.Getwd()
@@ -425,11 +437,6 @@ func (p Process) Short() api.Text {
 	}
 
 	return t
-}
-
-func (p *Process) errorf(format string, args ...interface{}) *Process {
-	p.Err = fmt.Errorf(format, args...)
-	return p
 }
 
 func (p *Process) parseCommand() (binary string, args []string, err error) {
@@ -505,6 +512,11 @@ func (p *Process) parseCommand() (binary string, args []string, err error) {
 // Run executes the process and captures its output and exit status
 
 func (p *Process) Run() *Process {
+	// Close done channel when Run completes
+	if p.done != nil {
+		defer close(p.done)
+	}
+
 	if p.log == nil {
 		p.log = logger.GetLogger("exec")
 	}
@@ -638,21 +650,25 @@ func (p *Process) Terminate() error {
 	}
 	p.log.Infof(api.Text{}.Add(icons.Stop).Space().Append("Terminating process: ").Add(p.Short()).ANSI())
 
+	// Send interrupt signal
 	if err := p.cmd.Process.Signal(os.Interrupt); err != nil {
 		p.log.Errorf(api.Text{}.Add(icons.Fail).Space().Append(" failed to signal ").Add(p.Short()).Append(err, "text-red-500").ANSI())
 		return err
 	}
-	state, err := p.cmd.Process.Wait()
 
-	p.Err = fmt.Errorf("terminated")
-
-	p.log.Tracef(api.Text{}.Append("terminated ").Add(p.Short()).Append(err, "text-red-500").Space().Append(state, "text-muted").ANSI())
-
-	// Ignore "no child processes" error as it means the process already terminated
-	if err != nil && strings.Contains(err.Error(), "no child processes") {
-		return nil
+	// Wait for Run() to complete and update ProcessState
+	if p.done != nil {
+		select {
+		case <-p.done:
+			// Run() completed successfully, ProcessState is now updated
+			p.log.Tracef(api.Text{}.Append("terminated ").Add(p.Short()).ANSI())
+		case <-time.After(5 * time.Second):
+			p.log.Warnf("Timeout waiting for Run() to complete after termination")
+			return fmt.Errorf("timeout waiting for process termination")
+		}
 	}
-	return err
+
+	return nil
 }
 
 func (p *Process) Kill(timeout time.Duration) error {

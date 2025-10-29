@@ -886,39 +886,39 @@ func (p *StructParser) StructToRowWithOptions(val reflect.Value, opts interface{
 		return row, nil
 	}
 
+	var valInterface any
+
+	if val.CanInterface() {
+		valInterface = val.Interface()
+	} else {
+		return nil, fmt.Errorf("cannot interface struct of kind=%s type=%s", val.Kind(), val.Type().Name())
+	}
+
+	structType := val.Type()
+	logger.V(4).Infof("Processing struct type=%s/%T kind=%s  ", structType.Name(), valInterface, val.Kind())
+
 	if val.Kind() != reflect.Struct {
 		return nil, fmt.Errorf("expected struct or map, got %s", val.Kind())
 	}
 
-	structType := val.Type()
-	logger.V(4).Infof("Processing struct type %s with %d fields for PrettyRow conversion", structType.Name(), val.NumField())
+	if prettyRowInterface, ok := valInterface.(PrettyRow); ok {
+		logger.V(5).Infof("Struct %s implements PrettyRow interface - using custom implementation", structType.Name())
 
-	// Check if the struct implements PrettyRow interface
-	if val.CanInterface() {
-		if prettyRowInterface, ok := val.Interface().(PrettyRow); ok {
-			logger.V(5).Infof("Struct %s implements PrettyRow interface - using custom implementation", structType.Name())
+		// Use the custom PrettyRow implementation
+		prettyRowMap := prettyRowInterface.PrettyRow(opts)
+		logger.V(4).Infof("PrettyRow() returned %d columns for struct %s", len(prettyRowMap), structType.Name())
 
-			// Use the custom PrettyRow implementation
-			prettyRowMap := prettyRowInterface.PrettyRow(opts)
-			logger.V(4).Infof("PrettyRow() returned %d columns for struct %s", len(prettyRowMap), structType.Name())
-
-			// Convert map[string]Text to PrettyDataRow
-			row := make(PrettyDataRow)
-			for key, text := range prettyRowMap {
-				row[key] = FieldValue{
-					Value: text.Content,
-					Text:  &text,
-					Field: PrettyField{Name: key},
-				}
+		// Convert map[string]Text to PrettyDataRow
+		row := make(PrettyDataRow)
+		for key, text := range prettyRowMap {
+			row[key] = FieldValue{
+				Value: text.Content,
+				Text:  &text,
+				Field: PrettyField{Name: key},
 			}
-			return row, nil
-		} else {
-			logger.V(4).Infof("Struct %s does not implement PrettyRow interface - checking CanInterface capability", structType.Name())
 		}
-	} else {
-		logger.V(4).Infof("Struct %s cannot interface - skipping PrettyRow check", structType.Name())
+		return row, nil
 	}
-
 	// Fall back to reflection-based approach
 	logger.V(4).Infof("Falling back to reflection-based parsing for struct %s (no PrettyRow interface)", structType.Name())
 	return p.StructToRow(val)

@@ -6,7 +6,6 @@ import (
 	"io"
 	"log"
 	"os"
-	"strings"
 
 	"github.com/flanksource/clicky"
 )
@@ -86,36 +85,10 @@ func main() {
 		log.Fatalf("Error parsing JSON: %v", err)
 	}
 
-	// Create format manager
-	formatManager := clicky.NewFormatManager()
-
-	// Get format from command line argument or default to pretty
-	format := "pretty"
-	if len(os.Args) > 1 {
-		format = strings.ToLower(os.Args[1])
-	}
-
-	// Format and display
-	var result string
-	switch format {
-	case "json":
-		result, err = formatManager.JSON(order)
-	case "yaml":
-		result, err = formatManager.YAML(order)
-	case "csv":
-		result, err = formatManager.CSV(order)
-	case "html":
-		result, err = formatManager.HTML(order)
-	case "markdown":
-		result, err = formatManager.Markdown(order)
-	case "pretty":
-		fallthrough
-	default:
-		result, err = formatManager.Pretty(order)
-	}
+	result, err := clicky.Format(order)
 
 	if err != nil {
-		log.Fatalf("Error formatting with %s: %v", format, err)
+		log.Fatalf("Error formatting with %v", err)
 	}
 
 	fmt.Println(result)

@@ -31,6 +31,14 @@ func Format(o any, opts ...FormatOptions) (string, error) {
 	return Formatter.FormatWithOptions(formatters.MergeOptions(append([]FormatOptions{defaultOpts}, opts...)...), o)
 }
 
+func MustPrint(o any, opts ...FormatOptions) {
+	result, err := Format(o, opts...)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(result)
+}
+
 func MustFormat(o any, opts ...FormatOptions) string {
 	result, _ := Formatter.FormatWithOptions(formatters.MergeOptions(append([]FormatOptions{defaultOpts}, opts...)...), o)
 	return result

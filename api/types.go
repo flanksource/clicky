@@ -864,6 +864,12 @@ func (v FieldValue) createText() *Text {
 			style = "text-orange-600" // Orange for durations
 		case FieldTypeArray:
 			content = v.formatArray()
+		case FieldTypeBytes:
+			d := v.Int()
+			if d != nil {
+				content = HumanizeBytes(*d).String()
+				style = "text-purple-600" // Cyan for byte sizes
+			}
 		default:
 			// Default formatting based on type
 			switch v.Field.Type {

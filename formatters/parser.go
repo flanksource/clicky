@@ -586,7 +586,7 @@ func convertSliceToPrettyDataWithOptions(val reflect.Value, opts FormatOptions) 
 		// Use StructToRowWithOptions to check for PrettyRow interface
 		row, err := parser.StructToRowWithOptions(elem, opts)
 		if err != nil {
-			logger.V(4).Infof("Failed to convert element at index %d: %v", i, err)
+			logger.V(4).Infof("Failed to convert element of %T: %v: %v", elem, elem, err)
 			continue // Skip elements that can't be converted
 		}
 
