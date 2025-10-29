@@ -882,7 +882,13 @@ func ToPrettyData(data interface{}) (*api.PrettyData, error) {
 					nestedSchema, _ = parser.ParseStructSchema(fieldVal)
 				} else if fieldVal.Kind() == reflect.Map {
 					nestedSchema = &api.PrettyObject{Fields: []api.PrettyField{}}
-					for _, key := range fieldVal.MapKeys() {
+					// Sort keys for consistent ordering
+					keys := fieldVal.MapKeys()
+					sort.Slice(keys, func(i, j int) bool {
+						return fmt.Sprint(keys[i].Interface()) < fmt.Sprint(keys[j].Interface())
+					})
+
+					for _, key := range keys {
 						if key.Kind() == reflect.String {
 							mapValue := fieldVal.MapIndex(key)
 							if mapValue.IsValid() {

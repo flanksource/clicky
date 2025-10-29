@@ -426,7 +426,13 @@ func (p *StructParser) ParseDataWithSchema(data interface{}, schema *PrettyObjec
 					} else if fieldVal.Kind() == reflect.Map {
 						// For maps without schema, create fields dynamically
 						nestedSchema = &PrettyObject{Fields: []PrettyField{}}
-						for _, key := range fieldVal.MapKeys() {
+						// Sort keys for consistent ordering
+						keys := fieldVal.MapKeys()
+						sort.Slice(keys, func(i, j int) bool {
+							return fmt.Sprint(keys[i].Interface()) < fmt.Sprint(keys[j].Interface())
+						})
+
+						for _, key := range keys {
 							if key.Kind() == reflect.String {
 								mapValue := fieldVal.MapIndex(key)
 								if mapValue.IsValid() {
@@ -870,7 +876,14 @@ func (p *StructParser) StructToRowWithOptions(val reflect.Value, opts interface{
 	// Handle maps as rows
 	if val.Kind() == reflect.Map {
 		row := make(PrettyDataRow)
-		for _, key := range val.MapKeys() {
+
+		// Sort keys for consistent ordering
+		keys := val.MapKeys()
+		sort.Slice(keys, func(i, j int) bool {
+			return fmt.Sprint(keys[i].Interface()) < fmt.Sprint(keys[j].Interface())
+		})
+
+		for _, key := range keys {
 			if key.Kind() == reflect.String {
 				mapValue := val.MapIndex(key)
 				processedValue := p.ProcessFieldValue(mapValue)
@@ -937,7 +950,14 @@ func (p *StructParser) StructToRow(val reflect.Value) (PrettyDataRow, error) {
 	// Handle maps as rows
 	if val.Kind() == reflect.Map {
 		row := make(PrettyDataRow)
-		for _, key := range val.MapKeys() {
+
+		// Sort keys for consistent ordering
+		keys := val.MapKeys()
+		sort.Slice(keys, func(i, j int) bool {
+			return fmt.Sprint(keys[i].Interface()) < fmt.Sprint(keys[j].Interface())
+		})
+
+		for _, key := range keys {
 			if key.Kind() == reflect.String {
 				mapValue := val.MapIndex(key)
 				processedValue := p.ProcessFieldValue(mapValue)
