@@ -10,7 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"al.essio.dev/pkg/shellescape"
 	"github.com/flanksource/clicky/api"
 	"github.com/flanksource/clicky/api/icons"
 	"github.com/flanksource/clicky/shutdown"
@@ -214,6 +213,8 @@ func (p Process) clone() Process {
 		Timeout:          p.Timeout,
 		captureOutput:    p.captureOutput,
 		SucceedOnNonZero: p.SucceedOnNonZero,
+		log:              p.log,
+		Shell:            p.Shell,
 	}
 
 	if p.Env != nil {
@@ -261,12 +262,17 @@ func (p *Process) AsWrapper() WrapperFunc {
 		result := newProc.Run()
 		res := result.Result()
 
-		// Return error if ErrorOnNonZero is set and exit code is non-zero
+		// Return the actual error if there is one, or check exit code
+		if result.Err != nil {
+			return res, result.Err
+		}
+
+		// Return error if ErrorOnNonZero is not set and exit code is non-zero
 		if !newProc.SucceedOnNonZero && res.ExitCode != 0 {
 			return res, fmt.Errorf("exit code %d", res.ExitCode)
 		}
 
-		return res, result.Err
+		return res, nil
 	}
 }
 
@@ -442,7 +448,7 @@ func (p *Process) parseCommand() (binary string, args []string, err error) {
 	// If Args is empty, treat Cmd as a shell command
 	if p.Shell != "" {
 
-		args = append([]string{shellescape.Quote(p.Cmd)}, p.Args...)
+		args = append([]string{p.Cmd}, p.Args...)
 		binary = p.Shell
 
 		// args = lo.Map(args, func(arg string, _ int) string {
@@ -559,12 +565,16 @@ func (p *Process) Run() *Process {
 		p.Err = cmd.Run()
 	}
 
+	// Set exit code from ProcessState
+	if p.cmd != nil && p.cmd.ProcessState != nil {
+		p.exitCode = lo.ToPtr(p.cmd.ProcessState.ExitCode())
+	}
+
 	if p.Err != nil {
 		p.log.Debugf("command finished with error: %v", p.Short().Append(" finished with ").Append(p.Err, "text-red-500").ANSI())
 	}
 	switch v := p.Err.(type) {
 	case *exec.ExitError:
-		p.exitCode = lo.ToPtr(v.ExitCode())
 		// nil out error if non-zero exit codes are not considered errors
 		if p.SucceedOnNonZero {
 			p.Err = nil
