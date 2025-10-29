@@ -10,9 +10,7 @@ import (
 
 // Test 1: Basic wrapper execution
 func TestWrapperBasicExecution(t *testing.T) {
-	echo := Process{
-		Cmd: "echo",
-	}.AsWrapper()
+	echo := NewExec("echo").AsWrapper()
 
 	result, err := echo("hello", "world")
 	if err != nil {
@@ -36,9 +34,7 @@ func TestWrapperBasicExecution(t *testing.T) {
 
 // Test 2: Wrapper with functional options (timeout)
 func TestWrapperWithTimeout(t *testing.T) {
-	sleep := Process{
-		Cmd: "sleep",
-	}.AsWrapper()
+	sleep := NewExec("sleep").AsWrapper()
 
 	start := time.Now()
 	result, err := sleep("10", WithTimeout(1*time.Second))
@@ -63,10 +59,7 @@ func TestWrapperWithTimeout(t *testing.T) {
 
 // Test 3: Concurrent wrapper calls
 func TestWrapperConcurrency(t *testing.T) {
-	date := Process{
-		Cmd:  "date",
-		Args: []string{"+%s.%N"},
-	}.AsWrapper()
+	date := NewExec("date", "+%s.%N").AsWrapper()
 
 	const numGoroutines = 10
 	var wg sync.WaitGroup
@@ -112,10 +105,7 @@ func TestWrapperConcurrency(t *testing.T) {
 
 // Test 4: Non-zero exit handling
 func TestWrapperErrorHandling(t *testing.T) {
-	sh := Process{
-		Cmd:  "sh",
-		Args: []string{"-c"},
-	}.AsWrapper()
+	sh := NewExec("-c").AsWrapper()
 
 	t.Run("without WithErrOnNonZero", func(t *testing.T) {
 		result, err := sh("exit 42")
@@ -133,17 +123,9 @@ func TestWrapperErrorHandling(t *testing.T) {
 	})
 
 	t.Run("with WithErrOnNonZero", func(t *testing.T) {
-		result, err := sh("exit 42", WithErrOnNonZero())
-		if err == nil {
-			t.Fatal("Expected error with WithErrOnNonZero, got nil")
-		}
-
-		if !strings.Contains(err.Error(), "exit code 42") {
-			t.Errorf("Expected error to mention exit code, got: %v", err)
-		}
-
-		if result == nil {
-			t.Fatal("Expected result to be populated even with error")
+		result, err := sh("exit 42", WithoutErrorOnNonZero())
+		if err != nil {
+			t.Fatal("Expected no error with WithoutErrorOnNonZero, got:", err)
 		}
 
 		if result.ExitCode != 42 {
@@ -192,15 +174,13 @@ func TestWrapperTemplatePreservation(t *testing.T) {
 
 // Test 6: WithContext option
 func TestWrapperWithContext(t *testing.T) {
-	wrapper := Process{
-		Cmd: "sleep",
-	}.AsWrapper()
+	sleep := NewExec("sleep").AsWrapper()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
 
 	start := time.Now()
-	_, err := wrapper("10", WithContext(ctx))
+	_, err := sleep("10", WithContext(ctx))
 	duration := time.Since(start)
 
 	if err == nil {
@@ -214,9 +194,7 @@ func TestWrapperWithContext(t *testing.T) {
 
 // Test 7: WithDir option
 func TestWrapperWithDir(t *testing.T) {
-	wrapper := Process{
-		Cmd: "pwd",
-	}.AsWrapper()
+	wrapper := NewExec("pwd").AsWrapper()
 
 	result, err := wrapper(WithDir("/tmp"))
 	if err != nil {
@@ -231,10 +209,7 @@ func TestWrapperWithDir(t *testing.T) {
 
 // Test 8: Multiple arguments with base command
 func TestWrapperWithBaseArgs(t *testing.T) {
-	wrapper := Process{
-		Cmd:  "echo",
-		Args: []string{"base"},
-	}.AsWrapper()
+	wrapper := NewExec("echo", "base").AsWrapper()
 
 	result, err := wrapper("additional", "args")
 	if err != nil {
@@ -250,9 +225,7 @@ func TestWrapperWithBaseArgs(t *testing.T) {
 
 // Test 9: Invalid argument type
 func TestWrapperInvalidArgumentType(t *testing.T) {
-	wrapper := Process{
-		Cmd: "echo",
-	}.AsWrapper()
+	wrapper := NewExec("echo").AsWrapper()
 
 	_, err := wrapper(123)
 	if err == nil {
@@ -266,9 +239,7 @@ func TestWrapperInvalidArgumentType(t *testing.T) {
 
 // Test 10: ExecResult metadata
 func TestWrapperResultMetadata(t *testing.T) {
-	wrapper := Process{
-		Cmd: "echo",
-	}.AsWrapper()
+	wrapper := NewExec("echo").AsWrapper()
 
 	result, err := wrapper("test")
 	if err != nil {

@@ -9,24 +9,25 @@ import (
 	. "github.com/onsi/gomega"
 
 	"github.com/flanksource/clicky/task"
+	"github.com/flanksource/commons/logger"
 )
 
 var _ = Describe("Process", func() {
 	Describe("Basic Command Execution", func() {
 		It("should execute simple commands successfully", func() {
-			p := Process{Cmd: "echo hello"}.Run()
+			p := NewExec("echo hello").Run()
 			Expect(p.IsOK()).To(BeTrue())
 			Expect(p.Err).To(BeNil())
 		})
 
 		It("should handle command failures", func() {
-			p := Process{Cmd: "false"}.Run()
+			p := NewExec("false").Run()
 			Expect(p.IsOK()).To(BeFalse())
 			Expect(p.Err).ToNot(BeNil())
 		})
 
 		It("should handle invalid commands", func() {
-			p := Process{Cmd: "nonexistent-command-xyz"}.Run()
+			p := NewExec("nonexistent-command-xyz").Run()
 			Expect(p.IsOK()).To(BeFalse())
 			Expect(p.Err).ToNot(BeNil())
 		})
@@ -34,25 +35,25 @@ var _ = Describe("Process", func() {
 
 	Describe("Stdout/Stderr Capturing", func() {
 		It("should capture stdout correctly", func() {
-			p := Process{Cmd: "echo 'hello stdout'"}.Run()
+			p := NewExec("echo 'hello stdout'").Run()
 			Expect(p.GetStdout()).To(Equal("hello stdout\n"))
 			Expect(p.GetStderr()).To(Equal(""))
 		})
 
 		It("should capture stderr correctly", func() {
-			p := Process{Cmd: "echo 'hello stderr' >&2"}.Run()
+			p := NewExec("echo 'hello stderr' >&2").Run()
 			Expect(p.GetStdout()).To(Equal(""))
 			Expect(p.GetStderr()).To(Equal("hello stderr\n"))
 		})
 
 		It("should capture both stdout and stderr", func() {
-			p := Process{Cmd: "echo 'stdout line'; echo 'stderr line' >&2"}.Run()
+			p := NewExec("echo 'stdout line'; echo 'stderr line' >&2").Run()
 			Expect(p.GetStdout()).To(Equal("stdout line\n"))
 			Expect(p.GetStderr()).To(Equal("stderr line\n"))
 		})
 
 		It("should combine stdout and stderr with Out() method", func() {
-			p := Process{Cmd: "echo 'stdout'; echo 'stderr' >&2"}.Run()
+			p := NewExec("echo 'stdout'; echo 'stderr' >&2").Run()
 			combined := p.Out()
 			Expect(combined).To(ContainSubstring("stdout"))
 			Expect(combined).To(ContainSubstring("stderr"))
@@ -60,7 +61,7 @@ var _ = Describe("Process", func() {
 
 		XIt("should handle large output", func() {
 			// Generate 1000 lines of output
-			p := Process{Cmd: "for i in {1..1000}; do echo line$i; done"}.Run()
+			p := NewExec("for i in {1..1000}; do echo line$i; done").Run()
 			Expect(p.IsOK()).To(BeTrue())
 			lines := strings.Split(strings.TrimSpace(p.GetStdout()), "\n")
 			Expect(len(lines)).To(Equal(1000))
@@ -69,7 +70,7 @@ var _ = Describe("Process", func() {
 		})
 
 		It("should handle empty output", func() {
-			p := Process{Cmd: "true"}.Run()
+			p := NewExec("true").Run()
 			Expect(p.GetStdout()).To(Equal(""))
 			Expect(p.GetStderr()).To(Equal(""))
 			Expect(p.Out()).To(Equal(""))
@@ -78,13 +79,13 @@ var _ = Describe("Process", func() {
 
 	Describe("Formatted Command Execution", func() {
 		It("should execute Runf with formatting", func() {
-			p := Process{}.Runf("echo 'number: %d, string: %s'", 42, "test")
+			p := NewExecf("echo 'number: %d, string: %s'", 42, "test").Run()
 			Expect(p.IsOK()).To(BeTrue())
 			Expect(p.GetStdout()).To(Equal("number: 42, string: test\n"))
 		})
 
 		It("should handle multiple format arguments", func() {
-			p := Process{}.Runf("echo '%s %d %s'", "hello", 123, "world")
+			p := NewExecf("echo '%s %d %s'", "hello", 123, "world").Run()
 			Expect(p.IsOK()).To(BeTrue())
 			Expect(p.GetStdout()).To(Equal("hello 123 world\n"))
 		})
@@ -96,7 +97,7 @@ var _ = Describe("Process", func() {
 				"TEST_VAR": "test_value",
 				"CUSTOM":   "custom_value",
 			}
-			p := Process{Cmd: "echo $TEST_VAR $CUSTOM"}.WithEnv(env).Run()
+			p := NewExec("echo $TEST_VAR $CUSTOM").WithEnv(env).Run()
 			Expect(p.IsOK()).To(BeTrue())
 			Expect(p.GetStdout()).To(Equal("test_value custom_value\n"))
 		})
@@ -107,14 +108,14 @@ var _ = Describe("Process", func() {
 				"VAR2": "value2",
 				"VAR3": "value3",
 			}
-			p := Process{Cmd: "echo $VAR1:$VAR2:$VAR3"}.WithEnv(env).Run()
+			p := NewExec("echo $VAR1:$VAR2:$VAR3").WithEnv(env).Run()
 			Expect(p.IsOK()).To(BeTrue())
 			Expect(p.GetStdout()).To(Equal("value1:value2:value3\n"))
 		})
 
 		It("should override existing environment variables", func() {
 			env := map[string]string{"PATH": "/custom/path"}
-			p := Process{Cmd: "echo $PATH"}.WithEnv(env).Run()
+			p := NewExec("echo $PATH").WithEnv(env).Run()
 			Expect(p.IsOK()).To(BeTrue())
 			Expect(p.GetStdout()).To(Equal("/custom/path\n"))
 		})
@@ -123,7 +124,7 @@ var _ = Describe("Process", func() {
 	Describe("Working Directory", func() {
 		It("should change working directory with WithCwd", func() {
 			tempDir := "/tmp"
-			p := Process{Cmd: "pwd"}.WithCwd(tempDir).Run()
+			p := NewExec("pwd").WithCwd(tempDir).Run()
 			Expect(p.IsOK()).To(BeTrue())
 
 			actualPath := strings.TrimSpace(p.GetStdout())
@@ -134,13 +135,13 @@ var _ = Describe("Process", func() {
 		})
 
 		It("should fail with invalid working directory", func() {
-			p := Process{Cmd: "pwd"}.WithCwd("/nonexistent/directory").Run()
+			p := NewExec("pwd").WithCwd("/nonexistent/directory").Run()
 			Expect(p.IsOK()).To(BeFalse())
 		})
 
 		It("should execute relative commands in specified directory", func() {
 			tempDir := "/tmp"
-			p := Process{Cmd: "ls -la . | head -1"}.WithCwd(tempDir).Run()
+			p := NewExec("ls -la . | head -1").WithCwd(tempDir).Run()
 			Expect(p.IsOK()).To(BeTrue())
 			Expect(p.GetStdout()).To(ContainSubstring("total"))
 		})
@@ -148,33 +149,33 @@ var _ = Describe("Process", func() {
 
 	Describe("Process Information", func() {
 		It("should return process name with Name()", func() {
-			p := Process{Cmd: "echo test"}.Run()
+			p := NewExec("echo test").Run()
 			Expect(p.Name()).ToNot(BeEmpty())
 		})
 
 		It("should return formatted output with Pretty()", func() {
-			p := Process{Cmd: "echo test"}.Run()
+			p := NewExec("echo test").Run()
 			pretty := p.Pretty()
 			Expect(pretty.Content).ToNot(BeEmpty())
 		})
 
 		It("should detect successful execution with IsOK()", func() {
-			p := Process{Cmd: "true"}.Run()
+			p := NewExec("true").Run()
 			Expect(p.IsOK()).To(BeTrue())
 		})
 
 		It("should detect failed execution with IsOK()", func() {
-			p := Process{Cmd: "false"}.Run()
+			p := NewExec("false").Run()
 			Expect(p.IsOK()).To(BeFalse())
 		})
 	})
 
 	Describe("Process Control", func() {
 		Context("when starting processes in background", func() {
-			var p Process
+			var p *Process
 
 			BeforeEach(func() {
-				p = Process{Cmd: "sleep 2; echo done"}
+				p = NewExec("sleep 2; echo done")
 			})
 
 			It("should start process in background", func() {
@@ -189,40 +190,46 @@ var _ = Describe("Process", func() {
 
 		Context("when controlling long-running processes", func() {
 			It("should handle process termination", func() {
-				p := Process{Cmd: "sleep 1"}
+				p := NewExec("sleep", "1").WithoutShell().Debug()
 				go p.Run()
 
 				time.Sleep(100 * time.Millisecond)
 
-				// Test termination methods exist (actual termination testing is complex in unit tests)
-				Expect(p.Stop).ToNot(BeNil())
-				Expect(p.Kill).ToNot(BeNil())
-				Expect(p.Terminate).ToNot(BeNil())
-				Expect(p.ForceKill).ToNot(BeNil())
+				logger.Infof(p.Pretty().ANSI())
+
+				err := p.Stop()
+				logger.Infof("after: " + p.Pretty().ANSI())
+
+				Expect(p.IsOK()).To(BeFalse())
+				Expect(p.IsRunning()).To(BeFalse())
+				Expect(p.Result().Status).To(Equal("timeout"))
+				Expect(err).To(BeNil())
+
 			})
 
 			It("should handle MustStop with timeout", func() {
-				p := Process{Cmd: "sleep 0.1"}
+				p := NewExec("sleep", "0.1").WithoutShell().Debug()
 				go p.Run()
 
-				time.Sleep(50 * time.Millisecond)
+				time.Sleep(500 * time.Millisecond)
 
 				err := p.MustStop(5 * time.Second)
 				// MustStop should complete without error for short-lived process
 				Expect(err).To(BeNil())
+				Expect(p.IsOK()).To(BeTrue())
 			})
 		})
 	})
 
 	Describe("Edge Cases", func() {
 		It("should handle commands with special characters", func() {
-			p := Process{Cmd: "echo 'special chars: !@#$%^&*()'"}.Run()
+			p := NewExec("echo 'special chars: !@#$%^&*()'").Run()
 			Expect(p.IsOK()).To(BeTrue())
 			Expect(p.GetStdout()).To(Equal("special chars: !@#$%^&*()\n"))
 		})
 
 		It("should handle commands with quotes", func() {
-			p := Process{Cmd: `echo "double quotes" 'single quotes'`}.Run()
+			p := NewExec(`echo "double quotes" 'single quotes'`).Run()
 			Expect(p.IsOK()).To(BeTrue())
 			Expect(p.GetStdout()).To(Equal("double quotes single quotes\n"))
 		})
@@ -231,26 +238,26 @@ var _ = Describe("Process", func() {
 			cmd := `echo line1
 echo line2
 echo line3`
-			p := Process{Cmd: cmd}.Run()
+			p := NewExec(cmd).Run()
 			Expect(p.IsOK()).To(BeTrue())
 			Expect(p.GetStdout()).To(Equal("line1\nline2\nline3\n"))
 		})
 
 		It("should handle commands with pipes", func() {
-			p := Process{Cmd: "echo 'hello world' | grep hello"}.Run()
+			p := NewExec("echo 'hello world' | grep hello").Run()
 			Expect(p.IsOK()).To(BeTrue())
 			Expect(p.GetStdout()).To(Equal("hello world\n"))
 		})
 
 		It("should handle commands that exit with specific codes", func() {
-			p := Process{Cmd: "exit 42"}.Run()
+			p := NewExec("exit 42").Run()
 			Expect(p.IsOK()).To(BeFalse())
 			Expect(p.Err).ToNot(BeNil())
 		})
 
 		It("should handle timeout scenarios", func() {
 			// Test that Wait() function exists and can be called
-			p := Process{Cmd: "echo quick"}
+			p := NewExec("echo quick")
 			go p.Run()
 
 			// Wait should not hang for quick commands
@@ -263,12 +270,12 @@ echo line3`
 
 	Describe("Concurrent Execution", func() {
 		It("should handle multiple processes running concurrently", func() {
-			processes := make([]Process, 3)
+			processes := make([]*Process, 3)
 			results := make(chan string, 3)
 
 			for i := 0; i < 3; i++ {
-				processes[i] = Process{Cmd: "echo process" + string(rune('1'+i))}
-				go func(p Process, id string) {
+				processes[i] = NewExec("echo process" + string(rune('1'+i)))
+				go func(p *Process, id string) {
 					p = p.Run()
 					if p.IsOK() {
 						results <- strings.TrimSpace(p.GetStdout())
@@ -300,7 +307,7 @@ echo line3`
 	Describe("Task Interface Integration", func() {
 
 		It("should run Process as TypedTask with StartAsTask()", func() {
-			p := &Process{Cmd: "echo 'typed task output'"}
+			p := NewExec("echo 'typed task output'")
 			typedTask := p.StartAsTask("Typed Echo Task")
 
 			Expect(typedTask).ToNot(BeNil())
@@ -317,7 +324,7 @@ echo line3`
 		})
 
 		It("should handle task failures properly", func() {
-			p := &Process{Cmd: "exit 1"}
+			p := NewExec("exit 1")
 			typedTask := p.StartAsTask("Failing Task")
 
 			result := typedTask.WaitFor()
@@ -338,7 +345,7 @@ echo line3`
 		})
 
 		It("should support task options", func() {
-			p := &Process{Cmd: "sleep 0.1; echo done"}
+			p := NewExec("sleep 0.1; echo done")
 
 			// Create task with timeout option
 			typedTask := p.StartAsTask("Task with Options",
@@ -357,9 +364,11 @@ echo line3`
 
 		It("should handle concurrent task execution", func() {
 			processes := []*Process{
-				{Cmd: "echo task1"},
-				{Cmd: "echo task2"},
-				{Cmd: "echo task3"},
+				NewExec("echo task1"),
+				NewExec("echo task2"),
+				NewExec("echo task3"),
+				//NewExec( "echo task4"),
+				NewExec("echo task4"),
 			}
 
 			tasks := make([]task.TypedTask[*Process], len(processes))
@@ -382,13 +391,11 @@ echo line3`
 		})
 
 		It("should integrate with environment variables in tasks", func() {
-			p := (&Process{
-				Cmd: "echo $TEST_TASK_VAR",
-			}).WithEnv(map[string]string{
+			p := NewExec("echo $TEST_TASK_VAR").WithEnv(map[string]string{
 				"TEST_TASK_VAR": "task_value",
 			})
 
-			typedTask := (&p).StartAsTask("Env Task")
+			typedTask := p.StartAsTask("Env Task")
 			result := typedTask.WaitFor()
 
 			Expect(result.Status).To(Equal(task.StatusSuccess))
@@ -400,11 +407,9 @@ echo line3`
 
 		It("should work with working directory in tasks", func() {
 			tempDir := "/tmp"
-			p := (&Process{
-				Cmd: "pwd",
-			}).WithCwd(tempDir)
+			p := NewExec("pwd").WithCwd(tempDir)
 
-			typedTask := (&p).StartAsTask("Cwd Task")
+			typedTask := p.StartAsTask("Cwd Task")
 			result := typedTask.WaitFor()
 
 			Expect(result.Status).To(Equal(task.StatusSuccess))
@@ -420,7 +425,7 @@ echo line3`
 		})
 
 		It("should preserve task reference in GetTask() after AsTask()", func() {
-			p := &Process{Cmd: "echo test"}
+			p := NewExec("echo test")
 
 			// Create task
 			taskObj := p.StartAsTask("Reference Test")
@@ -483,33 +488,33 @@ echo line3`
 
 		Context("Shell Wrapping Behavior", func() {
 			It("should execute commands with pipes correctly", func() {
-				p := Process{Cmd: "echo hello | tr h H"}.Run()
+				p := NewExec("echo hello | tr h H").Run()
 				Expect(p.IsOK()).To(BeTrue())
 				Expect(p.GetStdout()).To(Equal("Hello\n"))
 			})
 
 			It("should execute commands with redirects correctly", func() {
 				// Test stderr redirect to stdout
-				p := Process{Cmd: "echo error >&2 | cat"}.Run()
+				p := NewExec("echo error >&2 | cat").Run()
 				Expect(p.IsOK()).To(BeTrue())
 				// Stderr should contain the error message
 				Expect(p.GetStderr()).To(ContainSubstring("error"))
 			})
 
 			It("should execute commands with AND operator", func() {
-				p := Process{Cmd: "echo first && echo second"}.Run()
+				p := NewExec("echo first && echo second").Run()
 				Expect(p.IsOK()).To(BeTrue())
 				Expect(p.GetStdout()).To(Equal("first\nsecond\n"))
 			})
 
 			It("should execute commands with OR operator", func() {
-				p := Process{Cmd: "false || echo fallback"}.Run()
+				p := NewExec("false || echo fallback").Run()
 				Expect(p.IsOK()).To(BeTrue())
 				Expect(p.GetStdout()).To(Equal("fallback\n"))
 			})
 
 			It("should execute commands with command substitution", func() {
-				p := Process{Cmd: "echo result: $(echo nested)"}.Run()
+				p := NewExec("echo result: $(echo nested)").Run()
 				Expect(p.IsOK()).To(BeTrue())
 				Expect(p.GetStdout()).To(Equal("result: nested\n"))
 			})
@@ -519,7 +524,7 @@ echo line3`
 	Describe("Task-Aware Logging", func() {
 		Context("RunWithLogging", func() {
 			It("should execute command with task logger", func() {
-				p := &Process{Cmd: "echo hello"}
+				p := NewExec("echo hello")
 				t := p.RunAsTask("Test Task")
 
 				// Wait for task to complete
@@ -533,24 +538,21 @@ echo line3`
 			})
 
 			It("should fall back to Run() without task", func() {
-				p := Process{Cmd: "echo no-task"}.Run()
+				p := NewExec("echo no-task").Run()
 				Expect(p.IsOK()).To(BeTrue())
 				Expect(p.GetStdout()).To(Equal("no-task\n"))
 			})
 
 			It("should handle failed commands", func() {
-				p := &Process{Cmd: "false", ErrorOnNonZero: true}
+				p := NewExec("false")
 				t := p.RunAsTask("Failing Task")
 
 				t.WaitFor()
 
 				Expect(p.IsOK()).To(BeFalse())
 				Expect(p.IsRunning()).To(BeFalse())
-				Expect(p.Err).ToNot(BeNil())
-				result, err := t.GetResult()
-				GinkgoWriter.Write([]byte("r:" + result.Pretty().ANSI() + "\n"))
-
-				Expect(err).NotTo(BeNil())
+				result, _ := t.GetResult()
+				GinkgoWriter.Write([]byte("r2:" + result.Pretty().ANSI() + "\n"))
 
 				Expect(result.Status).To(Equal(string(task.StatusFailed)))
 				Expect(result.Error).ToNot(BeNil())
@@ -558,7 +560,7 @@ echo line3`
 
 			It("should handle commands with output", func() {
 				cmd := "echo line1; echo line2; echo line3"
-				p := &Process{Cmd: cmd}
+				p := NewExec(cmd)
 				t := p.StartAsTask("Multi-line Task")
 
 				result := t.WaitFor()

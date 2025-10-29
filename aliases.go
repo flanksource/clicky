@@ -53,13 +53,9 @@ var (
 	BindTaskManagerPFlags     = task.BindManagerPFlags
 )
 
-func Exec(cmd string, args ...string) exec.Process {
-	return exec.Process{
-		Cmd:  cmd,
-		Args: args,
-		Env:  map[string]string{},
-	}
-}
+var Exec = exec.NewExec
+
+var Execf = exec.NewExecf
 
 // StartWithResultTyped creates and starts tracking a new task with generic typed result handling
 func StartWithResultTyped[T any](tm *TaskManager, name string, taskFunc task.TaskFunc[T], opts ...TaskOption) *task.Task {

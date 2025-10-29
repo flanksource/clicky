@@ -43,6 +43,9 @@ var (
 	Config              = Icon{Unicode: "⚙️", Iconify: "codicon:gear", Style: "muted"}
 	Equals              = Icon{Unicode: "=", Iconify: "mdi:assignment", Style: "muted"}
 	Loop                = Icon{Unicode: "🔄", Iconify: "codicon:sync", Style: "muted"}
+	MinimalArrow        = Icon{Unicode: "❯", Iconify: "codicon:terminal", Style: "muted"}
+	HeavyArrow          = Icon{Unicode: "➜", Iconify: "codicon:terminal", Style: "muted"}
+	Pending             = Icon{Unicode: "⏳", Iconify: "codicon:hourglass", Style: "muted"}
 	If                  = QuestionRed
 	SQL                 = Icon{Unicode: "🛢️", Iconify: "codicon:database", Style: "muted"}
 	Success             = Icon{Unicode: "✓", Iconify: "codicon:check", Style: "success"}
@@ -68,6 +71,7 @@ var (
 	ArrowDoubleRight    = Icon{Unicode: "⇒", Iconify: "codicon:arrow-right", Style: "muted"}
 	ArrowDoubleLeft     = Icon{Unicode: "⇐", Iconify: "codicon:arrow-left", Style: "muted"}
 	ArrowRight          = Icon{Unicode: "→", Iconify: "codicon:arrow-right", Style: "muted"}
+	Kubernetes          = Icon{Unicode: "☸️", Iconify: "vscode-icons:file-type-kubernetes", Style: "muted"}
 	ChevronUp           = Icon{Unicode: "▲", Iconify: "codicon:chevron-up", Style: "muted"}
 	ChevronDown         = Icon{Unicode: "▼", Iconify: "codicon:chevron-down", Style: "muted"}
 	Number              = Icon{Unicode: "#", Iconify: "fluent:number-symbol-16-regular", Style: "muted"}

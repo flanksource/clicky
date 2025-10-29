@@ -10,7 +10,9 @@ import (
 	"strings"
 	"time"
 
+	"al.essio.dev/pkg/shellescape"
 	"github.com/flanksource/clicky/api"
+	"github.com/flanksource/clicky/api/icons"
 	"github.com/flanksource/clicky/shutdown"
 	"github.com/flanksource/clicky/task"
 	cctx "github.com/flanksource/commons/context"
@@ -19,6 +21,26 @@ import (
 	"github.com/onsi/ginkgo/v2"
 	"github.com/samber/lo"
 )
+
+// NewExecf creates a new Process with formatted command string
+func NewExecf(cmd string, args ...any) *Process {
+	return &Process{
+		Cmd: fmt.Sprintf(cmd, args...),
+		log: logger.GetLogger("exec"),
+
+		Env: map[string]string{},
+	}
+}
+
+// NewExec creates a new Process with the specified command and arguments
+func NewExec(cmd string, args ...string) *Process {
+	return &Process{
+		Cmd:  cmd,
+		log:  logger.GetLogger("exec"),
+		Args: args,
+		Env:  map[string]string{},
+	}
+}
 
 // ContainsShellOperators checks if a command contains shell-specific operators
 // that require wrapping in a shell (bash -c or sh -c)
@@ -45,11 +67,12 @@ type Process struct {
 	Env     map[string]string
 	Cwd     string
 	Err     error
+	Shell   string
 	Cmd     string
 	Args    []string
 	// Consider a non-zero exit code as an error
-	ErrorOnNonZero bool
-	exitCode       *int
+	SucceedOnNonZero bool
+	exitCode         *int
 }
 
 // ExecResult contains the result of a command execution with structured output and metadata.
@@ -84,13 +107,16 @@ func (r ExecResult) Output() string {
 
 func (r ExecResult) Pretty() api.Text {
 
-	t := api.Text{Content: r.Command, Style: api.Clz(r.IsOk(), "text-green-500")}
+	t := api.Text{Content: r.Command, Style: "italic font-mono"}
+
+	if r.PID > 0 {
+		t = t.Space().Append("[pid:", "text-muted").Append(r.PID).Append("]", "text-muted")
+	}
 
 	if !r.IsCompleted() {
 		t = t.Space().Append(r.Status, "text-yellow-500")
 	} else if !r.IsOk() {
 		t = t.Space().Append(fmt.Sprintf("exit: %d", r.ExitCode), "text-red-500")
-
 	}
 
 	if r.Duration > 1*time.Second {
@@ -173,21 +199,21 @@ func WithDir(path string) WrapperOption {
 	})
 }
 
-// WithErrOnNonZero returns a WrapperOption that makes non-zero exit codes return an error.
-func WithErrOnNonZero() WrapperOption {
+// WithoutErrorOnNonZero returns a WrapperOption that makes non-zero exit codes succeed
+func WithoutErrorOnNonZero() WrapperOption {
 	return wrapperOptionFunc(func(p *Process) {
-		p.ErrorOnNonZero = true
+		p.SucceedOnNonZero = true
 	})
 }
 
 func (p Process) clone() Process {
 	cloned := Process{
-		Cwd:            p.Cwd,
-		Cmd:            p.Cmd,
-		Args:           make([]string, len(p.Args)),
-		Timeout:        p.Timeout,
-		captureOutput:  p.captureOutput,
-		ErrorOnNonZero: p.ErrorOnNonZero,
+		Cwd:              p.Cwd,
+		Cmd:              p.Cmd,
+		Args:             make([]string, len(p.Args)),
+		Timeout:          p.Timeout,
+		captureOutput:    p.captureOutput,
+		SucceedOnNonZero: p.SucceedOnNonZero,
 	}
 
 	if p.Env != nil {
@@ -213,7 +239,7 @@ func (p Process) clone() Process {
 //	    log.Fatal(err)
 //	}
 //	fmt.Println(result.Stdout)
-func (p Process) AsWrapper() WrapperFunc {
+func (p *Process) AsWrapper() WrapperFunc {
 	return func(args ...any) (*ExecResult, error) {
 		var stringArgs []string
 
@@ -233,8 +259,25 @@ func (p Process) AsWrapper() WrapperFunc {
 		newProc.Args = append(newProc.Args, stringArgs...)
 
 		result := newProc.Run()
-		return result.Result(), nil
+		res := result.Result()
+
+		// Return error if ErrorOnNonZero is set and exit code is non-zero
+		if !newProc.SucceedOnNonZero && res.ExitCode != 0 {
+			return res, fmt.Errorf("exit code %d", res.ExitCode)
+		}
+
+		return res, result.Err
 	}
+}
+
+func (p *Process) WithoutShell() *Process {
+	p.Shell = ""
+	return p
+}
+
+func (p *Process) WithShell(shell string) *Process {
+	p.Shell = shell
+	return p
 }
 
 func (p Process) Result() *ExecResult {
@@ -242,9 +285,8 @@ func (p Process) Result() *ExecResult {
 	r := &ExecResult{
 		Stdout:   p.captureOutput.GetStdout(),
 		Stderr:   p.captureOutput.GetStderr(),
-		ExitCode: -1,
+		ExitCode: p.ExitCode(),
 		Error:    p.Err,
-		Status:   "pending",
 		Started:  p.Started,
 		Command:  p.Cmd,
 	}
@@ -263,6 +305,8 @@ func (p Process) Result() *ExecResult {
 		} else {
 			r.Status = "failed"
 		}
+	} else {
+		r.Status = "pending"
 	}
 
 	if p.cmd != nil && p.cmd.Process != nil {
@@ -283,22 +327,22 @@ func (p Process) Pretty() api.Text {
 	return p.Result().Pretty()
 }
 
-func (p Process) WithEnv(env map[string]string) Process {
+func (p *Process) WithEnv(env map[string]string) *Process {
 	p.Env = env
 	return p
 }
 
-func (p Process) WithCwd(cwd string) Process {
+func (p *Process) WithCwd(cwd string) *Process {
 	p.Cwd = cwd
 	return p
 }
 
-func (p Process) WithTask(t *task.Task) Process {
+func (p *Process) WithTask(t *task.Task) *Process {
 	p.task = t
 	return p
 }
 
-func (p Process) WithTimeout(timeout time.Duration) Process {
+func (p *Process) WithTimeout(timeout time.Duration) *Process {
 	p.Timeout = timeout
 	return p
 }
@@ -311,7 +355,7 @@ func (p Process) Name() string {
 }
 
 // Start runs the process in the background
-func (p Process) Start() error {
+func (p *Process) Start() error {
 	shutdown.AddHook("Stopping "+p.Name(), func() {
 		_ = p.MustStop(10 * time.Second) // ignore error during shutdown
 	})
@@ -328,10 +372,7 @@ func (p Process) MustStop(timeout time.Duration) error {
 }
 
 func (p Process) Stop() error {
-	if err := p.Terminate(); err != nil {
-		return err
-	}
-	return nil
+	return p.Terminate()
 }
 
 func (p Process) GetOutput() string {
@@ -346,20 +387,24 @@ func (p Process) GetStderr() string {
 	return p.captureOutput.GetStderr()
 }
 
-func (p Process) Debug() Process {
+func (p *Process) Debug() *Process {
 	if p.log == nil {
-		p.log = logger.GetLogger()
+		p.log = logger.GetLogger("exec")
 	}
-	p.log = p.log.WithV(logger.Debug)
+	p.log = NewDebugLogger(p.log, logger.Trace)
 	if p.captureOutput == nil {
 		p.captureOutput = NewExecLogger()
 	}
-	p.captureOutput = p.captureOutput.Tee(os.Stdout, os.Stdin)
+	p.captureOutput = p.captureOutput.Tee(os.Stdout, os.Stderr)
 	return p
 }
 
 func (p Process) Short() api.Text {
-	t := api.Text{Content: p.Cmd, Style: api.Clz(p.IsOK(), "text-green-500")}
+	t := api.Text{Content: p.Cmd, Style: "italic font-mono"}
+
+	if p.cmd != nil && p.cmd.Process != nil {
+		t = t.Space().Append("[pid:", "text-muted").Append(p.cmd.Process.Pid).Append("]", "text-muted")
+	}
 	t.Append(strings.Join(p.Args, " "), "text-muted max-width-[10ch]")
 
 	if p.log.V(1).Enabled() && p.Cwd != "" {
@@ -376,43 +421,105 @@ func (p Process) Short() api.Text {
 	return t
 }
 
-// Runf runs the process and returns the result
-func (p Process) Runf(sh string, args ...interface{}) Process {
-	p.Cmd = fmt.Sprintf(sh, args...)
-	return p.Run()
+func (p *Process) errorf(format string, args ...interface{}) *Process {
+	p.Err = fmt.Errorf(format, args...)
+	return p
 }
 
-func (p Process) Run() Process {
+func (p *Process) parseCommand() (binary string, args []string, err error) {
+
+	args = p.Args
+	if p.Shell == "" && p.Cmd != "" {
+		if _, e := exec.LookPath(p.Cmd); e != nil {
+			// The command is not directly executable, use bash as default shell
+			p.Shell = "bash"
+		} else if ContainsShellOperators(p.Cmd) {
+			// The command contains shell operators, use bash as default shell
+			p.Shell = "bash"
+		}
+	}
+
+	// If Args is empty, treat Cmd as a shell command
+	if p.Shell != "" {
+
+		args = append([]string{shellescape.Quote(p.Cmd)}, p.Args...)
+		binary = p.Shell
+
+		// args = lo.Map(args, func(arg string, _ int) string {
+		// 	return shellescape.Quote(arg)
+		// })
+		args = []string{strings.Join(args, " ")}
+
+		switch filepath.Base(binary) {
+		case "bash", "sh", "shell", "zsh", "python", "python3":
+			args = append([]string{"-c"}, args...)
+		case "pwsh", "powershell":
+			args = append([]string{"-Command"}, args...)
+
+			if !strings.HasSuffix(binary, "pwsh") {
+				binary = "pwsh"
+			}
+		case "typescript", "ts", "ts-node":
+			args = append([]string{"-e"}, args...)
+			if !strings.HasSuffix(binary, "ts-node") {
+				binary = "ts-node"
+			}
+
+		case "javascript", "js", "node":
+			if !strings.HasSuffix(binary, "node") {
+				binary = "node"
+			}
+			args = append([]string{"-e"}, args...)
+		}
+
+		if _, e := os.Stat(binary); e == nil {
+			p.log.V(4).Infof("Using path %s", binary)
+		} else if _path, e := exec.LookPath(binary); e == nil {
+			p.log.V(5).Infof("Resolved %s to %s", binary, _path)
+		} else if strings.HasSuffix(binary, "bash") {
+			if _, e = exec.LookPath("sh"); e == nil {
+				p.log.V(3).Infof("Using sh instead of bash")
+				binary = "sh"
+			} else {
+				err = fmt.Errorf("shell not found: %s", binary)
+				return
+			}
+		} else {
+			err = fmt.Errorf("shell not found: %s", binary)
+			return
+		}
+	} else {
+		binary = p.Cmd
+	}
+
+	return
+
+}
+
+// Run executes the process and captures its output and exit status
+
+func (p *Process) Run() *Process {
 	if p.log == nil {
-		p.log = logger.GetLogger()
+		p.log = logger.GetLogger("exec")
 	}
 	if p.captureOutput == nil {
 		p.captureOutput = NewExecLogger()
 	}
 
-	if properties.On(true, "exec.log") {
-		p.log = p.log.WithV(logger.Trace)
+	if properties.On(false, "exec.debug") {
+		p = p.Debug()
 	}
 
 	var cmd *exec.Cmd
 
-	// If Args is empty, treat Cmd as a shell command
-	if len(p.Args) == 0 {
-		// Check if command contains shell operators
-		if ContainsShellOperators(p.Cmd) {
-			// Try bash first, fall back to sh
-			shellBin := "bash"
-			if _, err := exec.LookPath("bash"); err != nil {
-				shellBin = "sh"
-			}
-			cmd = exec.Command(shellBin, "-c", p.Cmd)
-		} else {
-			// No shell operators, use sh
-			cmd = exec.Command("/bin/sh", "-c", p.Cmd)
-		}
-	} else {
-		cmd = exec.Command(p.Cmd, p.Args...)
+	path, args, err := p.parseCommand()
+
+	if err != nil {
+		p.Err = err
+		return p
 	}
+
+	cmd = exec.Command(path, args...)
 
 	if p.Cwd != "" {
 		cmd.Dir = p.Cwd
@@ -428,7 +535,7 @@ func (p Process) Run() Process {
 	cmd.Stderr = p.captureOutput.GetStderrWriter()
 	cmd.Stdout = p.captureOutput.GetStdoutWriter()
 
-	p.log.Debugf(api.Text{Content: "Executing: "}.Add(p.Short()).ANSI())
+	p.log.Debugf(api.Text{}.Append("run", "text-muted").Append(icons.MinimalArrow, "text-muted").Space().Add(p.Short()).ANSI())
 
 	now := time.Now()
 	p.Started = &now
@@ -446,25 +553,31 @@ func (p Process) Run() Process {
 			p.Err = err
 		case <-time.After(p.Timeout):
 			_ = p.Kill(5 * time.Second)
-			p.Err = fmt.Errorf("command timed out after %v", time.Since(*p.Started))
+			p.Err = fmt.Errorf("command timed out after %v", api.Human(time.Since(*p.Started).String()))
 		}
 	} else {
 		p.Err = cmd.Run()
 	}
 
+	if p.Err != nil {
+		p.log.Debugf("command finished with error: %v", p.Short().Append(" finished with ").Append(p.Err, "text-red-500").ANSI())
+	}
 	switch v := p.Err.(type) {
 	case *exec.ExitError:
 		p.exitCode = lo.ToPtr(v.ExitCode())
 		// nil out error if non-zero exit codes are not considered errors
-		if p.ErrorOnNonZero {
-			p.Err = fmt.Errorf("exit code: %d", *p.exitCode)
+		if p.SucceedOnNonZero {
+			p.Err = nil
 		} else {
 			// non-zero exit codes are not considered errors
-			p.Err = nil
+			p.Err = fmt.Errorf("exit code: %d", *p.exitCode)
 		}
 		// Enhance fork/exec permission errors with better messages
 		if v.ExitCode() == 126 {
 			p.Err = fmt.Errorf("permission denied: %s", p.Cmd)
+		}
+		if v.ExitCode() == 127 {
+			p.Err = fmt.Errorf("command not found: %s", p.Cmd)
 		}
 	}
 	if p.Err != nil {
@@ -476,43 +589,66 @@ func (p Process) Run() Process {
 	return p
 }
 
-func (p Process) ExitCode() int {
+func (p *Process) ExitCode() int {
+	if p.exitCode != nil {
+		return *p.exitCode
+	}
 	if p.cmd != nil && p.cmd.ProcessState != nil {
-		return p.cmd.ProcessState.ExitCode()
+		p.exitCode = lo.ToPtr(p.cmd.ProcessState.ExitCode())
 	}
 	return -1
 }
 
-func (p Process) IsRunning() bool {
-	return p.cmd != nil && p.cmd.Process != nil && !p.cmd.ProcessState.Exited()
+func (p *Process) IsRunning() bool {
+	if p.cmd == nil || p.cmd.Process == nil || p.Err != nil {
+		return false
+	}
+
+	if p.cmd.ProcessState != nil {
+		return !p.cmd.ProcessState.Exited()
+	}
+
+	return true
 }
 
-func (p Process) IsOK() bool {
+func (p *Process) IsOK() bool {
 	return p.Err == nil && p.cmd != nil && p.cmd.ProcessState != nil && p.cmd.ProcessState.Success()
 }
 
-func (p Process) Wait() error {
+func (p *Process) Wait() error {
 	if p.cmd == nil {
 		return nil
 	}
 	return p.cmd.Wait()
 }
 
-func (p Process) Terminate() error {
-	if p.cmd == nil || p.cmd.Process == nil {
+func (p *Process) Terminate() error {
+	if !p.IsRunning() {
 		return nil
 	}
+	p.log.Infof(api.Text{}.Add(icons.Stop).Space().Append("Terminating process: ").Add(p.Short()).ANSI())
+
 	if err := p.cmd.Process.Signal(os.Interrupt); err != nil {
+		p.log.Errorf(api.Text{}.Add(icons.Fail).Space().Append(" failed to signal ").Add(p.Short()).Append(err, "text-red-500").ANSI())
 		return err
 	}
-	_, err := p.cmd.Process.Wait()
+	state, err := p.cmd.Process.Wait()
+
+	p.Err = fmt.Errorf("terminated")
+
+	p.log.Tracef(api.Text{}.Append("terminated ").Add(p.Short()).Append(err, "text-red-500").Space().Append(state, "text-muted").ANSI())
+
 	return err
 }
 
-func (p Process) Kill(timeout time.Duration) error {
-	if p.cmd == nil || p.cmd.Process == nil {
+func (p *Process) Kill(timeout time.Duration) error {
+	if !p.IsRunning() {
 		return nil
 	}
+
+	p.log.Infof(api.Text{}.Add(icons.Zombie).Space().Append("Killing process: ").Add(p.Short()).ANSI())
+
+	p.log.Infof("Killing process: %s with timeout %v", p.Short().ANSI(), timeout)
 
 	if err := p.cmd.Process.Signal(os.Interrupt); err != nil {
 		return err
@@ -532,7 +668,7 @@ func (p Process) Kill(timeout time.Duration) error {
 	}
 }
 
-func (p Process) ForceKill() error {
+func (p *Process) ForceKill() error {
 	if p.cmd == nil || p.cmd.Process == nil {
 		return nil
 	}
@@ -560,7 +696,7 @@ func (p *Process) WaitForStdout(message string, timeout time.Duration) error {
 		time.Sleep(100 * time.Millisecond)
 	}
 
-	return fmt.Errorf("timeout waiting for message '%s' in stdout after %v", message, timeout)
+	return fmt.Errorf("timeout waiting '%s' in stdout after %v", message, timeout)
 }
 
 // GetTask implements the Taskable interface
@@ -574,7 +710,7 @@ func (p *Process) RunAsTask(name string, opts ...task.Option) task.TypedTask[Exe
 		p.task = t
 		ginkgo.GinkgoWriter.Write([]byte("before:" + p.Pretty().ANSI() + "\n"))
 		out := p.Run()
-		*p = out
+		p = out
 		ginkgo.GinkgoWriter.Write([]byte("oput:" + out.Pretty().ANSI() + "\n"))
 		ginkgo.GinkgoWriter.Write([]byte("p:" + p.Pretty().ANSI() + "\n"))
 
@@ -592,7 +728,7 @@ func (p *Process) StartAsTask(name string, opts ...task.Option) task.TypedTask[*
 	taskFunc := func(ctx cctx.Context, t *task.Task) (*Process, error) {
 		p.task = t
 		// Run the process
-		*p = p.Run()
+		p = p.Run()
 
 		err := p.Err
 		// Return the result and error

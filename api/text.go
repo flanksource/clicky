@@ -16,20 +16,34 @@ import (
 
 func Human(content any, styles ...string) Text {
 	switch t := content.(type) {
-	case Textable:
-		return Text{}.Add(t)
 	case Text:
 		return t
+	case Textable:
+		return Text{}.Add(t)
 	case time.Time, *time.Time:
 		return Text{
 			Content: t.(time.Time).Format(time.RFC3339),
 			Style:   strings.Join(append(styles, "date"), " "),
 		}
-	case time.Duration, *time.Duration:
+	case time.Duration:
+		var v string
+		if time.Duration(t.Seconds()) < 5*time.Second {
+			v = fmt.Sprintf("%dms", t.Milliseconds())
+		} else if time.Duration(t.Seconds()) < 1*time.Minute {
+			v = fmt.Sprintf("%.2fs", t.Seconds())
+		} else if time.Duration(t.Seconds()) < 1*time.Hour {
+			v = fmt.Sprintf("%.1fm", t.Minutes())
+		} else if time.Duration(t.Seconds()) < 24*time.Hour {
+			v = fmt.Sprintf("%.1fh", t.Hours())
+		} else {
+			v = commonsText.HumanizeDuration(t)
+		}
 		return Text{
-			Content: commonsText.HumanizeDuration(t.(time.Duration)),
+			Content: v,
 			Style:   strings.Join(append(styles, "duration"), " "),
 		}
+	case *time.Duration:
+		return Human(*t, styles...)
 	case float32, float64:
 		return Text{
 			Content: fmt.Sprintf("%.2f", t),
