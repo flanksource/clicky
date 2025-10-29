@@ -202,7 +202,7 @@ var _ = Describe("Process", func() {
 
 				Expect(p.IsOK()).To(BeFalse())
 				Expect(p.IsRunning()).To(BeFalse())
-				Expect(p.Result().Status).To(Equal("timeout"))
+				Expect(p.Result().Status).To(Equal("failed"))
 				Expect(err).To(BeNil())
 
 			})

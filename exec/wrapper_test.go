@@ -105,12 +105,12 @@ func TestWrapperConcurrency(t *testing.T) {
 
 // Test 4: Non-zero exit handling
 func TestWrapperErrorHandling(t *testing.T) {
-	sh := NewExec("-c").AsWrapper()
+	sh := NewExec("sh", "-c").AsWrapper()
 
-	t.Run("without WithErrOnNonZero", func(t *testing.T) {
+	t.Run("with default error on non-zero", func(t *testing.T) {
 		result, err := sh("exit 42")
-		if err != nil {
-			t.Errorf("Expected no error without WithErrOnNonZero, got: %v", err)
+		if err == nil {
+			t.Error("Expected error for non-zero exit code, got nil")
 		}
 
 		if result == nil {
@@ -122,7 +122,7 @@ func TestWrapperErrorHandling(t *testing.T) {
 		}
 	})
 
-	t.Run("with WithErrOnNonZero", func(t *testing.T) {
+	t.Run("with WithoutErrorOnNonZero", func(t *testing.T) {
 		result, err := sh("exit 42", WithoutErrorOnNonZero())
 		if err != nil {
 			t.Fatal("Expected no error with WithoutErrorOnNonZero, got:", err)
@@ -223,17 +223,18 @@ func TestWrapperWithBaseArgs(t *testing.T) {
 	}
 }
 
-// Test 9: Invalid argument type
+// Test 9: Non-string argument type conversion
 func TestWrapperInvalidArgumentType(t *testing.T) {
 	wrapper := NewExec("echo").AsWrapper()
 
-	_, err := wrapper(123)
-	if err == nil {
-		t.Fatal("Expected error for invalid argument type, got nil")
+	result, err := wrapper(123)
+	if err != nil {
+		t.Fatalf("Expected no error, got: %v", err)
 	}
 
-	if !strings.Contains(err.Error(), "invalid argument type") {
-		t.Errorf("Expected 'invalid argument type' error, got: %v", err)
+	output := strings.TrimSpace(result.Stdout)
+	if output != "123" {
+		t.Errorf("Expected integer to be converted to string '123', got: %q", output)
 	}
 }
 

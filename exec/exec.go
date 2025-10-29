@@ -648,6 +648,10 @@ func (p *Process) Terminate() error {
 
 	p.log.Tracef(api.Text{}.Append("terminated ").Add(p.Short()).Append(err, "text-red-500").Space().Append(state, "text-muted").ANSI())
 
+	// Ignore "no child processes" error as it means the process already terminated
+	if err != nil && strings.Contains(err.Error(), "no child processes") {
+		return nil
+	}
 	return err
 }
 

@@ -443,17 +443,19 @@ func (tm *Manager) StartWithResult(name string, taskFunc func(flanksourceContext
 	// Wrap the result function in a regular func(flanksourceContext.Context, *Task) error
 	task.runFunc = func(ctx flanksourceContext.Context, t *Task) error {
 		result, err := taskFunc(ctx, t)
-		if err != nil {
-			t.err = err
-			return err
-		}
-		// Store the result
+
+		// Store the result regardless of error
 		t.mu.Lock()
 		t.result = result
 		if result != nil {
 			t.resultType = reflect.TypeOf(result)
 		}
 		t.mu.Unlock()
+
+		if err != nil {
+			t.err = err
+			return err
+		}
 		return nil
 	}
 
