@@ -1,6 +1,7 @@
 package text_test
 
 import (
+	"github.com/flanksource/clicky/api"
 	"github.com/flanksource/clicky/text"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -12,6 +13,8 @@ var _ = Describe("Built-in Processors", func() {
 			input    string
 			expected string
 		}
+
+		var sql = "ALTER USER postgres PASSWORD 'rtRl4h1gahQvspXxOxtKcr41kVYeRQKG'"
 
 		DescribeTable("default patterns",
 			func(tc testCase) {
@@ -28,6 +31,9 @@ var _ = Describe("Built-in Processors", func() {
 			Entry("auth with colon", testCase{input: "Auth: xyz", expected: "Auth: ***"}),
 			Entry("bearer token", testCase{input: "Bearer: token123", expected: "Bearer: ***"}),
 			Entry("password with quoted value", testCase{input: "password 'too redact'", expected: "password '***'"}),
+			Entry("sql with quoted value", testCase{input: sql, expected: "ALTER USER postgres PASSWORD '***'"}),
+			Entry("sql with quoted value", testCase{input: api.CodeBlock("sql", sql).ANSI(), expected: api.CodeBlock("sql", "ALTER USER postgres PASSWORD '***'").ANSI()}),
+
 			Entry("token with double quotes", testCase{input: "token=\"secret value\"", expected: "token=\"***\""}),
 		)
 

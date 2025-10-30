@@ -43,8 +43,8 @@ func buildSecretPatterns() []secretPattern {
 var defaultSecretPatterns = buildSecretPatterns()
 
 // RedactSecrets returns a LineProcessor that redacts sensitive data from lines.
-// If patterns are provided, they are used as regex patterns to match secrets.
-// If no patterns are provided, default patterns for common secrets are used.
+// Uses a tokenizer to properly handle quoted values, ANSI sequences, and complex formats.
+// If patterns are provided, they are used as regex patterns (legacy behavior).
 //
 // The processor replaces only the value portion with "***", keeping the key.
 // It never skips lines (always returns skip=false).
@@ -54,23 +54,47 @@ var defaultSecretPatterns = buildSecretPatterns()
 //	processor := text.RedactSecrets()
 //	result, _ := processor("password=secret123")
 //	// result: "password=***"
+//
+//	result, _ = processor("ALTER USER postgres PASSWORD 'secret'")
+//	// result: "ALTER USER postgres PASSWORD '***'"
 func RedactSecrets(patterns ...string) LineProcessor {
-	// Use default patterns if none provided
+	// Use tokenizer if no custom patterns provided
 	if len(patterns) == 0 {
 		return func(line string) (string, bool) {
-			result := line
-			modified := false
-
-			for _, sp := range defaultSecretPatterns {
-				if sp.pattern.MatchString(result) {
-					result = sp.pattern.ReplaceAllString(result, sp.replacement)
-					modified = true
-				}
-			}
-
-			if !modified {
+			tokens := TokenizeLine(line)
+			if len(tokens) == 0 {
 				return line, false
 			}
+
+			// For ANSI-wrapped lines, do simple string replacement
+			if strings.Contains(line, "\x1b[") {
+				result := line
+				for _, token := range tokens {
+					// Replace the actual secret value with ***
+					if token.QuoteChar == "'" {
+						result = strings.ReplaceAll(result, "'"+token.Value+"'", "'***'")
+					} else if token.QuoteChar == "\"" {
+						result = strings.ReplaceAll(result, "\""+token.Value+"\"", "\"***\"")
+					} else {
+						result = strings.ReplaceAll(result, token.Value, "***")
+					}
+				}
+				return result, false
+			}
+
+			// Non-ANSI: use proper tokenizer rebuild
+			redacted := make([]Token, 0, len(tokens))
+			for _, token := range tokens {
+				redacted = append(redacted, Token{
+					Key:       token.Key,
+					Separator: token.Separator,
+					Value:     "***",
+					QuoteChar: token.QuoteChar,
+					ANSICode:  token.ANSICode,
+				})
+			}
+
+			result := RebuildLine(line, redacted)
 			return result, false
 		}
 	}

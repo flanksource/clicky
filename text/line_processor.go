@@ -24,6 +24,11 @@ type lineFilterWriter struct {
 	bufPool  *sync.Pool
 }
 
+// WriteString implements io.StringWriter.
+func (w *lineFilterWriter) WriteString(s string) (n int, err error) {
+	return w.Write([]byte(s))
+}
+
 // LineFilter wraps an io.Writer to apply a pipeline of line processors.
 // Each line (delimited by \n) is processed through the pipeline in left-to-right order.
 // If any processor returns skip=true, the line is discarded.
