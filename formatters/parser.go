@@ -474,6 +474,95 @@ func parseStructDataWithOptions(val reflect.Value, opts FormatOptions) (*api.Pre
 		}
 	}
 
+	// For maps, we need to manually create a schema and parse
+	if val.Kind() == reflect.Map {
+		// Create a schema from the map structure
+		schema := &api.PrettyObject{Fields: []api.PrettyField{}}
+
+		// Iterate over map keys to detect schema
+		for _, key := range val.MapKeys() {
+			if key.Kind() != reflect.String {
+				continue
+			}
+			fieldName := key.String()
+			fieldVal := val.MapIndex(key)
+
+			// Handle interface{} wrapping
+			if fieldVal.Kind() == reflect.Interface && !fieldVal.IsNil() {
+				fieldVal = fieldVal.Elem()
+			}
+
+			// Detect if this field should be a table (slice of structs/maps)
+			field := api.PrettyField{
+				Name:  fieldName,
+				Label: fieldName,
+			}
+
+			if fieldVal.Kind() == reflect.Slice || fieldVal.Kind() == reflect.Array {
+				if fieldVal.Len() > 0 {
+					firstElem := fieldVal.Index(0)
+					if firstElem.Kind() == reflect.Interface && !firstElem.IsNil() {
+						firstElem = firstElem.Elem()
+					}
+					if firstElem.Kind() == reflect.Map || firstElem.Kind() == reflect.Struct {
+						field.Format = api.FormatTable
+
+						// Extract table fields from the first element
+						parser := api.NewStructParser()
+						var tableFields []api.PrettyField
+						if firstElem.Kind() == reflect.Map {
+							// Get fields from map with proper type inference
+							keys := firstElem.MapKeys()
+							// Sort keys for consistent ordering
+							sort.Slice(keys, func(i, j int) bool {
+								return fmt.Sprint(keys[i].Interface()) < fmt.Sprint(keys[j].Interface())
+							})
+							for _, key := range keys {
+								if key.Kind() == reflect.String {
+									keyStr := key.String()
+									mapVal := firstElem.MapIndex(key)
+									// Handle interface wrapping
+									if mapVal.Kind() == reflect.Interface && !mapVal.IsNil() {
+										mapVal = mapVal.Elem()
+									}
+									// Infer type from the value
+									inferredType := "string" // default
+									switch mapVal.Kind() {
+									case reflect.Bool:
+										inferredType = "bool"
+									case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+										inferredType = "int"
+									case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+										inferredType = "int"
+									case reflect.Float32, reflect.Float64:
+										inferredType = "float"
+									}
+									tableFields = append(tableFields, api.PrettyField{
+										Name:  keyStr,
+										Label: keyStr,
+										Type:  inferredType,
+									})
+								}
+							}
+						} else {
+							var err error
+							tableFields, err = parser.GetTableFields(firstElem)
+							if err != nil {
+								logger.V(4).Infof("Failed to get table fields: %v", err)
+							}
+						}
+						field.TableOptions = api.PrettyTable{Fields: tableFields}
+					}
+				}
+			}
+
+			schema.Fields = append(schema.Fields, field)
+		}
+
+		// Parse the map data with the schema
+		return parseStructDataWithOptionsAndSchema(val, schema, opts)
+	}
+
 	// Create the schema from struct tags
 	schema, err := ParseStructSchema(val)
 	if err != nil {
@@ -622,6 +711,15 @@ func convertSliceToPrettyDataWithOptions(val reflect.Value, opts FormatOptions) 
 		}
 	}
 
+	// Apply filter if provided in options
+	if opts.Filter != "" && len(rows) > 0 {
+		filteredRows, err := api.FilterTableRows(rows, opts.Filter)
+		if err != nil {
+			return nil, fmt.Errorf("failed to apply filter: %w", err)
+		}
+		rows = filteredRows
+	}
+
 	return &api.PrettyData{
 		Schema: &api.PrettyObject{
 			Fields: []api.PrettyField{
@@ -649,6 +747,20 @@ func parseStructDataWithOptionsAndSchema(val reflect.Value, schema *api.PrettyOb
 	if err != nil {
 		return nil, err
 	}
+
+	// Apply filter to all table fields if filter is provided
+	if opts.Filter != "" && prettyData != nil && prettyData.Tables != nil {
+		for tableName, rows := range prettyData.Tables {
+			if len(rows) > 0 {
+				filteredRows, err := api.FilterTableRows(rows, opts.Filter)
+				if err != nil {
+					return nil, fmt.Errorf("failed to apply filter to table %s: %w", tableName, err)
+				}
+				prettyData.Tables[tableName] = filteredRows
+			}
+		}
+	}
+
 	return prettyData, nil
 }
 

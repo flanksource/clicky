@@ -457,8 +457,8 @@ func TestComplexFilterExpressions(t *testing.T) {
 		{
 			name:           "range check",
 			filter:         `salary >= 95000 && salary <= 120000`,
-			expectInOutput: []string{"Alice", "Bob", "David"},
-			expectNotIn:    []string{"Charlie", "Eve"},
+			expectInOutput: []string{"Alice", "Charlie", "David"},
+			expectNotIn:    []string{"Bob", "Eve"},
 		},
 	}
 

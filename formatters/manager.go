@@ -265,7 +265,7 @@ func (f FormatManager) FormatWithOptions(options FormatOptions, data ...any) (st
 			d = data
 		}
 		// Convert to PrettyData first to detect structure (tree vs table)
-		prettyData, err := ToPrettyDataWithOptions(d, FormatOptions{})
+		prettyData, err := ToPrettyDataWithOptions(d, options)
 		if err != nil {
 			// Fallback to direct formatting if PrettyData conversion fails
 			if f.prettyFormatter == nil {
