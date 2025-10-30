@@ -1,18 +1,20 @@
 package api
 
 import (
-	"testing"
 	"time"
+
+	"github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
 )
 
-func TestFilterTableRows(t *testing.T) {
+var _ = ginkgo.Describe("FilterTableRows", func() {
 	tests := []struct {
 		name           string
 		rows           []PrettyDataRow
 		filterExpr     string
 		expectedCount  int
 		expectError    bool
-		validateResult func(*testing.T, []PrettyDataRow)
+		validateResult func([]PrettyDataRow)
 	}{
 		{
 			name: "filter by string equality",
@@ -51,16 +53,11 @@ func TestFilterTableRows(t *testing.T) {
 			},
 			filterExpr:    "age > 30",
 			expectedCount: 2,
-			validateResult: func(t *testing.T, result []PrettyDataRow) {
-				if len(result) != 2 {
-					t.Errorf("Expected 2 rows, got %d", len(result))
-					return
-				}
-				// Should contain Bob and Charlie
+			validateResult: func(result []PrettyDataRow) {
+				Expect(result).To(HaveLen(2))
 				names := []string{result[0]["name"].Value.(string), result[1]["name"].Value.(string)}
-				if !(contains(names, "Bob") && contains(names, "Charlie")) {
-					t.Errorf("Expected Bob and Charlie, got %v", names)
-				}
+				Expect(names).To(ContainElement("Bob"))
+				Expect(names).To(ContainElement("Charlie"))
 			},
 		},
 		{
@@ -155,39 +152,33 @@ func TestFilterTableRows(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+		tt := tt
+		ginkgo.It(tt.name, func() {
 			result, err := FilterTableRows(tt.rows, tt.filterExpr)
 
 			if tt.expectError {
-				if err == nil {
-					t.Errorf("Expected error but got none")
-				}
+				Expect(err).To(HaveOccurred())
 				return
 			}
 
-			if err != nil {
-				t.Fatalf("Unexpected error: %v", err)
-			}
-
-			if len(result) != tt.expectedCount {
-				t.Errorf("Expected %d rows, got %d", tt.expectedCount, len(result))
-			}
+			Expect(err).ToNot(HaveOccurred())
+			Expect(result).To(HaveLen(tt.expectedCount))
 
 			if tt.validateResult != nil {
-				tt.validateResult(t, result)
+				tt.validateResult(result)
 			}
 		})
 	}
-}
+})
 
-func TestFilterTreeNode(t *testing.T) {
+var _ = ginkgo.Describe("FilterTreeNode", func() {
 	tests := []struct {
 		name           string
 		tree           TreeNode
 		filterExpr     string
-		expectedNodes  int // Total nodes in filtered tree (including parent nodes)
+		expectedNodes  int
 		expectError    bool
-		validateResult func(*testing.T, TreeNode)
+		validateResult func(TreeNode)
 	}{
 		{
 			name: "filter leaf nodes by label",
@@ -200,16 +191,11 @@ func TestFilterTreeNode(t *testing.T) {
 				},
 			},
 			filterExpr:    "label.contains('active')",
-			expectedNodes: 3, // root + 2 matching children
-			validateResult: func(t *testing.T, result TreeNode) {
-				if result == nil {
-					t.Fatal("Expected non-nil result")
-				}
+			expectedNodes: 3,
+			validateResult: func(result TreeNode) {
+				Expect(result).ToNot(BeNil())
 				children := result.GetChildren()
-				// Should have 2 matching children (active_item, active_node)
-				if len(children) != 2 {
-					t.Errorf("Expected 2 matching children, got %d", len(children))
-				}
+				Expect(children).To(HaveLen(2))
 			},
 		},
 		{
@@ -223,7 +209,7 @@ func TestFilterTreeNode(t *testing.T) {
 				},
 			},
 			filterExpr:    "priority >= 5",
-			expectedNodes: 3, // root + 2 matching children
+			expectedNodes: 3,
 		},
 		{
 			name: "filter preserves parent nodes with matching children",
@@ -246,20 +232,13 @@ func TestFilterTreeNode(t *testing.T) {
 				},
 			},
 			filterExpr: "category == 'match'",
-			validateResult: func(t *testing.T, result TreeNode) {
-				if result == nil {
-					t.Fatal("Expected non-nil result")
-				}
+			validateResult: func(result TreeNode) {
+				Expect(result).ToNot(BeNil())
 				children := result.GetChildren()
-				if len(children) != 1 {
-					t.Errorf("Expected 1 parent node, got %d", len(children))
-					return
-				}
-				// Parent1 should be preserved with only matching child
+				Expect(children).To(HaveLen(1))
+
 				parent1Children := children[0].GetChildren()
-				if len(parent1Children) != 1 {
-					t.Errorf("Expected parent1 to have 1 child, got %d", len(parent1Children))
-				}
+				Expect(parent1Children).To(HaveLen(1))
 			},
 		},
 		{
@@ -272,7 +251,7 @@ func TestFilterTreeNode(t *testing.T) {
 				},
 			},
 			filterExpr:    "",
-			expectedNodes: 3, // root + 2 children
+			expectedNodes: 3,
 		},
 		{
 			name: "filter matches root node",
@@ -284,15 +263,10 @@ func TestFilterTreeNode(t *testing.T) {
 				},
 			},
 			filterExpr: "status == 'active'",
-			validateResult: func(t *testing.T, result TreeNode) {
-				if result == nil {
-					t.Fatal("Expected non-nil result")
-				}
-				// Root matches, so entire tree should be preserved
+			validateResult: func(result TreeNode) {
+				Expect(result).ToNot(BeNil())
 				children := result.GetChildren()
-				if len(children) != 1 {
-					t.Errorf("Expected root to have 1 child, got %d", len(children))
-				}
+				Expect(children).To(HaveLen(1))
 			},
 		},
 		{
@@ -305,11 +279,9 @@ func TestFilterTreeNode(t *testing.T) {
 				},
 			},
 			filterExpr:    "status == 'completed'",
-			expectedNodes: 0, // No matches
-			validateResult: func(t *testing.T, result TreeNode) {
-				if result != nil {
-					t.Errorf("Expected nil result for no matches, got %v", result)
-				}
+			expectedNodes: 0,
+			validateResult: func(result TreeNode) {
+				Expect(result).To(BeNil())
 			},
 		},
 		{
@@ -323,36 +295,30 @@ func TestFilterTreeNode(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+		tt := tt
+		ginkgo.It(tt.name, func() {
 			result, err := FilterTreeNode(tt.tree, tt.filterExpr)
 
 			if tt.expectError {
-				if err == nil {
-					t.Errorf("Expected error but got none")
-				}
+				Expect(err).To(HaveOccurred())
 				return
 			}
 
-			if err != nil {
-				t.Fatalf("Unexpected error: %v", err)
-			}
+			Expect(err).ToNot(HaveOccurred())
 
 			if tt.validateResult != nil {
-				tt.validateResult(t, result)
+				tt.validateResult(result)
 			} else if tt.expectedNodes > 0 {
-				// Count total nodes in tree
 				count := countTreeNodes(result)
-				if count != tt.expectedNodes {
-					t.Errorf("Expected %d nodes in filtered tree, got %d", tt.expectedNodes, count)
-				}
-			} else if tt.expectedNodes == 0 && result != nil {
-				t.Errorf("Expected nil result for 0 nodes, got %v", result)
+				Expect(count).To(Equal(tt.expectedNodes))
+			} else if tt.expectedNodes == 0 {
+				Expect(result).To(BeNil())
 			}
 		})
 	}
-}
+})
 
-func TestRowToCELMap(t *testing.T) {
+var _ = ginkgo.Describe("rowToCELMap", func() {
 	tests := []struct {
 		name     string
 		row      PrettyDataRow
@@ -395,39 +361,29 @@ func TestRowToCELMap(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+		tt := tt
+		ginkgo.It(tt.name, func() {
 			result := rowToCELMap(tt.row)
 
-			if len(result) != len(tt.expected) {
-				t.Errorf("Expected %d fields, got %d", len(tt.expected), len(result))
-			}
+			Expect(result).To(HaveLen(len(tt.expected)))
 
 			for key, expectedVal := range tt.expected {
 				actualVal, ok := result[key]
-				if !ok {
-					t.Errorf("Missing key %q in result", key)
-					continue
-				}
+				Expect(ok).To(BeTrue(), "Missing key %q in result", key)
 
-				// Handle time.Time comparison separately
 				if expectedTime, ok := expectedVal.(time.Time); ok {
 					actualTime, ok := actualVal.(time.Time)
-					if !ok {
-						t.Errorf("Expected time.Time for key %q, got %T", key, actualVal)
-						continue
-					}
-					if !expectedTime.Equal(actualTime) {
-						t.Errorf("For key %q: expected %v, got %v", key, expectedTime, actualTime)
-					}
-				} else if actualVal != expectedVal {
-					t.Errorf("For key %q: expected %v, got %v", key, expectedVal, actualVal)
+					Expect(ok).To(BeTrue(), "Expected time.Time for key %q, got %T", key, actualVal)
+					Expect(actualTime.Equal(expectedTime)).To(BeTrue(), "For key %q: expected %v, got %v", key, expectedTime, actualTime)
+				} else {
+					Expect(actualVal).To(Equal(expectedVal), "For key %q", key)
 				}
 			}
 		})
 	}
-}
+})
 
-func TestNodeToCELMap(t *testing.T) {
+var _ = ginkgo.Describe("nodeToCELMap", func() {
 	tests := []struct {
 		name     string
 		node     TreeNode
@@ -468,8 +424,6 @@ func TestNodeToCELMap(t *testing.T) {
 			},
 			expected: map[string]interface{}{
 				"label": "styled_node",
-				// content comes from Pretty() which includes icon prefix
-				// We just verify label, style, and icon are correct
 				"style": "bold",
 				"icon":  "check",
 			},
@@ -477,22 +431,18 @@ func TestNodeToCELMap(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+		tt := tt
+		ginkgo.It(tt.name, func() {
 			result := nodeToCELMap(tt.node)
 
 			for key, expectedVal := range tt.expected {
 				actualVal, ok := result[key]
-				if !ok {
-					t.Errorf("Missing key %q in result", key)
-					continue
-				}
-				if actualVal != expectedVal {
-					t.Errorf("For key %q: expected %v, got %v", key, expectedVal, actualVal)
-				}
+				Expect(ok).To(BeTrue(), "Missing key %q in result", key)
+				Expect(actualVal).To(Equal(expectedVal), "For key %q", key)
 			}
 		})
 	}
-}
+})
 
 // Helper functions
 
@@ -509,7 +459,7 @@ func countTreeNodes(node TreeNode) int {
 	if node == nil {
 		return 0
 	}
-	count := 1 // Count this node
+	count := 1
 	for _, child := range node.GetChildren() {
 		count += countTreeNodes(child)
 	}

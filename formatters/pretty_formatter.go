@@ -361,10 +361,41 @@ func (p *PrettyFormatter) formatValueWithVisited(val reflect.Value, field api.Pr
 		return p.formatFloat(val, field.FormatOptions["digits"])
 	case "color":
 		return p.formatWithColor(val, field.ColorOptions)
+	case "bytes":
+		return p.formatBytes(val)
 	case api.FormatTree:
 		return p.formatAsTree(val, field)
 	default:
 		return p.formatDefaultWithVisited(val, visited)
+	}
+}
+
+func (p *PrettyFormatter) formatBytes(val reflect.Value) string {
+
+	bytes, ok := p.GetInt(val)
+	if !ok {
+		return ""
+	}
+
+	return api.HumanizeBytes(bytes).String()
+
+}
+
+func (p *PrettyFormatter) GetInt(val reflect.Value) (int64, bool) {
+	switch val.Kind() {
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return val.Int(), true
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		return int64(val.Uint()), true
+	case reflect.Float32, reflect.Float64:
+		return int64(val.Float()), true
+	case reflect.String:
+		if i, err := strconv.ParseInt(val.String(), 10, 64); err == nil {
+			return i, true
+		}
+		return 0, false
+	default:
+		return 0, false
 	}
 }
 

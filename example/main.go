@@ -8,6 +8,7 @@ import (
 	"os"
 
 	"github.com/flanksource/clicky"
+	"github.com/flanksource/clicky/formatters"
 )
 
 // Order represents a complete order with all details
@@ -72,8 +73,8 @@ func main() {
 			log.Fatalf("Error reading from stdin: %v", err)
 		}
 	} else {
-		// Read from example file
-		data, err = os.ReadFile("example-data.json")
+
+		data, err = os.ReadFile(os.Args[1])
 		if err != nil {
 			log.Fatalf("Error reading example-data.json: %v", err)
 		}
@@ -85,11 +86,17 @@ func main() {
 		log.Fatalf("Error parsing JSON: %v", err)
 	}
 
-	result, err := clicky.Format(order)
+	for _, f := range []string{"pretty", "json"} {
 
-	if err != nil {
-		log.Fatalf("Error formatting with %v", err)
+		fmt.Println("----- Format:", f, "-----")
+		opts := formatters.FormatOptions{Format: f}
+
+		result, err := clicky.Format(order, opts)
+		if err != nil {
+			log.Fatalf("Error formatting with %v", err)
+		}
+
+		fmt.Println(result)
 	}
 
-	fmt.Println(result)
 }

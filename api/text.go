@@ -139,6 +139,17 @@ type Text struct {
 	indent   int // internal use for tracking indentation level
 }
 
+// Format implements fmt.Formatter to ensure sensitive values are redacted in all format verbs
+func (t Text) Format(f fmt.State, verb rune) {
+	f.Write([]byte(t.ANSI()))
+	switch verb {
+	case 's':
+		f.Write([]byte(t.String()))
+	default:
+		f.Write([]byte(t.ANSI()))
+	}
+}
+
 func (t Text) Human(o any, styles ...string) Text {
 	return t.Add(Text{Content: fmt.Sprintf("%v", o), Style: strings.Join(styles, " ")})
 }

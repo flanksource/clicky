@@ -2,8 +2,10 @@ package flags
 
 import (
 	"reflect"
-	"testing"
 	"time"
+
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
 
 	"github.com/flanksource/commons/duration"
 )
@@ -48,220 +50,187 @@ type SpecialFields struct {
 	Since    time.Time         `flag:"since" help:"Time field"`
 }
 
-func TestParseStructFields_Simple(t *testing.T) {
-	fields, err := ParseStructFields(reflect.TypeOf(BaseOptions{}))
-	if err != nil {
-		t.Fatalf("ParseStructFields failed: %v", err)
-	}
+var _ = Describe("ParseStructFields", func() {
+	Context("when parsing simple struct", func() {
+		It("should extract all direct fields with metadata", func() {
+			fields, err := ParseStructFields(reflect.TypeOf(BaseOptions{}))
+			Expect(err).ToNot(HaveOccurred())
+			Expect(fields).To(HaveLen(2))
 
-	if len(fields) != 2 {
-		t.Fatalf("Expected 2 fields, got %d", len(fields))
-	}
+			By("verifying first field")
+			Expect(fields[0].FlagName).To(Equal("name"))
+			Expect(fields[0].DefaultValue).To(Equal("default"))
 
-	// Check first field
-	if fields[0].FlagName != "name" {
-		t.Errorf("Expected flag name 'name', got '%s'", fields[0].FlagName)
-	}
-	if fields[0].DefaultValue != "default" {
-		t.Errorf("Expected default 'default', got '%s'", fields[0].DefaultValue)
-	}
+			By("verifying second field")
+			Expect(fields[1].FlagName).To(Equal("count"))
+		})
+	})
 
-	// Check second field
-	if fields[1].FlagName != "count" {
-		t.Errorf("Expected flag name 'count', got '%s'", fields[1].FlagName)
-	}
-}
+	Context("when parsing single level embedding", func() {
+		It("should extract fields from embedded struct", func() {
+			fields, err := ParseStructFields(reflect.TypeOf(EmbeddedOptions{}))
+			Expect(err).ToNot(HaveOccurred())
+			Expect(fields).To(HaveLen(3))
 
-func TestParseStructFields_SingleLevelEmbedding(t *testing.T) {
-	fields, err := ParseStructFields(reflect.TypeOf(EmbeddedOptions{}))
-	if err != nil {
-		t.Fatalf("ParseStructFields failed: %v", err)
-	}
+			flagNames := make(map[string]bool)
+			for _, f := range fields {
+				flagNames[f.FlagName] = true
+			}
 
-	// Should have 3 fields: name, count (from BaseOptions), and active
-	if len(fields) != 3 {
-		t.Fatalf("Expected 3 fields, got %d", len(fields))
-	}
+			expectedFlags := []string{"name", "count", "active"}
+			for _, expected := range expectedFlags {
+				Expect(flagNames).To(HaveKey(expected), "Missing expected flag: %s", expected)
+			}
+		})
 
-	flagNames := make(map[string]bool)
-	for _, f := range fields {
-		flagNames[f.FlagName] = true
-	}
+		It("should preserve correct field paths for embedded fields", func() {
+			fields, err := ParseStructFields(reflect.TypeOf(EmbeddedOptions{}))
+			Expect(err).ToNot(HaveOccurred())
 
-	expectedFlags := []string{"name", "count", "active"}
-	for _, expected := range expectedFlags {
-		if !flagNames[expected] {
-			t.Errorf("Missing expected flag: %s", expected)
-		}
-	}
-}
+			var nameField *FieldInfo
+			for i := range fields {
+				if fields[i].FlagName == "name" {
+					nameField = &fields[i]
+					break
+				}
+			}
 
-func TestParseStructFields_MultiLevelEmbedding(t *testing.T) {
-	fields, err := ParseStructFields(reflect.TypeOf(MultiLevelOptions{}))
-	if err != nil {
-		t.Fatalf("ParseStructFields failed: %v", err)
-	}
+			Expect(nameField).ToNot(BeNil(), "Could not find 'name' field")
+			expectedPath := []int{0, 0}
+			Expect(nameField.FieldPath).To(Equal(expectedPath))
+		})
+	})
 
-	// Should have 4 fields: name, count, active, extra
-	if len(fields) != 4 {
-		t.Fatalf("Expected 4 fields, got %d", len(fields))
-	}
+	Context("when parsing multi-level embedding", func() {
+		It("should extract fields from all embedding levels", func() {
+			fields, err := ParseStructFields(reflect.TypeOf(MultiLevelOptions{}))
+			Expect(err).ToNot(HaveOccurred())
+			Expect(fields).To(HaveLen(4))
 
-	flagNames := make(map[string]bool)
-	for _, f := range fields {
-		flagNames[f.FlagName] = true
-	}
+			flagNames := make(map[string]bool)
+			for _, f := range fields {
+				flagNames[f.FlagName] = true
+			}
 
-	expectedFlags := []string{"name", "count", "active", "extra"}
-	for _, expected := range expectedFlags {
-		if !flagNames[expected] {
-			t.Errorf("Missing expected flag: %s", expected)
-		}
-	}
-}
+			expectedFlags := []string{"name", "count", "active", "extra"}
+			for _, expected := range expectedFlags {
+				Expect(flagNames).To(HaveKey(expected), "Missing expected flag: %s", expected)
+			}
+		})
+	})
 
-func TestParseStructFields_MixedDirectAndEmbedded(t *testing.T) {
-	fields, err := ParseStructFields(reflect.TypeOf(MixedOptions{}))
-	if err != nil {
-		t.Fatalf("ParseStructFields failed: %v", err)
-	}
+	Context("when parsing mixed direct and embedded fields", func() {
+		It("should extract both direct and embedded fields", func() {
+			fields, err := ParseStructFields(reflect.TypeOf(MixedOptions{}))
+			Expect(err).ToNot(HaveOccurred())
+			Expect(fields).To(HaveLen(4))
 
-	// Should have 4 fields: direct, name, count, another
-	if len(fields) != 4 {
-		t.Fatalf("Expected 4 fields, got %d", len(fields))
-	}
+			flagNames := make(map[string]bool)
+			for _, f := range fields {
+				flagNames[f.FlagName] = true
+			}
 
-	flagNames := make(map[string]bool)
-	for _, f := range fields {
-		flagNames[f.FlagName] = true
-	}
+			expectedFlags := []string{"direct", "name", "count", "another"}
+			for _, expected := range expectedFlags {
+				Expect(flagNames).To(HaveKey(expected), "Missing expected flag: %s", expected)
+			}
+		})
+	})
 
-	expectedFlags := []string{"direct", "name", "count", "another"}
-	for _, expected := range expectedFlags {
-		if !flagNames[expected] {
-			t.Errorf("Missing expected flag: %s", expected)
-		}
-	}
-}
+	Context("when parsing multiple embedded structs", func() {
+		It("should extract fields from all embedded structs", func() {
+			fields, err := ParseStructFields(reflect.TypeOf(ComplexEmbedding{}))
+			Expect(err).ToNot(HaveOccurred())
+			Expect(fields).To(HaveLen(6))
 
-func TestParseStructFields_MultipleEmbeddings(t *testing.T) {
-	fields, err := ParseStructFields(reflect.TypeOf(ComplexEmbedding{}))
-	if err != nil {
-		t.Fatalf("ParseStructFields failed: %v", err)
-	}
+			flagNames := make(map[string]bool)
+			for _, f := range fields {
+				flagNames[f.FlagName] = true
+			}
 
-	// Should have: id, name (from CommonFields), tags, duration, since (from SpecialFields), direct
-	if len(fields) != 6 {
-		t.Fatalf("Expected 6 fields, got %d", len(fields))
-	}
+			expectedFlags := []string{"id", "name", "tags", "duration", "since", "direct"}
+			for _, expected := range expectedFlags {
+				Expect(flagNames).To(HaveKey(expected), "Missing expected flag: %s", expected)
+			}
+		})
+	})
+})
 
-	flagNames := make(map[string]bool)
-	for _, f := range fields {
-		flagNames[f.FlagName] = true
-	}
+var _ = Describe("GetFieldByPath", func() {
+	Context("when accessing direct fields", func() {
+		It("should retrieve string field value", func() {
+			opts := BaseOptions{Name: "test", Count: 10}
+			v := reflect.ValueOf(&opts).Elem()
 
-	expectedFlags := []string{"id", "name", "tags", "duration", "since", "direct"}
-	for _, expected := range expectedFlags {
-		if !flagNames[expected] {
-			t.Errorf("Missing expected flag: %s", expected)
-		}
-	}
-}
+			field := GetFieldByPath(v, []int{0})
+			Expect(field.String()).To(Equal("test"))
+		})
 
-func TestGetFieldByPath_Direct(t *testing.T) {
-	opts := BaseOptions{Name: "test", Count: 10}
-	v := reflect.ValueOf(&opts).Elem()
+		It("should retrieve integer field value", func() {
+			opts := BaseOptions{Name: "test", Count: 10}
+			v := reflect.ValueOf(&opts).Elem()
 
-	// Get name field
-	field := GetFieldByPath(v, []int{0})
-	if field.String() != "test" {
-		t.Errorf("Expected 'test', got '%s'", field.String())
-	}
+			field := GetFieldByPath(v, []int{1})
+			Expect(field.Int()).To(Equal(int64(10)))
+		})
+	})
 
-	// Get count field
-	field = GetFieldByPath(v, []int{1})
-	if field.Int() != 10 {
-		t.Errorf("Expected 10, got %d", field.Int())
-	}
-}
+	Context("when accessing embedded fields", func() {
+		var opts EmbeddedOptions
+		var v reflect.Value
 
-func TestGetFieldByPath_Embedded(t *testing.T) {
-	opts := EmbeddedOptions{
-		BaseOptions: BaseOptions{Name: "embedded", Count: 20},
-		Active:      true,
-	}
-	v := reflect.ValueOf(&opts).Elem()
+		BeforeEach(func() {
+			opts = EmbeddedOptions{
+				BaseOptions: BaseOptions{Name: "embedded", Count: 20},
+				Active:      true,
+			}
+			v = reflect.ValueOf(&opts).Elem()
+		})
 
-	// BaseOptions is at index 0, Name is at index 0 within BaseOptions
-	field := GetFieldByPath(v, []int{0, 0})
-	if field.String() != "embedded" {
-		t.Errorf("Expected 'embedded', got '%s'", field.String())
-	}
+		It("should retrieve embedded string field", func() {
+			field := GetFieldByPath(v, []int{0, 0})
+			Expect(field.String()).To(Equal("embedded"))
+		})
 
-	// BaseOptions is at index 0, Count is at index 1 within BaseOptions
-	field = GetFieldByPath(v, []int{0, 1})
-	if field.Int() != 20 {
-		t.Errorf("Expected 20, got %d", field.Int())
-	}
+		It("should retrieve embedded integer field", func() {
+			field := GetFieldByPath(v, []int{0, 1})
+			Expect(field.Int()).To(Equal(int64(20)))
+		})
 
-	// Active is at index 1
-	field = GetFieldByPath(v, []int{1})
-	if !field.Bool() {
-		t.Error("Expected true for Active field")
-	}
-}
+		It("should retrieve direct boolean field", func() {
+			field := GetFieldByPath(v, []int{1})
+			Expect(field.Bool()).To(BeTrue())
+		})
+	})
 
-func TestGetFieldByPath_MultiLevel(t *testing.T) {
-	opts := MultiLevelOptions{
-		EmbeddedOptions: EmbeddedOptions{
-			BaseOptions: BaseOptions{Name: "multilevel", Count: 30},
-			Active:      false,
-		},
-		Extra: "extra-value",
-	}
-	v := reflect.ValueOf(&opts).Elem()
+	Context("when accessing multi-level embedded fields", func() {
+		var opts MultiLevelOptions
+		var v reflect.Value
 
-	// EmbeddedOptions[0] -> BaseOptions[0] -> Name[0]
-	field := GetFieldByPath(v, []int{0, 0, 0})
-	if field.String() != "multilevel" {
-		t.Errorf("Expected 'multilevel', got '%s'", field.String())
-	}
+		BeforeEach(func() {
+			opts = MultiLevelOptions{
+				EmbeddedOptions: EmbeddedOptions{
+					BaseOptions: BaseOptions{Name: "multilevel", Count: 30},
+					Active:      false,
+				},
+				Extra: "extra-value",
+			}
+			v = reflect.ValueOf(&opts).Elem()
+		})
 
-	// EmbeddedOptions[0] -> Active[1]
-	field = GetFieldByPath(v, []int{0, 1})
-	if field.Bool() {
-		t.Error("Expected false for Active field")
-	}
+		It("should retrieve deeply nested string field", func() {
+			field := GetFieldByPath(v, []int{0, 0, 0})
+			Expect(field.String()).To(Equal("multilevel"))
+		})
 
-	// Extra[1]
-	field = GetFieldByPath(v, []int{1})
-	if field.String() != "extra-value" {
-		t.Errorf("Expected 'extra-value', got '%s'", field.String())
-	}
-}
+		It("should retrieve intermediate level boolean field", func() {
+			field := GetFieldByPath(v, []int{0, 1})
+			Expect(field.Bool()).To(BeFalse())
+		})
 
-func TestParseStructFields_FieldPaths(t *testing.T) {
-	fields, err := ParseStructFields(reflect.TypeOf(EmbeddedOptions{}))
-	if err != nil {
-		t.Fatalf("ParseStructFields failed: %v", err)
-	}
-
-	// Find the 'name' field which is embedded
-	var nameField *FieldInfo
-	for i := range fields {
-		if fields[i].FlagName == "name" {
-			nameField = &fields[i]
-			break
-		}
-	}
-
-	if nameField == nil {
-		t.Fatal("Could not find 'name' field")
-	}
-
-	// The path should be [0, 0] (BaseOptions is field 0, Name is field 0 within it)
-	expectedPath := []int{0, 0}
-	if !reflect.DeepEqual(nameField.FieldPath, expectedPath) {
-		t.Errorf("Expected path %v, got %v", expectedPath, nameField.FieldPath)
-	}
-}
+		It("should retrieve top level string field", func() {
+			field := GetFieldByPath(v, []int{1})
+			Expect(field.String()).To(Equal("extra-value"))
+		})
+	})
+})

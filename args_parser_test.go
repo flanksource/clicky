@@ -2,11 +2,12 @@ package clicky
 
 import (
 	"os"
-	"reflect"
-	"testing"
+
+	"github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
 )
 
-func TestParseArgumentsAsMap(t *testing.T) {
+var _ = ginkgo.Describe("ParseArgumentsAsMap", func() {
 	tests := []struct {
 		name     string
 		args     []string
@@ -62,125 +63,133 @@ func TestParseArgumentsAsMap(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+		tt := tt
+		ginkgo.It(tt.name, func() {
 			result, err := ParseArgumentsAsMap(tt.args)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("ParseArgumentsAsMap() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-			if !tt.wantErr && !reflect.DeepEqual(result, tt.expected) {
-				t.Errorf("ParseArgumentsAsMap() = %v, want %v", result, tt.expected)
+			if tt.wantErr {
+				Expect(err).To(HaveOccurred())
+			} else {
+				Expect(err).ToNot(HaveOccurred())
+				Expect(result).To(Equal(tt.expected))
 			}
 		})
 	}
-}
+})
 
-func TestParseArgumentsWithFile(t *testing.T) {
-	// Create temporary test files
-	tmpDir := t.TempDir()
+var _ = ginkgo.Describe("ParseArgumentsWithFile", func() {
+	var tmpDir string
 
-	// Create text file
-	textFile := tmpDir + "/test.txt"
-	if err := os.WriteFile(textFile, []byte("hello world"), 0644); err != nil {
-		t.Fatal(err)
-	}
+	ginkgo.BeforeEach(func() {
+		var err error
+		tmpDir, err = os.MkdirTemp("", "clicky-test-*")
+		Expect(err).ToNot(HaveOccurred())
 
-	// Create JSON file
-	jsonFile := tmpDir + "/test.json"
-	if err := os.WriteFile(jsonFile, []byte(`{"name":"john","age":30}`), 0644); err != nil {
-		t.Fatal(err)
-	}
+		textFile := tmpDir + "/test.txt"
+		err = os.WriteFile(textFile, []byte("hello world"), 0644)
+		Expect(err).ToNot(HaveOccurred())
+
+		jsonFile := tmpDir + "/test.json"
+		err = os.WriteFile(jsonFile, []byte(`{"name":"john","age":30}`), 0644)
+		Expect(err).ToNot(HaveOccurred())
+	})
+
+	ginkgo.AfterEach(func() {
+		os.RemoveAll(tmpDir)
+	})
 
 	tests := []struct {
 		name     string
-		args     []string
+		getArgs  func(string) []string
 		expected map[string]any
 		wantErr  bool
 	}{
 		{
-			name:     "string from file",
-			args:     []string{"content@" + textFile},
+			name: "string from file",
+			getArgs: func(dir string) []string {
+				return []string{"content@" + dir + "/test.txt"}
+			},
 			expected: map[string]any{"content": "hello world"},
 			wantErr:  false,
 		},
 		{
-			name:     "json from file",
-			args:     []string{"data:=@" + jsonFile},
+			name: "json from file",
+			getArgs: func(dir string) []string {
+				return []string{"data:=@" + dir + "/test.json"}
+			},
 			expected: map[string]any{"data": map[string]any{"name": "john", "age": float64(30)}},
 			wantErr:  false,
 		},
 		{
-			name:    "nonexistent file",
-			args:    []string{"data@/nonexistent/file.txt"},
+			name: "nonexistent file",
+			getArgs: func(dir string) []string {
+				return []string{"data@/nonexistent/file.txt"}
+			},
 			wantErr: true,
 		},
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result, err := ParseArgumentsAsMap(tt.args)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("ParseArgumentsAsMap() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-			if !tt.wantErr && !reflect.DeepEqual(result, tt.expected) {
-				t.Errorf("ParseArgumentsAsMap() = %v, want %v", result, tt.expected)
+		tt := tt
+		ginkgo.It(tt.name, func() {
+			args := tt.getArgs(tmpDir)
+			result, err := ParseArgumentsAsMap(args)
+			if tt.wantErr {
+				Expect(err).To(HaveOccurred())
+			} else {
+				Expect(err).ToNot(HaveOccurred())
+				Expect(result).To(Equal(tt.expected))
 			}
 		})
 	}
-}
+})
 
-func TestParseArgumentsWithQuery(t *testing.T) {
-	args := []string{
-		"name=john",
-		"age:=30",
-		"filter==active",
-		"limit==10",
-	}
-
-	data, query, err := ParseArgumentsWithQuery(args)
-	if err != nil {
-		t.Fatalf("ParseArgumentsWithQuery() error = %v", err)
-	}
-
-	expectedData := map[string]any{
-		"name": "john",
-		"age":  float64(30),
-	}
-	expectedQuery := map[string]string{
-		"filter": "active",
-		"limit":  "10",
-	}
-
-	if !reflect.DeepEqual(data, expectedData) {
-		t.Errorf("data = %v, want %v", data, expectedData)
-	}
-	if !reflect.DeepEqual(query, expectedQuery) {
-		t.Errorf("query = %v, want %v", query, expectedQuery)
-	}
-}
-
-func TestMustParseArgumentsAsMap(t *testing.T) {
-	// Test successful case
-	args := []string{"name=john", "age:=30"}
-	result := MustParseArgumentsAsMap(args)
-	expected := map[string]any{"name": "john", "age": float64(30)}
-
-	if !reflect.DeepEqual(result, expected) {
-		t.Errorf("MustParseArgumentsAsMap() = %v, want %v", result, expected)
-	}
-
-	// Test panic case
-	defer func() {
-		if r := recover(); r == nil {
-			t.Errorf("MustParseArgumentsAsMap() should have panicked")
+var _ = ginkgo.Describe("ParseArgumentsWithQuery", func() {
+	ginkgo.It("should separate data and query parameters", func() {
+		args := []string{
+			"name=john",
+			"age:=30",
+			"filter==active",
+			"limit==10",
 		}
-	}()
 
-	MustParseArgumentsAsMap([]string{"invalid:={bad json}"})
-}
+		data, query, err := ParseArgumentsWithQuery(args)
+		Expect(err).ToNot(HaveOccurred())
 
-func TestParseArgumentsWithHeaders(t *testing.T) {
+		expectedData := map[string]any{
+			"name": "john",
+			"age":  float64(30),
+		}
+		expectedQuery := map[string]string{
+			"filter": "active",
+			"limit":  "10",
+		}
+
+		Expect(data).To(Equal(expectedData))
+		Expect(query).To(Equal(expectedQuery))
+	})
+})
+
+var _ = ginkgo.Describe("MustParseArgumentsAsMap", func() {
+	ginkgo.Context("when parsing succeeds", func() {
+		ginkgo.It("should return parsed map", func() {
+			args := []string{"name=john", "age:=30"}
+			result := MustParseArgumentsAsMap(args)
+			expected := map[string]any{"name": "john", "age": float64(30)}
+
+			Expect(result).To(Equal(expected))
+		})
+	})
+
+	ginkgo.Context("when parsing fails", func() {
+		ginkgo.It("should panic", func() {
+			Expect(func() {
+				MustParseArgumentsAsMap([]string{"invalid:={bad json}"})
+			}).To(Panic())
+		})
+	})
+})
+
+var _ = ginkgo.Describe("ParseArgumentsWithHeaders", func() {
 	tests := []struct {
 		name            string
 		args            []string
@@ -212,68 +221,44 @@ func TestParseArgumentsWithHeaders(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+		tt := tt
+		ginkgo.It(tt.name, func() {
 			data, headers, err := ParseArgumentsWithHeaders(tt.args)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("ParseArgumentsWithHeaders() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-			if !reflect.DeepEqual(data, tt.expectedData) {
-				t.Errorf("ParseArgumentsWithHeaders() data = %v, want %v", data, tt.expectedData)
-			}
-			if !reflect.DeepEqual(headers, tt.expectedHeaders) {
-				t.Errorf("ParseArgumentsWithHeaders() headers = %v, want %v", headers, tt.expectedHeaders)
+			if tt.wantErr {
+				Expect(err).To(HaveOccurred())
+			} else {
+				Expect(err).ToNot(HaveOccurred())
+				Expect(data).To(Equal(tt.expectedData))
+				Expect(headers).To(Equal(tt.expectedHeaders))
 			}
 		})
 	}
-}
+})
 
-func TestParseArgumentsComplete(t *testing.T) {
-	tests := []struct {
-		name            string
-		args            []string
-		expectedData    map[string]any
-		expectedHeaders map[string]string
-		expectedQuery   map[string]string
-		wantErr         bool
-	}{
-		{
-			name: "complete example",
-			args: []string{
-				"name=john",
-				"age:=30",
-				"User-Agent:MyApp/1.0",
-				"filter==active",
-				"limit==10",
-			},
-			expectedData:    map[string]any{"name": "john", "age": float64(30)},
-			expectedHeaders: map[string]string{"User-Agent": "MyApp/1.0"},
-			expectedQuery:   map[string]string{"filter": "active", "limit": "10"},
-			wantErr:         false,
-		},
-	}
+var _ = ginkgo.Describe("ParseArgumentsComplete", func() {
+	ginkgo.It("should parse data, headers, and query parameters", func() {
+		args := []string{
+			"name=john",
+			"age:=30",
+			"User-Agent:MyApp/1.0",
+			"filter==active",
+			"limit==10",
+		}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			data, headers, query, err := ParseArgumentsComplete(tt.args)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("ParseArgumentsComplete() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-			if !reflect.DeepEqual(data, tt.expectedData) {
-				t.Errorf("ParseArgumentsComplete() data = %v, want %v", data, tt.expectedData)
-			}
-			if !reflect.DeepEqual(headers, tt.expectedHeaders) {
-				t.Errorf("ParseArgumentsComplete() headers = %v, want %v", headers, tt.expectedHeaders)
-			}
-			if !reflect.DeepEqual(query, tt.expectedQuery) {
-				t.Errorf("ParseArgumentsComplete() query = %v, want %v", query, tt.expectedQuery)
-			}
-		})
-	}
-}
+		data, headers, query, err := ParseArgumentsComplete(args)
+		Expect(err).ToNot(HaveOccurred())
 
-func TestNestedBracketNotation(t *testing.T) {
+		expectedData := map[string]any{"name": "john", "age": float64(30)}
+		expectedHeaders := map[string]string{"User-Agent": "MyApp/1.0"}
+		expectedQuery := map[string]string{"filter": "active", "limit": "10"}
+
+		Expect(data).To(Equal(expectedData))
+		Expect(headers).To(Equal(expectedHeaders))
+		Expect(query).To(Equal(expectedQuery))
+	})
+})
+
+var _ = ginkgo.Describe("NestedBracketNotation", func() {
 	tests := []struct {
 		name     string
 		args     []string
@@ -301,71 +286,62 @@ func TestNestedBracketNotation(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+		tt := tt
+		ginkgo.It(tt.name, func() {
 			result, err := ParseArgumentsAsMap(tt.args)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("ParseArgumentsAsMap() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-			if !reflect.DeepEqual(result, tt.expected) {
-				t.Errorf("ParseArgumentsAsMap() = %v, want %v", result, tt.expected)
+			if tt.wantErr {
+				Expect(err).To(HaveOccurred())
+			} else {
+				Expect(err).ToNot(HaveOccurred())
+				Expect(result).To(Equal(tt.expected))
 			}
 		})
 	}
-}
+})
 
-func TestHeadersFromFile(t *testing.T) {
-	tmpDir := t.TempDir()
+var _ = ginkgo.Describe("HeadersFromFile", func() {
+	ginkgo.It("should read header value from file", func() {
+		tmpDir, err := os.MkdirTemp("", "clicky-test-*")
+		Expect(err).ToNot(HaveOccurred())
+		defer os.RemoveAll(tmpDir)
 
-	// Create header file
-	headerFile := tmpDir + "/auth.txt"
-	if err := os.WriteFile(headerFile, []byte("Bearer token123"), 0644); err != nil {
-		t.Fatal(err)
-	}
+		headerFile := tmpDir + "/auth.txt"
+		err = os.WriteFile(headerFile, []byte("Bearer token123"), 0644)
+		Expect(err).ToNot(HaveOccurred())
 
-	args := []string{"Authorization:@" + headerFile, "name=john"}
-	data, headers, err := ParseArgumentsWithHeaders(args)
+		args := []string{"Authorization:@" + headerFile, "name=john"}
+		data, headers, err := ParseArgumentsWithHeaders(args)
+		Expect(err).ToNot(HaveOccurred())
 
-	if err != nil {
-		t.Fatalf("ParseArgumentsWithHeaders() error = %v", err)
-	}
+		expectedData := map[string]any{"name": "john"}
+		expectedHeaders := map[string]string{"Authorization": "Bearer token123"}
 
-	expectedData := map[string]any{"name": "john"}
-	expectedHeaders := map[string]string{"Authorization": "Bearer token123"}
+		Expect(data).To(Equal(expectedData))
+		Expect(headers).To(Equal(expectedHeaders))
+	})
+})
 
-	if !reflect.DeepEqual(data, expectedData) {
-		t.Errorf("data = %v, want %v", data, expectedData)
-	}
-	if !reflect.DeepEqual(headers, expectedHeaders) {
-		t.Errorf("headers = %v, want %v", headers, expectedHeaders)
-	}
-}
+var _ = ginkgo.Describe("BinaryFileHandling", func() {
+	ginkgo.It("should base64 encode binary file content", func() {
+		tmpDir, err := os.MkdirTemp("", "clicky-test-*")
+		Expect(err).ToNot(HaveOccurred())
+		defer os.RemoveAll(tmpDir)
 
-func TestBinaryFileHandling(t *testing.T) {
-	tmpDir := t.TempDir()
+		binaryFile := tmpDir + "/binary.dat"
+		binaryContent := []byte{0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A} // PNG header
+		err = os.WriteFile(binaryFile, binaryContent, 0644)
+		Expect(err).ToNot(HaveOccurred())
 
-	// Create binary file (simulate with non-UTF8 content)
-	binaryFile := tmpDir + "/binary.dat"
-	binaryContent := []byte{0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A} // PNG header
-	if err := os.WriteFile(binaryFile, binaryContent, 0644); err != nil {
-		t.Fatal(err)
-	}
+		args := []string{"data@" + binaryFile}
+		result, err := ParseArgumentsAsMap(args)
+		Expect(err).ToNot(HaveOccurred())
 
-	args := []string{"data@" + binaryFile}
-	result, err := ParseArgumentsAsMap(args)
+		expectedBase64 := "iVBORw0KGgo="
+		Expect(result["data"]).To(Equal(expectedBase64))
+	})
+})
 
-	if err != nil {
-		t.Fatalf("ParseArgumentsAsMap() error = %v", err)
-	}
-
-	// Should be base64 encoded
-	expectedBase64 := "iVBORw0KGgo="
-	if result["data"] != expectedBase64 {
-		t.Errorf("binary file content = %v, want %v", result["data"], expectedBase64)
-	}
-}
-
-func TestEscaping(t *testing.T) {
+var _ = ginkgo.Describe("Escaping", func() {
 	tests := []struct {
 		name     string
 		args     []string
@@ -399,191 +375,172 @@ func TestEscaping(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+		tt := tt
+		ginkgo.It(tt.name, func() {
 			result, err := ParseArgumentsAsMap(tt.args)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("ParseArgumentsAsMap() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-			if !reflect.DeepEqual(result, tt.expected) {
-				t.Errorf("ParseArgumentsAsMap() = %v, want %v", result, tt.expected)
+			if tt.wantErr {
+				Expect(err).To(HaveOccurred())
+			} else {
+				Expect(err).ToNot(HaveOccurred())
+				Expect(result).To(Equal(tt.expected))
 			}
 		})
 	}
-}
+})
 
-func TestArrayFromFile(t *testing.T) {
-	tmpDir := t.TempDir()
+var _ = ginkgo.Describe("ArrayFromFile", func() {
+	var tmpDir string
+	var linesFile string
 
-	// Create test file with multiple lines
-	linesFile := tmpDir + "/policies.txt"
-	fileContent := `P001
+	ginkgo.BeforeEach(func() {
+		var err error
+		tmpDir, err = os.MkdirTemp("", "clicky-test-*")
+		Expect(err).ToNot(HaveOccurred())
+
+		linesFile = tmpDir + "/policies.txt"
+		fileContent := `P001
 P002
 # This is a comment
 P003
 
 P004
 `
-	if err := os.WriteFile(linesFile, []byte(fileContent), 0644); err != nil {
-		t.Fatal(err)
-	}
+		err = os.WriteFile(linesFile, []byte(fileContent), 0644)
+		Expect(err).ToNot(HaveOccurred())
+	})
+
+	ginkgo.AfterEach(func() {
+		os.RemoveAll(tmpDir)
+	})
 
 	tests := []struct {
 		name     string
-		args     []string
+		getArgs  func(string) []string
 		expected map[string]any
 		wantErr  bool
 	}{
 		{
-			name:     "array from file with []key=@file syntax",
-			args:     []string{"[]PolicyNumber=@" + linesFile},
+			name: "array from file with []key=@file syntax",
+			getArgs: func(file string) []string {
+				return []string{"[]PolicyNumber=@" + file}
+			},
 			expected: map[string]any{"PolicyNumber": []string{"P001", "P002", "P003", "P004"}},
 			wantErr:  false,
 		},
 		{
-			name:     "array from file with key[]=@file syntax",
-			args:     []string{"PolicyNumber[]=@" + linesFile},
+			name: "array from file with key[]=@file syntax",
+			getArgs: func(file string) []string {
+				return []string{"PolicyNumber[]=@" + file}
+			},
 			expected: map[string]any{"PolicyNumber": []string{"P001", "P002", "P003", "P004"}},
 			wantErr:  false,
 		},
 		{
-			name:    "nonexistent file",
-			args:    []string{"[]PolicyNumber=@/nonexistent/file.txt"},
+			name: "nonexistent file",
+			getArgs: func(file string) []string {
+				return []string{"[]PolicyNumber=@/nonexistent/file.txt"}
+			},
 			wantErr: true,
 		},
 	}
 
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result, err := ParseArgumentsAsMap(tt.args)
-			if (err != nil) != tt.wantErr {
-				t.Errorf("ParseArgumentsAsMap() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-			if !tt.wantErr && !reflect.DeepEqual(result, tt.expected) {
-				t.Errorf("ParseArgumentsAsMap() = %v, want %v", result, tt.expected)
+		tt := tt
+		ginkgo.It(tt.name, func() {
+			args := tt.getArgs(linesFile)
+			result, err := ParseArgumentsAsMap(args)
+			if tt.wantErr {
+				Expect(err).To(HaveOccurred())
+			} else {
+				Expect(err).ToNot(HaveOccurred())
+				Expect(result).To(Equal(tt.expected))
 			}
 		})
 	}
-}
+})
 
-func TestArgsType(t *testing.T) {
-	t.Run("GetString from string value", func(t *testing.T) {
-		args := Args{"name": "john", "city": "boston"}
-		if got := args.GetString("name"); got != "john" {
-			t.Errorf("GetString() = %v, want john", got)
-		}
+var _ = ginkgo.Describe("Args Type", func() {
+	ginkgo.Context("GetString", func() {
+		ginkgo.It("should get string from string value", func() {
+			args := Args{"name": "john", "city": "boston"}
+			Expect(args.GetString("name")).To(Equal("john"))
+		})
+
+		ginkgo.It("should get first string from string slice", func() {
+			args := Args{"names": []string{"john", "jane"}}
+			Expect(args.GetString("names")).To(Equal("john"))
+		})
+
+		ginkgo.It("should get string from interface slice", func() {
+			args := Args{"names": []interface{}{"john", "jane"}}
+			Expect(args.GetString("names")).To(Equal("john"))
+		})
+
+		ginkgo.It("should return empty string for missing key", func() {
+			args := Args{"name": "john"}
+			Expect(args.GetString("missing")).To(Equal(""))
+		})
+
+		ginkgo.It("should convert number to string", func() {
+			args := Args{"age": 30}
+			Expect(args.GetString("age")).To(Equal("30"))
+		})
 	})
 
-	t.Run("GetString from string slice returns first", func(t *testing.T) {
-		args := Args{"names": []string{"john", "jane"}}
-		if got := args.GetString("names"); got != "john" {
-			t.Errorf("GetString() = %v, want john", got)
-		}
+	ginkgo.Context("GetStringSlice", func() {
+		ginkgo.It("should get string slice from string slice", func() {
+			args := Args{"names": []string{"john", "jane", "joe"}}
+			Expect(args.GetStringSlice("names")).To(Equal([]string{"john", "jane", "joe"}))
+		})
+
+		ginkgo.It("should wrap single string in slice", func() {
+			args := Args{"name": "john"}
+			Expect(args.GetStringSlice("name")).To(Equal([]string{"john"}))
+		})
+
+		ginkgo.It("should convert interface slice to string slice", func() {
+			args := Args{"values": []interface{}{"a", "b", "c"}}
+			Expect(args.GetStringSlice("values")).To(Equal([]string{"a", "b", "c"}))
+		})
+
+		ginkgo.It("should return empty slice for missing key", func() {
+			args := Args{"name": "john"}
+			Expect(args.GetStringSlice("missing")).To(HaveLen(0))
+		})
 	})
 
-	t.Run("GetString from interface slice", func(t *testing.T) {
-		args := Args{"names": []interface{}{"john", "jane"}}
-		if got := args.GetString("names"); got != "john" {
-			t.Errorf("GetString() = %v, want john", got)
-		}
+	ginkgo.Context("JSON marshaling", func() {
+		ginkgo.It("should marshal and unmarshal correctly", func() {
+			args := Args{"name": "john", "age": 30, "active": true}
+			data, err := args.MarshalJSON()
+			Expect(err).ToNot(HaveOccurred())
+
+			var decoded Args
+			err = decoded.UnmarshalJSON(data)
+			Expect(err).ToNot(HaveOccurred())
+			Expect(decoded.GetString("name")).To(Equal("john"))
+		})
 	})
 
-	t.Run("GetString from missing key", func(t *testing.T) {
-		args := Args{"name": "john"}
-		if got := args.GetString("missing"); got != "" {
-			t.Errorf("GetString() = %v, want empty string", got)
-		}
+	ginkgo.Context("ParseArguments", func() {
+		ginkgo.It("should parse arguments into Args type", func() {
+			args, err := ParseArguments([]string{"name=john", "age:=30"})
+			Expect(err).ToNot(HaveOccurred())
+			Expect(args.GetString("name")).To(Equal("john"))
+			Expect(args["age"]).To(Equal(float64(30)))
+		})
 	})
 
-	t.Run("GetString from number", func(t *testing.T) {
-		args := Args{"age": 30}
-		if got := args.GetString("age"); got != "30" {
-			t.Errorf("GetString() = %v, want 30", got)
-		}
+	ginkgo.Context("MustParseArguments", func() {
+		ginkgo.It("should parse successfully", func() {
+			args := MustParseArguments([]string{"name=john", "age:=30"})
+			Expect(args.GetString("name")).To(Equal("john"))
+		})
+
+		ginkgo.It("should panic on error", func() {
+			Expect(func() {
+				MustParseArguments([]string{"invalid:={bad json}"})
+			}).To(Panic())
+		})
 	})
-
-	t.Run("GetStringSlice from string slice", func(t *testing.T) {
-		args := Args{"names": []string{"john", "jane", "joe"}}
-		got := args.GetStringSlice("names")
-		want := []string{"john", "jane", "joe"}
-		if !reflect.DeepEqual(got, want) {
-			t.Errorf("GetStringSlice() = %v, want %v", got, want)
-		}
-	})
-
-	t.Run("GetStringSlice from single string", func(t *testing.T) {
-		args := Args{"name": "john"}
-		got := args.GetStringSlice("name")
-		want := []string{"john"}
-		if !reflect.DeepEqual(got, want) {
-			t.Errorf("GetStringSlice() = %v, want %v", got, want)
-		}
-	})
-
-	t.Run("GetStringSlice from interface slice", func(t *testing.T) {
-		args := Args{"values": []interface{}{"a", "b", "c"}}
-		got := args.GetStringSlice("values")
-		want := []string{"a", "b", "c"}
-		if !reflect.DeepEqual(got, want) {
-			t.Errorf("GetStringSlice() = %v, want %v", got, want)
-		}
-	})
-
-	t.Run("GetStringSlice from missing key", func(t *testing.T) {
-		args := Args{"name": "john"}
-		got := args.GetStringSlice("missing")
-		if len(got) != 0 {
-			t.Errorf("GetStringSlice() = %v, want empty slice", got)
-		}
-	})
-
-	t.Run("JSON marshaling", func(t *testing.T) {
-		args := Args{"name": "john", "age": 30, "active": true}
-		data, err := args.MarshalJSON()
-		if err != nil {
-			t.Fatalf("Marshal() error = %v", err)
-		}
-
-		var decoded Args
-		if err := decoded.UnmarshalJSON(data); err != nil {
-			t.Fatalf("Unmarshal() error = %v", err)
-		}
-
-		if decoded.GetString("name") != "john" {
-			t.Errorf("After unmarshal, name = %v, want john", decoded.GetString("name"))
-		}
-	})
-
-	t.Run("ParseArguments function", func(t *testing.T) {
-		args, err := ParseArguments([]string{"name=john", "age:=30"})
-		if err != nil {
-			t.Fatalf("ParseArguments() error = %v", err)
-		}
-
-		if args.GetString("name") != "john" {
-			t.Errorf("name = %v, want john", args.GetString("name"))
-		}
-
-		if args["age"] != float64(30) {
-			t.Errorf("age = %v, want 30", args["age"])
-		}
-	})
-
-	t.Run("MustParseArguments panics on error", func(t *testing.T) {
-		defer func() {
-			if r := recover(); r == nil {
-				t.Errorf("MustParseArguments() should have panicked")
-			}
-		}()
-
-		MustParseArguments([]string{"invalid:={bad json}"})
-	})
-
-	t.Run("MustParseArguments success", func(t *testing.T) {
-		args := MustParseArguments([]string{"name=john", "age:=30"})
-		if args.GetString("name") != "john" {
-			t.Errorf("name = %v, want john", args.GetString("name"))
-		}
-	})
-}
+})

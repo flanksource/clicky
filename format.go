@@ -2,10 +2,13 @@ package clicky
 
 import (
 	"fmt"
+	"io"
+	"os"
 	"strings"
 
 	"github.com/flanksource/clicky/api"
 	"github.com/flanksource/clicky/formatters"
+	"github.com/flanksource/clicky/text"
 )
 
 type FormatOptions = formatters.FormatOptions
@@ -26,6 +29,37 @@ var (
 // 	}
 // 	return &tree
 // }
+
+var logWriter = text.LineFilter(os.Stderr, text.RedactSecrets()).(io.StringWriter)
+
+func RedactSecretValues(val ...string) {
+	logWriter = text.LineFilter(logWriter.(io.Writer), text.RedactSecrets(val...)).(io.StringWriter)
+}
+
+func SQL(format string, args ...any) {
+	_, _ = logWriter.WriteString(api.Text{}.Append("SQL", "text-blue-600").Space().
+		Add(CodeBlock("sql", fmt.Sprintf(format, args...))).ANSI() + "\n")
+}
+
+func Infof(format string, args ...any) {
+	_, _ = logWriter.WriteString(api.Text{}.Append("INFO", "text-green-600").Space().Appendf(format, args...).ANSI() + "\n")
+}
+
+func Errorf(format string, args ...any) {
+	_, _ = logWriter.WriteString(api.Text{}.Append("ERROR", "text-red-600").Space().Appendf(format, args...).ANSI() + "\n")
+}
+
+func Warnf(format string, args ...any) {
+	_, _ = logWriter.WriteString(api.Text{}.Append("WARN", "text-yellow-600").Space().Appendf(format, args...).ANSI() + "\n")
+}
+
+func Debugf(format string, args ...any) {
+	_, _ = logWriter.WriteString(api.Text{}.Append("DEBUG", "text-muted").Space().Appendf(format, args...).ANSI() + "\n")
+}
+
+func Tracef(format string, args ...any) {
+	_, _ = logWriter.WriteString(api.Text{}.Append("TRACE", "text-muted").Space().Appendf(format, args...).ANSI() + "\n")
+}
 
 func Format(o any, opts ...FormatOptions) (string, error) {
 	return Formatter.FormatWithOptions(formatters.MergeOptions(append([]FormatOptions{defaultOpts}, opts...)...), o)

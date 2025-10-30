@@ -415,6 +415,9 @@ func (v FieldValue) Int() *int64 {
 	}
 
 	i := v.Float()
+	if i == nil {
+		return nil
+	}
 	return lo.ToPtr(int64(*i))
 }
 

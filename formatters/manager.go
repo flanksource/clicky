@@ -258,15 +258,21 @@ func (f FormatManager) FormatWithOptions(options FormatOptions, data ...any) (st
 		return f.excelFormatter.Format(data)
 
 	case "pretty":
+		var d any
+		if len(data) == 1 {
+			d = data[0]
+		} else {
+			d = data
+		}
 		// Convert to PrettyData first to detect structure (tree vs table)
-		prettyData, err := ToPrettyDataWithOptions(data, FormatOptions{})
+		prettyData, err := ToPrettyDataWithOptions(d, FormatOptions{})
 		if err != nil {
 			// Fallback to direct formatting if PrettyData conversion fails
 			if f.prettyFormatter == nil {
 				f.prettyFormatter = NewPrettyFormatter()
 			}
 			f.prettyFormatter.NoColor = options.NoColor
-			return f.prettyFormatter.Format(data)
+			return f.prettyFormatter.Format(d)
 		}
 
 		// Check if data has tree fields - if so, use tree formatter
