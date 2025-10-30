@@ -21,12 +21,14 @@ var _ = Describe("Built-in Processors", func() {
 				Expect(skip).To(BeFalse())
 				Expect(result).To(Equal(tc.expected))
 			},
-			Entry("password with colon", testCase{input: "password: secret", expected: "***"}),
-			Entry("token with equals", testCase{input: "token=abc123", expected: "***"}),
-			Entry("api_key with equals", testCase{input: "api_key=xyz789", expected: "***"}),
-			Entry("PASSWORD uppercase", testCase{input: "PASSWORD=1234", expected: "***"}),
-			Entry("auth with colon", testCase{input: "Auth: xyz", expected: "***"}),
-			Entry("bearer token", testCase{input: "Bearer: token123", expected: "***"}),
+			Entry("password with colon", testCase{input: "password: secret", expected: "password: ***"}),
+			Entry("token with equals", testCase{input: "token=abc123", expected: "token=***"}),
+			Entry("api_key with equals", testCase{input: "api_key=xyz789", expected: "api_key=***"}),
+			Entry("PASSWORD uppercase", testCase{input: "PASSWORD=1234", expected: "PASSWORD=***"}),
+			Entry("auth with colon", testCase{input: "Auth: xyz", expected: "Auth: ***"}),
+			Entry("bearer token", testCase{input: "Bearer: token123", expected: "Bearer: ***"}),
+			Entry("password with quoted value", testCase{input: "password 'too redact'", expected: "password '***'"}),
+			Entry("token with double quotes", testCase{input: "token=\"secret value\"", expected: "token=\"***\""}),
 		)
 
 		It("should redact custom patterns", func() {

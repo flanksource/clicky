@@ -5,32 +5,77 @@ import (
 	"strings"
 )
 
-// Default regex patterns for detecting secrets
-var defaultSecretPatterns = []string{
-	`(?i)(password|passwd|pwd|pass)\s*[=:]\s*\S+`,
-	`(?i)(token|api[_-]?key|apikey|secret|auth)\s*[=:]\s*\S+`,
-	`(?i)(bearer|authorization)\s*[=:]\s*\S+`,
+// secretPattern defines a regex pattern with a replacement string
+type secretPattern struct {
+	pattern     *regexp.Regexp
+	replacement string
 }
+
+// buildSecretPatterns creates patterns for detecting secrets with different quote styles
+func buildSecretPatterns() []secretPattern {
+	keywords := []string{
+		"password|passwd|pwd|pass",
+		"token|api[_-]?key|apikey|secret|auth",
+		"bearer|authorization",
+	}
+
+	var patterns []secretPattern
+	for _, kw := range keywords {
+		// Pattern 1: key='value' (single quotes)
+		patterns = append(patterns, secretPattern{
+			pattern:     regexp.MustCompile(`(?i)(` + kw + `)(\s*[=:]\s*|[ \t]+)('([^']*)')`),
+			replacement: "${1}${2}'***'",
+		})
+		// Pattern 2: key="value" (double quotes)
+		patterns = append(patterns, secretPattern{
+			pattern:     regexp.MustCompile(`(?i)(` + kw + `)(\s*[=:]\s*|[ \t]+)("([^"]*)")`),
+			replacement: `${1}${2}"***"`,
+		})
+		// Pattern 3: key=value or key: value (no quotes) - exclude leading quotes
+		patterns = append(patterns, secretPattern{
+			pattern:     regexp.MustCompile(`(?i)(` + kw + `)(\s*[=:]\s*)([^'"\s]\S*)`),
+			replacement: "${1}${2}***",
+		})
+	}
+	return patterns
+}
+
+var defaultSecretPatterns = buildSecretPatterns()
 
 // RedactSecrets returns a LineProcessor that redacts sensitive data from lines.
 // If patterns are provided, they are used as regex patterns to match secrets.
 // If no patterns are provided, default patterns for common secrets are used.
 //
-// The processor replaces matched content with "***".
+// The processor replaces only the value portion with "***", keeping the key.
 // It never skips lines (always returns skip=false).
 //
 // Example:
 //
-//	processor := clicky.RedactSecrets()
+//	processor := text.RedactSecrets()
 //	result, _ := processor("password=secret123")
 //	// result: "password=***"
 func RedactSecrets(patterns ...string) LineProcessor {
 	// Use default patterns if none provided
 	if len(patterns) == 0 {
-		patterns = defaultSecretPatterns
+		return func(line string) (string, bool) {
+			result := line
+			modified := false
+
+			for _, sp := range defaultSecretPatterns {
+				if sp.pattern.MatchString(result) {
+					result = sp.pattern.ReplaceAllString(result, sp.replacement)
+					modified = true
+				}
+			}
+
+			if !modified {
+				return line, false
+			}
+			return result, false
+		}
 	}
 
-	// Compile patterns
+	// Compile custom patterns - these replace entire match with ***
 	compiled := make([]*regexp.Regexp, 0, len(patterns))
 	for _, pattern := range patterns {
 		if re, err := regexp.Compile(pattern); err == nil {
@@ -44,13 +89,11 @@ func RedactSecrets(patterns ...string) LineProcessor {
 
 		for _, re := range compiled {
 			if re.MatchString(result) {
-				// Replace the entire match with ***
 				result = re.ReplaceAllString(result, "***")
 				modified = true
 			}
 		}
 
-		// Only allocate new string if redaction occurred
 		if !modified {
 			return line, false
 		}
