@@ -101,6 +101,46 @@ func RedactSecrets(patterns ...string) LineProcessor {
 	}
 }
 
+// RedactValues returns a LineProcessor that redacts specific known secret values.
+// This is useful when you know the actual secret value and want to redact it
+// wherever it appears, regardless of the key name.
+//
+// The processor replaces all occurrences of the specified values with "***".
+// It never skips lines (always returns skip=false).
+//
+// Example:
+//
+//	processor := text.RedactValues("secret123", "token456")
+//	result, _ := processor("password=secret123 token=token456")
+//	// result: "password=*** token=***"
+func RedactValues(values ...string) LineProcessor {
+	// Pre-compile patterns for each value (escape special regex chars)
+	patterns := make([]*regexp.Regexp, 0, len(values))
+	for _, value := range values {
+		if value != "" {
+			escaped := regexp.QuoteMeta(value)
+			patterns = append(patterns, regexp.MustCompile(escaped))
+		}
+	}
+
+	return func(line string) (string, bool) {
+		result := line
+		modified := false
+
+		for _, pattern := range patterns {
+			if pattern.MatchString(result) {
+				result = pattern.ReplaceAllString(result, "***")
+				modified = true
+			}
+		}
+
+		if !modified {
+			return line, false
+		}
+		return result, false
+	}
+}
+
 // RegexFilter returns a LineProcessor that filters lines based on a regex pattern.
 // If invert=false, lines matching the pattern are skipped.
 // If invert=true, lines NOT matching the pattern are skipped.

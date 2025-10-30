@@ -47,6 +47,60 @@ var _ = Describe("Built-in Processors", func() {
 		})
 	})
 
+	Describe("RedactValues", func() {
+		type testCase struct {
+			values   []string
+			input    string
+			expected string
+		}
+
+		DescribeTable("redacting known values",
+			func(tc testCase) {
+				processor := text.RedactValues(tc.values...)
+				result, skip := processor(tc.input)
+
+				Expect(skip).To(BeFalse())
+				Expect(result).To(Equal(tc.expected))
+			},
+			Entry("single value", testCase{
+				values:   []string{"secret123"},
+				input:    "password=secret123",
+				expected: "password=***",
+			}),
+			Entry("value in middle of text", testCase{
+				values:   []string{"mysecret"},
+				input:    "the token is mysecret and done",
+				expected: "the token is *** and done",
+			}),
+			Entry("multiple occurrences", testCase{
+				values:   []string{"abc"},
+				input:    "abc is abc twice",
+				expected: "*** is *** twice",
+			}),
+			Entry("multiple values", testCase{
+				values:   []string{"secret1", "secret2"},
+				input:    "password=secret1 token=secret2",
+				expected: "password=*** token=***",
+			}),
+			Entry("no match", testCase{
+				values:   []string{"secret"},
+				input:    "normal log line",
+				expected: "normal log line",
+			}),
+			Entry("quoted value", testCase{
+				values:   []string{"my secret"},
+				input:    "password='my secret'",
+				expected: "password='***'",
+			}),
+		)
+
+		It("should never skip lines", func() {
+			processor := text.RedactValues("secret")
+			_, skip := processor("password=secret")
+			Expect(skip).To(BeFalse())
+		})
+	})
+
 	Describe("RegexFilter", func() {
 		type testCase struct {
 			pattern      string
