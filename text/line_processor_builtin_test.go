@@ -1,7 +1,7 @@
-package clicky_test
+package text_test
 
 import (
-	"github.com/flanksource/clicky"
+	"github.com/flanksource/clicky/text"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
@@ -9,7 +9,7 @@ import (
 var _ = Describe("Built-in Processors", func() {
 	Describe("RedactSecrets", func() {
 		It("should redact default secret patterns", func() {
-			processor := clicky.RedactSecrets()
+			processor := text.RedactSecrets()
 
 			result, skip := processor("password=secret123")
 			Expect(skip).To(BeFalse())
@@ -18,7 +18,7 @@ var _ = Describe("Built-in Processors", func() {
 		})
 
 		It("should redact custom patterns", func() {
-			processor := clicky.RedactSecrets("api.*?=\\S+")
+			processor := text.RedactSecrets("api.*?=\\S+")
 
 			result, skip := processor("api_key=abc123 other=data")
 			Expect(skip).To(BeFalse())
@@ -27,7 +27,7 @@ var _ = Describe("Built-in Processors", func() {
 		})
 
 		It("should never skip lines", func() {
-			processor := clicky.RedactSecrets()
+			processor := text.RedactSecrets()
 
 			_, skip := processor("password=secret")
 			Expect(skip).To(BeFalse())
@@ -37,7 +37,7 @@ var _ = Describe("Built-in Processors", func() {
 		})
 
 		It("should return same string if no secrets found", func() {
-			processor := clicky.RedactSecrets()
+			processor := text.RedactSecrets()
 
 			input := "normal log line"
 			result, skip := processor(input)
@@ -48,7 +48,7 @@ var _ = Describe("Built-in Processors", func() {
 
 	Describe("RegexFilter", func() {
 		It("should skip matching lines when invert=false", func() {
-			processor := clicky.RegexFilter("healthcheck", false)
+			processor := text.RegexFilter("healthcheck", false)
 
 			result, skip := processor("/healthcheck endpoint")
 			Expect(skip).To(BeTrue())
@@ -59,7 +59,7 @@ var _ = Describe("Built-in Processors", func() {
 		})
 
 		It("should skip non-matching lines when invert=true", func() {
-			processor := clicky.RegexFilter("ERROR", true)
+			processor := text.RegexFilter("ERROR", true)
 
 			result, skip := processor("ERROR: something went wrong")
 			Expect(skip).To(BeFalse())
@@ -70,7 +70,7 @@ var _ = Describe("Built-in Processors", func() {
 		})
 
 		It("should return original string reference", func() {
-			processor := clicky.RegexFilter("test", false)
+			processor := text.RegexFilter("test", false)
 
 			input := "normal line"
 			result, skip := processor(input)
@@ -81,7 +81,7 @@ var _ = Describe("Built-in Processors", func() {
 
 	Describe("AddPrefix", func() {
 		It("should add prefix to line", func() {
-			processor := clicky.AddPrefix("[PREFIX] ")
+			processor := text.AddPrefix("[PREFIX] ")
 
 			result, skip := processor("test line")
 			Expect(skip).To(BeFalse())
@@ -89,7 +89,7 @@ var _ = Describe("Built-in Processors", func() {
 		})
 
 		It("should never skip lines", func() {
-			processor := clicky.AddPrefix("[PREFIX] ")
+			processor := text.AddPrefix("[PREFIX] ")
 
 			_, skip := processor("test")
 			Expect(skip).To(BeFalse())
@@ -98,7 +98,7 @@ var _ = Describe("Built-in Processors", func() {
 
 	Describe("AddSuffix", func() {
 		It("should add suffix to line", func() {
-			processor := clicky.AddSuffix(" [SUFFIX]")
+			processor := text.AddSuffix(" [SUFFIX]")
 
 			result, skip := processor("test line")
 			Expect(skip).To(BeFalse())
@@ -106,7 +106,7 @@ var _ = Describe("Built-in Processors", func() {
 		})
 
 		It("should never skip lines", func() {
-			processor := clicky.AddSuffix(" [SUFFIX]")
+			processor := text.AddSuffix(" [SUFFIX]")
 
 			_, skip := processor("test")
 			Expect(skip).To(BeFalse())

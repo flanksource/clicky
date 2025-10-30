@@ -1,4 +1,4 @@
-package clicky_test
+package text_test
 
 import (
 	"bytes"
@@ -6,7 +6,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/flanksource/clicky"
+	"github.com/flanksource/clicky/text"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
@@ -25,7 +25,7 @@ var _ = Describe("LineFilter", func() {
 				return strings.ToUpper(line), false
 			}
 
-			writer := clicky.LineFilter(buf, uppercase)
+			writer := text.LineFilter(buf, uppercase)
 
 			_, err := writer.Write([]byte("hello\nworld\n"))
 			Expect(err).ToNot(HaveOccurred())
@@ -40,7 +40,7 @@ var _ = Describe("LineFilter", func() {
 				return line, true
 			}
 
-			writer := clicky.LineFilter(buf, skipAll)
+			writer := text.LineFilter(buf, skipAll)
 
 			_, err := writer.Write([]byte("hello\nworld\n"))
 			Expect(err).ToNot(HaveOccurred())
@@ -55,7 +55,7 @@ var _ = Describe("LineFilter", func() {
 				return strings.ToUpper(line), false
 			}
 
-			writer := clicky.LineFilter(buf, uppercase)
+			writer := text.LineFilter(buf, uppercase)
 
 			_, err := writer.Write([]byte("hel"))
 			Expect(err).ToNot(HaveOccurred())
@@ -83,7 +83,7 @@ var _ = Describe("LineFilter", func() {
 				return line + " [SUFFIX]", false
 			}
 
-			writer := clicky.LineFilter(buf, addPrefix, addSuffix)
+			writer := text.LineFilter(buf, addPrefix, addSuffix)
 
 			_, err := writer.Write([]byte("test\n"))
 			Expect(err).ToNot(HaveOccurred())
@@ -103,7 +103,7 @@ var _ = Describe("LineFilter", func() {
 				return line, false
 			}
 
-			writer := clicky.LineFilter(buf, skipFirst, neverCalled)
+			writer := text.LineFilter(buf, skipFirst, neverCalled)
 
 			_, err := writer.Write([]byte("test\n"))
 			Expect(err).ToNot(HaveOccurred())
@@ -129,7 +129,7 @@ var _ = Describe("LineFilter", func() {
 				return line, false
 			}
 
-			writer := clicky.LineFilter(buf, count, skip, neverCalled)
+			writer := text.LineFilter(buf, count, skip, neverCalled)
 
 			_, err := writer.Write([]byte("test\n"))
 			Expect(err).ToNot(HaveOccurred())
@@ -147,7 +147,7 @@ var _ = Describe("LineFilter", func() {
 				return strings.ToUpper(line), false
 			}
 
-			writer := clicky.LineFilter(buf, uppercase)
+			writer := text.LineFilter(buf, uppercase)
 
 			var wg sync.WaitGroup
 			for i := 0; i < 10; i++ {
@@ -178,7 +178,7 @@ var _ = Describe("LineFilter", func() {
 				panic("test panic")
 			}
 
-			writer := clicky.LineFilter(buf, panicProcessor)
+			writer := text.LineFilter(buf, panicProcessor)
 
 			_, err := writer.Write([]byte("test\n"))
 			Expect(err).ToNot(HaveOccurred())
@@ -196,7 +196,7 @@ var _ = Describe("LineFilter", func() {
 				return line, false
 			}
 
-			writer := clicky.LineFilter(buf, panicOnFirst)
+			writer := text.LineFilter(buf, panicOnFirst)
 
 			_, err := writer.Write([]byte("panic\n"))
 			Expect(err).ToNot(HaveOccurred())
@@ -219,7 +219,7 @@ var _ = Describe("LineFilter", func() {
 				return line, false
 			}
 
-			writer := clicky.LineFilter(buf, panicProcessor, neverCalled)
+			writer := text.LineFilter(buf, panicProcessor, neverCalled)
 
 			_, err := writer.Write([]byte("test\n"))
 			Expect(err).ToNot(HaveOccurred())

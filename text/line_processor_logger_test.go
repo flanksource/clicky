@@ -1,4 +1,4 @@
-package clicky_test
+package text_test
 
 import (
 	"bytes"
@@ -7,7 +7,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/flanksource/clicky"
+	"github.com/flanksource/clicky/text"
 	"github.com/flanksource/commons/logger"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -124,42 +124,42 @@ var _ = Describe("LoggingFilter", func() {
 
 	Context("with single processor", func() {
 		It("should process Infof messages", func() {
-			log := clicky.LoggingFilter(baseLog, uppercase)
+			log := text.LoggingFilter(baseLog, uppercase)
 			log.Infof("hello world")
 
 			Eventually(buf.String).Should(ContainSubstring("HELLO WORLD"))
 		})
 
 		It("should process Debugf messages", func() {
-			log := clicky.LoggingFilter(baseLog, uppercase)
+			log := text.LoggingFilter(baseLog, uppercase)
 			log.Debugf("debug message")
 
 			Eventually(buf.String).Should(ContainSubstring("DEBUG MESSAGE"))
 		})
 
 		It("should process Errorf messages", func() {
-			log := clicky.LoggingFilter(baseLog, uppercase)
+			log := text.LoggingFilter(baseLog, uppercase)
 			log.Errorf("error message")
 
 			Eventually(buf.String).Should(ContainSubstring("ERROR MESSAGE"))
 		})
 
 		It("should process Warnf messages", func() {
-			log := clicky.LoggingFilter(baseLog, uppercase)
+			log := text.LoggingFilter(baseLog, uppercase)
 			log.Warnf("warn message")
 
 			Eventually(buf.String).Should(ContainSubstring("WARN MESSAGE"))
 		})
 
 		It("should process Tracef messages", func() {
-			log := clicky.LoggingFilter(baseLog, uppercase)
+			log := text.LoggingFilter(baseLog, uppercase)
 			log.Tracef("trace message")
 
 			Eventually(buf.String).Should(ContainSubstring("TRACE MESSAGE"))
 		})
 
 		It("should skip messages when processor returns skip=true", func() {
-			log := clicky.LoggingFilter(baseLog, skipAll)
+			log := text.LoggingFilter(baseLog, skipAll)
 			log.Infof("should be skipped")
 
 			Consistently(buf.String).Should(BeEmpty())
@@ -176,7 +176,7 @@ var _ = Describe("LoggingFilter", func() {
 				return line + " [SUFFIX]", false
 			}
 
-			log := clicky.LoggingFilter(baseLog, addPrefix, addSuffix)
+			log := text.LoggingFilter(baseLog, addPrefix, addSuffix)
 			log.Infof("test")
 
 			Eventually(buf.String).Should(ContainSubstring("[PREFIX] test [SUFFIX]"))
@@ -188,7 +188,7 @@ var _ = Describe("LoggingFilter", func() {
 				return line, false
 			}
 
-			log := clicky.LoggingFilter(baseLog, skipAll, neverCalled)
+			log := text.LoggingFilter(baseLog, skipAll, neverCalled)
 			log.Infof("test")
 
 			Consistently(buf.String).Should(BeEmpty())
@@ -197,7 +197,7 @@ var _ = Describe("LoggingFilter", func() {
 
 	Context("with concurrent logging", func() {
 		It("should be thread-safe", func() {
-			log := clicky.LoggingFilter(baseLog, uppercase)
+			log := text.LoggingFilter(baseLog, uppercase)
 
 			var wg sync.WaitGroup
 			for i := 0; i < 10; i++ {
@@ -222,7 +222,7 @@ var _ = Describe("LoggingFilter", func() {
 				panic("test panic")
 			}
 
-			log := clicky.LoggingFilter(baseLog, panicProcessor)
+			log := text.LoggingFilter(baseLog, panicProcessor)
 			log.Infof("test")
 
 			Consistently(buf.String).Should(BeEmpty())
@@ -236,7 +236,7 @@ var _ = Describe("LoggingFilter", func() {
 				return line, false
 			}
 
-			log := clicky.LoggingFilter(baseLog, panicOnFirst)
+			log := text.LoggingFilter(baseLog, panicOnFirst)
 			log.Infof("panic this")
 			log.Infof("normal message")
 
@@ -247,7 +247,7 @@ var _ = Describe("LoggingFilter", func() {
 
 	Context("WithValues", func() {
 		It("should return a new logger", func() {
-			log := clicky.LoggingFilter(baseLog, uppercase)
+			log := text.LoggingFilter(baseLog, uppercase)
 			contextLog := log.WithValues("key", "value")
 			Expect(contextLog).ToNot(BeNil())
 
@@ -258,7 +258,7 @@ var _ = Describe("LoggingFilter", func() {
 
 	Context("Named", func() {
 		It("should return a new logger", func() {
-			log := clicky.LoggingFilter(baseLog, uppercase)
+			log := text.LoggingFilter(baseLog, uppercase)
 			namedLog := log.Named("mycomponent")
 			Expect(namedLog).ToNot(BeNil())
 
