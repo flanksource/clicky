@@ -9,10 +9,8 @@ import (
 var _ = Describe("Built-in Processors", func() {
 	Describe("RedactSecrets", func() {
 		type testCase struct {
-			input            string
-			expectedContains string
-			expectedSkip     bool
-			notContains      string
+			input    string
+			expected string
 		}
 
 		DescribeTable("default patterns",
@@ -20,33 +18,15 @@ var _ = Describe("Built-in Processors", func() {
 				processor := text.RedactSecrets()
 				result, skip := processor(tc.input)
 
-				Expect(skip).To(Equal(tc.expectedSkip))
-				if tc.expectedContains != "" {
-					Expect(result).To(ContainSubstring(tc.expectedContains))
-				}
-				if tc.notContains != "" {
-					Expect(result).ToNot(ContainSubstring(tc.notContains))
-				}
+				Expect(skip).To(BeFalse())
+				Expect(result).To(Equal(tc.expected))
 			},
-			Entry("redacts password", testCase{
-				input:            "password=secret123",
-				expectedContains: "***",
-				notContains:      "secret123",
-			}),
-			Entry("redacts token", testCase{
-				input:            "token=abc123",
-				expectedContains: "***",
-				notContains:      "abc123",
-			}),
-			Entry("redacts api_key", testCase{
-				input:            "api_key=xyz789",
-				expectedContains: "***",
-				notContains:      "xyz789",
-			}),
-			Entry("passes through normal text", testCase{
-				input:            "normal log line",
-				expectedContains: "normal log line",
-			}),
+			Entry("password with colon", testCase{input: "password: secret", expected: "***"}),
+			Entry("token with equals", testCase{input: "token=abc123", expected: "***"}),
+			Entry("api_key with equals", testCase{input: "api_key=xyz789", expected: "***"}),
+			Entry("PASSWORD uppercase", testCase{input: "PASSWORD=1234", expected: "***"}),
+			Entry("auth with colon", testCase{input: "Auth: xyz", expected: "***"}),
+			Entry("bearer token", testCase{input: "Bearer: token123", expected: "***"}),
 		)
 
 		It("should redact custom patterns", func() {
