@@ -5,6 +5,42 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.10.0](https://github.com/flanksource/clicky/compare/v1.9.0...v1.10.0) (2025-10-30)
+
+
+### ♻️ Code Refactoring
+
+* move line processor to text package ([84dadc3](https://github.com/flanksource/clicky/commit/84dadc35a8bd2d9eaddc765fe3c487289ae56173))
+
+
+### ✅ Tests
+
+* refactor built-in processors to use table-driven tests ([7289f08](https://github.com/flanksource/clicky/commit/7289f08c34fcfa97c59741f066d258890ccfcfd6))
+
+
+### ✨ Features
+
+* add filtering ([ac773e2](https://github.com/flanksource/clicky/commit/ac773e21c926ec50ea3581e001d789acd89d3a08))
+* add line processor middleware framework ([e9eb174](https://github.com/flanksource/clicky/commit/e9eb1740fb077ec740b3c2c00d3969f7eee8ca43))
+* add RedactValues processor for known secrets ([d4c812e](https://github.com/flanksource/clicky/commit/d4c812ee933b923bf0dc4d2e8e09dde604e4f1eb))
+* exec logging ([45a6bf6](https://github.com/flanksource/clicky/commit/45a6bf6c4ff20a3c5950610007970e72a376b9d4))
+* implement tokenizer for RedactSecrets with ANSI support ([01d0869](https://github.com/flanksource/clicky/commit/01d086944c682273f390799e7b3dc66fbc4111d7))
+* preserve keys when redacting secrets ([19c9019](https://github.com/flanksource/clicky/commit/19c90195e2c379508e0899597d2bc1c00bea38df))
+
+
+### 🐛 Bug Fixes
+
+* apply CEL filters to table data in FormatWithOptions ([c4311ce](https://github.com/flanksource/clicky/commit/c4311ceac3897620c9484458f7ad884716986e98))
+* correct DescribeTable usage in builtin tests ([2ea0e08](https://github.com/flanksource/clicky/commit/2ea0e080434e68bdfc22bbf83424c33a7372d468))
+* ensure consistent alphabetical ordering of map keys in pretty printing ([0df3297](https://github.com/flanksource/clicky/commit/0df329788f7f56466dfe4a2c62468f8900de3548))
+* improve command execution and exit code handling ([00e0ea5](https://github.com/flanksource/clicky/commit/00e0ea5db72d59a98f5ab35808693385b435d72d))
+* resolve all remaining test failures in exec package ([6e6dcaf](https://github.com/flanksource/clicky/commit/6e6dcafdac16a1cccdc81c56e38a4bc04a1cbaae))
+
+
+### 🔧 Maintenance
+
+* test refactor ([cfba7a0](https://github.com/flanksource/clicky/commit/cfba7a05f08f432e405454badb71d84a0fb64daa))
+
 ## [1.9.0](https://github.com/flanksource/clicky/compare/v1.8.0...v1.9.0) (2025-10-27)
 
 
