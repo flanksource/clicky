@@ -8,14 +8,46 @@ import (
 
 var _ = Describe("Built-in Processors", func() {
 	Describe("RedactSecrets", func() {
-		It("should redact default secret patterns", func() {
-			processor := text.RedactSecrets()
+		type testCase struct {
+			input            string
+			expectedContains string
+			expectedSkip     bool
+			notContains      string
+		}
 
-			result, skip := processor("password=secret123")
-			Expect(skip).To(BeFalse())
-			Expect(result).To(ContainSubstring("***"))
-			Expect(result).ToNot(ContainSubstring("secret123"))
-		})
+		DescribeTable("default patterns",
+			func(tc testCase) {
+				processor := text.RedactSecrets()
+				result, skip := processor(tc.input)
+
+				Expect(skip).To(Equal(tc.expectedSkip))
+				if tc.expectedContains != "" {
+					Expect(result).To(ContainSubstring(tc.expectedContains))
+				}
+				if tc.notContains != "" {
+					Expect(result).ToNot(ContainSubstring(tc.notContains))
+				}
+			},
+			Entry("redacts password", testCase{
+				input:            "password=secret123",
+				expectedContains: "***",
+				notContains:      "secret123",
+			}),
+			Entry("redacts token", testCase{
+				input:            "token=abc123",
+				expectedContains: "***",
+				notContains:      "abc123",
+			}),
+			Entry("redacts api_key", testCase{
+				input:            "api_key=xyz789",
+				expectedContains: "***",
+				notContains:      "xyz789",
+			}),
+			Entry("passes through normal text", testCase{
+				input:            "normal log line",
+				expectedContains: "normal log line",
+			}),
+		)
 
 		It("should redact custom patterns", func() {
 			processor := text.RedactSecrets("api.*?=\\S+")
@@ -28,88 +60,119 @@ var _ = Describe("Built-in Processors", func() {
 
 		It("should never skip lines", func() {
 			processor := text.RedactSecrets()
-
 			_, skip := processor("password=secret")
 			Expect(skip).To(BeFalse())
-
-			_, skip = processor("normal line")
-			Expect(skip).To(BeFalse())
-		})
-
-		It("should return same string if no secrets found", func() {
-			processor := text.RedactSecrets()
-
-			input := "normal log line"
-			result, skip := processor(input)
-			Expect(skip).To(BeFalse())
-			Expect(result).To(Equal(input))
 		})
 	})
 
 	Describe("RegexFilter", func() {
-		It("should skip matching lines when invert=false", func() {
-			processor := text.RegexFilter("healthcheck", false)
+		type testCase struct {
+			pattern      string
+			invert       bool
+			input        string
+			expectedSkip bool
+		}
 
-			result, skip := processor("/healthcheck endpoint")
-			Expect(skip).To(BeTrue())
+		DescribeTable("filtering behavior",
+			func(tc testCase) {
+				processor := text.RegexFilter(tc.pattern, tc.invert)
+				result, skip := processor(tc.input)
 
-			result, skip = processor("normal request")
-			Expect(skip).To(BeFalse())
-			Expect(result).To(Equal("normal request"))
-		})
-
-		It("should skip non-matching lines when invert=true", func() {
-			processor := text.RegexFilter("ERROR", true)
-
-			result, skip := processor("ERROR: something went wrong")
-			Expect(skip).To(BeFalse())
-			Expect(result).To(Equal("ERROR: something went wrong"))
-
-			result, skip = processor("INFO: all good")
-			Expect(skip).To(BeTrue())
-		})
-
-		It("should return original string reference", func() {
-			processor := text.RegexFilter("test", false)
-
-			input := "normal line"
-			result, skip := processor(input)
-			Expect(skip).To(BeFalse())
-			Expect(result).To(BeIdenticalTo(input))
-		})
+				Expect(skip).To(Equal(tc.expectedSkip))
+				if !skip {
+					Expect(result).To(Equal(tc.input))
+				}
+			},
+			Entry("skip matching line (invert=false)", testCase{
+				pattern:      "healthcheck",
+				invert:       false,
+				input:        "/healthcheck endpoint",
+				expectedSkip: true,
+			}),
+			Entry("keep non-matching line (invert=false)", testCase{
+				pattern:      "healthcheck",
+				invert:       false,
+				input:        "normal request",
+				expectedSkip: false,
+			}),
+			Entry("keep matching line (invert=true)", testCase{
+				pattern:      "ERROR",
+				invert:       true,
+				input:        "ERROR: something went wrong",
+				expectedSkip: false,
+			}),
+			Entry("skip non-matching line (invert=true)", testCase{
+				pattern:      "ERROR",
+				invert:       true,
+				input:        "INFO: all good",
+				expectedSkip: true,
+			}),
+		)
 	})
 
 	Describe("AddPrefix", func() {
-		It("should add prefix to line", func() {
-			processor := text.AddPrefix("[PREFIX] ")
+		type testCase struct {
+			prefix   string
+			input    string
+			expected string
+		}
 
-			result, skip := processor("test line")
-			Expect(skip).To(BeFalse())
-			Expect(result).To(Equal("[PREFIX] test line"))
-		})
+		DescribeTable("adding prefixes",
+			func(tc testCase) {
+				processor := text.AddPrefix(tc.prefix)
+				result, skip := processor(tc.input)
 
-		It("should never skip lines", func() {
-			processor := text.AddPrefix("[PREFIX] ")
-
-			_, skip := processor("test")
-			Expect(skip).To(BeFalse())
-		})
+				Expect(skip).To(BeFalse())
+				Expect(result).To(Equal(tc.expected))
+			},
+			Entry("simple prefix", testCase{
+				prefix:   "[PREFIX] ",
+				input:    "test line",
+				expected: "[PREFIX] test line",
+			}),
+			Entry("timestamp prefix", testCase{
+				prefix:   "2024-01-01 ",
+				input:    "log message",
+				expected: "2024-01-01 log message",
+			}),
+			Entry("empty input", testCase{
+				prefix:   "[PREFIX] ",
+				input:    "",
+				expected: "[PREFIX] ",
+			}),
+		)
 	})
 
 	Describe("AddSuffix", func() {
-		It("should add suffix to line", func() {
-			processor := text.AddSuffix(" [SUFFIX]")
+		type testCase struct {
+			suffix   string
+			input    string
+			expected string
+		}
 
-			result, skip := processor("test line")
-			Expect(skip).To(BeFalse())
-			Expect(result).To(Equal("test line [SUFFIX]"))
-		})
+		DescribeTable("adding suffixes",
+			func(tc testCase) {
+				processor := text.AddSuffix(tc.suffix)
+				result, skip := processor(tc.input)
 
-		It("should never skip lines", func() {
-			processor := text.AddSuffix(" [SUFFIX]")
-
-			_, skip := processor("test")
-			Expect(skip).To(BeFalse())
-		})
+				Expect(skip).To(BeFalse())
+				Expect(result).To(Equal(tc.expected))
+			},
+			Entry("simple suffix", testCase{
+				suffix:   " [SUFFIX]",
+				input:    "test line",
+				expected: "test line [SUFFIX]",
+			}),
+			Entry("newline suffix", testCase{
+				suffix:   " [END]",
+				input:    "log message",
+				expected: "log message [END]",
+			}),
+			Entry("empty input", testCase{
+				suffix:   " [SUFFIX]",
+				input:    "",
+				expected: " [SUFFIX]",
+			}),
+		)
 	})
 })
