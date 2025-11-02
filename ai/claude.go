@@ -23,19 +23,45 @@ type ClaudeOptions struct {
 	MaxConcurrent   int
 }
 
+// ModelUsageDetail represents per-model usage information
+type ModelUsageDetail struct {
+	InputTokens              int     `json:"inputTokens"`
+	OutputTokens             int     `json:"outputTokens"`
+	CacheReadInputTokens     int     `json:"cacheReadInputTokens"`
+	CacheCreationInputTokens int     `json:"cacheCreationInputTokens"`
+	WebSearchRequests        int     `json:"webSearchRequests"`
+	CostUSD                  float64 `json:"costUSD"`
+	ContextWindow            int     `json:"contextWindow"`
+}
+
 // ClaudeResponse represents the response from Claude CLI
 type ClaudeResponse struct {
-	Type         string  `json:"type"`
-	Result       string  `json:"result"`
-	IsError      bool    `json:"is_error"`
-	DurationMs   int     `json:"duration_ms"`
-	TotalCostUSD float64 `json:"total_cost_usd"`
-	Usage        struct {
+	Type              string   `json:"type"`
+	Subtype           string   `json:"subtype,omitempty"`
+	Result            string   `json:"result"`
+	IsError           bool     `json:"is_error"`
+	DurationMs        int      `json:"duration_ms"`
+	DurationAPIMs     int      `json:"duration_api_ms,omitempty"`
+	NumTurns          int      `json:"num_turns,omitempty"`
+	SessionID         string   `json:"session_id,omitempty"`
+	TotalCostUSD      float64  `json:"total_cost_usd"`
+	UUID              string   `json:"uuid,omitempty"`
+	PermissionDenials []string `json:"permission_denials,omitempty"`
+	Usage             struct {
 		InputTokens              int `json:"input_tokens"`
 		CacheCreationInputTokens int `json:"cache_creation_input_tokens"`
 		CacheReadInputTokens     int `json:"cache_read_input_tokens"`
 		OutputTokens             int `json:"output_tokens"`
+		ServerToolUse            struct {
+			WebSearchRequests int `json:"web_search_requests"`
+		} `json:"server_tool_use,omitempty"`
+		ServiceTier   string `json:"service_tier,omitempty"`
+		CacheCreation struct {
+			Ephemeral1hInputTokens int `json:"ephemeral_1h_input_tokens"`
+			Ephemeral5mInputTokens int `json:"ephemeral_5m_input_tokens"`
+		} `json:"cache_creation,omitempty"`
 	} `json:"usage"`
+	ModelUsage map[string]ModelUsageDetail `json:"modelUsage,omitempty"`
 }
 
 // ClaudeExecutor manages Claude API calls with TaskManager integration
@@ -62,7 +88,7 @@ func (ce *ClaudeExecutor) GetTaskManager() *clicky.TaskManager {
 
 // ExecutePrompt executes a single Claude prompt with progress tracking
 func (ce *ClaudeExecutor) ExecutePrompt(_ context.Context, name, prompt string) (*ClaudeResponse, error) {
-	t := clicky.StartTask[*ClaudeResponse](name, func(ctx flanksourceContext.Context, t *clicky.Task) (*ClaudeResponse, error) {
+	t := clicky.StartTask(name, func(ctx flanksourceContext.Context, t *clicky.Task) (*ClaudeResponse, error) {
 		t.Infof("Starting Claude API call")
 		t.SetProgress(10, 100)
 

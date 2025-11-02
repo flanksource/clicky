@@ -310,7 +310,7 @@ func (ca *ClaudeAgent) executeClaude(ctx context.Context, request PromptRequest,
 		args = append(args, "--strict-mcp-config")
 	}
 
-	args = append(args, prompt)
+	task.Debugf("%s", prompt)
 
 	if task != nil {
 		task.Infof("Executing: claude %s", strings.Join(args[:len(args)-1], " "))
@@ -318,6 +318,7 @@ func (ca *ClaudeAgent) executeClaude(ctx context.Context, request PromptRequest,
 
 	startTime := time.Now()
 	cmd := exec.CommandContext(ctx, "claude", args...)
+	cmd.Stdin = strings.NewReader(prompt)
 	output, err := cmd.CombinedOutput()
 	duration := time.Since(startTime)
 

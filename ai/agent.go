@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/flanksource/clicky/ai/cache"
+	"github.com/flanksource/clicky/api"
 )
 
 // AgentType represents the type of AI agent
@@ -30,6 +31,36 @@ type Model struct {
 	InputPrice  float64           `json:"input_price_per_token,omitempty"`
 	OutputPrice float64           `json:"output_price_per_token,omitempty"`
 	MaxTokens   int               `json:"max_tokens,omitempty"`
+}
+
+type Cost struct {
+	InputTokens  int     `json:"input_tokens"`
+	OutputTokens int     `json:"output_tokens"`
+	TotalTokens  int     `json:"total_tokens"`
+	InputCost    float64 `json:"input_cost"`
+	OutputCost   float64 `json:"output_cost"`
+}
+
+func (c Cost) TotalCost() float64 {
+	return c.InputCost + c.OutputCost
+}
+
+func (c Cost) Pretty() api.Text {
+	return api.Text{}.Append("input=", "text-muted").Append(c.InputTokens).Append(" output=", "text-muted").Append(c.OutputTokens).Append(" cost=", "text-muted").Append(c.TotalCost())
+}
+
+func (c Cost) Add(other Cost) Cost {
+	return Cost{
+		InputTokens:  c.InputTokens + other.InputTokens,
+		OutputTokens: c.OutputTokens + other.OutputTokens,
+		TotalTokens:  c.TotalTokens + other.TotalTokens,
+		InputCost:    c.InputCost + other.InputCost,
+		OutputCost:   c.OutputCost + other.OutputCost,
+	}
+}
+
+type CostInterface interface {
+	GetTotalCost() Cost
 }
 
 // AgentConfig holds configuration for AI agents
@@ -129,6 +160,11 @@ func NewAgentManager(config AgentConfig) *AgentManager {
 	return am
 }
 
+func GetDefaultAgent() (Agent, error) {
+	manager := NewAgentManager(DefaultConfig())
+	return manager.GetDefaultAgent()
+}
+
 // GetAgent returns an agent of the specified type, creating it if needed
 func (am *AgentManager) GetAgent(agentType AgentType) (Agent, error) {
 	if agent, exists := am.agents[agentType]; exists {
@@ -218,7 +254,7 @@ func (am *AgentManager) Close() error {
 func DefaultConfig() AgentConfig {
 	return AgentConfig{
 		Type:          AgentTypeClaude,
-		Model:         "claude-3-5-sonnet-20241022",
+		Model:         "claude-4-5-haiku",
 		MaxTokens:     10000,
 		MaxConcurrent: 3,
 		Debug:         false,
