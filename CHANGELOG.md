@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.11.0](https://github.com/flanksource/clicky/compare/v1.10.0...v1.11.0) (2025-11-03)
+
+
+### ✨ Features
+
+* **ai:** support new Claude API response format ([124659a](https://github.com/flanksource/clicky/commit/124659ac6e93b39324294cddb77307a5c65f3eb4))
+
+
+### 🔧 Maintenance
+
+* ai fixes ([ea0451c](https://github.com/flanksource/clicky/commit/ea0451c613534d7367bad953f3328d3c313b9cb6))
+* misc formatting improvements ([eb8f3fc](https://github.com/flanksource/clicky/commit/eb8f3fc62f16bfc831990d48c0f8b2856ac94955))
+
 ## [1.10.0](https://github.com/flanksource/clicky/compare/v1.9.0...v1.10.0) (2025-10-30)
 
 
