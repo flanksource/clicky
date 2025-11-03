@@ -2,24 +2,12 @@ package ai
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/flanksource/clicky/ai/cache"
-	"github.com/flanksource/clicky/api"
-)
-
-// AgentType represents the type of AI agent
-type AgentType string
-
-// Supported agent types
-const (
-	// AgentTypeClaude represents the Claude AI agent
-	AgentTypeClaude AgentType = "claude"
-	// AgentTypeAider represents the Aider AI agent
-	AgentTypeAider AgentType = "aider"
+	"github.com/spf13/pflag"
 )
 
 // Model represents an AI model
@@ -33,94 +21,37 @@ type Model struct {
 	MaxTokens   int               `json:"max_tokens,omitempty"`
 }
 
-type Cost struct {
-	InputTokens  int     `json:"input_tokens"`
-	OutputTokens int     `json:"output_tokens"`
-	TotalTokens  int     `json:"total_tokens"`
-	InputCost    float64 `json:"input_cost"`
-	OutputCost   float64 `json:"output_cost"`
+type Tokens struct {
+	Input  int     `json:"input,omitempty"`
+	Output int     `json:"output,omitempty"`
+	Cost   float64 `json:"cost,omitempty"`
 }
 
-func (c Cost) TotalCost() float64 {
-	return c.InputCost + c.OutputCost
+func (t Tokens) Add(other Tokens) Tokens {
+	return Tokens{
+		Input:  t.Input + other.Input,
+		Output: t.Output + other.Output,
+		Cost:   t.Cost + other.Cost,
+	}
 }
 
-func (c Cost) Pretty() api.Text {
-	return api.Text{}.Append("input=", "text-muted").Append(c.InputTokens).Append(" output=", "text-muted").Append(c.OutputTokens).Append(" cost=", "text-muted").Append(c.TotalCost())
+func (t Tokens) Total() int {
+	return t.Input + t.Output
 }
 
 func (c Cost) Add(other Cost) Cost {
+	model := c.Model
+	if model == "" {
+		model = other.Model
+	}
 	return Cost{
+		Model:        model,
 		InputTokens:  c.InputTokens + other.InputTokens,
 		OutputTokens: c.OutputTokens + other.OutputTokens,
 		TotalTokens:  c.TotalTokens + other.TotalTokens,
 		InputCost:    c.InputCost + other.InputCost,
 		OutputCost:   c.OutputCost + other.OutputCost,
 	}
-}
-
-type CostInterface interface {
-	GetTotalCost() Cost
-}
-
-// AgentConfig holds configuration for AI agents
-type AgentConfig struct {
-	Type            AgentType     `json:"type"`
-	Model           string        `json:"model"`
-	CacheDBPath     string        `json:"cache_db_path,omitempty"`
-	ProjectName     string        `json:"project_name,omitempty"`
-	SessionID       string        `json:"session_id,omitempty"`
-	CacheTTL        time.Duration `json:"cache_ttl,omitempty"`
-	Temperature     float64       `json:"temperature,omitempty"`
-	MaxTokens       int           `json:"max_tokens"`
-	MaxConcurrent   int           `json:"max_concurrent"`
-	Debug           bool          `json:"debug"`
-	Verbose         bool          `json:"verbose"`
-	StrictMCPConfig bool          `json:"strict_mcp_config"`
-	NoCache         bool          `json:"no_cache,omitempty"`
-}
-
-// PromptRequest represents a request to process a prompt
-type PromptRequest struct {
-	Context map[string]string `json:"context,omitempty"`
-	Name    string            `json:"name"`
-	Prompt  string            `json:"prompt"`
-}
-
-// PromptResponse represents the response from processing a prompt
-type PromptResponse struct {
-	Result           string  `json:"result"`
-	Model            string  `json:"model,omitempty"`
-	Error            string  `json:"error,omitempty"`
-	CostUSD          float64 `json:"cost_usd"`
-	TokensUsed       int     `json:"tokens_used"`
-	TokensInput      int     `json:"tokens_input,omitempty"`
-	TokensOutput     int     `json:"tokens_output,omitempty"`
-	TokensCacheRead  int     `json:"tokens_cache_read,omitempty"`
-	TokensCacheWrite int     `json:"tokens_cache_write,omitempty"`
-	DurationMs       int     `json:"duration_ms"`
-	CacheHit         bool    `json:"cache_hit,omitempty"`
-}
-
-// Agent interface defines the contract for AI agents
-type Agent interface {
-	// GetType returns the agent type
-	GetType() AgentType
-
-	// GetConfig returns the agent configuration
-	GetConfig() AgentConfig
-
-	// ListModels returns available models for this agent
-	ListModels(ctx context.Context) ([]Model, error)
-
-	// ExecutePrompt processes a single prompt
-	ExecutePrompt(ctx context.Context, request PromptRequest) (*PromptResponse, error)
-
-	// ExecuteBatch processes multiple prompts
-	ExecuteBatch(ctx context.Context, requests []PromptRequest) (map[string]*PromptResponse, error)
-
-	// Close cleans up resources
-	Close() error
 }
 
 // AgentManager manages AI agents
@@ -250,45 +181,48 @@ func (am *AgentManager) Close() error {
 	return nil
 }
 
+var defaultConfig AgentConfig = AgentConfig{
+	Type:          AgentTypeClaude,
+	Model:         "claude-haiku-4-5",
+	MaxTokens:     10000,
+	MaxConcurrent: 3,
+	Debug:         false,
+	Verbose:       false,
+	Temperature:   0.2,
+	CacheTTL:      24 * time.Hour, // Default 24 hour TTL
+	NoCache:       false,
+}
+
 // DefaultConfig returns a default agent configuration
 func DefaultConfig() AgentConfig {
-	return AgentConfig{
-		Type:          AgentTypeClaude,
-		Model:         "claude-4-5-haiku",
-		MaxTokens:     10000,
-		MaxConcurrent: 3,
-		Debug:         false,
-		Verbose:       false,
-		Temperature:   0.2,
-		CacheTTL:      24 * time.Hour, // Default 24 hour TTL
-		NoCache:       false,
-	}
+	return defaultConfig
 }
 
 // BindFlags adds AI-related flags to the flag set
-func BindFlags(flags *flag.FlagSet, config *AgentConfig) {
-	agentType := string(config.Type)
+func BindFlags(flags *pflag.FlagSet) {
+
+	agentType := string(defaultConfig.Type)
 	flags.StringVar(&agentType, "agent", agentType, "AI agent type (claude, aider)")
-	flags.BoolVar(&config.Debug, "ai-debug", config.Debug, "Enable AI debug output")
-	flags.BoolVar(&config.Verbose, "ai-verbose", config.Verbose, "Enable AI verbose logging")
-	flags.StringVar(&config.Model, "ai-model", config.Model, "AI model to use")
-	flags.IntVar(&config.MaxTokens, "ai-max-tokens", config.MaxTokens, "Maximum tokens per request")
-	flags.IntVar(&config.MaxConcurrent, "ai-max-concurrent", config.MaxConcurrent, "Maximum concurrent AI requests")
-	flags.Float64Var(&config.Temperature, "ai-temperature", config.Temperature, "AI temperature (0.0-2.0)")
-	flags.BoolVar(&config.StrictMCPConfig, "ai-strict-mcp", config.StrictMCPConfig, "Use strict MCP configuration (Claude only)")
+	flags.BoolVar(&defaultConfig.Debug, "ai-debug", defaultConfig.Debug, "Enable AI debug output")
+	flags.BoolVar(&defaultConfig.Verbose, "ai-verbose", defaultConfig.Verbose, "Enable AI verbose logging")
+	flags.StringVar(&defaultConfig.Model, "ai-model", defaultConfig.Model, "AI model to use")
+	flags.IntVar(&defaultConfig.MaxTokens, "ai-max-tokens", defaultConfig.MaxTokens, "Maximum tokens per request")
+	flags.IntVar(&defaultConfig.MaxConcurrent, "ai-max-concurrent", defaultConfig.MaxConcurrent, "Maximum concurrent AI requests")
+	flags.Float64Var(&defaultConfig.Temperature, "ai-temperature", defaultConfig.Temperature, "AI temperature (0.0-2.0)")
+	flags.BoolVar(&defaultConfig.StrictMCPConfig, "ai-strict-mcp", defaultConfig.StrictMCPConfig, "Use strict MCP configuration (Claude only)")
 
 	// Cache configuration flags
-	flags.DurationVar(&config.CacheTTL, "ai-cache-ttl", config.CacheTTL, "AI cache TTL (e.g., 24h, 7d)")
-	flags.BoolVar(&config.NoCache, "ai-no-cache", config.NoCache, "Disable AI response caching")
-	flags.StringVar(&config.CacheDBPath, "ai-cache-db", config.CacheDBPath, "Path to AI cache database (default: ~/.cache/clicky-ai.db)")
-	flags.StringVar(&config.ProjectName, "ai-project", config.ProjectName, "Project name for cache grouping")
+	flags.DurationVar(&defaultConfig.CacheTTL, "ai-cache-ttl", defaultConfig.CacheTTL, "AI cache TTL (e.g., 24h, 7d)")
+	flags.BoolVar(&defaultConfig.NoCache, "ai-no-cache", defaultConfig.NoCache, "Disable AI response caching")
+	flags.StringVar(&defaultConfig.CacheDBPath, "ai-cache-db", defaultConfig.CacheDBPath, "Path to AI cache database (default: ~/.cache/clicky-ai.db)")
+	flags.StringVar(&defaultConfig.ProjectName, "ai-project", defaultConfig.ProjectName, "Project name for cache grouping")
 
 	// Add convenience flags (these will be handled by the calling code)
 	flags.Bool("aider", false, "Use Aider agent (shorthand for --agent=aider)")
 	flags.Bool("claude", false, "Use Claude agent (shorthand for --agent=claude)")
 
 	// Update config type after parsing (caller needs to handle this)
-	config.Type = AgentType(agentType)
+	defaultConfig.Type = AgentType(agentType)
 }
 
 // ValidateConfig validates the agent configuration

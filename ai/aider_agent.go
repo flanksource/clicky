@@ -17,6 +17,10 @@ type AiderAgent struct {
 	config AgentConfig
 }
 
+func (aa *AiderAgent) GetCosts() Costs {
+	return Costs{}
+}
+
 // AiderResponse represents the response from Aider
 type AiderResponse struct {
 	FilesChanged []string `json:"files_changed,omitempty"`
@@ -243,11 +247,9 @@ func (aa *AiderAgent) executeAider(ctx context.Context, request PromptRequest, t
 	result := strings.TrimSpace(string(output))
 
 	response := &PromptResponse{
-		Result:     result,
-		TokensUsed: 0, // Aider doesn't provide token usage info
-		CostUSD:    0, // Aider doesn't provide cost info
-		DurationMs: int(duration.Milliseconds()),
-		Model:      aa.config.Model,
+		Result:   result,
+		Duration: duration,
+		Model:    aa.config.Model,
 	}
 
 	if task != nil && aa.config.Debug {

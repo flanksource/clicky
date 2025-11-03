@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/flanksource/clicky/api"
+	"github.com/flanksource/clicky/api/icons"
 	flanksourceContext "github.com/flanksource/commons/context"
 
 	"github.com/flanksource/clicky"
@@ -62,6 +64,43 @@ type ClaudeResponse struct {
 		} `json:"cache_creation,omitempty"`
 	} `json:"usage"`
 	ModelUsage map[string]ModelUsageDetail `json:"modelUsage,omitempty"`
+}
+
+func (cr ClaudeResponse) GetCosts() Costs {
+	costs := Costs{}
+
+	for model, usage := range cr.ModelUsage {
+		cost := Cost{
+			Model:        model,
+			InputTokens:  usage.InputTokens + usage.CacheCreationInputTokens,
+			OutputTokens: usage.OutputTokens,
+			TotalTokens:  usage.InputTokens + usage.CacheCreationInputTokens + usage.OutputTokens,
+			InputCost:    0, // Claude CLI does not provide per-token cost breakdown
+			OutputCost:   usage.CostUSD,
+		}
+		costs = append(costs, cost)
+	}
+
+	return costs
+}
+
+func (r ClaudeResponse) Pretty() api.Text {
+	text := api.Text{}
+	if r.IsError {
+		text = text.Append(icons.Fail).Space()
+	}
+	text = text.Append(r.Type, "font-bold text-orange-600")
+	if r.Subtype != "" {
+		text = text.Append(" "+r.Subtype, "text-muted")
+	}
+
+	text = text.Add(clicky.Map(map[string]any{
+		"duration": time.Duration(r.DurationAPIMs * int(time.Millisecond)),
+		"turns":    r.NumTurns,
+		"cost":     fmt.Sprintf("$%.6f", r.TotalCostUSD),
+	}))
+
+	return text
 }
 
 // ClaudeExecutor manages Claude API calls with TaskManager integration
