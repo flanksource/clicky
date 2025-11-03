@@ -246,6 +246,20 @@ func (v FieldValue) HTML() string {
 		if len(slice) == 0 {
 			return "<span class=\"text-gray-400\">[]</span>"
 		}
+		// Check if this is a slice of Textable objects - render one per div
+		if len(slice) > 0 {
+			if _, isTextable := slice[0].(Textable); isTextable {
+				var result strings.Builder
+				for _, item := range slice {
+					if t, ok := item.(Textable); ok {
+						result.WriteString("<div>")
+						result.WriteString(t.HTML())
+						result.WriteString("</div>\n")
+					}
+				}
+				return result.String()
+			}
+		}
 		// Check if this is a slice of maps (should be rendered as table)
 		if len(slice) > 0 {
 			if _, isMap := slice[0].(map[string]interface{}); isMap {
@@ -288,6 +302,18 @@ func (v FieldValue) Markdown() string {
 	if slice, ok := v.Value.([]interface{}); ok {
 		if len(slice) == 0 {
 			return "[]"
+		}
+		// Check if this is a slice of Textable objects - render one per line
+		if len(slice) > 0 {
+			if _, isTextable := slice[0].(Textable); isTextable {
+				var lines []string
+				for _, item := range slice {
+					if t, ok := item.(Textable); ok {
+						lines = append(lines, t.Markdown())
+					}
+				}
+				return strings.Join(lines, "\n")
+			}
 		}
 		// Check if this is a slice of maps (should be rendered as table)
 		if len(slice) > 0 {

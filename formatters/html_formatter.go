@@ -666,7 +666,14 @@ func (f *HTMLFormatter) formatFieldValueHTML(fieldValue api.FieldValue) string {
 
 // formatFieldValueHTMLWithStyle formats a FieldValue with field styling for HTML output
 func (f *HTMLFormatter) formatFieldValueHTMLWithStyle(fieldValue api.FieldValue, field api.PrettyField) string {
-	// Check if value implements Pretty interface first
+	// Check if value implements Textable interface first (e.g., api.Text)
+	if fieldValue.Value != nil {
+		if textable, ok := fieldValue.Value.(api.Textable); ok {
+			return textable.HTML()
+		}
+	}
+
+	// Check if value implements Pretty interface
 	if fieldValue.Value != nil {
 		if pretty, ok := fieldValue.Value.(api.Pretty); ok {
 			text := pretty.Pretty()

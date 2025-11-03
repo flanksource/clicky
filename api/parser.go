@@ -1113,6 +1113,13 @@ func (p *StructParser) processFieldValueWithVisited(fieldVal reflect.Value, visi
 		fieldVal = fieldVal.Elem()
 	}
 
+	// Check if the dereferenced value implements Textable interface (e.g., api.Text)
+	if fieldVal.IsValid() && fieldVal.CanInterface() {
+		if textable, ok := fieldVal.Interface().(Textable); ok {
+			return textable
+		}
+	}
+
 	// Check if the dereferenced value implements Pretty interface
 	if fieldVal.IsValid() && fieldVal.CanInterface() {
 		if pretty, ok := fieldVal.Interface().(Pretty); ok {
