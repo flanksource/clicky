@@ -6,8 +6,9 @@ import (
 	"os"
 	"time"
 
+	"github.com/flanksource/clicky"
 	"github.com/flanksource/clicky/api"
-	"github.com/flanksource/clicky/formatters"
+	"github.com/flanksource/clicky/api/icons"
 )
 
 // Helper functions for creating pointers
@@ -143,6 +144,16 @@ type UberDemo struct {
 
 	// Deeply nested structure
 	DeepNested map[string]map[string]map[string]interface{} `json:"deep_nested" pretty:"label=Deeply Nested Map"`
+
+	// ==================== STYLE SHOWCASES ====================
+	// All available icons
+	IconsTable []IconShowcase `json:"icons_table" pretty:"label=Available Icons,format=table"`
+
+	// Tailwind color examples
+	ColorsTable []ColorExample `json:"colors_table" pretty:"label=Tailwind Colors,format=table"`
+
+	// Text style examples
+	TextStylesTable []TextStyleExample `json:"text_styles_table" pretty:"label=Text Styles & Transformations,format=table"`
 }
 
 // createDemoData creates a comprehensive demo dataset
@@ -150,7 +161,7 @@ func createDemoData() *UberDemo {
 	now := time.Now()
 	unixNow := now.Unix()
 
-	return &UberDemo{
+	demo := UberDemo{
 		// Primitive types
 		StringField: "Hello, Clicky!",
 		IntField:    42,
@@ -392,97 +403,250 @@ func createDemoData() *UberDemo {
 				},
 			},
 		},
+
+		// Icons showcase
+		IconsTable: createIconsShowcase(),
+
+		// Colors showcase
+		ColorsTable: createColorsShowcase(),
+
+		// Text styles showcase
+		TextStylesTable: createTextStylesShowcase(),
+	}
+
+	return &demo
+}
+
+// createIconsShowcase creates a comprehensive showcase of all available icons
+func createIconsShowcase() []IconShowcase {
+	return []IconShowcase{
+		{Icon: api.Text{}.Add(icons.AI), Name: "AI", Description: "Artificial Intelligence / Robot"},
+		{Icon: api.Text{}.Add(icons.ArrowDown), Name: "ArrowDown", Description: "Down arrow"},
+		{Icon: api.Text{}.Add(icons.ArrowLeft), Name: "ArrowLeft", Description: "Left arrow"},
+		{Icon: api.Text{}.Add(icons.ArrowRight), Name: "ArrowRight", Description: "Right arrow"},
+		{Icon: api.Text{}.Add(icons.ArrowUp), Name: "ArrowUp", Description: "Up arrow"},
+		{Icon: api.Text{}.Add(icons.Check), Name: "Check / Pass / Success", Description: "Success indicator"},
+		{Icon: api.Text{}.Add(icons.ChevronDown), Name: "ChevronDown", Description: "Chevron down"},
+		{Icon: api.Text{}.Add(icons.ChevronLeft), Name: "ChevronLeft", Description: "Chevron left"},
+		{Icon: api.Text{}.Add(icons.ChevronRight), Name: "ChevronRight", Description: "Chevron right"},
+		{Icon: api.Text{}.Add(icons.ChevronUp), Name: "ChevronUp", Description: "Chevron up"},
+		{Icon: api.Text{}.Add(icons.CI), Name: "CI", Description: "Continuous Integration"},
+		{Icon: api.Text{}.Add(icons.Clean), Name: "Clean", Description: "Cleaning / Broom"},
+		{Icon: api.Text{}.Add(icons.Cloud), Name: "Cloud", Description: "Cloud computing"},
+		{Icon: api.Text{}.Add(icons.Config), Name: "Config", Description: "Configuration / Settings"},
+		{Icon: api.Text{}.Add(icons.Cost), Name: "Cost", Description: "Money / Dollar sign"},
+		{Icon: api.Text{}.Add(icons.Cross), Name: "Cross / Error / Fail", Description: "Error indicator"},
+		{Icon: api.Text{}.Add(icons.Database), Name: "Database / DB", Description: "Database"},
+		{Icon: api.Text{}.Add(icons.Debug), Name: "Debug", Description: "Debugging / Bug"},
+		{Icon: api.Text{}.Add(icons.Docs), Name: "Docs", Description: "Documentation"},
+		{Icon: api.Text{}.Add(icons.Exclamation), Name: "Exclamation", Description: "Exclamation mark"},
+		{Icon: api.Text{}.Add(icons.Feat), Name: "Feat", Description: "New feature / Sparkles"},
+		{Icon: api.Text{}.Add(icons.File), Name: "File", Description: "File document"},
+		{Icon: api.Text{}.Add(icons.Fix), Name: "Fix", Description: "Bug fix"},
+		{Icon: api.Text{}.Add(icons.Folder), Name: "Folder", Description: "Folder / Directory"},
+		{Icon: api.Text{}.Add(icons.Golang), Name: "Golang", Description: "Go programming language"},
+		{Icon: api.Text{}.Add(icons.Heart), Name: "Heart", Description: "Heart / Love"},
+		{Icon: api.Text{}.Add(icons.Http), Name: "Http", Description: "HTTP / Web"},
+		{Icon: api.Text{}.Add(icons.Idea), Name: "Idea", Description: "Light bulb / Idea"},
+		{Icon: api.Text{}.Add(icons.Info), Name: "Info", Description: "Information"},
+		{Icon: api.Text{}.Add(icons.Java), Name: "Java", Description: "Java programming language"},
+		{Icon: api.Text{}.Add(icons.JS), Name: "JS", Description: "JavaScript"},
+		{Icon: api.Text{}.Add(icons.Key), Name: "Key", Description: "Key / Access"},
+		{Icon: api.Text{}.Add(icons.Kubernetes), Name: "Kubernetes", Description: "Kubernetes"},
+		{Icon: api.Text{}.Add(icons.Lambda), Name: "Lambda", Description: "Lambda function"},
+		{Icon: api.Text{}.Add(icons.Launch), Name: "Launch", Description: "Launch / Party"},
+		{Icon: api.Text{}.Add(icons.Link), Name: "Link", Description: "Link / Chain"},
+		{Icon: api.Text{}.Add(icons.Lock), Name: "Lock", Description: "Lock / Security"},
+		{Icon: api.Text{}.Add(icons.Loop), Name: "Loop", Description: "Loop / Refresh"},
+		{Icon: api.Text{}.Add(icons.Math), Name: "Math", Description: "Mathematics / Calculator"},
+		{Icon: api.Text{}.Add(icons.Method), Name: "Method", Description: "Function / Method"},
+		{Icon: api.Text{}.Add(icons.Monitor), Name: "Monitor", Description: "Computer monitor"},
+		{Icon: api.Text{}.Add(icons.Network), Name: "Network", Description: "Network / Globe"},
+		{Icon: api.Text{}.Add(icons.Package), Name: "Package", Description: "Package / Box"},
+		{Icon: api.Text{}.Add(icons.Pause), Name: "Pause", Description: "Pause"},
+		{Icon: api.Text{}.Add(icons.Pending), Name: "Pending", Description: "Pending / Hourglass"},
+		{Icon: api.Text{}.Add(icons.Performance), Name: "Performance", Description: "Performance / Lightning"},
+		{Icon: api.Text{}.Add(icons.Play), Name: "Play / Start", Description: "Play button"},
+		{Icon: api.Text{}.Add(icons.Plugin), Name: "Plugin", Description: "Plugin / Puzzle piece"},
+		{Icon: api.Text{}.Add(icons.Python), Name: "Python", Description: "Python programming language"},
+		{Icon: api.Text{}.Add(icons.Refactor), Name: "Refactor", Description: "Code refactoring"},
+		{Icon: api.Text{}.Add(icons.Reload), Name: "Reload", Description: "Reload / Refresh"},
+		{Icon: api.Text{}.Add(icons.Robot), Name: "Robot", Description: "Robot"},
+		{Icon: api.Text{}.Add(icons.Rocket), Name: "Rocket", Description: "Rocket"},
+		{Icon: api.Text{}.Add(icons.Search), Name: "Search", Description: "Search / Magnifying glass"},
+		{Icon: api.Text{}.Add(icons.Skip), Name: "Skip", Description: "Skip"},
+		{Icon: api.Text{}.Add(icons.Star), Name: "Star", Description: "Star"},
+		{Icon: api.Text{}.Add(icons.Stop), Name: "Stop", Description: "Stop sign"},
+		{Icon: api.Text{}.Add(icons.Style), Name: "Style", Description: "Style / Palette"},
+		{Icon: api.Text{}.Add(icons.Table), Name: "Table", Description: "Table / Clipboard"},
+		{Icon: api.Text{}.Add(icons.Target), Name: "Target", Description: "Target / Bullseye"},
+		{Icon: api.Text{}.Add(icons.Test), Name: "Test", Description: "Testing / Beaker"},
+		{Icon: api.Text{}.Add(icons.TS), Name: "TS", Description: "TypeScript"},
+		{Icon: api.Text{}.Add(icons.Type), Name: "Type", Description: "Type / Class"},
+		{Icon: api.Text{}.Add(icons.Unknown), Name: "Unknown", Description: "Unknown / Question mark"},
+		{Icon: api.Text{}.Add(icons.Variable), Name: "Variable", Description: "Variable"},
+		{Icon: api.Text{}.Add(icons.Warning), Name: "Warning", Description: "Warning sign"},
+		{Icon: api.Text{}.Add(icons.Wrench), Name: "Wrench", Description: "Wrench / Tool"},
+		{Icon: api.Text{}.Add(icons.Zombie), Name: "Zombie", Description: "Zombie / Skull"},
+	}
+}
+
+// createColorsShowcase creates a showcase of Tailwind color styles
+func createColorsShowcase() []ColorExample {
+	colors := []string{"red", "orange", "yellow", "green", "blue", "indigo", "purple", "pink", "gray"}
+	result := make([]ColorExample, len(colors))
+
+	for i, color := range colors {
+		result[i] = ColorExample{
+			ColorName: api.Text{Content: color, Style: "font-bold capitalize"},
+			Text50:    api.Text{Content: "Sample", Style: fmt.Sprintf("text-%s-50", color)},
+			Text100:   api.Text{Content: "Sample", Style: fmt.Sprintf("text-%s-100", color)},
+			Text200:   api.Text{Content: "Sample", Style: fmt.Sprintf("text-%s-200", color)},
+			Text300:   api.Text{Content: "Sample", Style: fmt.Sprintf("text-%s-300", color)},
+			Text400:   api.Text{Content: "Sample", Style: fmt.Sprintf("text-%s-400", color)},
+			Text500:   api.Text{Content: "Sample", Style: fmt.Sprintf("text-%s-500", color)},
+			Text600:   api.Text{Content: "Sample", Style: fmt.Sprintf("text-%s-600", color)},
+			Text700:   api.Text{Content: "Sample", Style: fmt.Sprintf("text-%s-700", color)},
+			Text800:   api.Text{Content: "Sample", Style: fmt.Sprintf("text-%s-800", color)},
+			Text900:   api.Text{Content: "Sample", Style: fmt.Sprintf("text-%s-900", color)},
+		}
+	}
+
+	return result
+}
+
+// createTextStylesShowcase creates a showcase of text styles and transformations
+func createTextStylesShowcase() []TextStyleExample {
+	sampleText := "The Quick Brown Fox"
+
+	return []TextStyleExample{
+		// Text transformations
+		{
+			StyleName:   api.Text{Content: "UPPERCASE", Style: "font-bold text-blue-600"},
+			Example:     api.Text{Content: sampleText, Style: "uppercase"},
+			Description: "Converts all text to uppercase letters",
+		},
+		{
+			StyleName:   api.Text{Content: "lowercase", Style: "font-bold text-blue-600"},
+			Example:     api.Text{Content: sampleText, Style: "lowercase"},
+			Description: "Converts all text to lowercase letters",
+		},
+		{
+			StyleName:   api.Text{Content: "Capitalize", Style: "font-bold text-blue-600"},
+			Example:     api.Text{Content: sampleText, Style: "capitalize"},
+			Description: "Capitalizes the first letter of each word",
+		},
+
+		// Font weights
+		{
+			StyleName:   api.Text{Content: "Thin", Style: "font-bold text-purple-600"},
+			Example:     api.Text{Content: sampleText, Style: "font-thin"},
+			Description: "Very light font weight (100)",
+		},
+		{
+			StyleName:   api.Text{Content: "Light", Style: "font-bold text-purple-600"},
+			Example:     api.Text{Content: sampleText, Style: "font-light"},
+			Description: "Light font weight (300)",
+		},
+		{
+			StyleName:   api.Text{Content: "Normal", Style: "font-bold text-purple-600"},
+			Example:     api.Text{Content: sampleText, Style: "font-normal"},
+			Description: "Normal font weight (400)",
+		},
+		{
+			StyleName:   api.Text{Content: "Medium", Style: "font-bold text-purple-600"},
+			Example:     api.Text{Content: sampleText, Style: "font-medium"},
+			Description: "Medium font weight (500)",
+		},
+		{
+			StyleName:   api.Text{Content: "Semibold", Style: "font-bold text-purple-600"},
+			Example:     api.Text{Content: sampleText, Style: "font-semibold"},
+			Description: "Semibold font weight (600)",
+		},
+		{
+			StyleName:   api.Text{Content: "Bold", Style: "font-bold text-purple-600"},
+			Example:     api.Text{Content: sampleText, Style: "font-bold"},
+			Description: "Bold font weight (700)",
+		},
+
+		// Text decorations
+		{
+			StyleName:   api.Text{Content: "Underline", Style: "font-bold text-green-600"},
+			Example:     api.Text{Content: sampleText, Style: "underline"},
+			Description: "Adds an underline to text",
+		},
+		{
+			StyleName:   api.Text{Content: "Line Through", Style: "font-bold text-green-600"},
+			Example:     api.Text{Content: sampleText, Style: "line-through"},
+			Description: "Adds a strikethrough line",
+		},
+		{
+			StyleName:   api.Text{Content: "Italic", Style: "font-bold text-green-600"},
+			Example:     api.Text{Content: sampleText, Style: "italic"},
+			Description: "Italicizes the text",
+		},
+
+		// Opacity variations
+		{
+			StyleName:   api.Text{Content: "Opacity 25%", Style: "font-bold text-orange-600"},
+			Example:     api.Text{Content: sampleText, Style: "opacity-25"},
+			Description: "25% opacity (very faint)",
+		},
+		{
+			StyleName:   api.Text{Content: "Opacity 50%", Style: "font-bold text-orange-600"},
+			Example:     api.Text{Content: sampleText, Style: "opacity-50"},
+			Description: "50% opacity (semi-transparent)",
+		},
+		{
+			StyleName:   api.Text{Content: "Opacity 75%", Style: "font-bold text-orange-600"},
+			Example:     api.Text{Content: sampleText, Style: "opacity-75"},
+			Description: "75% opacity (slightly transparent)",
+		},
+
+		// Combined styles
+		{
+			StyleName:   api.Text{Content: "Combined 1", Style: "font-bold text-red-600"},
+			Example:     api.Text{Content: sampleText, Style: "uppercase font-bold text-green-600 underline"},
+			Description: "Uppercase + Bold + Green + Underline",
+		},
+		{
+			StyleName:   api.Text{Content: "Combined 2", Style: "font-bold text-red-600"},
+			Example:     api.Text{Content: sampleText, Style: "lowercase italic text-purple-700 opacity-75"},
+			Description: "Lowercase + Italic + Purple + 75% Opacity",
+		},
+		{
+			StyleName:   api.Text{Content: "Combined 3", Style: "font-bold text-red-600"},
+			Example:     api.Text{Content: sampleText, Style: "capitalize font-semibold text-blue-500 underline"},
+			Description: "Capitalize + Semibold + Blue + Underline",
+		},
 	}
 }
 
 func main() {
 	// Parse command-line flags
 	format := flag.String("format", "pretty", "Output format (json, yaml, csv, html, pdf, markdown, pretty)")
-	noColor := flag.Bool("no-color", false, "Disable colored output")
-	output := flag.String("output", "", "Output file (default: stdout)")
 	flag.Parse()
+	clicky.Infof("Pringint %s", *format)
 
 	// Create demo data
 	demo := createDemoData()
 
-	// Create format manager
-	manager := formatters.NewFormatManager()
-
-	// Handle PDF format separately (requires filename)
-	if *format == "pdf" {
-		outputFile := *output
-		if outputFile == "" {
-			outputFile = "uber_demo.pdf"
-		}
-		err := manager.Pdf(demo, outputFile)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error creating PDF: %v\n", err)
-			os.Exit(1)
-		}
-		fmt.Fprintf(os.Stderr, "PDF written to: %s\n", outputFile)
-		return
+	t := clicky.Text("")
+	for _, icon := range createIconsShowcase() {
+		t = t.NewLine().Add(clicky.Text(icon.Name).Space().Add(icon.Icon))
 	}
 
-	// Set NoColor for pretty formatter
-	if *format == "pretty" && *noColor {
-		manager = formatters.NewFormatManager()
-		prettyFormatter := formatters.NewPrettyFormatter()
-		prettyFormatter.NoColor = *noColor
-		result, err := prettyFormatter.Format(demo)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error formatting output: %v\n", err)
-			os.Exit(1)
-		}
-		if *output != "" {
-			err = os.WriteFile(*output, []byte(result), 0644)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "Error writing to file: %v\n", err)
-				os.Exit(1)
-			}
-			fmt.Fprintf(os.Stderr, "Output written to: %s\n", *output)
-		} else {
-			fmt.Print(result)
-		}
-		return
+	for _, style := range demo.TextStylesTable {
+		t = t.NewLine().Add(style.StyleName)
 	}
 
-	// Format the data
-	var result string
-	var err error
-
-	switch *format {
-	case "json":
-		result, err = manager.JSON(demo)
-	case "yaml":
-		result, err = manager.YAML(demo)
-	case "csv":
-		result, err = manager.CSV(demo)
-	case "html":
-		result, err = manager.HTML(demo)
-	case "markdown":
-		result, err = manager.Markdown(demo)
-	case "pretty":
-		result, err = manager.Pretty(demo)
-	default:
-		fmt.Fprintf(os.Stderr, "Unknown format: %s\n", *format)
-		fmt.Fprintf(os.Stderr, "Supported formats: json, yaml, csv, html, pdf, markdown, pretty\n")
-		os.Exit(1)
+	for _, color := range demo.ColorsTable {
+		t = t.NewLine().Add(color.ColorName)
 	}
 
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error formatting output: %v\n", err)
-		os.Exit(1)
-	}
+	os.Stderr.WriteString(t.ANSI() + "\n")
+	os.Stderr.WriteString(clicky.MustFormat(demo.ColorsTable, clicky.FormatOptions{Pretty: true}) + "\n")
 
-	// Output result
-	if *output != "" {
-		err = os.WriteFile(*output, []byte(result), 0644)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Error writing to file: %v\n", err)
-			os.Exit(1)
-		}
-		fmt.Fprintf(os.Stderr, "Output written to: %s\n", *output)
-	} else {
-		fmt.Print(result)
-	}
+	clicky.MustPrint(t, clicky.FormatOptions{Format: *format})
+
 }
