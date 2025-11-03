@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"sort"
 	"strings"
 
 	"github.com/flanksource/clicky/api"
@@ -66,6 +67,7 @@ func Format(o any, opts ...FormatOptions) (string, error) {
 }
 
 func MustPrint(o any, opts ...FormatOptions) {
+
 	result, err := Format(o, opts...)
 	if err != nil {
 		panic(err)
@@ -108,9 +110,36 @@ func Collapsed(label string, content api.Textable, styles ...string) api.Collaps
 	}
 }
 
-var Map = api.Map
 var KeyValue = api.KeyValue
 var CodeBlock = api.CodeBlock
+
+func Map[T any](m map[string]T, styles ...string) api.DescriptionList {
+	style := "compact"
+	if len(styles) > 0 {
+		style = strings.Join(styles, " ")
+	}
+
+	// Sort keys for consistent ordering
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	items := make([]api.KeyValuePair, 0, len(m))
+	for _, k := range keys {
+		items = append(items, api.KeyValuePair{
+			Key:   k,
+			Value: m[k],
+			Style: style,
+		})
+	}
+
+	return api.DescriptionList{
+		Items: items,
+		Style: style,
+	}
+}
 
 func UseFormatter(opts FormatOptions) {
 	defaultOpts = opts

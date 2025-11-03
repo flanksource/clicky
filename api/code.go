@@ -17,7 +17,7 @@ import (
 // multiple output formats (ANSI terminal, HTML, Markdown).
 type Code struct {
 	Content  string `json:"content,omitempty"`  // The source code content
-	Language string `json:"language,omitempty"` // Language identifier (sql, java, javascript, go, xml, xslt, etc.)
+	Language string `json:"language,omitempty"` // Language identifier (sql, java, javascript, go, xml, xslt, conf, etc.)
 	Style    string `json:"style,omitempty"`    // Optional Tailwind CSS styling for wrapper (HTML only)
 }
 
@@ -43,6 +43,9 @@ func (c Code) String() string {
 func (c Code) ANSI() string {
 	if c.Content == "" {
 		return ""
+	}
+	if c.Language == "properties" || c.Language == "config" || c.Language == "conf" {
+		return formatProperties(c.Content).ANSI()
 	}
 
 	lexer := getLexer(c.Language)
@@ -73,11 +76,34 @@ func (c Code) ANSI() string {
 	return buf.String()
 }
 
+func formatProperties(content string) Text {
+	lines := strings.Split(content, "\n")
+	t := Text{}
+	for _, line := range lines {
+		line := strings.TrimSpace(line)
+		if strings.HasPrefix(line, "#") {
+			t = t.Append(line, "text-muted").NewLine()
+		} else {
+			parts := strings.SplitN(line, "=", 2)
+			if len(parts) == 2 {
+				t = t.Append(parts[0]).Append(" = ", "text-muted").Append(parts[1], "text-orange-500").NewLine()
+			} else {
+				t = t.Append(line).NewLine()
+			}
+		}
+	}
+	return t
+}
+
 // HTML returns the source code as syntax-highlighted HTML.
 // The output includes inline styles and proper HTML escaping.
 func (c Code) HTML() string {
 	if c.Content == "" {
 		return ""
+	}
+
+	if c.Language == "properties" || c.Language == "config" || c.Language == "conf" {
+		return formatProperties(c.Content).HTML()
 	}
 
 	if strings.Trim(c.Language, ".") == "xml" {
@@ -181,6 +207,10 @@ func normalizeLanguage(lang string) string {
 		"ruby":       "ruby",
 		"rb":         "ruby",
 		"php":        "php",
+		"conf":       "properties",
+		"config":     "properties",
+		"properties": "properties",
+		"ini":        "ini",
 	}
 
 	if normalized, ok := langMap[lang]; ok {

@@ -932,8 +932,6 @@ func (p *StructParser) StructToRowWithOptions(val reflect.Value, opts interface{
 		}
 		return row, nil
 	}
-	// Fall back to reflection-based approach
-	logger.V(4).Infof("Falling back to reflection-based parsing for struct %s (no PrettyRow interface)", structType.Name())
 	return p.StructToRow(val)
 }
 

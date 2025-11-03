@@ -89,6 +89,7 @@ type ExecResult struct {
 	Args     []string      `json:"args,omitempty"`
 	Error    error         `json:"error,omitempty"`
 	short    api.Text      `json:"-"`
+	process  *Process      `json:"-"`
 }
 
 func (r ExecResult) IsOk() bool {
@@ -208,6 +209,12 @@ func WithoutErrorOnNonZero() WrapperOption {
 	})
 }
 
+func WithDebug() WrapperOption {
+	return wrapperOptionFunc(func(p *Process) {
+		p.Debug()
+	})
+}
+
 func (p Process) clone() Process {
 	cloned := Process{
 		Cwd:              p.Cwd,
@@ -290,7 +297,7 @@ func (p *Process) WithShell(shell string) *Process {
 	return p
 }
 
-func (p Process) Result() *ExecResult {
+func (p *Process) Result() *ExecResult {
 
 	r := &ExecResult{
 		Stdout:   p.captureOutput.GetStdout(),
@@ -300,6 +307,7 @@ func (p Process) Result() *ExecResult {
 		Started:  p.Started,
 		Command:  p.Cmd,
 		short:    p.Short(),
+		process:  p,
 	}
 
 	if p.cmd != nil && p.cmd.ProcessState != nil {
@@ -324,6 +332,11 @@ func (p Process) Result() *ExecResult {
 		r.Duration = time.Since(*p.Started)
 	}
 	return r
+}
+
+// Refresh refreshes the ExecResult by re-fetching data from the underlying Process
+func (e *ExecResult) Refresh() *ExecResult {
+	return e.process.Result()
 }
 
 func (p Process) Out() string {

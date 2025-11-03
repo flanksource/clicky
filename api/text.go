@@ -20,20 +20,25 @@ func Human(content any, styles ...string) Text {
 		return t
 	case Textable:
 		return Text{}.Add(t)
-	case time.Time, *time.Time:
+	case time.Time:
 		return Text{
-			Content: t.(time.Time).Format(time.RFC3339),
+			Content: t.Format(time.RFC3339),
+			Style:   strings.Join(append(styles, "date"), " "),
+		}
+	case *time.Time:
+		return Text{
+			Content: t.Format(time.RFC3339),
 			Style:   strings.Join(append(styles, "date"), " "),
 		}
 	case time.Duration:
 		var v string
-		if time.Duration(t.Seconds()) < 5*time.Second {
+		if t < 5*time.Second {
 			v = fmt.Sprintf("%dms", t.Milliseconds())
-		} else if time.Duration(t.Seconds()) < 1*time.Minute {
+		} else if t < 1*time.Minute {
 			v = fmt.Sprintf("%.2fs", t.Seconds())
-		} else if time.Duration(t.Seconds()) < 1*time.Hour {
+		} else if t < 1*time.Hour {
 			v = fmt.Sprintf("%.1fm", t.Minutes())
-		} else if time.Duration(t.Seconds()) < 24*time.Hour {
+		} else if t < 24*time.Hour {
 			v = fmt.Sprintf("%.1fh", t.Hours())
 		} else {
 			v = commonsText.HumanizeDuration(t)
@@ -44,10 +49,17 @@ func Human(content any, styles ...string) Text {
 		}
 	case *time.Duration:
 		return Human(*t, styles...)
+	case int64:
+		return HumanNumber(t, styles...)
+	case int:
+		return HumanNumber(int64(t), styles...)
+	case int32:
+		return HumanNumber(int64(t), styles...)
 	case float32, float64:
 		return Text{
 			Content: fmt.Sprintf("%.2f", t),
-			Style:   strings.Join(append(styles, "number"), " ")}
+			Style:   strings.Join(append(styles, "number"), " "),
+		}
 
 	case bool:
 		if t {
@@ -58,6 +70,27 @@ func Human(content any, styles ...string) Text {
 	}
 
 	return Text{Content: fmt.Sprintf("%v", content), Style: strings.Join(styles, " ")}
+}
+
+var K = int64(1000)
+var M = K * K
+var B = M * K
+
+func HumanNumber(value int64, styles ...string) Text {
+	v := fmt.Sprintf("%d", value)
+	if value >= B {
+		v = fmt.Sprintf("%dB", value/B)
+	} else if value >= M {
+		v = fmt.Sprintf("%dM", value/M)
+	} else if value >= 50*K {
+		v = fmt.Sprintf("%d", value/K)
+	} else if value >= K {
+		v = fmt.Sprintf("%.1fK", float64(value)/float64(K))
+	}
+	return Text{
+		Content: v,
+		Style:   strings.Join(append(styles, "number"), " "),
+	}
 }
 
 type HtmlElement struct {
@@ -95,6 +128,12 @@ var BR = HtmlElement{
 	Tag:      "br",
 	Content:  "",
 	Fallback: Text{Content: "\n"},
+}
+
+var HR = HtmlElement{
+	Tag:      "hr",
+	Content:  "",
+	Fallback: Text{Content: "\n--------------------------\n"},
 }
 
 type Comment string
@@ -265,6 +304,10 @@ func (l List) HTML() string {
 }
 
 func (t Text) NewLine() Text {
+	return t.Add(BR).Indent(t.indent)
+}
+
+func (t Text) HR() Text {
 	return t.Add(BR).Indent(t.indent)
 }
 
@@ -1065,7 +1108,7 @@ func KeyValue(key string, value any, styles ...string) KeyValuePair {
 	}
 }
 
-func Map(m map[string]any, styles ...string) DescriptionList {
+func Map[T any](m map[string]T, styles ...string) DescriptionList {
 	style := "compact"
 	if len(styles) > 0 {
 		style = strings.Join(styles, " ")
