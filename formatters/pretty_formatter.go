@@ -1,7 +1,9 @@
 package formatters
 
 import (
+	"bytes"
 	"fmt"
+	"os"
 	"reflect"
 	"sort"
 	"strconv"
@@ -11,6 +13,9 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/flanksource/clicky/api"
 	"github.com/flanksource/commons/logger"
+	"github.com/olekukonko/tablewriter"
+	"github.com/olekukonko/tablewriter/tw"
+	"golang.org/x/term"
 )
 
 // PrettyFormatter handles formatting of structs with pretty tags
@@ -158,21 +163,8 @@ func (p *PrettyFormatter) renderTableFromData(items []interface{}, fieldDefs []a
 		fieldMap[fieldDef.Name] = fieldDef
 	}
 
-	// Create rows
-	var rows [][]string
-
-	// Header row
-	headerRow := make([]string, len(headers))
-	for i, header := range headers {
-		style := lipgloss.NewStyle().Bold(true)
-		if !p.NoColor {
-			style = style.Foreground(p.Theme.Primary)
-		}
-		headerRow[i] = p.applyStyle(header, style)
-	}
-	rows = append(rows, headerRow)
-
-	// Data rows
+	// Build data rows
+	var dataRows [][]string
 	for _, item := range items {
 		itemMap, ok := item.(map[string]interface{})
 		if !ok {
@@ -189,10 +181,10 @@ func (p *PrettyFormatter) renderTableFromData(items []interface{}, fieldDefs []a
 				row[i] = ""
 			}
 		}
-		rows = append(rows, row)
+		dataRows = append(dataRows, row)
 	}
 
-	return p.formatTableRows(rows), nil
+	return p.renderTableWithWriter(headers, dataRows)
 }
 
 // renderTableFromMaps renders a table from map items
@@ -213,21 +205,8 @@ func (p *PrettyFormatter) renderTableFromMaps(items []interface{}) (string, erro
 	}
 	sort.Strings(headers)
 
-	// Create rows
-	var rows [][]string
-
-	// Header row
-	headerRow := make([]string, len(headers))
-	for i, header := range headers {
-		style := lipgloss.NewStyle().Bold(true)
-		if !p.NoColor {
-			style = style.Foreground(p.Theme.Primary)
-		}
-		headerRow[i] = p.applyStyle(header, style)
-	}
-	rows = append(rows, headerRow)
-
-	// Data rows
+	// Build data rows
+	var dataRows [][]string
 	for _, item := range items {
 		itemMap, ok := item.(map[string]interface{})
 		if !ok {
@@ -250,10 +229,10 @@ func (p *PrettyFormatter) renderTableFromMaps(items []interface{}) (string, erro
 				row[i] = ""
 			}
 		}
-		rows = append(rows, row)
+		dataRows = append(dataRows, row)
 	}
 
-	return p.formatTableRows(rows), nil
+	return p.renderTableWithWriter(headers, dataRows)
 }
 
 // parseStruct processes a struct and its tags
@@ -553,6 +532,12 @@ func (p *PrettyFormatter) formatDefaultWithVisited(val reflect.Value, visited ma
 	case reflect.Slice, reflect.Array:
 		return p.formatSliceWithVisited(val, visited)
 	case reflect.Struct:
+		// Check if struct implements Textable interface
+		if val.CanInterface() {
+			if textable, ok := val.Interface().(api.Textable); ok {
+				return textable.ANSI()
+			}
+		}
 		return p.formatStructWithVisited(val, visited)
 	default:
 		return fmt.Sprint(val.Interface())
@@ -609,6 +594,35 @@ func (p *PrettyFormatter) formatSliceWithVisited(val reflect.Value, visited map[
 		defer func() { delete(visited, addr) }()
 	}
 
+	// Check if slice elements implement Textable - if so, render one per line
+	if val.Len() > 0 {
+		firstElem := val.Index(0)
+		// Dereference pointers to check the actual type
+		checkElem := firstElem
+		for checkElem.Kind() == reflect.Ptr && !checkElem.IsNil() {
+			checkElem = checkElem.Elem()
+		}
+		if checkElem.CanInterface() {
+			if _, ok := checkElem.Interface().(api.Textable); ok {
+				// All elements are Textable - render one per line
+				var lines []string
+				for i := 0; i < val.Len(); i++ {
+					element := val.Index(i)
+					// Dereference pointer if needed
+					for element.Kind() == reflect.Ptr && !element.IsNil() {
+						element = element.Elem()
+					}
+					if element.CanInterface() {
+						if textable, ok := element.Interface().(api.Textable); ok {
+							lines = append(lines, textable.ANSI())
+						}
+					}
+				}
+				return strings.Join(lines, "\n")
+			}
+		}
+	}
+
 	var parts []string
 	for i := 0; i < val.Len(); i++ {
 		element := val.Index(i)
@@ -656,6 +670,14 @@ func (p *PrettyFormatter) formatStructWithVisited(val reflect.Value, visited map
 		if jsonTag != "" && jsonTag != "-" {
 			if parts := strings.Split(jsonTag, ","); parts[0] != "" {
 				fieldName = parts[0]
+			}
+		}
+
+		// Check if field value implements Textable interface
+		if fieldVal.CanInterface() {
+			if textable, ok := fieldVal.Interface().(api.Textable); ok {
+				parts = append(parts, fmt.Sprintf("%s:%s", fieldName, textable.ANSI()))
+				continue
 			}
 		}
 
@@ -793,6 +815,53 @@ func (p *PrettyFormatter) compareValues(a, b interface{}) bool {
 	return fmt.Sprintf("%v", a) < fmt.Sprintf("%v", b)
 }
 
+// renderTableWithWriter renders a table using the tablewriter library.
+// It handles both struct-based and map-based items, extracting headers and formatting rows.
+func (p *PrettyFormatter) renderTableWithWriter(headers []string, dataRows [][]string) (string, error) {
+	if len(headers) == 0 {
+		return "", nil
+	}
+
+	// Create buffer to capture table output
+	var buf bytes.Buffer
+
+	width, _, _ := term.GetSize(int(os.Stderr.Fd()))
+	if width == 0 {
+		width = 120
+	}
+
+	// Create tablewriter instance with word wrapping enabled
+	// Set reasonable table max width to enable wrapping (this is distributed across columns)
+	table := tablewriter.NewTable(&buf,
+		tablewriter.WithRowAutoWrap(tw.WrapTruncate),
+
+		tablewriter.WithHeaderAutoFormat(tw.On),
+		tablewriter.WithMaxWidth(width), // Set max table width to enable wrapping
+	)
+
+	// Set headers
+	table.Header(headers)
+
+	// Append data rows
+	for _, row := range dataRows {
+		// Convert []string to []any for Append method
+		rowData := make([]any, len(row))
+		for i, cell := range row {
+			rowData[i] = cell
+		}
+		if err := table.Append(rowData); err != nil {
+			return "", fmt.Errorf("failed to append row: %w", err)
+		}
+	}
+
+	// Render the table
+	if err := table.Render(); err != nil {
+		return "", fmt.Errorf("failed to render table: %w", err)
+	}
+
+	return buf.String(), nil
+}
+
 // renderTable renders items as a formatted table
 func (p *PrettyFormatter) renderTable(items []interface{}) (string, error) {
 	if len(items) == 0 {
@@ -805,30 +874,17 @@ func (p *PrettyFormatter) renderTable(items []interface{}) (string, error) {
 		return "", err
 	}
 
-	// Create table
-	var rows [][]string
-
-	// Add header row
-	headerRow := make([]string, len(headers))
-	for i, header := range headers {
-		style := lipgloss.NewStyle().Bold(true)
-		if !p.NoColor {
-			style = style.Foreground(p.Theme.Primary)
-		}
-		headerRow[i] = p.applyStyle(header, style)
-	}
-	rows = append(rows, headerRow)
-
-	// Add data rows
+	// Build data rows
+	var dataRows [][]string
 	for _, item := range items {
 		row, err := p.getTableRow(item, headers)
 		if err != nil {
 			continue // Skip invalid rows
 		}
-		rows = append(rows, row)
+		dataRows = append(dataRows, row)
 	}
 
-	return p.formatTableRows(rows), nil
+	return p.renderTableWithWriter(headers, dataRows)
 }
 
 // getTableHeaders extracts headers from a struct
@@ -908,116 +964,6 @@ func (p *PrettyFormatter) getTableRow(item interface{}, headers []string) ([]str
 	}
 
 	return row, nil
-}
-
-// formatTableRows formats table rows with proper alignment
-func (p *PrettyFormatter) formatTableRows(rows [][]string) string {
-	if len(rows) == 0 {
-		return ""
-	}
-
-	// Calculate column widths
-	colWidths := make([]int, len(rows[0]))
-	for _, row := range rows {
-		for i, cell := range row {
-			// Strip ANSI codes for width calculation
-			cellWidth := len(stripAnsi(cell))
-			if cellWidth > colWidths[i] {
-				colWidths[i] = cellWidth
-			}
-		}
-	}
-
-	// Create table style
-	borderStyle := lipgloss.NewStyle()
-	if !p.NoColor {
-		borderStyle = borderStyle.Foreground(p.Theme.Muted)
-	}
-
-	var result strings.Builder
-
-	// Top border
-	result.WriteString(p.createTableBorder(colWidths, "┌", "┬", "┐", "─", borderStyle))
-	result.WriteString("\n")
-
-	// Header row
-	if len(rows) > 0 {
-		result.WriteString(p.formatTableRow(rows[0], colWidths, borderStyle))
-		result.WriteString("\n")
-
-		// Header separator
-		if len(rows) > 1 {
-			result.WriteString(p.createTableBorder(colWidths, "├", "┼", "┤", "─", borderStyle))
-			result.WriteString("\n")
-		}
-	}
-
-	// Data rows
-	for i := 1; i < len(rows); i++ {
-		result.WriteString(p.formatTableRow(rows[i], colWidths, borderStyle))
-		result.WriteString("\n")
-	}
-
-	// Bottom border
-	result.WriteString(p.createTableBorder(colWidths, "└", "┴", "┘", "─", borderStyle))
-
-	return result.String()
-}
-
-// formatTableRow formats a single table row
-func (p *PrettyFormatter) formatTableRow(row []string, colWidths []int, borderStyle lipgloss.Style) string {
-	var result strings.Builder
-
-	result.WriteString(p.applyStyle("│", borderStyle))
-	for i, cell := range row {
-		padding := colWidths[i] - len(stripAnsi(cell))
-		result.WriteString(" ")
-		result.WriteString(cell)
-		result.WriteString(strings.Repeat(" ", padding))
-		result.WriteString(" ")
-		result.WriteString(p.applyStyle("│", borderStyle))
-	}
-
-	return result.String()
-}
-
-// createTableBorder creates a table border line
-func (p *PrettyFormatter) createTableBorder(colWidths []int, left, mid, right, fill string, style lipgloss.Style) string {
-	var result strings.Builder
-
-	result.WriteString(p.applyStyle(left, style))
-	for i, width := range colWidths {
-		result.WriteString(p.applyStyle(strings.Repeat(fill, width+2), style))
-		if i < len(colWidths)-1 {
-			result.WriteString(p.applyStyle(mid, style))
-		}
-	}
-	result.WriteString(p.applyStyle(right, style))
-
-	return result.String()
-}
-
-// stripAnsi removes ANSI escape codes for width calculation
-func stripAnsi(s string) string {
-	// Simple ANSI stripping - in production you might want a more robust solution
-	var result strings.Builder
-	inEscape := false
-
-	for _, r := range s {
-		if r == '\x1b' {
-			inEscape = true
-			continue
-		}
-		if inEscape {
-			if r == 'm' {
-				inEscape = false
-			}
-			continue
-		}
-		result.WriteRune(r)
-	}
-
-	return result.String()
 }
 
 // formatAsTree formats a value as a tree structure
