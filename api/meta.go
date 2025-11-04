@@ -18,34 +18,8 @@ type PrettyData struct {
 	TypedValue
 
 	Schema *PrettyObject
-	// Values stores regular field values (non-table, non-tree)
-	Values map[string]FieldValue
-	// Tables stores tabular data by field name
-	// TODO: This should be unified with TypedValue.Table in the refactoring
-	Tables map[string][]PrettyDataRow
-	// Original stores the original data interface for JSON/YAML marshaling
+
 	Original interface{}
-}
-
-// PrettyDataRow represents a single row in a table
-type PrettyDataRow map[string]FieldValue
-
-// GetValue returns a field value by name from the Values map
-func (pd *PrettyData) GetValue(name string) (FieldValue, bool) {
-	if pd.Values == nil {
-		return FieldValue{}, false
-	}
-	v, ok := pd.Values[name]
-	return v, ok
-}
-
-// GetTable returns a table by name from the Tables map
-func (pd *PrettyData) GetTable(name string) ([]PrettyDataRow, bool) {
-	if pd.Tables == nil {
-		return nil, false
-	}
-	t, ok := pd.Tables[name]
-	return t, ok
 }
 
 // TreeNode defines the interface for hierarchical tree structures.
@@ -76,11 +50,13 @@ type TableHeaderMixin interface {
 }
 
 type TableRowMixin interface {
-	TableCells() TextList
+	TableCells() TableRow
 }
 
+type PrettyDataRow map[string]TypedValue
+
 type TableRowMixin2 interface {
-	PrettyRow(opt any) map[string]Text
+	PrettyRow(opt any) PrettyDataRow
 }
 
 func NewTree[T TreeNode](nodes ...T) TextTree {
@@ -110,21 +86,35 @@ func NewTable[T TableMixin](o []T) TextTable {
 	table.Headers = o[0].TableHeaders()
 
 	for _, v := range o {
+
 		table.Rows = append(table.Rows, v.TableCells())
 	}
 
 	return table
 }
 
-func NewTableFromRows[T TableRowMixin2](o []T) TextTable {
+func NewTableFromMixin[T TableRowMixin2](o []T) TextTable {
 	table := TextTable{}
 
 	if len(o) == 0 {
 		return table
 	}
+	var rows []PrettyDataRow
+	for _, v := range o {
+		rows = append(rows, v.PrettyRow(nil))
+	}
+	return NewTableFromRows(rows)
+
+}
+
+func NewTableFromRows(o []PrettyDataRow) TextTable {
+	table := TextTable{}
+	if len(o) == 0 {
+		return table
+	}
 
 	// Use the first row to determine headers
-	firstRow := o[0].PrettyRow(nil)
+	firstRow := o[0]
 
 	headers := lo.Keys(firstRow)
 	sort.StringSlice(headers).Sort()
@@ -132,14 +122,13 @@ func NewTableFromRows[T TableRowMixin2](o []T) TextTable {
 		table.Headers = append(table.Headers, Text{Content: key})
 	}
 
-	for _, v := range o {
-		rowMap := v.PrettyRow(nil)
-		row := TextList{}
+	for _, rowMap := range o {
+		row := TableRow{}
 		for _, header := range headers {
 			if cell, exists := rowMap[header]; exists {
-				row = append(row, cell)
+				row[header] = cell
 			} else {
-				row = append(row, Text{}) // Empty cell
+				row[header] = TypedValue{} // Empty cell
 			}
 		}
 		table.Rows = append(table.Rows, row)
@@ -148,16 +137,41 @@ func NewTableFromRows[T TableRowMixin2](o []T) TextTable {
 	return table
 }
 
+type TableRow map[string]TypedValue
 type TextTable struct {
 	Headers     TextList
-	Rows        []TextList
+	Rows        []TableRow
 	Interactive bool
+}
+
+func (tt TextTable) AsString(row TableRow) []string {
+	var result []string
+	for _, header := range tt.Headers {
+		if cell, exists := row[header.String()]; exists {
+			result = append(result, cell.String())
+		} else {
+			result = append(result, "")
+		}
+	}
+	return result
 }
 
 type TextTree struct {
 	Node     Textable
 	Children []TextTree
 	depth    int
+}
+
+func (tt TextTree) Visit(visitor VisitorFunc) bool {
+	if !visitor(NewTypedValue(tt.Node)) {
+		return false
+	}
+	for _, child := range tt.Children {
+		if !child.Visit(visitor) {
+			return false
+		}
+	}
+	return true
 }
 
 func (tt TextTree) String() string {
@@ -212,6 +226,118 @@ type TypedValue struct {
 	Table      *TextTable
 	Tree       *TextTree
 	IsCircular bool
+}
+
+type VisitorFunc func(TypedValue) bool
+
+func (tv TypedValue) FirstTable() *TextTable {
+	if tv.Table != nil {
+		return tv.Table
+	}
+	var table *TextTable
+	tv.Visit(func(t TypedValue) bool {
+		if t.Table != nil {
+			table = t.Table
+			return false
+		}
+		return true
+	})
+	return table
+}
+
+func (tv TypedValue) Visit(visitor VisitorFunc) bool {
+	if !visitor(tv) {
+		return false
+	}
+	if tv.Slice != nil {
+		for _, item := range *tv.Slice {
+			if !NewTypedValue(item).Visit(visitor) {
+				return false
+			}
+		}
+	}
+	if tv.Map != nil {
+		for _, item := range *tv.Map {
+			if !NewTypedValue(item).Visit(visitor) {
+				return false
+			}
+		}
+	}
+	if tv.TypedMap != nil {
+		for _, item := range *tv.TypedMap {
+			if !item.Visit(visitor) {
+				return false
+			}
+		}
+	}
+	if tv.TypedList != nil {
+		for _, item := range *tv.TypedList {
+			if !item.Visit(visitor) {
+				return false
+			}
+		}
+	}
+	if tv.Table != nil {
+		for _, row := range tv.Table.Rows {
+			for _, item := range row {
+				if !item.Visit(visitor) {
+					return false
+				}
+			}
+		}
+	}
+	if tv.Tree != nil {
+		if tv.Tree.Node != nil {
+			tv.Tree.Node.(TypedValue).Visit(visitor)
+		}
+		for _, child := range tv.Tree.Children {
+			if !child.Visit(visitor) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func TryTypedValue(o any) *TypedValue {
+	switch v := o.(type) {
+	case *PrettyData:
+		return &TypedValue{Textable: v}
+	case Textable:
+		return &TypedValue{Textable: v}
+	case TextList:
+		return &TypedValue{Slice: &v}
+	case TextMap:
+		return &TypedValue{Map: &v}
+	case TypedMap:
+		return &TypedValue{TypedMap: &v}
+	case TypedList:
+		return &TypedValue{TypedList: &v}
+	case TextTable:
+		return &TypedValue{Table: &v}
+	case TextTree:
+		return &TypedValue{Tree: &v}
+	case Pretty:
+		return &TypedValue{Textable: v.Pretty()}
+	case TreeNode:
+		return &TypedValue{Tree: lo.ToPtr(NewTree(v))}
+	case TreeMixin:
+		return &TypedValue{Tree: lo.ToPtr(NewTree(v.Tree()))}
+	case []TableMixin:
+		return &TypedValue{Table: lo.ToPtr(NewTable(v))}
+	case []TableRowMixin2:
+		return &TypedValue{Table: lo.ToPtr(NewTableFromMixin(v))}
+	case []PrettyDataRow:
+		return &TypedValue{Table: lo.ToPtr(NewTableFromRows(v))}
+	}
+	return nil
+}
+
+func NewTypedValue(o any) TypedValue {
+	if v := TryTypedValue(o); v != nil {
+		return *v
+	}
+	return TypedValue{Textable: Text{Content: fmt.Sprintf("%v", o)}}
 }
 
 func (tv TypedValue) Value() Textable {

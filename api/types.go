@@ -302,7 +302,6 @@ func (v FieldValue) formatArray() string {
 	return fmt.Sprintf("%v", v.Value)
 }
 
-
 // Color determines the display color by matching the field value against
 // ColorOptions patterns, supporting exact matches and numeric comparisons.
 func (v FieldValue) Color() string {
@@ -620,7 +619,7 @@ func (f PrettyField) Parse(value interface{}) (FieldValue, error) {
 }
 
 // createText creates a Text object with appropriate formatting and styling
-func (v FieldValue) createText() *Text {
+func (v FieldValue) createText() Textable {
 	// Handle null values
 	if v.Value == nil {
 		return &Text{
@@ -631,12 +630,7 @@ func (v FieldValue) createText() *Text {
 
 	// Handle nested PrettyData structures
 	if prettyData, ok := v.Value.(*PrettyData); ok {
-		// Recursively format the nested PrettyData
-		// This will be handled by the formatter calling code
-		// For now, just indicate it's a nested structure
-		return &Text{
-			Content: fmt.Sprintf("(nested: %d fields)", len(prettyData.Values)),
-		}
+		return prettyData
 	}
 
 	var content string
@@ -857,65 +851,6 @@ var RenderFuncRegistry = map[string]RenderFunc{}
 // These functions can be referenced in field configurations for specialized formatting.
 func RegisterRenderFunc(name string, fn RenderFunc) {
 	RenderFuncRegistry[name] = fn
-}
-
-// Pretty converts PrettyData to a TextList representation.
-// This is the primary method for formatters - call .JoinNewlines().ANSI()/HTML()/Markdown() on the result.
-func (pd *PrettyData) Pretty() TextList {
-	if pd == nil {
-		return TextList{}
-	}
-
-	list := TextList{}
-
-	// Process regular fields
-	for _, field := range pd.Schema.Fields {
-		if field.Format == FormatHide || field.Format == FormatTable {
-			continue
-		}
-
-		fieldValue, ok := pd.Values[field.Name]
-		if !ok {
-			continue
-		}
-
-		label := field.Label
-		if label == "" {
-			label = PrettifyFieldName(field.Name)
-		}
-
-		// Handle nested PrettyData structures
-		if nestedData, ok := fieldValue.Value.(*PrettyData); ok {
-			// Add label with colon on its own line
-			labelText := Text{}.
-				Append(label, "text-purple-500").
-				Append(":", "text-muted")
-			list = append(list, labelText)
-
-			// Add indented nested content
-			nestedList := nestedData.Pretty()
-			for _, nestedItem := range nestedList.Indent() {
-				list = append(list, nestedItem)
-			}
-		} else {
-			// Build field text: "Label: Value"
-			fieldText := Text{}.
-				Append(label, "text-purple-500").
-				Append(": ", "text-muted")
-			if fieldValue.Text != nil {
-				fieldText = fieldText.Add(fieldValue.Text)
-			} else {
-				fieldText = fieldText.Append(fmt.Sprintf("%v", fieldValue.Value), "")
-			}
-
-			list = append(list, fieldText)
-		}
-	}
-
-	// Note: Table fields are skipped here and handled separately by formatters
-	// Phase 3 will implement proper Table object generation in parsers
-
-	return list
 }
 
 // FormatManager defines the interface for converting data to various output formats.

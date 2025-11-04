@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
@@ -51,7 +52,7 @@ func (t Text) MarshalJSON() ([]byte, error) {
 	for _, child := range t.Children {
 		s += child.String()
 	}
-	return []byte(s), nil
+	return json.Marshal(s)
 
 }
 
@@ -560,6 +561,14 @@ func mimeTypeToLanguage(mime string) string {
 // Use JoinNewlines() to create a single Textable that joins all items with newlines.
 type TextList []Textable
 
+func (tl TextList) Strings() []string {
+	result := make([]string, len(tl))
+	for i, item := range tl {
+		result[i] = item.String()
+	}
+	return result
+}
+
 // JoinNewlines joins all items with newlines and returns a single Textable.
 // This is the primary method for rendering a TextList - call .ANSI(), .HTML(), or .Markdown() on the result.
 func (tl TextList) JoinNewlines() Textable {
@@ -571,7 +580,7 @@ func (tl TextList) JoinNewlines() Textable {
 	for i, item := range tl {
 		if i > 0 {
 			// Add newline between items
-			result = result.Add(Text{Content: "\n"})
+			result = result.NewLine()
 		}
 		result = result.Add(item)
 	}
@@ -587,4 +596,49 @@ func (tl TextList) Indent() TextList {
 		indented[i] = Text{Content: "\t"}.Add(item)
 	}
 	return indented
+}
+
+func (tl TextList) String() string {
+	return tl.JoinNewlines().String()
+}
+func (tl TextList) AsANSI() []string {
+	result := make([]string, len(tl))
+	for i, item := range tl {
+		result[i] = item.ANSI()
+	}
+	return result
+}
+
+func (tl TextList) AsHTML() []string {
+	result := make([]string, len(tl))
+	for i, item := range tl {
+		result[i] = item.HTML()
+	}
+	return result
+}
+
+func (tl TextList) AsMarkdown() []string {
+	result := make([]string, len(tl))
+	for i, item := range tl {
+		result[i] = item.Markdown()
+	}
+	return result
+}
+
+func (tl TextList) AsString() []string {
+	result := make([]string, len(tl))
+	for i, item := range tl {
+		result[i] = item.String()
+	}
+	return result
+}
+
+func (tl TextList) ANSI() string {
+	return tl.JoinNewlines().ANSI()
+}
+func (tl TextList) HTML() string {
+	return tl.JoinNewlines().HTML()
+}
+func (tl TextList) Markdown() string {
+	return tl.JoinNewlines().Markdown()
 }

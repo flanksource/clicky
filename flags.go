@@ -84,7 +84,7 @@ func (a *AllFlags) UseFlags() {
 		a.Color = true
 	}
 	logger.Configure(a.Flags)
-	logger.V(6).Infof("Using logger flags: %s", MustFormat(*a, FormatOptions{Pretty: true}))
+	logger.V(6).Infof("Using flags: %s", MustFormat(*a, FormatOptions{Pretty: true}))
 	a.Apply()
 	UseFormatter(a.FormatOptions)
 
