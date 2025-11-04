@@ -106,15 +106,19 @@ var _ = ginkgo.Describe("StructToRowWithOptions", func() {
 			Expect(exists).To(BeTrue())
 			Expect(nameField.Value).To(Equal("Interface Test"))
 			Expect(nameField.Text).ToNot(BeNil())
-			Expect(nameField.Text.Content).To(Equal("Interface Test"))
-			Expect(nameField.Text.Style).To(Equal("font-bold"))
+			nameText, ok := nameField.Text.(*Text)
+			Expect(ok).To(BeTrue())
+			Expect(nameText.Content).To(Equal("Interface Test"))
+			Expect(nameText.Style).To(Equal("font-bold"))
 
 			ginkgo.By("verifying Count field has correct style")
 			countField, exists := row["Count"]
 			Expect(exists).To(BeTrue())
 			Expect(countField.Value).To(Equal("7"))
 			Expect(countField.Text).ToNot(BeNil())
-			Expect(countField.Text.Style).To(Equal("text-blue-600"))
+			countText, ok := countField.Text.(*Text)
+			Expect(ok).To(BeTrue())
+			Expect(countText.Style).To(Equal("text-blue-600"))
 		})
 	})
 
