@@ -24,7 +24,8 @@ var secretKeywords = []string{
 }
 
 // stripANSI removes ANSI escape sequences from a string
-func stripANSI(s string) string {
+// StripANSI removes ANSI escape codes from a string
+func StripANSI(s string) string {
 	var result strings.Builder
 	i := 0
 	for i < len(s) {
@@ -49,7 +50,7 @@ func TokenizeLine(line string) []Token {
 	hasANSI := strings.Contains(line, "\x1b[")
 	workingLine := line
 	if hasANSI {
-		workingLine = stripANSI(line)
+		workingLine = StripANSI(line)
 	}
 
 	var tokens []Token

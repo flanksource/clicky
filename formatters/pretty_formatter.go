@@ -3,7 +3,6 @@ package formatters
 import (
 	"bytes"
 	"fmt"
-	"os"
 	"reflect"
 	"sort"
 	"strconv"
@@ -15,7 +14,6 @@ import (
 	"github.com/flanksource/commons/logger"
 	"github.com/olekukonko/tablewriter"
 	"github.com/olekukonko/tablewriter/tw"
-	"golang.org/x/term"
 )
 
 // PrettyFormatter handles formatting of structs with pretty tags
@@ -74,79 +72,9 @@ func (p *PrettyFormatter) FormatPrettyData(data *api.PrettyData) (string, error)
 		return "", nil
 	}
 
-	var result []string
-
-	// Format regular fields
-	for _, field := range data.Schema.Fields {
-		if field.Format == api.FormatHide {
-			continue
-		}
-
-		// Skip table fields - they'll be handled separately
-		if field.Format == api.FormatTable {
-			continue
-		}
-
-		if fieldValue, ok := data.Values[field.Name]; ok {
-			// Use the field's label or name
-			label := field.Label
-			if label == "" {
-				label = api.PrettifyFieldName(field.Name)
-			}
-
-			// Handle nested PrettyData structures
-			if nestedData, ok := fieldValue.Value.(*api.PrettyData); ok {
-				// Add the field label first
-				result = append(result, label+":")
-				// Recursively format the nested PrettyData with indentation
-				nestedOutput, err := p.FormatPrettyData(nestedData)
-				if err == nil {
-					// Add indentation to each line
-					lines := strings.Split(nestedOutput, "\n")
-					for _, line := range lines {
-						if line != "" {
-							result = append(result, "\t"+line)
-						}
-					}
-				}
-			} else {
-				formatted := p.formatField(label, reflect.ValueOf(fieldValue.Value), field)
-				result = append(result, formatted)
-			}
-		}
-	}
-
-	// Format table fields
-	for _, field := range data.Schema.Fields {
-		if field.Format == api.FormatTable {
-			if tableRows, ok := data.Tables[field.Name]; ok && len(tableRows) > 0 {
-				// Convert table rows to items
-				var items []interface{}
-				for _, row := range tableRows {
-					// Convert row map to struct-like map for table rendering
-					rowMap := make(map[string]interface{})
-					for k, v := range row {
-						rowMap[k] = v.Value
-					}
-					items = append(items, rowMap)
-				}
-
-				// Render table - check if field definitions are available
-				var tableStr string
-				var err error
-				if len(field.Fields) > 0 {
-					tableStr, err = p.renderTableFromData(items, field.Fields)
-				} else {
-					tableStr, err = p.renderTableFromMaps(items)
-				}
-				if err == nil {
-					result = append(result, tableStr)
-				}
-			}
-		}
-	}
-
-	return strings.Join(result, "\n"), nil
+	// Use PrettyData.Pretty() to get structured representation,
+	// then join with newlines and render to ANSI
+	return data.Pretty().JoinNewlines().ANSI(), nil
 }
 
 // renderTableFromData renders a table from map items using field definitions
@@ -294,6 +222,7 @@ func (p *PrettyFormatter) parseStruct(val reflect.Value) (string, error) {
 }
 
 // formatField formats a single field
+// Deprecated: Use formatFieldLabel with FieldValue.ANSI() instead
 func (p *PrettyFormatter) formatField(name string, val reflect.Value, field api.PrettyField) string {
 	labelStyle := lipgloss.NewStyle().Bold(true)
 	if !p.NoColor {
@@ -308,6 +237,7 @@ func (p *PrettyFormatter) formatField(name string, val reflect.Value, field api.
 }
 
 // formatValue formats a value based on the pretty field configuration
+// Deprecated: Formatting logic should be in FieldValue.Text, use FieldValue.ANSI() instead
 func (p *PrettyFormatter) formatValue(val reflect.Value, field api.PrettyField) string {
 	return p.formatValueWithVisited(val, field, make(map[uintptr]bool))
 }
@@ -825,18 +755,15 @@ func (p *PrettyFormatter) renderTableWithWriter(headers []string, dataRows [][]s
 	// Create buffer to capture table output
 	var buf bytes.Buffer
 
-	width, _, _ := term.GetSize(int(os.Stderr.Fd()))
-	if width == 0 {
-		width = 120
-	}
+	width := api.GetTerminalWidth()
 
 	// Create tablewriter instance with word wrapping enabled
 	// Set reasonable table max width to enable wrapping (this is distributed across columns)
 	table := tablewriter.NewTable(&buf,
 		tablewriter.WithRowAutoWrap(tw.WrapTruncate),
-
+		tablewriter.WithDebug(true),
 		tablewriter.WithHeaderAutoFormat(tw.On),
-		tablewriter.WithMaxWidth(width), // Set max table width to enable wrapping
+		tablewriter.WithMaxWidth(width),
 	)
 
 	// Set headers
@@ -858,6 +785,8 @@ func (p *PrettyFormatter) renderTableWithWriter(headers []string, dataRows [][]s
 	if err := table.Render(); err != nil {
 		return "", fmt.Errorf("failed to render table: %w", err)
 	}
+
+	logger.Errorf(table.Debug().String())
 
 	return buf.String(), nil
 }
