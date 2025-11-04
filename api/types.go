@@ -1427,21 +1427,8 @@ func (pd *PrettyData) Pretty() TextList {
 		}
 	}
 
-	// Process table fields - for now, create placeholder text
-	// Phase 2 will replace this with actual Table objects
-	for _, field := range pd.Schema.Fields {
-		if field.Format == FormatTable {
-			if tableRows, ok := pd.Tables[field.Name]; ok && len(tableRows) > 0 {
-				// Placeholder for table rendering
-				// This will be replaced in Phase 2 when Tables contain formatters.Table
-				tableText := Text{
-					Content: fmt.Sprintf("[Table: %s with %d rows - rendering pending Phase 2]", field.Name, len(tableRows)),
-					Style:   "text-muted",
-				}
-				list = append(list, tableText)
-			}
-		}
-	}
+	// Note: Table fields are skipped here and handled separately by formatters
+	// Phase 3 will implement proper Table object generation in parsers
 
 	return list
 }

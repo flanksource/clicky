@@ -106,21 +106,25 @@ func TestFormatterMatrix(t *testing.T) {
 				if !strings.Contains(output, "Test Product") {
 					t.Error("Should contain name")
 				}
-				if !strings.Contains(output, "$299.99") {
+
+				// Strip ANSI codes for content checks
+				stripped := text.StripANSI(output)
+
+				if !strings.Contains(stripped, "$299.99") {
 					t.Error("Should format currency")
 				}
 				// Nested map formatting
-				if !strings.Contains(output, "Category: electronics") {
+				if !strings.Contains(stripped, "Category: electronics") {
 					t.Error("Should display nested map fields with proper formatting")
 				}
-				if !strings.Contains(output, "Street: 123 Test St") {
+				if !strings.Contains(stripped, "Street: 123 Test St") {
 					t.Error("Should display address fields")
 				}
-				if !strings.Contains(output, "Latitude: 37.7749") {
+				if !strings.Contains(stripped, "Latitude: 37.7749") {
 					t.Error("Should display deeply nested fields")
 				}
 				// Date fields should be present (timezone-agnostic)
-				if !strings.Contains(output, "Created At:") {
+				if !strings.Contains(stripped, "Created At:") {
 					t.Error("Should display created_at field")
 				}
 			},
