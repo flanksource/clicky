@@ -43,60 +43,14 @@ func (f *MarkdownFormatter) Format(data interface{}) (string, error) {
 
 // FormatPrettyData formats PrettyData as Markdown
 func (f *MarkdownFormatter) FormatPrettyData(data *api.PrettyData, opts FormatOptions) (string, error) {
-	var sections []string
-	var summaryFields []api.PrettyField
-	var tableFields []api.PrettyField
-	var treeFields []api.PrettyField
 
-	// Separate special format fields from summary fields
-	for _, field := range data.Schema.Fields {
-		switch field.Format {
-		case api.FormatTable:
-			tableFields = append(tableFields, field)
-		case api.FormatTree:
-			treeFields = append(treeFields, field)
-		default:
-			summaryFields = append(summaryFields, field)
-		}
-	}
-
-	// Format summary fields as definition list
-	if len(summaryFields) > 0 {
-		summaryOutput := f.formatSummaryFieldsData(summaryFields, data.Values, opts)
-		if summaryOutput != "" {
-			sections = append(sections, summaryOutput)
-		}
-	}
-
-	// Format tables
-	for _, field := range tableFields {
-		tableData, exists := data.Tables[field.Name]
-		if exists && len(tableData) > 0 {
-			tableOutput, err := f.formatTableData(tableData, field, opts)
-			if err != nil {
-				return "", err
-			}
-			sections = append(sections, tableOutput)
-		}
-	}
-
-	// Format tree fields
-	for _, field := range treeFields {
-		if fieldValue, exists := data.Values[field.Name]; exists {
-			treeOutput := f.formatTreeData(field, fieldValue, opts)
-			if treeOutput != "" {
-				sections = append(sections, treeOutput)
-			}
-		}
-	}
-
-	return strings.Join(sections, "\n\n"), nil
+	return data.Markdown(), nil
 }
 
 // formatSummaryFieldsData formats summary fields as Markdown definition list
-func (f *MarkdownFormatter) formatSummaryFieldsData(fields []api.PrettyField, values map[string]api.FieldValue, opts FormatOptions) string {
+// Note: This function appears to be unused but is kept for compatibility
+func (f *MarkdownFormatter) formatSummaryFieldsData(fields []api.PrettyField, values map[string]api.TypedValue, opts FormatOptions) string {
 	var result strings.Builder
-	depth := opts.Depth()
 
 	for _, field := range fields {
 		fieldValue, exists := values[field.Name]
@@ -110,17 +64,6 @@ func (f *MarkdownFormatter) formatSummaryFieldsData(fields []api.PrettyField, va
 			fieldName = field.Label
 		}
 
-		// Check for nested PrettyData
-		if nestedData, ok := fieldValue.Value.(*api.PrettyData); ok {
-			// Recursively format with increased depth
-			nestedOutput, _ := f.FormatPrettyData(nestedData, opts.IncreaseDepth())
-
-			// Add section heading based on depth
-			heading := strings.Repeat("#", depth+2) + " " + fieldName
-			result.WriteString(heading + "\n\n" + nestedOutput + "\n\n")
-			continue
-		}
-
 		// Check if this is an image field
 		if f.isImageField(fieldValue, field) {
 			imageMarkdown := f.formatImageMarkdown(fieldValue, field)
@@ -130,36 +73,14 @@ func (f *MarkdownFormatter) formatSummaryFieldsData(fields []api.PrettyField, va
 			}
 		}
 
-		// Handle maps - ProcessFieldValue already normalizes maps
-		if mapVal, ok := fieldValue.Value.(map[string]interface{}); ok {
-			mapOutput := f.formatMapMarkdown(mapVal, opts)
-			result.WriteString(fmt.Sprintf("**%s**:\n\n%s\n", fieldName, mapOutput))
+		// Handle Tree fields
+		if field.Format == api.FormatTree && fieldValue.Tree != nil {
+			result.WriteString(fmt.Sprintf("**%s**:\n\n%s\n", fieldName, fieldValue.Tree.String()))
 			continue
 		}
 
-		// Handle slices - ProcessFieldValue already normalizes slices
-		if sliceVal, ok := fieldValue.Value.([]interface{}); ok {
-			sliceOutput := f.formatSliceMarkdown(sliceVal, opts)
-			result.WriteString(fmt.Sprintf("**%s**: %s\n\n", fieldName, sliceOutput))
-			continue
-		}
-
-		// Handle TreeNode fields
-		if field.Format == api.FormatTree {
-			if treeNode, ok := fieldValue.Value.(api.TreeNode); ok {
-				treeOutput := f.formatTreeNode(treeNode, depth)
-				result.WriteString(fmt.Sprintf("**%s**:\n\n%s\n", fieldName, treeOutput))
-				continue
-			}
-		}
-
-		// Use Text.Markdown() method for formatted output
-		value := ""
-		if fieldValue.Text != nil {
-			value = fieldValue.Text.Markdown()
-		} else {
-			value = fmt.Sprintf("%v", fieldValue.Value)
-		}
+		// Use Markdown() method for formatted output
+		value := fieldValue.Markdown()
 		result.WriteString(fmt.Sprintf("**%s**: %s\n\n", fieldName, value))
 	}
 
@@ -167,18 +88,15 @@ func (f *MarkdownFormatter) formatSummaryFieldsData(fields []api.PrettyField, va
 }
 
 // isImageField checks if a field value represents an image
-func (f *MarkdownFormatter) isImageField(fieldValue api.FieldValue, field api.PrettyField) bool {
+func (f *MarkdownFormatter) isImageField(fieldValue api.TypedValue, field api.PrettyField) bool {
 	// Check if field has image format hint
 	if field.Format == "image" {
 		return true
 	}
 
 	// Check if the value is a string that looks like an image URL or path
-	if strValue, ok := fieldValue.Value.(string); ok {
-		return f.isImageURL(strValue)
-	}
-
-	return false
+	strValue := fieldValue.String()
+	return f.isImageURL(strValue)
 }
 
 // isImageURL checks if a string represents an image URL or path
@@ -228,9 +146,9 @@ func (f *MarkdownFormatter) isImageURL(s string) bool {
 }
 
 // formatImageMarkdown formats an image field value as Markdown image syntax
-func (f *MarkdownFormatter) formatImageMarkdown(fieldValue api.FieldValue, field api.PrettyField) string {
-	strValue, ok := fieldValue.Value.(string)
-	if !ok || strValue == "" {
+func (f *MarkdownFormatter) formatImageMarkdown(fieldValue api.TypedValue, field api.PrettyField) string {
+	strValue := fieldValue.String()
+	if strValue == "" {
 		return ""
 	}
 
@@ -293,19 +211,10 @@ func (f *MarkdownFormatter) formatTableData(tableData []api.PrettyDataRow, _ api
 					if imageMarkdown != "" {
 						cellContent = imageMarkdown
 					} else {
-						if fieldValue.Text != nil {
-							cellContent = fieldValue.Text.Markdown()
-						} else {
-							cellContent = fmt.Sprintf("%v", fieldValue.Value)
-						}
+						cellContent = fieldValue.Markdown()
 					}
 				} else {
-					// Use Text.Markdown() for formatted output
-					if fieldValue.Text != nil {
-						cellContent = fieldValue.Text.Markdown()
-					} else {
-						cellContent = fmt.Sprintf("%v", fieldValue.Value)
-					}
+					cellContent = fieldValue.Markdown()
 				}
 				// Escape pipe characters in cell content
 				cellContent = strings.ReplaceAll(cellContent, "|", "\\|")
@@ -319,26 +228,15 @@ func (f *MarkdownFormatter) formatTableData(tableData []api.PrettyDataRow, _ api
 }
 
 // formatTreeData formats tree data as a Markdown tree structure
-func (f *MarkdownFormatter) formatTreeData(field api.PrettyField, fieldValue api.FieldValue, opts FormatOptions) string {
-	// Check if the value implements TreeNode interface
-	if treeNode, ok := fieldValue.Value.(api.TreeNode); ok {
-		// Format the tree using TreeNode methods
-		return f.formatTreeNode(treeNode, 0)
+// Note: This function appears to be unused but is kept for compatibility
+func (f *MarkdownFormatter) formatTreeData(field api.PrettyField, fieldValue api.TypedValue, opts FormatOptions) string {
+	// Check if the field has a Tree
+	if fieldValue.Tree != nil {
+		return fieldValue.Tree.String()
 	}
 
 	// Fallback to regular markdown formatting of the value
-	fieldName := field.Name
-	if field.Label != "" {
-		fieldName = field.Label
-	}
-
-	value := ""
-	if fieldValue.Text != nil {
-		value = fieldValue.Text.Markdown()
-	} else {
-		value = fmt.Sprintf("%v", fieldValue.Value)
-	}
-	return fmt.Sprintf("**%s**: %s", fieldName, value)
+	return fieldValue.Markdown()
 }
 
 // formatTreeNode recursively formats a tree node as Markdown

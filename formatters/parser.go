@@ -303,29 +303,19 @@ func ToPrettyDataWithOptions(data interface{}, opts FormatOptions) (*api.PrettyD
 	// Handle nil data at root level
 	if data == nil {
 		return &api.PrettyData{
-			Schema:   &api.PrettyObject{Fields: []api.PrettyField{}},
-			Values:   make(map[string]api.FieldValue),
-			Tables:   make(map[string][]api.PrettyDataRow),
+			Schema: &api.PrettyObject{Fields: []api.PrettyField{}},
+
 			Original: data,
 		}, nil
 	}
 
 	// Check if data implements Pretty interface first
 	if pretty, ok := data.(api.Pretty); ok {
-		// For Pretty objects, create a simple field value
-		text := pretty.Pretty()
 		return &api.PrettyData{
-			Schema: &api.PrettyObject{Fields: []api.PrettyField{{Name: "content", Type: "string"}}},
-			Values: map[string]api.FieldValue{
-				"content": {
-					Value: text.Content,
-					Text:  &text,
-					Field: api.PrettyField{Name: "content", Type: "string"},
-				},
-			},
-			Tables:   make(map[string][]api.PrettyDataRow),
-			Original: data,
+			Original:   data,
+			TypedValue: api.NewTypedValue(pretty),
 		}, nil
+
 	}
 
 	// Get reflect value
@@ -375,13 +365,10 @@ func hasPrettyImplementers(val reflect.Value) bool {
 func convertSliceToPrettyList(val reflect.Value) (*api.PrettyData, error) {
 	prettyData := &api.PrettyData{
 		Schema:   &api.PrettyObject{Fields: []api.PrettyField{}},
-		Values:   make(map[string]api.FieldValue),
-		Tables:   make(map[string][]api.PrettyDataRow),
 		Original: val.Interface(),
 	}
 
-	// Create a field that holds all the pretty items
-	items := make([]api.Text, 0, val.Len())
+	list := api.TypedList{}
 
 	for i := 0; i < val.Len(); i++ {
 		elem := val.Index(i)
@@ -391,8 +378,9 @@ func convertSliceToPrettyList(val reflect.Value) (*api.PrettyData, error) {
 		}
 
 		if elem.CanInterface() {
-			if pretty, ok := elem.Interface().(api.Pretty); ok {
-				items = append(items, pretty.Pretty())
+			v := api.TryTypedValue(elem.Interface())
+			if v != nil {
+				list = append(list, *v)
 			}
 		}
 	}
@@ -404,13 +392,7 @@ func convertSliceToPrettyList(val reflect.Value) (*api.PrettyData, error) {
 		Label:  "Items",
 	})
 
-	prettyData.Values["items"] = api.FieldValue{
-		Value: items,
-		Field: api.PrettyField{
-			Name:   "items",
-			Format: "list",
-		},
-	}
+	prettyData.TypedList = &list
 
 	return prettyData, nil
 }
@@ -445,30 +427,10 @@ func parseStructDataWithOptions(val reflect.Value, opts FormatOptions) (*api.Pre
 
 	// Check dereferenced value for Pretty interface
 	if val.CanInterface() {
-		if pretty, ok := val.Interface().(api.Pretty); ok {
-			// For Pretty objects, create a simple field value
-			text := pretty.Pretty()
+		if p, ok := val.Interface().(api.Pretty); ok {
 			return &api.PrettyData{
-				Schema: &api.PrettyObject{
-					Fields: []api.PrettyField{{
-						Name:   "content",
-						Format: "pretty",
-						Label:  "Content",
-					}},
-				},
-				Values: map[string]api.FieldValue{
-					"content": {
-						Value: val.Interface(), // Store the dereferenced Pretty object
-						Text:  &text,           // Store the pretty text
-						Field: api.PrettyField{
-							Name:   "content",
-							Format: "pretty",
-							Label:  "Content",
-						},
-					},
-				},
-				Tables:   make(map[string][]api.PrettyDataRow),
-				Original: val.Interface(),
+				Original:   p,
+				TypedValue: api.NewTypedValue(p),
 			}, nil
 		}
 	}
@@ -583,9 +545,8 @@ func convertSliceToPrettyDataWithOptions(val reflect.Value, opts FormatOptions) 
 	if val.Len() == 0 {
 		// Empty slice - return empty PrettyData
 		return &api.PrettyData{
-			Schema:   &api.PrettyObject{Fields: []api.PrettyField{}},
-			Values:   make(map[string]api.FieldValue),
-			Tables:   make(map[string][]api.PrettyDataRow),
+			Schema: &api.PrettyObject{Fields: []api.PrettyField{}},
+
 			Original: originalData,
 		}, nil
 	}
@@ -710,15 +671,6 @@ func convertSliceToPrettyDataWithOptions(val reflect.Value, opts FormatOptions) 
 		}
 	}
 
-	// Apply filter if provided in options
-	if opts.Filter != "" && len(rows) > 0 {
-		filteredRows, err := api.FilterTableRows(rows, opts.Filter)
-		if err != nil {
-			return nil, fmt.Errorf("failed to apply filter: %w", err)
-		}
-		rows = filteredRows
-	}
-
 	return &api.PrettyData{
 		Schema: &api.PrettyObject{
 			Fields: []api.PrettyField{
@@ -729,11 +681,9 @@ func convertSliceToPrettyDataWithOptions(val reflect.Value, opts FormatOptions) 
 				},
 			},
 		},
-		Values: make(map[string]api.FieldValue),
-		Tables: map[string][]api.PrettyDataRow{
-			"table": rows,
-		},
-		Original: originalData,
+
+		TypedValue: *api.TryTypedValue(rows),
+		Original:   originalData,
 	}, nil
 }
 
@@ -747,21 +697,6 @@ func parseStructDataWithOptionsAndSchema(val reflect.Value, schema *api.PrettyOb
 		return nil, err
 	}
 
-	// Apply filter to all table fields if filter is provided
-	if opts.Filter != "" && prettyData != nil && prettyData.Tables != nil {
-		for tableName, rows := range prettyData.Tables {
-			if len(rows) > 0 {
-				filteredRows, err := api.FilterTableRows(rows, opts.Filter)
-				if err != nil {
-					// Skip tables where filter references non-existent fields
-					logger.V(4).Infof("Skipping filter for table %s: %v", tableName, err)
-					continue
-				}
-				prettyData.Tables[tableName] = filteredRows
-			}
-		}
-	}
-
 	return prettyData, nil
 }
 
@@ -771,100 +706,14 @@ func ToPrettyData(data interface{}) (*api.PrettyData, error) {
 	if data == nil {
 		return &api.PrettyData{
 			Schema:   &api.PrettyObject{Fields: []api.PrettyField{}},
-			Values:   make(map[string]api.FieldValue),
-			Tables:   make(map[string][]api.PrettyDataRow),
 			Original: data,
 		}, nil
 	}
 
-	// Check if already PrettyData
-	if pd, ok := data.(*api.PrettyData); ok {
-		return pd, nil
-	}
-
-	// Check if data implements TreeMixin interface first (most specific)
-	if treeMixin, ok := data.(api.TreeMixin); ok {
-		treeNode := treeMixin.Tree()
-		// Create a PrettyData representation for TreeMixin objects
+	if v := api.TryTypedValue(data); v != nil {
 		return &api.PrettyData{
-			Schema: &api.PrettyObject{
-				Fields: []api.PrettyField{
-					{
-						Name:   "tree",
-						Format: api.FormatTree,
-						Label:  "Tree",
-					},
-				},
-			},
-			Values: map[string]api.FieldValue{
-				"tree": {
-					Value: treeNode, // Store the TreeNode object
-					Field: api.PrettyField{
-						Name:   "tree",
-						Format: api.FormatTree,
-						Label:  "Tree",
-					},
-				},
-			},
-			Tables:   make(map[string][]api.PrettyDataRow),
-			Original: data,
-		}, nil
-	}
-
-	// Check if data implements TreeNode interface (direct tree node)
-	if treeNode, ok := data.(api.TreeNode); ok {
-		// Create a PrettyData representation for TreeNode objects
-		return &api.PrettyData{
-			Schema: &api.PrettyObject{
-				Fields: []api.PrettyField{
-					{
-						Name:   "tree",
-						Format: api.FormatTree,
-						Label:  "Tree",
-					},
-				},
-			},
-			Values: map[string]api.FieldValue{
-				"tree": {
-					Value: treeNode, // Store the TreeNode object
-					Field: api.PrettyField{
-						Name:   "tree",
-						Format: api.FormatTree,
-						Label:  "Tree",
-					},
-				},
-			},
-			Tables:   make(map[string][]api.PrettyDataRow),
-			Original: data,
-		}, nil
-	}
-
-	// Check if data implements Pretty interface
-	if pretty, ok := data.(api.Pretty); ok {
-		// Create a PrettyData representation for Pretty objects
-		_ = pretty.Pretty() // We don't need the text here, just detect the interface
-		return &api.PrettyData{
-			Schema: &api.PrettyObject{
-				Fields: []api.PrettyField{
-					{
-						Name:   "content",
-						Format: "pretty", // Special format for Pretty objects
-						Label:  "Content",
-					},
-				},
-			},
-			Values: map[string]api.FieldValue{
-				"content": {
-					Value: data, // Store the original Pretty object
-					Field: api.PrettyField{
-						Name:   "content",
-						Format: "pretty",
-						Label:  "Content",
-					},
-				},
-			},
-			Tables:   make(map[string][]api.PrettyDataRow),
-			Original: data,
+			Original:   data,
+			TypedValue: *v,
 		}, nil
 	}
 
@@ -875,8 +724,6 @@ func ToPrettyData(data interface{}) (*api.PrettyData, error) {
 	if val.Kind() == reflect.Ptr && val.IsNil() {
 		return &api.PrettyData{
 			Schema:   &api.PrettyObject{Fields: []api.PrettyField{}},
-			Values:   make(map[string]api.FieldValue),
-			Tables:   make(map[string][]api.PrettyDataRow),
 			Original: data,
 		}, nil
 	}
@@ -886,31 +733,11 @@ func ToPrettyData(data interface{}) (*api.PrettyData, error) {
 
 	// Check dereferenced value for Pretty interface
 	if val.CanInterface() {
-		if pretty, ok := val.Interface().(api.Pretty); ok {
-			// Create a PrettyData representation for Pretty objects
-			_ = pretty.Pretty() // We don't need the text here, just detect the interface
+		val := val.Interface()
+		if v := api.TryTypedValue(val); v != nil {
 			return &api.PrettyData{
-				Schema: &api.PrettyObject{
-					Fields: []api.PrettyField{
-						{
-							Name:   "content",
-							Format: "pretty",
-							Label:  "Content",
-						},
-					},
-				},
-				Values: map[string]api.FieldValue{
-					"content": {
-						Value: val.Interface(), // Store the dereferenced Pretty object
-						Field: api.PrettyField{
-							Name:   "content",
-							Format: "pretty",
-							Label:  "Content",
-						},
-					},
-				},
-				Tables:   make(map[string][]api.PrettyDataRow),
-				Original: data,
+				Original:   data,
+				TypedValue: *v,
 			}, nil
 		}
 	}
@@ -933,10 +760,10 @@ func ToPrettyData(data interface{}) (*api.PrettyData, error) {
 	// Create PrettyData from the schema and values
 	prettyData := &api.PrettyData{
 		Schema:   schema,
-		Values:   make(map[string]api.FieldValue),
-		Tables:   make(map[string][]api.PrettyDataRow),
 		Original: data,
 	}
+
+	values := api.TypedMap{}
 
 	// Process each field
 	for _, field := range schema.Fields {
@@ -967,20 +794,10 @@ func ToPrettyData(data interface{}) (*api.PrettyData, error) {
 				}
 				rows = append(rows, row)
 			}
-			prettyData.Tables[field.Name] = rows
-		} else if field.Format == api.FormatTree {
-			// Handle tree fields - convert to SimpleTreeNode for consistent formatting
-			var treeNode api.TreeNode
-			if tn, ok := fieldVal.Interface().(api.TreeNode); ok {
-				treeNode = api.TreeNodeToSimple(tn)
-			}
+			values[field.Name] = api.NewTypedValue(rows)
 
-			if treeNode != nil {
-				prettyData.Values[field.Name] = api.FieldValue{
-					Value: treeNode,
-					Field: field,
-				}
-			}
+		} else if field.Format == api.FormatTree {
+			values[field.Name] = api.NewTypedValue(fieldVal.Interface())
 		} else if (field.Type == "map" || field.Type == "struct") && (fieldVal.Kind() == reflect.Map || fieldVal.Kind() == reflect.Struct) {
 			// Handle nested map/struct - recursively create PrettyData
 			parser := api.NewStructParser()
@@ -1018,21 +835,17 @@ func ToPrettyData(data interface{}) (*api.PrettyData, error) {
 			// Recursively parse
 			if nestedSchema != nil {
 				nestedData, err := parser.ParseDataWithSchema(fieldVal.Interface(), nestedSchema)
-				if err == nil {
-					prettyData.Values[field.Name] = api.FieldValue{
-						Value: nestedData,
-						Field: field,
-					}
+				if err != nil {
+					return nil, fmt.Errorf("failed to parse nested field %s: %w", field.Name, err)
+				} else {
+					values[field.Name] = api.NewTypedValue(nestedData)
 				}
 			}
 		} else {
-			// Regular field value - use processFieldValue to handle pointers
-			prettyData.Values[field.Name] = api.FieldValue{
-				Value: processFieldValue(fieldVal),
-				Field: field,
-			}
+			values[field.Name] = api.NewTypedValue(processFieldValue(fieldVal))
 		}
 	}
+	prettyData.TypedMap = &values
 
 	return prettyData, nil
 }
@@ -1199,17 +1012,8 @@ func convertSliceToTreeData(val reflect.Value) (*api.PrettyData, error) {
 				Format: "tree",
 				Label:  "Tree",
 			}}},
-			Values: map[string]api.FieldValue{
-				"tree": {
-					Value: rootNode,
-					Field: api.PrettyField{
-						Name:   "tree",
-						Format: "tree",
-						Label:  "Tree",
-					},
-				},
-			},
-			Tables:   make(map[string][]api.PrettyDataRow),
+			TypedValue: *api.TryTypedValue(rootNode),
+
 			Original: val.Interface(),
 		}, nil
 	}
@@ -1229,9 +1033,8 @@ func convertSliceToPrettyData(val reflect.Value) (*api.PrettyData, error) {
 	if val.Len() == 0 {
 		// Empty slice - return empty PrettyData
 		return &api.PrettyData{
-			Schema:   &api.PrettyObject{Fields: []api.PrettyField{}},
-			Values:   make(map[string]api.FieldValue),
-			Tables:   make(map[string][]api.PrettyDataRow),
+			Schema: &api.PrettyObject{Fields: []api.PrettyField{}},
+
 			Original: originalData,
 		}, nil
 	}
@@ -1338,11 +1141,8 @@ func convertSliceToPrettyData(val reflect.Value) (*api.PrettyData, error) {
 				},
 			},
 		},
-		Values: make(map[string]api.FieldValue),
-		Tables: map[string][]api.PrettyDataRow{
-			"data": rows,
-		},
-		Original: originalData,
+		TypedValue: *api.TryTypedValue(rows),
+		Original:   originalData,
 	}, nil
 }
 

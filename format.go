@@ -9,6 +9,7 @@ import (
 
 	"github.com/flanksource/clicky/api"
 	"github.com/flanksource/clicky/formatters"
+	_ "github.com/flanksource/clicky/formatters/html"
 	"github.com/flanksource/clicky/text"
 )
 

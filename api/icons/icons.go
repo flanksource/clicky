@@ -24,7 +24,7 @@ func (i Icon) ANSI() string {
 // HTML returns an HTML representation using Iconify web components or Unicode fallback
 func (i Icon) HTML() string {
 	if i.Iconify != "" {
-		return fmt.Sprintf(`<iconify-icon icon="%s"></iconify-icon>`, i.Iconify)
+		return fmt.Sprintf(`<iconify-icon icon="%s" class="text-lg"></iconify-icon>`, i.Iconify)
 	}
 	return i.Unicode
 }

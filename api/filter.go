@@ -201,7 +201,7 @@ func rowToCELMap(row PrettyDataRow) map[string]interface{} {
 		// - bool for booleans
 		// - string for strings
 		// - time.Time for dates
-		result[key] = fieldValue.Primitive()
+		result[key] = fieldValue.String()
 	}
 	return result
 }
@@ -256,7 +256,7 @@ func getVariableDeclarationsFromRow(row PrettyDataRow) []cel.EnvOption {
 	var decls []cel.EnvOption
 
 	for key, fieldValue := range row {
-		celType := inferCELTypeFromValue(fieldValue.Primitive())
+		celType := inferCELTypeFromValue(fieldValue.String())
 		decls = append(decls, cel.Variable(key, celType))
 	}
 

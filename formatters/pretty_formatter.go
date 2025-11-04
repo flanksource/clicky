@@ -60,5 +60,5 @@ func (p *PrettyFormatter) FormatPrettyData(data *api.PrettyData) (string, error)
 		return "", nil
 	}
 
-	return data.Pretty().JoinNewlines().ANSI(), nil
+	return data.ANSI(), nil
 }

@@ -65,148 +65,54 @@ func (f *ExcelFormatter) FormatPrettyDataToFile(data *api.PrettyData, filename s
 	}
 
 	currentRow := 1
+	table := data.FirstTable()
+	if table == nil {
+		return fmt.Errorf("no tables defined in PrettyData")
+	}
 
-	// Find table and regular fields
-	var tableField *api.PrettyField
-	var regularFields []api.PrettyField
-
-	for _, field := range data.Schema.Fields {
-		if field.Format == api.FormatTable {
-			tableField = &field
-		} else if field.Format != api.FormatTree {
-			regularFields = append(regularFields, field)
+	// Get headers and field names from TableOptions
+	var headers = table.Headers.AsString()
+	for i, header := range headers {
+		cellRef := f.getCellReference(i+1, currentRow)
+		if err := file.SetCellValue(sheetName, cellRef, header); err != nil {
+			return fmt.Errorf("failed to set header value: %w", err)
 		}
 	}
 
-	// Write regular field values first (if any)
-	if len(regularFields) > 0 {
-		// Create headers for regular fields
-		if err := file.SetCellValue(sheetName, "A1", "Field"); err != nil {
-			return fmt.Errorf("failed to set header cell: %w", err)
-		}
-		if err := file.SetCellValue(sheetName, "B1", "Value"); err != nil {
-			return fmt.Errorf("failed to set header cell: %w", err)
-		}
+	// Apply header styling
+	headerStyle, err := f.createHeaderStyle(file)
+	if err != nil {
+		return fmt.Errorf("failed to create header style: %w", err)
+	}
 
-		// Apply header styling
-		headerStyle, err := f.createHeaderStyle(file)
-		if err != nil {
-			return fmt.Errorf("failed to create header style: %w", err)
-		}
-		if err := file.SetCellStyle(sheetName, "A1", "B1", headerStyle); err != nil {
+	if len(headers) > 0 {
+		startCell := f.getCellReference(1, currentRow)
+		endCell := f.getCellReference(len(headers), currentRow)
+		if err := file.SetCellStyle(sheetName, startCell, endCell, headerStyle); err != nil {
 			return fmt.Errorf("failed to set header style: %w", err)
 		}
-		currentRow = 2
+	}
+	currentRow++
 
-		// Write field data using Text.String() for formatted text
-		for _, field := range regularFields {
-			if fieldValue, exists := data.Values[field.Name]; exists {
-				if err := file.SetCellValue(sheetName, fmt.Sprintf("A%d", currentRow), field.Name); err != nil {
+	// Write data rows using Text.String() for formatted text
+	for _, row := range table.Rows {
+		for i, fieldName := range headers {
+			cellRef := f.getCellReference(i+1, currentRow)
+			if fieldValue, exists := row[fieldName]; exists {
+				if err := file.SetCellValue(sheetName, cellRef, fieldValue.String()); err != nil {
 					return fmt.Errorf("failed to set cell value: %w", err)
 				}
-				valueStr := ""
-				if fieldValue.Text != nil {
-					valueStr = fieldValue.Text.String()
-				} else {
-					valueStr = fmt.Sprintf("%v", fieldValue.Value)
-				}
-				if err := file.SetCellValue(sheetName, fmt.Sprintf("B%d", currentRow), valueStr); err != nil {
-					return fmt.Errorf("failed to set cell value: %w", err)
-				}
-				currentRow++
 			}
 		}
-
-		// Auto-fit columns
-		if err := file.SetColWidth(sheetName, "A", "B", 20); err != nil {
-			return fmt.Errorf("failed to set column width: %w", err)
-		}
-		currentRow += 2 // Add spacing
+		currentRow++
 	}
 
-	// Write table data (the primary case for most data)
-	if tableField != nil {
-		if tableData, exists := data.Tables[tableField.Name]; exists && len(tableData) > 0 {
-			// Add table title if we had regular fields above
-			if len(regularFields) > 0 {
-				if err := file.SetCellValue(sheetName, fmt.Sprintf("A%d", currentRow), tableField.Name); err != nil {
-					return fmt.Errorf("failed to set table title: %w", err)
-				}
-				titleStyle, err := f.createTitleStyle(file)
-				if err != nil {
-					return fmt.Errorf("failed to create title style: %w", err)
-				}
-				if err := file.SetCellStyle(sheetName, fmt.Sprintf("A%d", currentRow), fmt.Sprintf("A%d", currentRow), titleStyle); err != nil {
-					return fmt.Errorf("failed to set title style: %w", err)
-				}
-				currentRow++
-			}
-
-			// Get headers and field names from TableOptions
-			var headers []string
-			var fieldNames []string
-
-			for _, field := range tableField.TableOptions.Columns {
-				// Use Label for display, fallback to Name
-				header := field.Label
-				if header == "" {
-					header = field.Name
-				}
-				headers = append(headers, header)
-				fieldNames = append(fieldNames, field.Name)
-			}
-
-			// Write headers
-			for i, header := range headers {
-				cellRef := f.getCellReference(i+1, currentRow)
-				if err := file.SetCellValue(sheetName, cellRef, header); err != nil {
-					return fmt.Errorf("failed to set header value: %w", err)
-				}
-			}
-
-			// Apply header styling
-			headerStyle, err := f.createHeaderStyle(file)
-			if err != nil {
-				return fmt.Errorf("failed to create header style: %w", err)
-			}
-
-			if len(headers) > 0 {
-				startCell := f.getCellReference(1, currentRow)
-				endCell := f.getCellReference(len(headers), currentRow)
-				if err := file.SetCellStyle(sheetName, startCell, endCell, headerStyle); err != nil {
-					return fmt.Errorf("failed to set header style: %w", err)
-				}
-			}
-			currentRow++
-
-			// Write data rows using Text.String() for formatted text
-			for _, row := range tableData {
-				for i, fieldName := range fieldNames {
-					cellRef := f.getCellReference(i+1, currentRow)
-					if fieldValue, exists := row[fieldName]; exists {
-						// Use Text.String() to get the formatted text representation
-						valueStr := ""
-						if fieldValue.Text != nil {
-							valueStr = fieldValue.Text.String()
-						} else {
-							valueStr = fmt.Sprintf("%v", fieldValue.Value)
-						}
-						if err := file.SetCellValue(sheetName, cellRef, valueStr); err != nil {
-							return fmt.Errorf("failed to set cell value: %w", err)
-						}
-					}
-				}
-				currentRow++
-			}
-
-			// Auto-fit columns for the table
-			if len(headers) > 0 {
-				startCol := f.getColumnName(1)
-				endCol := f.getColumnName(len(headers))
-				if err := file.SetColWidth(sheetName, startCol, endCol, 15); err != nil {
-					return fmt.Errorf("failed to set column width: %w", err)
-				}
-			}
+	// Auto-fit columns for the table
+	if len(headers) > 0 {
+		startCol := f.getColumnName(1)
+		endCol := f.getColumnName(len(headers))
+		if err := file.SetColWidth(sheetName, startCol, endCol, 15); err != nil {
+			return fmt.Errorf("failed to set column width: %w", err)
 		}
 	}
 
