@@ -70,9 +70,9 @@ func GetStructHeaders(val reflect.Value) []string {
 }
 
 // GetStructRow extracts field values as a row from structs, respecting pretty tags
-func GetStructRow(val reflect.Value) []string {
+func GetStructRow(val reflect.Value) TextList {
 	typ := val.Type()
-	var row []string
+	var row TextList
 
 	for i := 0; i < val.NumField(); i++ {
 		field := typ.Field(i)
@@ -89,20 +89,19 @@ func GetStructRow(val reflect.Value) []string {
 		}
 
 		// Handle Pretty interface and pointer dereferencing
-		var value string
 		if fieldVal.CanInterface() {
 			if pretty, ok := fieldVal.Interface().(api.Pretty); ok {
-				text := pretty.Pretty()
-				value = text.String() // Use plain text for CSV
+				row = append(row, pretty.Pretty())
 			} else {
 				// Use processFieldValue to handle pointers properly
 				actualValue := processFieldValue(fieldVal)
-				value = fmt.Sprintf("%v", actualValue)
+				value := fmt.Sprintf("%v", actualValue)
+				row = append(row, api.Text{Content: value})
 			}
 		} else {
-			value = fmt.Sprintf("%v", fieldVal.Interface())
+			value := fmt.Sprintf("%v", fieldVal.Interface())
+			row = append(row, api.Text{Content: value})
 		}
-		row = append(row, value)
 	}
 
 	return row
@@ -754,7 +753,9 @@ func parseStructDataWithOptionsAndSchema(val reflect.Value, schema *api.PrettyOb
 			if len(rows) > 0 {
 				filteredRows, err := api.FilterTableRows(rows, opts.Filter)
 				if err != nil {
-					return nil, fmt.Errorf("failed to apply filter to table %s: %w", tableName, err)
+					// Skip tables where filter references non-existent fields
+					logger.V(4).Infof("Skipping filter for table %s: %v", tableName, err)
+					continue
 				}
 				prettyData.Tables[tableName] = filteredRows
 			}
