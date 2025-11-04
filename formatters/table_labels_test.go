@@ -32,8 +32,8 @@ func TestCSVTableColumnLabels(t *testing.T) {
 				Name:   "items",
 				Type:   "array",
 				Format: api.FormatTable,
-				TableOptions: api.PrettyTable{
-					Fields: []api.PrettyField{
+				TableOptions: api.TableOptions{
+					Columns: []api.PrettyField{
 						{Name: "id", Label: "Product ID", Type: "string"},
 						{Name: "name", Label: "Product Name", Type: "string"},
 						{Name: "price", Label: "Unit Price ($)", Type: "float", Format: "currency"},
@@ -119,8 +119,8 @@ func TestCSVTableMixedLabels(t *testing.T) {
 				Name:   "data",
 				Type:   "array",
 				Format: api.FormatTable,
-				TableOptions: api.PrettyTable{
-					Fields: []api.PrettyField{
+				TableOptions: api.TableOptions{
+					Columns: []api.PrettyField{
 						{Name: "id", Label: "Identifier", Type: "string"}, // Has Label
 						{Name: "status", Type: "string"},                  // No Label - should use Name
 						{Name: "count", Label: "Item Count", Type: "int"}, // Has Label
@@ -181,8 +181,8 @@ func TestCSVTableColumnOrder(t *testing.T) {
 				Name:   "items",
 				Type:   "array",
 				Format: api.FormatTable,
-				TableOptions: api.PrettyTable{
-					Fields: []api.PrettyField{
+				TableOptions: api.TableOptions{
+					Columns: []api.PrettyField{
 						// Intentionally not in alphabetical order
 						{Name: "charlie", Label: "Charlie", Type: "string"},
 						{Name: "alpha", Label: "Alpha", Type: "string"},
@@ -257,8 +257,8 @@ func TestCSVTableSpecialCharacters(t *testing.T) {
 				Name:   "data",
 				Type:   "array",
 				Format: api.FormatTable,
-				TableOptions: api.PrettyTable{
-					Fields: []api.PrettyField{
+				TableOptions: api.TableOptions{
+					Columns: []api.PrettyField{
 						{Name: "field1", Label: "Label with, comma", Type: "string"},
 						{Name: "field2", Label: "Label with \"quotes\"", Type: "string"},
 					},
@@ -308,8 +308,8 @@ func TestCSVTableEmptyData(t *testing.T) {
 				Name:   "items",
 				Type:   "array",
 				Format: api.FormatTable,
-				TableOptions: api.PrettyTable{
-					Fields: []api.PrettyField{
+				TableOptions: api.TableOptions{
+					Columns: []api.PrettyField{
 						{Name: "id", Label: "ID", Type: "string"},
 						{Name: "name", Label: "Name", Type: "string"},
 					},
@@ -399,8 +399,8 @@ func TestHTMLTableColumnLabels(t *testing.T) {
 				Name:   "items",
 				Type:   "array",
 				Format: api.FormatTable,
-				TableOptions: api.PrettyTable{
-					Fields: []api.PrettyField{
+				TableOptions: api.TableOptions{
+					Columns: []api.PrettyField{
 						{Name: "id", Label: "Product ID", Type: "string"},
 						{Name: "name", Label: "Product Name", Type: "string"},
 						{Name: "price", Label: "Unit Price ($)", Type: "float", Format: "currency"},
@@ -485,8 +485,8 @@ func TestHTMLTableMixedLabels(t *testing.T) {
 				Name:   "data",
 				Type:   "array",
 				Format: api.FormatTable,
-				TableOptions: api.PrettyTable{
-					Fields: []api.PrettyField{
+				TableOptions: api.TableOptions{
+					Columns: []api.PrettyField{
 						{Name: "id", Label: "Item ID", Type: "string"},            // Has Label
 						{Name: "name", Type: "string"},                            // No Label - should use Name
 						{Name: "status", Label: "Current Status", Type: "string"}, // Has Label

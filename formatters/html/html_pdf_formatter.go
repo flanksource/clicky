@@ -1,4 +1,4 @@
-package formatters
+package html
 
 import (
 	"context"
@@ -7,8 +7,14 @@ import (
 	"path/filepath"
 
 	"github.com/flanksource/clicky/api"
+	. "github.com/flanksource/clicky/formatters"
 	"github.com/flanksource/clicky/formatters/pdf"
 )
+
+func init() {
+	htmlPdf := NewHTMLPDFFormatter()
+	RegisterFormatter("html-pdf", htmlPdf.Format)
+}
 
 // HTMLPDFFormatter handles HTML-to-PDF conversion using ChromiumConverter
 type HTMLPDFFormatter struct {
@@ -33,14 +39,18 @@ func (f *HTMLPDFFormatter) ToPrettyData(data interface{}) (*api.PrettyData, erro
 }
 
 // Format formats data as PDF by first rendering as HTML, then converting with Chromium
-func (f *HTMLPDFFormatter) Format(data interface{}) (string, error) {
+func (f *HTMLPDFFormatter) Format(data interface{}, opts FormatOptions) (string, error) {
 	// Check if ChromiumConverter is available
 	if !f.converter.IsAvailable() {
 		return "", fmt.Errorf("Chrome/Chromium not found - required for HTML-PDF conversion")
 	}
 
+	if prettData, ok := data.(*api.PrettyData); ok {
+		return f.FormatPrettyData(prettData)
+	}
+
 	// Generate HTML using the HTML formatter
-	htmlContent, err := f.htmlFormatter.Format(data)
+	htmlContent, err := f.htmlFormatter.Format(data, opts)
 	if err != nil {
 		return "", fmt.Errorf("failed to generate HTML: %w", err)
 	}
@@ -94,7 +104,7 @@ func (f *HTMLPDFFormatter) FormatToFile(data interface{}, outputPath string) err
 	}
 
 	// Generate HTML using the HTML formatter
-	htmlContent, err := f.htmlFormatter.Format(data)
+	htmlContent, err := f.htmlFormatter.Format(data, FormatOptions{})
 	if err != nil {
 		return fmt.Errorf("failed to generate HTML: %w", err)
 	}

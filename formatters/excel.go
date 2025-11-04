@@ -98,13 +98,19 @@ func (f *ExcelFormatter) FormatPrettyDataToFile(data *api.PrettyData, filename s
 		}
 		currentRow = 2
 
-		// Write field data using Plain() for formatted text
+		// Write field data using Text.String() for formatted text
 		for _, field := range regularFields {
 			if fieldValue, exists := data.Values[field.Name]; exists {
 				if err := file.SetCellValue(sheetName, fmt.Sprintf("A%d", currentRow), field.Name); err != nil {
 					return fmt.Errorf("failed to set cell value: %w", err)
 				}
-				if err := file.SetCellValue(sheetName, fmt.Sprintf("B%d", currentRow), fieldValue.Plain()); err != nil {
+				valueStr := ""
+				if fieldValue.Text != nil {
+					valueStr = fieldValue.Text.String()
+				} else {
+					valueStr = fmt.Sprintf("%v", fieldValue.Value)
+				}
+				if err := file.SetCellValue(sheetName, fmt.Sprintf("B%d", currentRow), valueStr); err != nil {
 					return fmt.Errorf("failed to set cell value: %w", err)
 				}
 				currentRow++
@@ -140,7 +146,7 @@ func (f *ExcelFormatter) FormatPrettyDataToFile(data *api.PrettyData, filename s
 			var headers []string
 			var fieldNames []string
 
-			for _, field := range tableField.TableOptions.Fields {
+			for _, field := range tableField.TableOptions.Columns {
 				// Use Label for display, fallback to Name
 				header := field.Label
 				if header == "" {
@@ -173,13 +179,19 @@ func (f *ExcelFormatter) FormatPrettyDataToFile(data *api.PrettyData, filename s
 			}
 			currentRow++
 
-			// Write data rows using fieldValue.Plain() for formatted text
+			// Write data rows using Text.String() for formatted text
 			for _, row := range tableData {
 				for i, fieldName := range fieldNames {
 					cellRef := f.getCellReference(i+1, currentRow)
 					if fieldValue, exists := row[fieldName]; exists {
-						// Use Plain() to get the formatted text representation
-						if err := file.SetCellValue(sheetName, cellRef, fieldValue.Plain()); err != nil {
+						// Use Text.String() to get the formatted text representation
+						valueStr := ""
+						if fieldValue.Text != nil {
+							valueStr = fieldValue.Text.String()
+						} else {
+							valueStr = fmt.Sprintf("%v", fieldValue.Value)
+						}
+						if err := file.SetCellValue(sheetName, cellRef, valueStr); err != nil {
 							return fmt.Errorf("failed to set cell value: %w", err)
 						}
 					}

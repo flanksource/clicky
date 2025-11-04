@@ -91,7 +91,13 @@ func (f *CSVFormatter) FormatPrettyData(data *api.PrettyData) (string, error) {
 			} else {
 				// Fall back to regular formatting if not a tree
 				headers := []string{treeField.Name}
-				values := []string{fieldValue.Plain()}
+				valueStr := ""
+				if fieldValue.Text != nil {
+					valueStr = fieldValue.Text.String()
+				} else {
+					valueStr = fmt.Sprintf("%v", fieldValue.Value)
+				}
+				values := []string{valueStr}
 				if err := writer.Write(headers); err != nil {
 					return "", err
 				}
@@ -107,7 +113,7 @@ func (f *CSVFormatter) FormatPrettyData(data *api.PrettyData) (string, error) {
 			var headers []string
 			var fieldNames []string
 
-			for _, field := range tableField.TableOptions.Fields {
+			for _, field := range tableField.TableOptions.Columns {
 				// Use Label for display, fallback to Name
 				header := field.Label
 				if header == "" {
@@ -127,7 +133,13 @@ func (f *CSVFormatter) FormatPrettyData(data *api.PrettyData) (string, error) {
 				var values []string
 				for _, fieldName := range fieldNames {
 					if fieldValue, exists := row[fieldName]; exists {
-						values = append(values, fieldValue.Plain())
+						valueStr := ""
+						if fieldValue.Text != nil {
+							valueStr = fieldValue.Text.String()
+						} else {
+							valueStr = fmt.Sprintf("%v", fieldValue.Value)
+						}
+						values = append(values, valueStr)
 					} else {
 						values = append(values, "")
 					}
@@ -150,7 +162,13 @@ func (f *CSVFormatter) FormatPrettyData(data *api.PrettyData) (string, error) {
 
 			if fieldValue, exists := data.Values[field.Name]; exists {
 				headers = append(headers, field.Name)
-				values = append(values, fieldValue.Plain())
+				valueStr := ""
+				if fieldValue.Text != nil {
+					valueStr = fieldValue.Text.String()
+				} else {
+					valueStr = fmt.Sprintf("%v", fieldValue.Value)
+				}
+				values = append(values, valueStr)
 			}
 		}
 

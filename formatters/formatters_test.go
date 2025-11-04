@@ -577,8 +577,8 @@ func TestTableFormattingWithDates(t *testing.T) {
 				Name:   "items",
 				Type:   "array",
 				Format: "table",
-				TableOptions: api.PrettyTable{
-					Fields: []api.PrettyField{
+				TableOptions: api.TableOptions{
+					Columns: []api.PrettyField{
 						{Name: "id", Type: "string"},
 						{Name: "created_at", Type: "date", Format: "date"},
 						{Name: "amount", Type: "float", Format: "currency"},
@@ -606,8 +606,16 @@ func TestTableFormattingWithDates(t *testing.T) {
 	}
 
 	// Check table formatting - be flexible with spacing
-	if !strings.Contains(output, "│ id") && !strings.Contains(output, "│ created_at") && !strings.Contains(output, "│ amount") {
-		t.Errorf("Table should have headers")
+	// TableWriter auto-formats headers (may uppercase them)
+	t.Logf("Table output:\n%s", output)
+	if !(strings.Contains(output, "ID") || strings.Contains(output, "id")) {
+		t.Errorf("Table should have id header")
+	}
+	if !(strings.Contains(output, "CREATED AT") || strings.Contains(output, "created_at")) {
+		t.Errorf("Table should have created_at header")
+	}
+	if !(strings.Contains(output, "AMOUNT") || strings.Contains(output, "amount")) {
+		t.Errorf("Table should have amount header")
 	}
 	// Check dates are formatted (using local timezone for Unix timestamps)
 	expectedDate1 := time.Unix(1705315800, 0).Format("2006-01-02 15:04:05")
@@ -623,5 +631,81 @@ func TestTableFormattingWithDates(t *testing.T) {
 	}
 	if !strings.Contains(output, "ROW-3") || !strings.Contains(output, "2024-01-15 10:32:00") || !strings.Contains(output, "$199.99") {
 		t.Errorf("Table should format RFC3339 date correctly")
+	}
+}
+
+// TestTableWordWrapping tests that long content is wrapped in table cells
+func TestTableWordWrapping(t *testing.T) {
+	// Create test data with very long content
+	longDescription := "This is a very long description that should be wrapped across multiple lines in the table cell to demonstrate the word wrapping feature of the tablewriter library which was integrated to solve exactly this kind of problem with long content."
+
+	tableData := []map[string]interface{}{
+		{
+			"id":          "ITEM-1",
+			"description": longDescription,
+			"status":      "active",
+		},
+		{
+			"id":          "ITEM-2",
+			"description": "Short description",
+			"status":      "inactive",
+		},
+	}
+
+	schema := &api.PrettyObject{
+		Fields: []api.PrettyField{
+			{
+				Name:   "items",
+				Type:   "array",
+				Format: "table",
+				TableOptions: api.TableOptions{
+					Columns: []api.PrettyField{
+						{Name: "id", Type: "string"},
+						{Name: "description", Type: "string"},
+						{Name: "status", Type: "string"},
+					},
+				},
+			},
+		},
+	}
+
+	parser := api.NewStructParser()
+	data := map[string]interface{}{
+		"items": tableData,
+	}
+
+	prettyData, err := parser.ParseDataWithSchema(data, schema)
+	if err != nil {
+		t.Fatalf("Failed to parse table data: %v", err)
+	}
+
+	// Test with pretty formatter
+	formatter := NewPrettyFormatter()
+	output, err := formatter.FormatPrettyData(prettyData)
+	if err != nil {
+		t.Fatalf("Failed to format table: %v", err)
+	}
+
+	t.Logf("Table output with word wrapping:\n%s", output)
+
+	// Check that the table was rendered
+	if !(strings.Contains(output, "ID") || strings.Contains(output, "id")) {
+		t.Errorf("Table should have id header")
+	}
+
+	// Check that long content is present (word wrapping may split it across lines)
+	if !strings.Contains(output, "ITEM-1") {
+		t.Errorf("Table should contain ITEM-1")
+	}
+
+	// Check that the long description content is present
+	// We don't check for exact formatting since word wrapping may break it differently
+	if !strings.Contains(output, "very long description") {
+		t.Errorf("Table should contain the long description content")
+	}
+
+	// Check that short content is present
+	if !strings.Contains(output, "ITEM-2") || !strings.Contains(output, "Short description") {
+		t.Errorf("Table should contain ITEM-2 with short description")
 	}
 }

@@ -7,6 +7,11 @@ import (
 	"github.com/flanksource/clicky/api"
 )
 
+type TextTree struct {
+	Node     api.Textable
+	Children []TextTree
+}
+
 // TreeFormatter handles tree structure formatting
 type TreeFormatter struct {
 	Theme   api.Theme

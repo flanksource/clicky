@@ -37,8 +37,8 @@ func TestMapFieldsRendering(t *testing.T) {
 			{
 				Name:   "items",
 				Format: "table",
-				TableOptions: api.PrettyTable{
-					Fields: []api.PrettyField{
+				TableOptions: api.TableOptions{
+					Columns: []api.PrettyField{
 						{Name: "product", Type: "string"},
 						{Name: "price", Type: "float", Format: "currency"},
 						{Name: "quantity", Type: "int"},
@@ -335,8 +335,8 @@ func XTestMapInTableFields(t *testing.T) {
 			{
 				Name:   "events",
 				Format: "table",
-				TableOptions: api.PrettyTable{
-					Fields: []api.PrettyField{
+				TableOptions: api.TableOptions{
+					Columns: []api.PrettyField{
 						{Name: "id", Type: "int"},
 						{Name: "name", Type: "string"},
 						{Name: "metadata", Type: "map"},

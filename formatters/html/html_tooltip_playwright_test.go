@@ -1,4 +1,4 @@
-package formatters
+package html
 
 import (
 	"fmt"
@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/flanksource/clicky/api"
+	"github.com/flanksource/clicky/formatters"
 	"github.com/playwright-community/playwright-go"
 )
 
@@ -55,8 +56,8 @@ func testTableTooltips(t *testing.T, browser playwright.Browser) {
 					Name:   "products",
 					Type:   "table",
 					Format: api.FormatTable,
-					TableOptions: api.PrettyTable{
-						Fields: []api.PrettyField{
+					TableOptions: api.TableOptions{
+						Columns: []api.PrettyField{
 							{Name: "name", Type: "string", Label: "Product Name"},
 							{Name: "status", Type: "string", Label: "Status"},
 							{Name: "price", Type: "float", Label: "Price", Format: api.FormatCurrency},
@@ -159,8 +160,8 @@ func testGridJSTableTooltips(t *testing.T, browser playwright.Browser) {
 					Name:   "items",
 					Type:   "table",
 					Format: api.FormatTable,
-					TableOptions: api.PrettyTable{
-						Fields: []api.PrettyField{
+					TableOptions: api.TableOptions{
+						Columns: []api.PrettyField{
 							{Name: "id", Type: "string", Label: "ID"},
 							{Name: "description", Type: "string", Label: "Description"},
 						},
@@ -285,7 +286,7 @@ func testTreeTooltips(t *testing.T, browser playwright.Browser) {
 
 	// Generate HTML
 	formatter := NewHTMLFormatter()
-	html, err := formatter.Format(tree)
+	html, err := formatter.Format(tree, formatters.FormatOptions{})
 	if err != nil {
 		t.Fatalf("Failed to format HTML: %v", err)
 	}

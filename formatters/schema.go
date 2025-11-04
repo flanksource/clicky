@@ -168,12 +168,12 @@ func (sf *SchemaFormatter) formatWithPrettyData(data *api.PrettyData, options Fo
 		csvFormatter := NewCSVFormatter()
 		// Use the original PrettyData directly for CSV formatting
 		return csvFormatter.FormatPrettyData(data)
-	case "html":
-		htmlFormatter := NewHTMLFormatter()
-		return htmlFormatter.FormatPrettyData(data)
-	case "html-pdf":
-		htmlPDFFormatter := NewHTMLPDFFormatter()
-		return htmlPDFFormatter.FormatPrettyData(data)
+	case "html", "html-pdf":
+		formatter, ok := GetCustomFormatter(options.Format)
+		if !ok {
+			return "", fmt.Errorf("%s formatter not registered, registing using 'import _ github.com/flanksource/clicky/formatters/http'", options.Format)
+		}
+		return formatter(data, options)
 	default:
 		// For other formats, delegate to the format manager
 		manager := NewFormatManager()
@@ -191,17 +191,25 @@ func (sf *SchemaFormatter) formatPrettyDataToMap(data *api.PrettyData) map[strin
 			// Handle nested PrettyData recursively
 			output[key] = sf.convertPrettyDataToMap(nestedData)
 		} else {
-			output[key] = fieldValue.Formatted()
+			if fieldValue.Text != nil {
+				output[key] = fieldValue.Text.String()
+			} else {
+				output[key] = fmt.Sprintf("%v", fieldValue.Value)
+			}
 		}
 	}
 
-	// Add all tables using Formatted() for consistency
+	// Add all tables using Text.String() for consistency
 	for key, tableRows := range data.Tables {
 		tableData := make([]map[string]interface{}, len(tableRows))
 		for i, row := range tableRows {
 			rowData := make(map[string]interface{})
 			for fieldName, fieldValue := range row {
-				rowData[fieldName] = fieldValue.Formatted()
+				if fieldValue.Text != nil {
+					rowData[fieldName] = fieldValue.Text.String()
+				} else {
+					rowData[fieldName] = fmt.Sprintf("%v", fieldValue.Value)
+				}
 			}
 			tableData[i] = rowData
 		}
@@ -221,7 +229,11 @@ func (sf *SchemaFormatter) convertPrettyDataToMap(data *api.PrettyData) map[stri
 			output[key] = sf.convertPrettyDataToMap(nestedData)
 		} else {
 			// Base case - format the value
-			output[key] = fieldValue.Formatted()
+			if fieldValue.Text != nil {
+				output[key] = fieldValue.Text.String()
+			} else {
+				output[key] = fmt.Sprintf("%v", fieldValue.Value)
+			}
 		}
 	}
 
@@ -231,7 +243,11 @@ func (sf *SchemaFormatter) convertPrettyDataToMap(data *api.PrettyData) map[stri
 		for i, row := range tableRows {
 			rowData := make(map[string]interface{})
 			for fieldName, fieldValue := range row {
-				rowData[fieldName] = fieldValue.Formatted()
+				if fieldValue.Text != nil {
+					rowData[fieldName] = fieldValue.Text.String()
+				} else {
+					rowData[fieldName] = fmt.Sprintf("%v", fieldValue.Value)
+				}
 			}
 			tableData[i] = rowData
 		}
