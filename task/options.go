@@ -103,7 +103,6 @@ func WithIdentity(identity string) Option {
 
 // ManagerOptions contains configuration options for TaskManager
 type ManagerOptions struct {
-	NoColor         bool          // Disable colored output
 	NoProgress      bool          // Disable progress display
 	MaxConcurrent   int           // Maximum concurrent tasks (0 = unlimited)
 	GracefulTimeout time.Duration // Timeout for graceful shutdown
@@ -116,7 +115,6 @@ type ManagerOptions struct {
 // DefaultManagerOptions returns sensible defaults
 func DefaultManagerOptions() *ManagerOptions {
 	return &ManagerOptions{
-		NoColor:         false,
 		NoProgress:      false,
 		MaxConcurrent:   1,
 		GracefulTimeout: 10 * time.Second,
@@ -127,7 +125,6 @@ func DefaultManagerOptions() *ManagerOptions {
 
 // Apply configures a TaskManager with these options
 func (opts *ManagerOptions) Apply() {
-	SetNoColor(opts.NoColor)
 	SetNoProgress(opts.NoProgress)
 	SetMaxConcurrent(opts.MaxConcurrent)
 	SetGracefulTimeout(opts.GracefulTimeout)
@@ -142,8 +139,7 @@ func (opts *ManagerOptions) Apply() {
 
 // BindManagerFlags adds TaskManager flags to standard flag set
 func BindManagerFlags(flags *flag.FlagSet, options *ManagerOptions) {
-	flags.BoolVar(&options.NoColor, "no-color", options.NoColor,
-		"Disable colored output")
+
 	flags.BoolVar(&options.NoProgress, "no-progress", options.NoProgress,
 		"Disable progress display")
 	flags.IntVar(&options.MaxConcurrent, "max-concurrent", options.MaxConcurrent,
@@ -158,8 +154,6 @@ func BindManagerFlags(flags *flag.FlagSet, options *ManagerOptions) {
 
 // BindManagerPFlags adds TaskManager flags to pflag set (for Cobra)
 func BindManagerPFlags(flags *pflag.FlagSet, options *ManagerOptions) {
-	flags.BoolVar(&options.NoColor, "no-color", options.NoColor,
-		"Disable colored output")
 	flags.BoolVar(&options.NoProgress, "no-progress", options.NoProgress,
 		"Disable progress display")
 	flags.IntVar(&options.MaxConcurrent, "max-concurrent", options.MaxConcurrent,
