@@ -192,7 +192,7 @@ type UberDemo struct {
 
 	// ==================== TREE STRUCTURE ====================
 	// Tree formatted data
-	FileSystem *api.SimpleTreeNode `json:"file_system,omitempty" pretty:"label=File System,format=tree,omitempty"`
+	FileSystem *api.SimpleTreeNode `json:"file_system,omitempty" pretty:"label=File System,omitempty"`
 
 	// ==================== MIXED COMPLEX DATA ====================
 	// Map of slices
@@ -479,7 +479,7 @@ func createDemoData() *UberDemo {
 // createIconsShowcase creates a comprehensive showcase of all available icons
 func createIconsShowcase() []IconShowcase {
 	return []IconShowcase{
-		{Icon: api.Text{}.Add(icons.AI), Name: "AI", Description: "Artificial Intelligence / Robot"},
+		{Icon: api.Text{}.Add(icons.AI.WithStyle("h-8")), Name: "AI", Description: "Artificial Intelligence / Robot"},
 		{Icon: api.Text{}.Add(icons.ArrowDown), Name: "ArrowDown", Description: "Down arrow"},
 		{Icon: api.Text{}.Add(icons.ArrowLeft), Name: "ArrowLeft", Description: "Left arrow"},
 		{Icon: api.Text{}.Add(icons.ArrowRight), Name: "ArrowRight", Description: "Right arrow"},

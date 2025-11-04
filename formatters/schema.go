@@ -185,35 +185,24 @@ func (sf *SchemaFormatter) formatWithPrettyData(data *api.PrettyData, options Fo
 func (sf *SchemaFormatter) formatPrettyDataToMap(data *api.PrettyData) map[string]interface{} {
 	output := make(map[string]interface{})
 
-	// Add all values using Formatted() for consistency with other formatters
-	for key, fieldValue := range data.Values {
-		if nestedData, ok := fieldValue.Value.(*api.PrettyData); ok {
-			// Handle nested PrettyData recursively
-			output[key] = sf.convertPrettyDataToMap(nestedData)
-		} else {
-			if fieldValue.Text != nil {
-				output[key] = fieldValue.Text.String()
-			} else {
-				output[key] = fmt.Sprintf("%v", fieldValue.Value)
-			}
+	// Add all values using String() for consistency with other formatters
+	if data.TypedMap != nil {
+		for key, typedValue := range *data.TypedMap {
+			output[key] = typedValue.String()
 		}
 	}
 
-	// Add all tables using Text.String() for consistency
-	for key, tableRows := range data.Tables {
-		tableData := make([]map[string]interface{}, len(tableRows))
-		for i, row := range tableRows {
+	// Add table data if present
+	if data.Table != nil {
+		tableData := make([]map[string]interface{}, len(data.Table.Rows))
+		for i, row := range data.Table.Rows {
 			rowData := make(map[string]interface{})
-			for fieldName, fieldValue := range row {
-				if fieldValue.Text != nil {
-					rowData[fieldName] = fieldValue.Text.String()
-				} else {
-					rowData[fieldName] = fmt.Sprintf("%v", fieldValue.Value)
-				}
+			for fieldName, typedValue := range row {
+				rowData[fieldName] = typedValue.String()
 			}
 			tableData[i] = rowData
 		}
-		output[key] = tableData
+		output["table"] = tableData
 	}
 
 	return output
@@ -223,35 +212,23 @@ func (sf *SchemaFormatter) formatPrettyDataToMap(data *api.PrettyData) map[strin
 func (sf *SchemaFormatter) convertPrettyDataToMap(data *api.PrettyData) map[string]interface{} {
 	output := make(map[string]interface{})
 
-	for key, fieldValue := range data.Values {
-		if nestedData, ok := fieldValue.Value.(*api.PrettyData); ok {
-			// Recursive case - convert nested PrettyData to map
-			output[key] = sf.convertPrettyDataToMap(nestedData)
-		} else {
-			// Base case - format the value
-			if fieldValue.Text != nil {
-				output[key] = fieldValue.Text.String()
-			} else {
-				output[key] = fmt.Sprintf("%v", fieldValue.Value)
-			}
+	if data.TypedMap != nil {
+		for key, typedValue := range *data.TypedMap {
+			output[key] = typedValue.String()
 		}
 	}
 
-	// Include tables if any
-	for key, tableRows := range data.Tables {
-		tableData := make([]map[string]interface{}, len(tableRows))
-		for i, row := range tableRows {
+	// Include table if present
+	if data.Table != nil {
+		tableData := make([]map[string]interface{}, len(data.Table.Rows))
+		for i, row := range data.Table.Rows {
 			rowData := make(map[string]interface{})
-			for fieldName, fieldValue := range row {
-				if fieldValue.Text != nil {
-					rowData[fieldName] = fieldValue.Text.String()
-				} else {
-					rowData[fieldName] = fmt.Sprintf("%v", fieldValue.Value)
-				}
+			for fieldName, typedValue := range row {
+				rowData[fieldName] = typedValue.String()
 			}
 			tableData[i] = rowData
 		}
-		output[key] = tableData
+		output["table"] = tableData
 	}
 
 	return output

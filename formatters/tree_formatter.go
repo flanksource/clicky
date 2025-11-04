@@ -76,15 +76,9 @@ func (f *TreeFormatter) FormatPrettyData(data *api.PrettyData) (string, error) {
 		return "", nil
 	}
 
-	// Look for tree fields
-	for _, field := range data.Schema.Fields {
-		if field.Format == api.FormatTree {
-			if fieldValue, exists := data.Values[field.Name]; exists {
-				if treeNode, ok := fieldValue.Value.(api.TreeNode); ok {
-					return f.FormatTreeFromRoot(treeNode), nil
-				}
-			}
-		}
+	// Check if data itself has a tree
+	if data.Tree != nil {
+		return data.Tree.String(), nil
 	}
 
 	// No tree fields found - provide detailed diagnostic information
@@ -111,13 +105,9 @@ func buildNoTreeDataMessage(data *api.PrettyData) string {
 		msg.WriteString("No fields found in schema.\n\n")
 	}
 
-	// Show available tables
-	if len(data.Tables) > 0 {
-		msg.WriteString("Available tables:\n")
-		for name, rows := range data.Tables {
-			msg.WriteString(fmt.Sprintf("  - %s (%d rows)\n", name, len(rows)))
-		}
-		msg.WriteString("\n")
+	// Show available table
+	if data.Table != nil && len(data.Table.Rows) > 0 {
+		msg.WriteString(fmt.Sprintf("Available table with %d rows\n\n", len(data.Table.Rows)))
 	}
 
 	// Show original data type if available

@@ -1,23 +1,5 @@
 package api
 
-// TreeNode defines the interface for hierarchical tree structures.
-// Implementations provide formatted content and child relationships for tree rendering.
-type TreeNode interface {
-	Pretty() Text
-	GetChildren() []TreeNode
-}
-
-// TreeMixin allows types to provide tree representation without being TreeNodes themselves.
-// This is useful for data types that need tree formatting but aren't primarily tree structures.
-type TreeMixin interface {
-	Tree() TreeNode
-}
-
-// PrettyNode extends TreeNode with rich text formatting capabilities.
-type PrettyNode interface {
-	Pretty() Text
-}
-
 type ConcreteTreeNode struct {
 	Node Pretty
 }

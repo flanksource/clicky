@@ -51,137 +51,17 @@ func (f *CSVFormatter) FormatPrettyData(data *api.PrettyData) (string, error) {
 	writer := csv.NewWriter(&output)
 	writer.Comma = f.Separator
 
-	// Check if this is primarily table data (from a slice)
-	// If there's exactly one table field and no regular fields, format as table
-	var tableField *api.PrettyField
-	var treeField *api.PrettyField
-	var nonTableFields []api.PrettyField
-
-	for _, field := range data.Schema.Fields {
-		switch field.Format {
-		case api.FormatTable:
-			tableField = &field
-		case api.FormatTree:
-			treeField = &field
-		default:
-			nonTableFields = append(nonTableFields, field)
-		}
+	table := data.FirstTable()
+	if table == nil {
+		return "", fmt.Errorf("No tables defined")
 	}
 
-	// If we have tree data as the primary field, flatten it to CSV
-	if treeField != nil && len(nonTableFields) == 0 && tableField == nil {
-		if fieldValue, exists := data.Values[treeField.Name]; exists {
-			// Check if the value implements TreeNode interface
-			if treeNode, ok := fieldValue.Value.(api.TreeNode); ok {
-				// Flatten tree to CSV rows
-				rows := f.flattenTree(treeNode, 0)
+	if err := writer.Write(table.Headers.AsString()); err != nil {
+		return "", fmt.Errorf("failed to write CSV headers: %w", err)
+	}
 
-				// Write headers
-				headers := []string{"Level", "Name", "Details"}
-				if err := writer.Write(headers); err != nil {
-					return "", err
-				}
-
-				// Write rows
-				for _, row := range rows {
-					if err := writer.Write(row); err != nil {
-						return "", err
-					}
-				}
-			} else {
-				// Fall back to regular formatting if not a tree
-				headers := []string{treeField.Name}
-				valueStr := ""
-				if fieldValue.Text != nil {
-					valueStr = fieldValue.Text.String()
-				} else {
-					valueStr = fmt.Sprintf("%v", fieldValue.Value)
-				}
-				values := []string{valueStr}
-				if err := writer.Write(headers); err != nil {
-					return "", err
-				}
-				if err := writer.Write(values); err != nil {
-					return "", err
-				}
-			}
-		}
-	} else if tableField != nil && len(nonTableFields) == 0 {
-		// If we have table data and it's the primary data, format it as CSV rows
-		if tableData, exists := data.Tables[tableField.Name]; exists && len(tableData) > 0 {
-			// Use TableOptions.Fields to determine headers and order
-			var headers []string
-			var fieldNames []string
-
-			for _, field := range tableField.TableOptions.Columns {
-				// Use Label for display, fallback to Name
-				header := field.Label
-				if header == "" {
-					header = field.Name
-				}
-				headers = append(headers, header)
-				fieldNames = append(fieldNames, field.Name)
-			}
-
-			// Write headers
-			if err := writer.Write(headers); err != nil {
-				return "", err
-			}
-
-			// Write data rows using field names for extraction
-			for _, row := range tableData {
-				var values []string
-				for _, fieldName := range fieldNames {
-					if fieldValue, exists := row[fieldName]; exists {
-						valueStr := ""
-						if fieldValue.Text != nil {
-							valueStr = fieldValue.Text.String()
-						} else {
-							valueStr = fmt.Sprintf("%v", fieldValue.Value)
-						}
-						values = append(values, valueStr)
-					} else {
-						values = append(values, "")
-					}
-				}
-				if err := writer.Write(values); err != nil {
-					return "", err
-				}
-			}
-		}
-	} else {
-		// Format as single row with headers (original behavior for structs)
-		var headers []string
-		var values []string
-
-		// Process regular fields (non-table, non-tree)
-		for _, field := range data.Schema.Fields {
-			if field.Format == api.FormatTable || field.Format == api.FormatTree {
-				continue
-			}
-
-			if fieldValue, exists := data.Values[field.Name]; exists {
-				headers = append(headers, field.Name)
-				valueStr := ""
-				if fieldValue.Text != nil {
-					valueStr = fieldValue.Text.String()
-				} else {
-					valueStr = fmt.Sprintf("%v", fieldValue.Value)
-				}
-				values = append(values, valueStr)
-			}
-		}
-
-		// Write headers and values if we have any
-		if len(headers) > 0 {
-			if err := writer.Write(headers); err != nil {
-				return "", err
-			}
-
-			if err := writer.Write(values); err != nil {
-				return "", err
-			}
-		}
+	for _, row := range table.Rows {
+		writer.Write(table.AsString(row))
 	}
 
 	writer.Flush()

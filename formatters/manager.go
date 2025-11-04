@@ -150,64 +150,6 @@ func (f FormatManager) Format(format string, data interface{}) (string, error) {
 	}
 }
 
-// FormatWithOptions formats data using the specified format options
-// convertPrettyDataToSimple converts filtered PrettyData back to simple data structures
-// Returns either a slice of maps (for table data) or a map (for struct data with tables)
-func convertPrettyDataToSimple(prettyData *api.PrettyData) interface{} {
-	// If there are no tables, just return original
-	if len(prettyData.Tables) == 0 {
-		return prettyData.Original
-	}
-
-	// Check if this was originally a slice (single table named "table")
-	if table, ok := prettyData.Tables["table"]; ok && len(prettyData.Tables) == 1 {
-		// This was a slice - convert table rows back to []map[string]interface{}
-		var result []map[string]interface{}
-		for _, row := range table {
-			simpleRow := make(map[string]interface{})
-			for fieldName, fieldValue := range row {
-				simpleRow[fieldName] = fieldValue.Primitive()
-			}
-			result = append(result, simpleRow)
-		}
-		return result
-	}
-
-	// This was a struct with multiple fields - reconstruct with filtered tables
-	result := make(map[string]interface{})
-
-	// Add scalar values from the schema
-	if prettyData.Schema != nil {
-		for _, field := range prettyData.Schema.Fields {
-			if field.Format != api.FormatTable {
-				// Add scalar field value with lowercase field name (matching JSON convention)
-				if fieldValue, ok := prettyData.Values[field.Name]; ok {
-					// Use lowercase field name to match JSON tags
-					fieldKey := strings.ToLower(field.Name[:1]) + field.Name[1:]
-					result[fieldKey] = fieldValue.Primitive()
-				}
-			}
-		}
-	}
-
-	// Add filtered table data as arrays
-	for tableName, rows := range prettyData.Tables {
-		tableArray := make([]map[string]interface{}, 0, len(rows))
-		for _, row := range rows {
-			simpleRow := make(map[string]interface{})
-			for fieldName, fieldValue := range row {
-				simpleRow[fieldName] = fieldValue.Primitive()
-			}
-			tableArray = append(tableArray, simpleRow)
-		}
-		// Use lowercase table name to match JSON tags
-		tableKey := strings.ToLower(tableName[:1]) + tableName[1:]
-		result[tableKey] = tableArray
-	}
-
-	return result
-}
-
 func (f FormatManager) FormatWithOptions(options FormatOptions, data ...any) (string, error) {
 
 	if len(data) == 0 {
@@ -263,42 +205,13 @@ func (f FormatManager) FormatWithOptions(options FormatOptions, data ...any) (st
 	// Handle format-specific options
 	switch strings.ToLower(format) {
 	case "json":
-		// Apply filter if provided by converting to PrettyData first
-		if options.Filter != "" && len(data) == 1 {
-			prettyData, err := ToPrettyDataWithOptions(data[0], options)
-			if err != nil {
-				return "", fmt.Errorf("failed to apply filter: %w", err)
-			}
-			// Convert filtered PrettyData back to simple data
-			filteredData := convertPrettyDataToSimple(prettyData)
-			return f.JSON([]any{filteredData})
-		}
+
 		return f.JSON(data)
 
 	case "yaml", "yml":
-		// Apply filter if provided by converting to PrettyData first
-		if options.Filter != "" && len(data) == 1 {
-			prettyData, err := ToPrettyDataWithOptions(data[0], options)
-			if err != nil {
-				return "", fmt.Errorf("failed to apply filter: %w", err)
-			}
-			// Convert filtered PrettyData back to simple data
-			filteredData := convertPrettyDataToSimple(prettyData)
-			return f.YAML([]any{filteredData})
-		}
 		return f.YAML(data)
 
 	case "csv":
-		// Apply filter if provided by converting to PrettyData first
-		if options.Filter != "" && len(data) == 1 {
-			prettyData, err := ToPrettyDataWithOptions(data[0], options)
-			if err != nil {
-				return "", fmt.Errorf("failed to apply filter: %w", err)
-			}
-			// Convert filtered PrettyData back to simple data
-			filteredData := convertPrettyDataToSimple(prettyData)
-			return f.CSV([]any{filteredData})
-		}
 		return f.CSV(data)
 
 	case "markdown", "md":
@@ -457,20 +370,10 @@ func (f FormatManager) FormatWithSchema(prettyData *api.PrettyData, options Form
 	// Handle different output formats for schema-aware data
 	switch strings.ToLower(options.Format) {
 	case "json":
-		// Convert PrettyData back to map for JSON output
-		output := f.prettyDataToMap(prettyData)
-		if f.jsonFormatter == nil {
-			f.jsonFormatter = NewJSONFormatter()
-		}
-		// Use FormatValue directly to avoid ToPrettyData conversion
-		return f.jsonFormatter.FormatValue(output)
+
+		return f.jsonFormatter.FormatValue(prettyData.Original)
 	case "yaml", "yml":
-		// Convert PrettyData back to map for YAML output
-		output := f.prettyDataToMap(prettyData)
-		if f.yamlFormatter == nil {
-			f.yamlFormatter = NewYAMLFormatter()
-		}
-		return f.yamlFormatter.FormatValue(output)
+		return f.yamlFormatter.FormatValue(prettyData.Original)
 	case "csv":
 		if f.csvFormatter == nil {
 			f.csvFormatter = NewCSVFormatter()
@@ -485,7 +388,7 @@ func (f FormatManager) FormatWithSchema(prettyData *api.PrettyData, options Form
 	case "html", "html-pdf":
 		formatter, ok := GetCustomFormatter(options.Format)
 		if !ok {
-			return "", fmt.Errorf("%s formatter not registered, registing using 'import _ github.com/flanksource/clicky/formatters/http'", options.Format)
+			return "", fmt.Errorf("%s formatter not registered, registing using 'import _ github.com/flanksource/clicky/formatters/html'", options.Format)
 		}
 		return formatter(prettyData, options)
 	default:
@@ -496,31 +399,6 @@ func (f FormatManager) FormatWithSchema(prettyData *api.PrettyData, options Form
 		f.prettyFormatter.NoColor = options.NoColor
 		return f.prettyFormatter.FormatPrettyData(prettyData)
 	}
-}
-
-// prettyDataToMap converts PrettyData back to a map for JSON/YAML formatting
-func (f FormatManager) prettyDataToMap(data *api.PrettyData) map[string]interface{} {
-	output := make(map[string]interface{})
-
-	// Add regular field values
-	for name, fieldValue := range data.Values {
-		output[name] = fieldValue.Value
-	}
-
-	// Add table data as arrays
-	for name, rows := range data.Tables {
-		tableData := make([]map[string]interface{}, len(rows))
-		for i, row := range rows {
-			rowData := make(map[string]interface{})
-			for k, v := range row {
-				rowData[k] = v.Value
-			}
-			tableData[i] = rowData
-		}
-		output[name] = tableData
-	}
-
-	return output
 }
 
 var DEFAULT_MANAGER api.FormatManager = NewFormatManager()
