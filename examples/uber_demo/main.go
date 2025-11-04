@@ -1,7 +1,6 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"os"
 	"time"
@@ -9,6 +8,7 @@ import (
 	"github.com/flanksource/clicky"
 	"github.com/flanksource/clicky/api"
 	"github.com/flanksource/clicky/api/icons"
+	"github.com/spf13/cobra"
 )
 
 // Helper functions for creating pointers
@@ -517,136 +517,128 @@ func createColorsShowcase() []ColorExample {
 
 // createTextStylesShowcase creates a showcase of text styles and transformations
 func createTextStylesShowcase() []TextStyleExample {
-	sampleText := "The Quick Brown Fox"
+	sampleText := "The Quick Brown FOX Jumps Over The-Lazy-Dog"
 
-	return []TextStyleExample{
-		// Text transformations
-		{
-			StyleName:   api.Text{Content: "UPPERCASE", Style: "font-bold text-blue-600"},
-			Example:     api.Text{Content: sampleText, Style: "uppercase"},
-			Description: "Converts all text to uppercase letters",
-		},
-		{
-			StyleName:   api.Text{Content: "lowercase", Style: "font-bold text-blue-600"},
-			Example:     api.Text{Content: sampleText, Style: "lowercase"},
-			Description: "Converts all text to lowercase letters",
-		},
-		{
-			StyleName:   api.Text{Content: "Capitalize", Style: "font-bold text-blue-600"},
-			Example:     api.Text{Content: sampleText, Style: "capitalize"},
-			Description: "Capitalizes the first letter of each word",
-		},
-
-		// Font weights
-		{
-			StyleName:   api.Text{Content: "Thin", Style: "font-bold text-purple-600"},
-			Example:     api.Text{Content: sampleText, Style: "font-thin"},
-			Description: "Very light font weight (100)",
-		},
-		{
-			StyleName:   api.Text{Content: "Light", Style: "font-bold text-purple-600"},
-			Example:     api.Text{Content: sampleText, Style: "font-light"},
-			Description: "Light font weight (300)",
-		},
-		{
-			StyleName:   api.Text{Content: "Normal", Style: "font-bold text-purple-600"},
-			Example:     api.Text{Content: sampleText, Style: "font-normal"},
-			Description: "Normal font weight (400)",
-		},
-		{
-			StyleName:   api.Text{Content: "Medium", Style: "font-bold text-purple-600"},
-			Example:     api.Text{Content: sampleText, Style: "font-medium"},
-			Description: "Medium font weight (500)",
-		},
-		{
-			StyleName:   api.Text{Content: "Semibold", Style: "font-bold text-purple-600"},
-			Example:     api.Text{Content: sampleText, Style: "font-semibold"},
-			Description: "Semibold font weight (600)",
-		},
-		{
-			StyleName:   api.Text{Content: "Bold", Style: "font-bold text-purple-600"},
-			Example:     api.Text{Content: sampleText, Style: "font-bold"},
-			Description: "Bold font weight (700)",
-		},
-
-		// Text decorations
-		{
-			StyleName:   api.Text{Content: "Underline", Style: "font-bold text-green-600"},
-			Example:     api.Text{Content: sampleText, Style: "underline"},
-			Description: "Adds an underline to text",
-		},
-		{
-			StyleName:   api.Text{Content: "Line Through", Style: "font-bold text-green-600"},
-			Example:     api.Text{Content: sampleText, Style: "line-through"},
-			Description: "Adds a strikethrough line",
-		},
-		{
-			StyleName:   api.Text{Content: "Italic", Style: "font-bold text-green-600"},
-			Example:     api.Text{Content: sampleText, Style: "italic"},
-			Description: "Italicizes the text",
-		},
-
-		// Opacity variations
-		{
-			StyleName:   api.Text{Content: "Opacity 25%", Style: "font-bold text-orange-600"},
-			Example:     api.Text{Content: sampleText, Style: "opacity-25"},
-			Description: "25% opacity (very faint)",
-		},
-		{
-			StyleName:   api.Text{Content: "Opacity 50%", Style: "font-bold text-orange-600"},
-			Example:     api.Text{Content: sampleText, Style: "opacity-50"},
-			Description: "50% opacity (semi-transparent)",
-		},
-		{
-			StyleName:   api.Text{Content: "Opacity 75%", Style: "font-bold text-orange-600"},
-			Example:     api.Text{Content: sampleText, Style: "opacity-75"},
-			Description: "75% opacity (slightly transparent)",
-		},
-
-		// Combined styles
-		{
-			StyleName:   api.Text{Content: "Combined 1", Style: "font-bold text-red-600"},
-			Example:     api.Text{Content: sampleText, Style: "uppercase font-bold text-green-600 underline"},
-			Description: "Uppercase + Bold + Green + Underline",
-		},
-		{
-			StyleName:   api.Text{Content: "Combined 2", Style: "font-bold text-red-600"},
-			Example:     api.Text{Content: sampleText, Style: "lowercase italic text-purple-700 opacity-75"},
-			Description: "Lowercase + Italic + Purple + 75% Opacity",
-		},
-		{
-			StyleName:   api.Text{Content: "Combined 3", Style: "font-bold text-red-600"},
-			Example:     api.Text{Content: sampleText, Style: "capitalize font-semibold text-blue-500 underline"},
-			Description: "Capitalize + Semibold + Blue + Underline",
-		},
+	examples := []TextStyleExample{}
+	for _, style := range []string{
+		"uppercase", "lowercase", "capitalize", "normal-case",
+		"text-left", "text-center", "text-right", "text-justify",
+		"font-thin", "font-light", "font-normal", "font-medium", "font-semibold", "font-bold",
+		"underline", "line-through", "italic",
+		"opacity-25", "opacity-50", "opacity-75",
+		"uppercase font-bold text-green-600 underline",
+		"lowercase italic text-purple-700 opacity-75",
+		"max-w-[5ch] truncate",
+		"max-w-[5ch] truncate", "max-w-[5ch] text-ellipsis", "max-w-[5ch] text-clip",
+		"text-xs", "text-sm", "text-base", "text-lg", "text-xl", "text-2xl", "text-3xl",
+	} {
+		examples = append(examples, TextStyleExample{
+			StyleName: api.Text{Content: style},
+			Example:   api.Text{Content: sampleText, Style: style},
+		})
 	}
+	return examples
+
+}
+
+// ShowcaseOptions are options for showcase commands
+type ShowcaseOptions struct {
+	IncludeIcons  bool `flag:"icons" help:"Include icons showcase" default:"true"`
+	IncludeColors bool `flag:"colors" help:"Include colors showcase" default:"true"`
+	IncludeStyles bool `flag:"styles" help:"Include text styles showcase" default:"true"`
+	IncludeTypes  bool `flag:"types" help:"Include data types showcase" default:"true"`
+}
+
+// IconsOptions for showing just icons
+type IconsOptions struct{}
+
+// ColorsOptions for showing just colors
+type ColorsOptions struct{}
+
+// StylesOptions for showing just text styles
+type StylesOptions struct{}
+
+// TypesOptions for showing just data types
+type TypesOptions struct{}
+
+// showAll displays all showcases
+func showAll(opts ShowcaseOptions) (any, error) {
+	demo := createDemoData()
+
+	// Conditionally include showcases based on flags
+	if !opts.IncludeIcons {
+		demo.IconsTable = nil
+	}
+	if !opts.IncludeColors {
+		demo.ColorsTable = nil
+	}
+	if !opts.IncludeStyles {
+		demo.TextStylesTable = nil
+	}
+	if !opts.IncludeTypes {
+		// Clear all type demo fields
+		demo.StringField = ""
+		demo.IntField = 0
+		demo.Orders = nil
+		demo.FileSystem = nil
+	}
+
+	return demo, nil
+}
+
+// showIcons displays icon showcase
+func showIcons(opts IconsOptions) (any, error) {
+	return createIconsShowcase(), nil
+}
+
+// showColors displays color showcase
+func showColors(opts ColorsOptions) (any, error) {
+	return createColorsShowcase(), nil
+}
+
+// showStyles displays text styles showcase
+func showStyles(opts StylesOptions) (any, error) {
+	return createTextStylesShowcase(), nil
+}
+
+// showTypes displays data types showcase
+func showTypes(opts TypesOptions) (any, error) {
+	demo := createDemoData()
+	// Clear showcases, keep only type demos
+	demo.IconsTable = nil
+	demo.ColorsTable = nil
+	demo.TextStylesTable = nil
+	return demo, nil
 }
 
 func main() {
-	// Parse command-line flags
-	format := flag.String("format", "pretty", "Output format (json, yaml, csv, html, pdf, markdown, pretty)")
-	flag.Parse()
-	clicky.Infof("Pringint %s", *format)
-
-	// Create demo data
-	demo := createDemoData()
-
-	t := clicky.Text("")
-	for _, icon := range createIconsShowcase() {
-		t = t.NewLine().Add(clicky.Text(icon.Name).Space().Add(icon.Icon))
+	rootCmd := &cobra.Command{
+		Use:   "uber-demo",
+		Short: "Comprehensive demonstration of Clicky formatting capabilities",
+		PersistentPreRun: func(cmd *cobra.Command, args []string) {
+			clicky.Flags.UseFlags()
+		},
+		Long: `Uber Demo showcases all Clicky formatting features including:
+- All data types (primitives, pointers, slices, maps, nested structs)
+- Icons showcase with 50+ icons
+- Tailwind color styles (9 colors × 10 shades)
+- Text transformations (uppercase, lowercase, capitalize, etc.)
+- Font weights, decorations, and combined styles
+- Multiple output formats (pretty, json, yaml, html, markdown, csv, pdf)`,
 	}
 
-	for _, style := range demo.TextStylesTable {
-		t = t.NewLine().Add(style.StyleName)
+	clicky.AddCommand(rootCmd, ShowcaseOptions{}, showAll)
+	clicky.AddCommand(rootCmd, IconsOptions{}, showIcons)
+	clicky.AddCommand(rootCmd, ColorsOptions{}, showColors)
+	clicky.AddCommand(rootCmd, StylesOptions{}, showStyles)
+	clicky.AddCommand(rootCmd, TypesOptions{}, showTypes)
+	clicky.AddCommand(rootCmd, ShowcaseOptions{}, showAll)
+
+	clicky.BindAllFlags(rootCmd.PersistentFlags())
+
+	// Execute
+	if err := rootCmd.Execute(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
 	}
-
-	for _, color := range demo.ColorsTable {
-		t = t.NewLine().Add(color.ColorName)
-	}
-
-	os.Stderr.WriteString(t.ANSI() + "\n")
-	os.Stderr.WriteString(clicky.MustFormat(demo.ColorsTable, clicky.FormatOptions{Pretty: true}) + "\n")
-
-	clicky.MustPrint(t, clicky.FormatOptions{Format: *format})
-
 }
