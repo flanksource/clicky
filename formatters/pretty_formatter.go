@@ -72,9 +72,45 @@ func (p *PrettyFormatter) FormatPrettyData(data *api.PrettyData) (string, error)
 		return "", nil
 	}
 
-	// Use PrettyData.Pretty() to get structured representation,
-	// then join with newlines and render to ANSI
-	return data.Pretty().JoinNewlines().ANSI(), nil
+	var result []string
+
+	// Use PrettyData.Pretty() to get structured representation of non-table fields
+	nonTableOutput := data.Pretty().JoinNewlines().ANSI()
+	if nonTableOutput != "" {
+		result = append(result, nonTableOutput)
+	}
+
+	// Format table fields separately (temporary until Phase 3)
+	for _, field := range data.Schema.Fields {
+		if field.Format == api.FormatTable {
+			if tableRows, ok := data.Tables[field.Name]; ok && len(tableRows) > 0 {
+				// Convert table rows to items
+				var items []interface{}
+				for _, row := range tableRows {
+					// Convert row map to struct-like map for table rendering
+					rowMap := make(map[string]interface{})
+					for k, v := range row {
+						rowMap[k] = v.Value
+					}
+					items = append(items, rowMap)
+				}
+
+				// Render table - check if field definitions are available
+				var tableStr string
+				var err error
+				if len(field.Fields) > 0 {
+					tableStr, err = p.renderTableFromData(items, field.Fields)
+				} else {
+					tableStr, err = p.renderTableFromMaps(items)
+				}
+				if err == nil {
+					result = append(result, tableStr)
+				}
+			}
+		}
+	}
+
+	return strings.Join(result, "\n"), nil
 }
 
 // renderTableFromData renders a table from map items using field definitions
