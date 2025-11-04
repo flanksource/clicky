@@ -1,10 +1,11 @@
-package formatters
+package html
 
 import (
 	"strings"
 	"testing"
 
 	"github.com/flanksource/clicky/api/icons"
+	. "github.com/flanksource/clicky/formatters"
 )
 
 // TestHTMLFormatter_IconifyScriptIncluded verifies that the Iconify script is included in HTML output
@@ -17,7 +18,7 @@ func TestHTMLFormatter_IconifyScriptIncluded(t *testing.T) {
 	}
 
 	data := TestData{Name: "Test"}
-	html, err := formatter.Format(data)
+	html, err := formatter.Format(data, FormatOptions{})
 	if err != nil {
 		t.Fatalf("Failed to format HTML: %v", err)
 	}
@@ -69,7 +70,7 @@ func TestHTMLFormatter_IconInPrettyText(t *testing.T) {
 		Status: icons.Success.HTML() + " Success",
 	}
 
-	html, err := formatter.Format(data)
+	html, err := formatter.Format(data, FormatOptions{})
 	if err != nil {
 		t.Fatalf("Failed to format HTML: %v", err)
 	}

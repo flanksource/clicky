@@ -302,37 +302,6 @@ func (v FieldValue) formatArray() string {
 	return fmt.Sprintf("%v", v.Value)
 }
 
-// Formatted returns the formatted string representation of the field value
-func (v FieldValue) Formatted() string {
-	if v.Text != nil {
-		return v.Text.String()
-	}
-	if v.StringValue != nil {
-		return *v.StringValue
-	}
-	return fmt.Sprintf("%v", v.Value)
-}
-
-// Plain returns the plain string representation of the field value
-func (v FieldValue) Plain() string {
-	return v.Formatted()
-}
-
-// Markdown returns the markdown representation of the field value
-func (v FieldValue) Markdown() string {
-	if v.Text != nil {
-		return v.Text.Markdown()
-	}
-	return v.Formatted()
-}
-
-// HTML returns the HTML representation of the field value
-func (v FieldValue) HTML() string {
-	if v.Text != nil {
-		return v.Text.HTML()
-	}
-	return v.Formatted()
-}
 
 // Color determines the display color by matching the field value against
 // ColorOptions patterns, supporting exact matches and numeric comparisons.
@@ -342,7 +311,15 @@ func (v FieldValue) Color() string {
 	}
 
 	// Check color options for matching values
-	valueStr := v.Formatted()
+	valueStr := ""
+	if v.Text != nil {
+		valueStr = v.Text.String()
+	} else if v.StringValue != nil {
+		valueStr = *v.StringValue
+	} else {
+		valueStr = fmt.Sprintf("%v", v.Value)
+	}
+
 	for color, pattern := range v.Field.ColorOptions {
 		if v.matchesColorPattern(valueStr, pattern) {
 			return color
@@ -928,7 +905,7 @@ func (pd *PrettyData) Pretty() TextList {
 			if fieldValue.Text != nil {
 				fieldText = fieldText.Add(fieldValue.Text)
 			} else {
-				fieldText = fieldText.Append(fieldValue.Formatted(), "")
+				fieldText = fieldText.Append(fmt.Sprintf("%v", fieldValue.Value), "")
 			}
 
 			list = append(list, fieldText)

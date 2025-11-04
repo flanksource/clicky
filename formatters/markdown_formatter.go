@@ -153,8 +153,13 @@ func (f *MarkdownFormatter) formatSummaryFieldsData(fields []api.PrettyField, va
 			}
 		}
 
-		// Use FieldValue.Markdown() method for formatted output
-		value := fieldValue.Markdown()
+		// Use Text.Markdown() method for formatted output
+		value := ""
+		if fieldValue.Text != nil {
+			value = fieldValue.Text.Markdown()
+		} else {
+			value = fmt.Sprintf("%v", fieldValue.Value)
+		}
 		result.WriteString(fmt.Sprintf("**%s**: %s\n\n", fieldName, value))
 	}
 
@@ -288,11 +293,19 @@ func (f *MarkdownFormatter) formatTableData(tableData []api.PrettyDataRow, _ api
 					if imageMarkdown != "" {
 						cellContent = imageMarkdown
 					} else {
-						cellContent = fieldValue.Markdown()
+						if fieldValue.Text != nil {
+							cellContent = fieldValue.Text.Markdown()
+						} else {
+							cellContent = fmt.Sprintf("%v", fieldValue.Value)
+						}
 					}
 				} else {
-					// Use FieldValue.Markdown() for formatted output
-					cellContent = fieldValue.Markdown()
+					// Use Text.Markdown() for formatted output
+					if fieldValue.Text != nil {
+						cellContent = fieldValue.Text.Markdown()
+					} else {
+						cellContent = fmt.Sprintf("%v", fieldValue.Value)
+					}
 				}
 				// Escape pipe characters in cell content
 				cellContent = strings.ReplaceAll(cellContent, "|", "\\|")
@@ -319,7 +332,13 @@ func (f *MarkdownFormatter) formatTreeData(field api.PrettyField, fieldValue api
 		fieldName = field.Label
 	}
 
-	return fmt.Sprintf("**%s**: %s", fieldName, fieldValue.Markdown())
+	value := ""
+	if fieldValue.Text != nil {
+		value = fieldValue.Text.Markdown()
+	} else {
+		value = fmt.Sprintf("%v", fieldValue.Value)
+	}
+	return fmt.Sprintf("**%s**: %s", fieldName, value)
 }
 
 // formatTreeNode recursively formats a tree node as Markdown
