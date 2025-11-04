@@ -4,137 +4,10 @@ import (
 	"fmt"
 	"sort"
 	"strings"
-	"sync"
 	"time"
 
-	commonsText "github.com/flanksource/commons/text"
-	"github.com/muesli/termenv"
-
-	"github.com/flanksource/clicky/api/icons"
-	"github.com/flanksource/clicky/api/tailwind"
+	"github.com/samber/lo"
 )
-
-func Human(content any, styles ...string) Text {
-	switch t := content.(type) {
-	case Text:
-		return t
-	case Textable:
-		return Text{}.Add(t)
-	case time.Time:
-		return Text{
-			Content: t.Format(time.RFC3339),
-			Style:   strings.Join(append(styles, "date"), " "),
-		}
-	case *time.Time:
-		return Text{
-			Content: t.Format(time.RFC3339),
-			Style:   strings.Join(append(styles, "date"), " "),
-		}
-	case time.Duration:
-		var v string
-		if t < 5*time.Second {
-			v = fmt.Sprintf("%dms", t.Milliseconds())
-		} else if t < 1*time.Minute {
-			v = fmt.Sprintf("%.2fs", t.Seconds())
-		} else if t < 1*time.Hour {
-			v = fmt.Sprintf("%.1fm", t.Minutes())
-		} else if t < 24*time.Hour {
-			v = fmt.Sprintf("%.1fh", t.Hours())
-		} else {
-			v = commonsText.HumanizeDuration(t)
-		}
-		return Text{
-			Content: v,
-			Style:   strings.Join(append(styles, "duration"), " "),
-		}
-	case *time.Duration:
-		return Human(*t, styles...)
-	case int64:
-		return HumanNumber(t, styles...)
-	case int:
-		return HumanNumber(int64(t), styles...)
-	case int32:
-		return HumanNumber(int64(t), styles...)
-	case float32, float64:
-		return Text{
-			Content: fmt.Sprintf("%.2f", t),
-			Style:   strings.Join(append(styles, "number"), " "),
-		}
-
-	case bool:
-		if t {
-			return Text{}.Add(icons.Success)
-		} else {
-			return Text{}.Add(icons.Fail)
-		}
-	}
-
-	return Text{Content: fmt.Sprintf("%v", content), Style: strings.Join(styles, " ")}
-}
-
-var K = int64(1000)
-var M = K * K
-var B = M * K
-
-func HumanNumber(value int64, styles ...string) Text {
-	v := fmt.Sprintf("%d", value)
-	if value >= B {
-		v = fmt.Sprintf("%dB", value/B)
-	} else if value >= M {
-		v = fmt.Sprintf("%dM", value/M)
-	} else if value >= 50*K {
-		v = fmt.Sprintf("%d", value/K)
-	} else if value >= K {
-		v = fmt.Sprintf("%.1fK", float64(value)/float64(K))
-	}
-	return Text{
-		Content: v,
-		Style:   strings.Join(append(styles, "number"), " "),
-	}
-}
-
-type HtmlElement struct {
-	Tag        string
-	Attributes map[string]string
-	Content    string
-	Fallback   Textable
-}
-
-func (e HtmlElement) HTML() string {
-	return fmt.Sprintf("<%s %s>%s</%s>", e.Tag, formatAttributes(e.Attributes), e.Content, e.Tag)
-}
-
-func formatAttributes(attrs map[string]string) string {
-	var parts []string
-	for k, v := range attrs {
-		parts = append(parts, fmt.Sprintf(`%s="%s"`, k, v))
-	}
-	return strings.Join(parts, " ")
-}
-
-func (e HtmlElement) String() string {
-	return e.Fallback.String()
-}
-
-func (e HtmlElement) ANSI() string {
-	return e.Fallback.ANSI()
-}
-
-func (e HtmlElement) Markdown() string {
-	return e.Fallback.Markdown()
-}
-
-var BR = HtmlElement{
-	Tag:      "br",
-	Content:  "",
-	Fallback: Text{Content: "\n"},
-}
-
-var HR = HtmlElement{
-	Tag:      "hr",
-	Content:  "",
-	Fallback: Text{Content: "\n--------------------------\n"},
-}
 
 type Comment string
 
@@ -150,12 +23,6 @@ func (c Comment) HTML() string {
 func (c Comment) Markdown() string {
 	return fmt.Sprintf("<!--\n %s \n//-->", string(c))
 }
-
-// Global cache for ResolveStyles to avoid repeated parsing
-var (
-	styleCache     = make(map[string]Class)
-	styleCacheLock sync.RWMutex
-)
 
 // Textable interface defines the standard text rendering methods
 // for any type that can be rendered to multiple output formats
@@ -176,6 +43,16 @@ type Text struct {
 	Children []Textable
 	Tooltip  Textable
 	indent   int // internal use for tracking indentation level
+}
+
+func (t Text) MarshalJSON() ([]byte, error) {
+	var s = t.Content
+
+	for _, child := range t.Children {
+		s += child.String()
+	}
+	return []byte(s), nil
+
 }
 
 // Format implements fmt.Formatter to ensure sensitive values are redacted in all format verbs
@@ -219,6 +96,7 @@ func (t Text) Suffix(suffix string) Text {
 
 type List struct {
 	Items     []Textable
+	Unstyled  bool     // Whether to render without any bullet or numbering
 	Bullet    Textable // Bullet character or icon
 	Numbered  bool     // Whether to use numbered list
 	Ordered   bool     // Alias for Numbered
@@ -413,14 +291,10 @@ func (t Text) Indent(spaces int) Text {
 // PrintfWithStyle formats arguments with special handling for float64 (2 decimal places)
 // and time.Duration (human-readable format), appending the result as a styled child.
 func (t Text) PrintfWithStyle(format, style string, args ...interface{}) Text {
-	for i := range args {
-		switch v := args[i].(type) {
-		case float64:
-			args[i] = fmt.Sprintf("%.2f", v)
-		case time.Duration:
-			args[i] = commonsText.HumanizeDuration(v)
-		}
-	}
+
+	args = lo.Map(args, func(i any, _ int) any {
+		return Human(i)
+	})
 	t.Children = append(t.Children, Text{Content: fmt.Sprintf(format, args...), Style: style})
 	return t
 }
@@ -498,484 +372,6 @@ func (t Text) ANSI() string {
 	return formatANSI(content, style)
 }
 
-func (t Text) Markdown() string {
-	content := t.Content
-	for _, child := range t.Children {
-		content += child.Markdown()
-	}
-
-	// Get the effective style (Class takes precedence over Style string)
-	var style TailwindStyle
-	var transformedText string
-
-	if t.Class != (Class{}) {
-		// Use Class if available
-		transformedText = content
-		style = classToTailwindStyle(t.Class)
-	} else if t.Style != "" {
-		// Fall back to Style string
-		transformedText, style = ApplyTailwindStyle(content, t.Style)
-	} else {
-		// No style
-		return content
-	}
-
-	// Convert tailwind styles to markdown with HTML fallback for colors
-	result := transformedText
-	hasColors := style.Foreground != "" || style.Background != ""
-
-	// If we have colors, use HTML span with inline CSS for better markdown renderer support
-	if hasColors {
-		var styles []string
-
-		if style.Foreground != "" {
-			styles = append(styles, fmt.Sprintf("color: %s", style.Foreground))
-		}
-		if style.Background != "" {
-			styles = append(styles, fmt.Sprintf("background-color: %s", style.Background))
-		}
-		if style.Faint {
-			styles = append(styles, "opacity: 0.6")
-		}
-
-		styleAttr := fmt.Sprintf("style=\"%s\"", strings.Join(styles, "; "))
-		result = fmt.Sprintf("<span %s>%s</span>", styleAttr, result)
-	}
-
-	// Apply markdown formatting for text decorations
-	if style.Bold {
-		if hasColors {
-			// Bold inside the span
-			result = strings.Replace(result, transformedText, "**"+transformedText+"**", 1)
-		} else {
-			result = "**" + result + "**"
-		}
-	}
-	if style.Italic {
-		if hasColors {
-			// Italic inside the span
-			contentToReplace := transformedText
-			if style.Bold {
-				contentToReplace = "**" + transformedText + "**"
-			}
-			result = strings.Replace(result, contentToReplace, "*"+contentToReplace+"*", 1)
-		} else {
-			result = "*" + result + "*"
-		}
-	}
-	if style.Strikethrough {
-		if hasColors {
-			// Find the text to strikethrough (may be wrapped in bold/italic)
-			contentToReplace := transformedText
-			if style.Bold && style.Italic {
-				contentToReplace = "*" + "**" + transformedText + "**" + "*"
-			} else if style.Bold {
-				contentToReplace = "**" + transformedText + "**"
-			} else if style.Italic {
-				contentToReplace = "*" + transformedText + "*"
-			}
-			result = strings.Replace(result, contentToReplace, "~~"+contentToReplace+"~~", 1)
-		} else {
-			result = "~~" + result + "~~"
-		}
-	}
-
-	// Note: Underline isn't supported in standard markdown, but will be handled by HTML span
-
-	return result
-}
-
-func (t Text) HTML() string {
-	content := t.Content
-	for _, child := range t.Children {
-		content += child.HTML()
-	}
-
-	// Get the effective style (Class takes precedence over Style string)
-	var style TailwindStyle
-	var transformedText string
-	var originalStyle string
-
-	if t.Class != (Class{}) {
-		// Use Class if available
-		transformedText = content
-		style = classToTailwindStyle(t.Class)
-		// Could convert Class back to style string if needed
-		originalStyle = ""
-	} else if t.Style != "" {
-		// Fall back to Style string
-		transformedText, style = ApplyTailwindStyle(content, t.Style)
-		originalStyle = t.Style
-	} else {
-		// No style
-		transformedText = content
-	}
-
-	html := formatHTML(transformedText, style, originalStyle)
-
-	// Apply tooltip if present
-	if t.Tooltip != nil && t.Tooltip.String() != "" {
-		// HTML-escape the tooltip content using standard library
-		escapedTooltip := htmlEscapeString(t.Tooltip.String())
-		html = fmt.Sprintf(`<span title="%s">%s</span>`, escapedTooltip, html)
-	}
-	return html
-}
-
-// htmlEscapeString escapes special HTML characters for use in attributes
-func htmlEscapeString(s string) string {
-	s = strings.ReplaceAll(s, "&", "&amp;")
-	s = strings.ReplaceAll(s, "<", "&lt;")
-	s = strings.ReplaceAll(s, ">", "&gt;")
-	s = strings.ReplaceAll(s, `"`, "&quot;")
-	s = strings.ReplaceAll(s, "'", "&#39;")
-	return s
-}
-
-func ResolveStyles(styles ...string) Class {
-	// Create cache key from all style strings
-	cacheKey := strings.Join(styles, "|")
-
-	// Check cache first
-	styleCacheLock.RLock()
-	if cached, ok := styleCache[cacheKey]; ok {
-		styleCacheLock.RUnlock()
-		return cached
-	}
-	styleCacheLock.RUnlock()
-
-	var resolved Class
-
-	// Process each style string
-	for _, styleStr := range styles {
-		if styleStr == "" {
-			continue
-		}
-
-		// Split into individual classes
-		classes := strings.Fields(styleStr)
-
-		for _, class := range classes {
-			// Parse colors
-			if strings.HasPrefix(class, "text-") && !tailwind.IsTextUtilityClass(class) {
-				color := tailwind.Color(class)
-				if color != "" {
-					resolved.Foreground = &Color{Hex: color}
-				}
-			} else if strings.HasPrefix(class, "bg-") {
-				color := tailwind.Color(class)
-				if color != "" {
-					resolved.Background = &Color{Hex: color}
-				}
-			}
-
-			// Parse font properties
-			parsedStyle := tailwind.ParseStyle(class)
-
-			// Initialize Font if needed
-			if resolved.Font == nil {
-				resolved.Font = &Font{}
-			}
-
-			// Apply font family
-			if strings.HasPrefix(class, "font-family-") {
-				fontName := strings.TrimPrefix(class, "font-family-")
-				switch strings.ToLower(fontName) {
-				case "arial":
-					resolved.Font.Name = "Arial"
-				case "times":
-					resolved.Font.Name = "Times"
-				case "helvetica":
-					resolved.Font.Name = "Helvetica"
-				case "courier":
-					resolved.Font.Name = "Courier"
-				case "georgia":
-					resolved.Font.Name = "Georgia"
-				case "verdana":
-					resolved.Font.Name = "Verdana"
-				default:
-					// Allow custom font names (case-sensitive for exact match)
-					resolved.Font.Name = fontName
-				}
-			}
-
-			// Apply font weight
-			switch class {
-			case "bold", "font-bold", "font-semibold", "font-medium":
-				resolved.Font.Bold = true
-			case "font-normal":
-				resolved.Font.Bold = false
-			}
-
-			// Apply font style
-			switch class {
-			case "italic", "font-italic":
-				resolved.Font.Italic = true
-			case "not-italic":
-				resolved.Font.Italic = false
-			}
-
-			// Apply text decoration
-			switch class {
-			case "underline":
-				resolved.Font.Underline = true
-			case "no-underline":
-				resolved.Font.Underline = false
-			}
-
-			if class == "line-through" || class == "strikethrough" {
-				resolved.Font.Strikethrough = true
-			}
-
-			// Apply faint/opacity
-			switch class {
-			case "font-light", "font-thin", "font-extralight", "opacity-50", "opacity-75", "opacity-25":
-				resolved.Font.Faint = true
-			case "opacity-100":
-				resolved.Font.Faint = false
-			}
-
-			// Parse font size
-			if fontSize := tailwind.ParseFontSize(class); fontSize > 0 {
-				resolved.Font.Size = fontSize
-			}
-
-			// Parse padding
-			top, right, bottom, left := tailwind.ParsePadding(class)
-			if top != nil || right != nil || bottom != nil || left != nil {
-				if resolved.Padding == nil {
-					resolved.Padding = &Padding{}
-				}
-
-				// Apply non-nil values, converting to Point type
-				if top != nil {
-					resolved.Padding.Top = NewPoint(*top)
-				}
-				if right != nil {
-					resolved.Padding.Right = NewPoint(*right)
-				}
-				if bottom != nil {
-					resolved.Padding.Bottom = NewPoint(*bottom)
-				}
-				if left != nil {
-					resolved.Padding.Left = NewPoint(*left)
-				}
-			}
-
-			// Apply colors from parsed style (as fallback)
-			if parsedStyle.Foreground != "" && resolved.Foreground == nil {
-				resolved.Foreground = &Color{Hex: parsedStyle.Foreground}
-			}
-			if parsedStyle.Background != "" && resolved.Background == nil {
-				resolved.Background = &Color{Hex: parsedStyle.Background}
-			}
-		}
-	}
-
-	// Store in cache before returning
-	styleCacheLock.Lock()
-	styleCache[cacheKey] = resolved
-	styleCacheLock.Unlock()
-
-	return resolved
-}
-
-// ApplyTailwindStyle processes Tailwind CSS classes and applies text transformations,
-// returning both the transformed text and parsed style information.
-func ApplyTailwindStyle(text, styleStr string) (string, TailwindStyle) {
-	transformedText, twStyle := tailwind.ApplyStyle(text, styleStr)
-
-	// Convert to our TailwindStyle struct
-	style := TailwindStyle{
-		Foreground:    twStyle.Foreground,
-		Background:    twStyle.Background,
-		Bold:          twStyle.Bold,
-		Faint:         twStyle.Faint,
-		Italic:        twStyle.Italic,
-		Underline:     twStyle.Underline,
-		Strikethrough: twStyle.Strikethrough,
-		TextTransform: twStyle.TextTransform,
-	}
-
-	return transformedText, style
-}
-
-func classToTailwindStyle(class Class) TailwindStyle {
-	style := TailwindStyle{}
-
-	// Apply colors
-	if class.Foreground != nil {
-		style.Foreground = class.Foreground.Hex
-	}
-	if class.Background != nil {
-		style.Background = class.Background.Hex
-	}
-
-	// Apply font properties
-	if class.Font != nil {
-		style.Bold = class.Font.Bold
-		style.Faint = class.Font.Faint
-		style.Italic = class.Font.Italic
-		style.Underline = class.Font.Underline
-		style.Strikethrough = class.Font.Strikethrough
-	}
-
-	return style
-}
-
-// TailwindStyle contains parsed CSS styling information extracted from Tailwind classes.
-type TailwindStyle struct {
-	Foreground    string
-	Background    string
-	Font          Font
-	Bold          bool
-	Faint         bool
-	Italic        bool
-	Underline     bool
-	Strikethrough bool
-	TextTransform string
-}
-
-func formatANSI(text string, style TailwindStyle) string {
-	if text == "" {
-		return ""
-	}
-	output := termenv.NewOutput(termenv.DefaultOutput().Writer(), termenv.WithProfile(termenv.ANSI))
-	termStyle := output.String(text)
-
-	// Apply text decorations
-	if style.Bold {
-		termStyle = termStyle.Bold()
-	}
-	if style.Faint {
-		termStyle = termStyle.Faint()
-	}
-	if style.Italic {
-		termStyle = termStyle.Italic()
-	}
-	if style.Underline {
-		termStyle = termStyle.Underline()
-	}
-
-	// Apply foreground color using termenv
-	if style.Foreground != "" {
-		if color := hexToTermenvColor(style.Foreground); color != nil {
-			termStyle = termStyle.Foreground(color)
-		}
-	}
-
-	// Apply background color using termenv
-	if style.Background != "" {
-		if color := hexToTermenvColor(style.Background); color != nil {
-			termStyle = termStyle.Background(color)
-		}
-	}
-
-	// Handle strikethrough manually since termenv doesn't support it
-	result := termStyle.String()
-	if style.Strikethrough {
-		// Remove any existing reset codes and add strikethrough
-		if strings.HasSuffix(result, "\x1b[0m") {
-			result = strings.TrimSuffix(result, "\x1b[0m")
-			result = "\x1b[9m" + result + "\x1b[0m"
-		} else {
-			result = "\x1b[9m" + result + "\x1b[29m"
-		}
-	}
-
-	return result
-}
-
-func hexToTermenvColor(hex string) termenv.Color {
-	if hex == "" {
-		return nil
-	}
-
-	// Handle special colors
-	switch hex {
-	case "transparent":
-		return nil
-	case "currentColor":
-		return termenv.ANSIColor(termenv.ANSIBrightWhite)
-	}
-
-	// Convert hex to termenv color
-	if strings.HasPrefix(hex, "#") {
-		return termenv.RGBColor(hex)
-	}
-
-	return nil
-}
-
-// formatHTML generates HTML with both semantic tags and CSS styling for maximum
-// compatibility across different HTML renderers and Tailwind CSS environments.
-func formatHTML(text string, style TailwindStyle, originalStyle string) string {
-	if text == "" {
-		return ""
-	}
-
-	result := text
-	var tags []string
-	var styles []string
-	var classes []string
-
-	// Apply semantic HTML tags first
-	if style.Bold {
-		tags = append(tags, "strong")
-	}
-	if style.Italic {
-		tags = append(tags, "em")
-	}
-	if style.Underline {
-		tags = append([]string{"u"}, tags...) // Underline goes innermost
-	}
-	if style.Strikethrough {
-		tags = append(tags, "s")
-	}
-
-	// Apply CSS styles for fallback compatibility
-	if style.Foreground != "" {
-		styles = append(styles, fmt.Sprintf("color: %s", style.Foreground))
-	}
-	if style.Background != "" {
-		styles = append(styles, fmt.Sprintf("background-color: %s", style.Background))
-	}
-	if style.Faint {
-		styles = append(styles, "opacity: 0.6")
-	}
-
-	// Include original Tailwind classes if provided
-	if originalStyle != "" {
-		// Split and clean up classes
-		tailwindClasses := strings.Fields(originalStyle)
-		classes = append(classes, tailwindClasses...)
-	}
-
-	// Wrap in semantic tags
-	for _, tag := range tags {
-		result = fmt.Sprintf("<%s>%s</%s>", tag, result, tag)
-	}
-
-	// Add wrapper span with both classes and inline styles for maximum compatibility
-	if len(styles) > 0 || len(classes) > 0 {
-		var attributes []string
-
-		// Add Tailwind classes if any
-		if len(classes) > 0 {
-			attributes = append(attributes, fmt.Sprintf("class=\"%s\"", strings.Join(classes, " ")))
-		}
-
-		// Add inline CSS as fallback
-		if len(styles) > 0 {
-			attributes = append(attributes, fmt.Sprintf("style=\"%s\"", strings.Join(styles, "; ")))
-		}
-
-		result = fmt.Sprintf("<span %s>%s</span>", strings.Join(attributes, " "), result)
-	}
-
-	return result
-}
-
 // KeyValuePair represents a single key-value pair that can be rendered to multiple output formats.
 // It supports two styles: "compact" (default, inline with minimal spacing) and "badge" (pill-shaped badges).
 type KeyValuePair struct {
@@ -990,34 +386,6 @@ func (kv KeyValuePair) String() string {
 
 func (kv KeyValuePair) ANSI() string {
 	return Text{}.Append(kv.Key+": ", "text-muted").Add(Human(kv.Value, kv.Style)).ANSI()
-}
-
-func (kv KeyValuePair) HTML() string {
-	// Determine style
-	style := kv.Style
-	if style == "" {
-		style = "compact"
-	}
-
-	// HTML-escape the key and value
-	escapedKey := htmlEscapeString(kv.Key)
-	escapedValue := htmlEscapeString(fmt.Sprintf("%v", kv.Value))
-
-	if strings.Contains(style, "badge") {
-		// Badge style: pill-shaped badge
-		return fmt.Sprintf(
-			`<span class="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-gray-100"><dt class="text-xs font-medium text-gray-600">%s:</dt><dd class="text-xs font-semibold text-gray-900">%s</dd></span>`,
-			escapedKey,
-			escapedValue,
-		)
-	}
-
-	// Compact style (default): inline with minimal spacing
-	return fmt.Sprintf(
-		`<div class="inline-flex gap-1"><dt class="text-gray-500 font-medium">%s:</dt><dd class="text-gray-900">%s</dd></div>`,
-		escapedKey,
-		escapedValue,
-	)
 }
 
 func (kv KeyValuePair) Markdown() string {
@@ -1153,12 +521,6 @@ func Clz(v bool, clz string, elseClz ...string) string {
 	return ""
 }
 
-func HumanizeBytes(bytes int64) Text {
-	return Text{
-		Content: commonsText.HumanizeBytes(bytes),
-	}
-}
-
 func mimeTypeToLanguage(mime string) string {
 	switch {
 	case strings.Contains(mime, "json"):
@@ -1192,4 +554,37 @@ func mimeTypeToLanguage(mime string) string {
 	}
 	return ""
 
+}
+
+// TextList is a list of Textable items that can be rendered to multiple formats.
+// Use JoinNewlines() to create a single Textable that joins all items with newlines.
+type TextList []Textable
+
+// JoinNewlines joins all items with newlines and returns a single Textable.
+// This is the primary method for rendering a TextList - call .ANSI(), .HTML(), or .Markdown() on the result.
+func (tl TextList) JoinNewlines() Textable {
+	if len(tl) == 0 {
+		return Text{}
+	}
+
+	result := Text{}
+	for i, item := range tl {
+		if i > 0 {
+			// Add newline between items
+			result = result.Add(Text{Content: "\n"})
+		}
+		result = result.Add(item)
+	}
+	return result
+}
+
+// Indent returns a new TextList with all items indented by one level (one tab).
+// The indentation is prepended to the beginning of each item when rendered.
+func (tl TextList) Indent() TextList {
+	indented := make(TextList, len(tl))
+	for i, item := range tl {
+		// Wrap item in a Text that prepends a tab
+		indented[i] = Text{Content: "\t"}.Add(item)
+	}
+	return indented
 }

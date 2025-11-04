@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/flanksource/clicky/api"
+	"github.com/flanksource/clicky/text"
 	"gopkg.in/yaml.v3"
 )
 
@@ -345,14 +346,15 @@ func TestNestedMaps(t *testing.T) {
 		t.Fatalf("Failed to format: %v", err)
 	}
 
-	// Check proper nesting
-	if !strings.Contains(output, "Level1:") {
+	// Check proper nesting (strip ANSI codes for content checks)
+	stripped := text.StripANSI(output)
+	if !strings.Contains(stripped, "Level1:") {
 		t.Error("Should show level1 field")
 	}
-	if !strings.Contains(output, "deeply nested") {
+	if !strings.Contains(stripped, "deeply nested") {
 		t.Error("Should show deeply nested value")
 	}
-	if !strings.Contains(output, "2024-01-15") {
+	if !strings.Contains(stripped, "2024-01-15") {
 		t.Error("Should format nested date")
 	}
 
@@ -361,10 +363,12 @@ func TestNestedMaps(t *testing.T) {
 	foundIndentedDate := false
 	foundDeeplyIndentedValue := false
 	for _, line := range lines {
-		if strings.Contains(line, "Date: 2024-01-15") && strings.HasPrefix(line, "\t") {
+		// Strip ANSI codes to check content
+		strippedLine := text.StripANSI(line)
+		if strings.Contains(strippedLine, "Date: 2024-01-15") && strings.HasPrefix(line, "\t") {
 			foundIndentedDate = true
 		}
-		if strings.Contains(line, "Value: deeply nested") && strings.HasPrefix(line, "\t\t") {
+		if strings.Contains(strippedLine, "Value: deeply nested") && strings.HasPrefix(line, "\t\t") {
 			foundDeeplyIndentedValue = true
 		}
 	}

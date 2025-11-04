@@ -79,6 +79,21 @@ type PrettyObject struct {
 	Fields []PrettyField `json:"fields" yaml:"fields"`
 }
 
+type PrettyColumn = Text
+
+type PrettyTableData struct {
+	// Column definitions with styling
+	Columns []PrettyColumn
+	Rows    [][]Textable
+}
+type PrettyFieldData struct {
+	Label Text
+	Value Textable
+}
+
+type PrettyStructData struct {
+}
+
 // FieldValue wraps a raw value with type-safe accessors and formatting metadata.
 // It provides strongly-typed access to primitive values (string, int, float, bool, time)
 // while maintaining the original value and supporting rich text output.
@@ -186,6 +201,11 @@ func (v FieldValue) Plain() string {
 		return strings.Join(parts, ", ")
 	}
 	return fmt.Sprintf("%v", v.Value)
+}
+
+// String implements the Textable interface by delegating to Plain()
+func (v FieldValue) String() string {
+	return v.Plain()
 }
 
 func (v FieldValue) ANSI() string {
@@ -1356,6 +1376,74 @@ func (d *PrettyData) GetValueKeys() []string {
 func (d *PrettyData) GetValue(key string) (FieldValue, bool) {
 	value, exists := d.Values[key]
 	return value, exists
+}
+
+// Pretty converts PrettyData to a TextList representation.
+// This is the primary method for formatters - call .JoinNewlines().ANSI()/HTML()/Markdown() on the result.
+func (pd *PrettyData) Pretty() TextList {
+	if pd == nil {
+		return TextList{}
+	}
+
+	list := TextList{}
+
+	// Process regular fields
+	for _, field := range pd.Schema.Fields {
+		if field.Format == FormatHide || field.Format == FormatTable {
+			continue
+		}
+
+		fieldValue, ok := pd.Values[field.Name]
+		if !ok {
+			continue
+		}
+
+		label := field.Label
+		if label == "" {
+			label = PrettifyFieldName(field.Name)
+		}
+
+		// Handle nested PrettyData structures
+		if nestedData, ok := fieldValue.Value.(*PrettyData); ok {
+			// Add label with colon on its own line
+			labelText := Text{}.
+				Append(label, "font-bold text-primary").
+				Append(":", "text-muted")
+			list = append(list, labelText)
+
+			// Add indented nested content
+			nestedList := nestedData.Pretty()
+			for _, nestedItem := range nestedList.Indent() {
+				list = append(list, nestedItem)
+			}
+		} else {
+			// Build field text: "Label: Value"
+			fieldText := Text{}.
+				Append(label, "font-bold text-primary").
+				Append(": ", "text-muted").
+				Add(fieldValue)
+
+			list = append(list, fieldText)
+		}
+	}
+
+	// Process table fields - for now, create placeholder text
+	// Phase 2 will replace this with actual Table objects
+	for _, field := range pd.Schema.Fields {
+		if field.Format == FormatTable {
+			if tableRows, ok := pd.Tables[field.Name]; ok && len(tableRows) > 0 {
+				// Placeholder for table rendering
+				// This will be replaced in Phase 2 when Tables contain formatters.Table
+				tableText := Text{
+					Content: fmt.Sprintf("[Table: %s with %d rows - rendering pending Phase 2]", field.Name, len(tableRows)),
+					Style:   "text-muted",
+				}
+				list = append(list, tableText)
+			}
+		}
+	}
+
+	return list
 }
 
 // formatSliceOfMapsMarkdown formats a slice of maps as a Markdown table
