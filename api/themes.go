@@ -4,6 +4,7 @@ import (
 	"os"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/flanksource/commons/logger"
 	"github.com/muesli/termenv"
 	"golang.org/x/term"
 )
@@ -200,6 +201,7 @@ func NoTTYTheme() Theme {
 // and background color, falling back to NoTTYTheme for non-interactive output.
 func AutoTheme() Theme {
 	if !isTerminal() {
+		logger.V(3).Infof("Output is not a terminal, disabling colors")
 		return NoTTYTheme()
 	}
 
@@ -218,7 +220,7 @@ func GetTerminalWidth() int {
 	}
 	width, _, err := term.GetSize(int(os.Stdout.Fd()))
 	if err != nil {
-		return 80 // Default width
+		return 120 // Default width
 	}
 	terminalWidth = width
 	return width
