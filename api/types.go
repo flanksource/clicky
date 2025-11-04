@@ -2,9 +2,7 @@ package api
 
 import (
 	"fmt"
-	"html"
 	"reflect"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -53,7 +51,7 @@ type PrettyField struct {
 	// For nested struct fields
 	Fields []PrettyField `json:"fields,omitempty" yaml:"fields,omitempty"`
 	// For table formatting
-	TableOptions PrettyTable `json:"table_options,omitempty" yaml:"table_options,omitempty"`
+	TableOptions TableOptions `json:"table_options,omitempty" yaml:"table_options,omitempty"`
 	// For tree formatting
 	TreeOptions *TreeOptions `json:"tree_options,omitempty" yaml:"tree_options,omitempty"`
 	// For custom rendering
@@ -61,11 +59,11 @@ type PrettyField struct {
 	CompactItems bool       `json:"compact_items,omitempty" yaml:"compact_items,omitempty"`
 }
 
-// PrettyTable configures tabular data presentation including column definitions,
+// TableOptions configures tabular data presentation including column definitions,
 // sorting behavior, and styling options for headers and rows.
-type PrettyTable struct {
+type TableOptions struct {
 	Title         string                   `json:"title,omitempty" yaml:"title,omitempty"`
-	Fields        []PrettyField            `json:"fields" yaml:"fields"`
+	Columns       []PrettyField            `json:"fields" yaml:"fields"`
 	Rows          []map[string]interface{} `json:"rows,omitempty" yaml:"rows,omitempty"`
 	SortField     string                   `json:"sort_field,omitempty" yaml:"sort_field,omitempty"`
 	SortDirection string                   `json:"sort_direction,omitempty" yaml:"sort_direction,omitempty"`
@@ -77,18 +75,6 @@ type PrettyTable struct {
 // containing field definitions that control how each property is displayed.
 type PrettyObject struct {
 	Fields []PrettyField `json:"fields" yaml:"fields"`
-}
-
-type PrettyColumn = Text
-
-type PrettyTableData struct {
-	// Column definitions with styling
-	Columns []PrettyColumn
-	Rows    [][]Textable
-}
-type PrettyFieldData struct {
-	Label Text
-	Value Textable
 }
 
 type PrettyStructData struct {
@@ -107,248 +93,8 @@ type FieldValue struct {
 	TimeValue    *time.Time
 	ArrayValue   []interface{}
 	MapValue     map[string]interface{}
-	Text         *Text
-}
-
-func (v FieldValue) Formatted() string {
-	// Use Text object if available
-	if v.Text != nil {
-		return v.Text.String()
-	}
-
-	// Handle PrettyData values (nested structures)
-	if prettyData, ok := v.Value.(*PrettyData); ok {
-		// Format as a simple string representation of the nested data
-		var parts []string
-		for key, fieldValue := range prettyData.Values {
-			// Prettify the key name
-			prettyKey := PrettifyFieldName(key)
-			parts = append(parts, fmt.Sprintf("%s: %s", prettyKey, fieldValue.Formatted()))
-		}
-		return fmt.Sprintf("{%s}", strings.Join(parts, ", "))
-	}
-
-	// Handle map values - format as key-value pairs
-	if m, ok := v.Value.(map[string]interface{}); ok {
-		if len(m) == 0 {
-			return "{}"
-		}
-		keys := make([]string, 0, len(m))
-		for k := range m {
-			keys = append(keys, k)
-		}
-		sort.Strings(keys) // Consistent ordering
-
-		var parts []string
-		for _, k := range keys {
-			parts = append(parts, fmt.Sprintf("%s: %v", k, m[k]))
-		}
-		return strings.Join(parts, ", ")
-	}
-
-	// Fallback for legacy cases
-	return fmt.Sprintf("%v", v.Value)
-}
-
-func (v FieldValue) Pretty() Text {
-	if v.Text != nil {
-		return *v.Text
-	}
-
-	// Fallback - create basic Text object
-	return Text{
-		Content: fmt.Sprintf("%v", v.Value),
-	}
-}
-
-func (v FieldValue) Plain() string {
-	if v.Text != nil {
-		return v.Text.String()
-	}
-	// Handle map values - format as key-value pairs
-	if m, ok := v.Value.(map[string]interface{}); ok {
-		if len(m) == 0 {
-			return "{}"
-		}
-		keys := make([]string, 0, len(m))
-		for k := range m {
-			keys = append(keys, k)
-		}
-		sort.Strings(keys) // Consistent ordering
-
-		var parts []string
-		for _, k := range keys {
-			parts = append(parts, fmt.Sprintf("%s: %v", k, m[k]))
-		}
-		return strings.Join(parts, ", ")
-	}
-	// Handle slice values - format as simple list or table
-	if slice, ok := v.Value.([]interface{}); ok {
-		if len(slice) == 0 {
-			return "[]"
-		}
-		// Check if this is a slice of maps (should be rendered as table)
-		if len(slice) > 0 {
-			if _, isMap := slice[0].(map[string]interface{}); isMap {
-				return formatSliceOfMapsPlain(slice)
-			}
-		}
-		// For primitive slices, just join values
-		var parts []string
-		for _, item := range slice {
-			parts = append(parts, fmt.Sprintf("%v", item))
-		}
-		return strings.Join(parts, ", ")
-	}
-	return fmt.Sprintf("%v", v.Value)
-}
-
-// String implements the Textable interface by delegating to Plain()
-func (v FieldValue) String() string {
-	return v.Plain()
-}
-
-func (v FieldValue) ANSI() string {
-	if v.Text != nil {
-		return v.Text.ANSI()
-	}
-	// Handle map values - format with muted keys
-	if m, ok := v.Value.(map[string]interface{}); ok {
-		if len(m) == 0 {
-			return "{}"
-		}
-		keys := make([]string, 0, len(m))
-		for k := range m {
-			keys = append(keys, k)
-		}
-		sort.Strings(keys) // Consistent ordering
-
-		var parts []string
-		for _, k := range keys {
-			// Muted key (gray), normal value
-			parts = append(parts, fmt.Sprintf("\033[2m%s:\033[0m %v", k, m[k]))
-		}
-		return strings.Join(parts, ", ")
-	}
-	return fmt.Sprintf("%v", v.Value)
-}
-
-func (v FieldValue) HTML() string {
-	if v.Text != nil {
-		return v.Text.HTML()
-	}
-	// Handle map values - format as definition list
-	if m, ok := v.Value.(map[string]interface{}); ok {
-		if len(m) == 0 {
-			return "<span class=\"text-gray-400\">{}</span>"
-		}
-
-		keys := make([]string, 0, len(m))
-		for k := range m {
-			keys = append(keys, k)
-		}
-		sort.Strings(keys) // Consistent ordering
-
-		var result strings.Builder
-		result.WriteString(`<dl class="inline-flex flex-wrap gap-x-4 gap-y-1">`)
-		for _, k := range keys {
-			result.WriteString(fmt.Sprintf(
-				`<div class="inline-flex gap-1"><dt class="text-gray-500 font-medium">%s:</dt><dd class="text-gray-900">%v</dd></div>`,
-				html.EscapeString(k),
-				html.EscapeString(fmt.Sprintf("%v", m[k])),
-			))
-		}
-		result.WriteString(`</dl>`)
-		return result.String()
-	}
-	// Handle slice values - format as inline table for slices of maps
-	if slice, ok := v.Value.([]interface{}); ok {
-		if len(slice) == 0 {
-			return "<span class=\"text-gray-400\">[]</span>"
-		}
-		// Check if this is a slice of Textable objects - render one per div
-		if len(slice) > 0 {
-			if _, isTextable := slice[0].(Textable); isTextable {
-				var result strings.Builder
-				for _, item := range slice {
-					if t, ok := item.(Textable); ok {
-						result.WriteString("<div>")
-						result.WriteString(t.HTML())
-						result.WriteString("</div>\n")
-					}
-				}
-				return result.String()
-			}
-		}
-		// Check if this is a slice of maps (should be rendered as table)
-		if len(slice) > 0 {
-			if _, isMap := slice[0].(map[string]interface{}); isMap {
-				return formatSliceOfMapsHTML(slice)
-			}
-		}
-		// For primitive slices, just join values
-		var parts []string
-		for _, item := range slice {
-			parts = append(parts, html.EscapeString(fmt.Sprintf("%v", item)))
-		}
-		return strings.Join(parts, ", ")
-	}
-	return fmt.Sprintf("%v", v.Value)
-}
-
-func (v FieldValue) Markdown() string {
-	if v.Text != nil {
-		return v.Text.Markdown()
-	}
-	// Handle map values - format as markdown definition list
-	if m, ok := v.Value.(map[string]interface{}); ok {
-		if len(m) == 0 {
-			return "{}"
-		}
-
-		keys := make([]string, 0, len(m))
-		for k := range m {
-			keys = append(keys, k)
-		}
-		sort.Strings(keys) // Consistent ordering
-
-		var parts []string
-		for _, k := range keys {
-			parts = append(parts, fmt.Sprintf("**%s**: %v", k, m[k]))
-		}
-		return strings.Join(parts, ", ")
-	}
-	// Handle slice values - format as markdown table for slices of maps
-	if slice, ok := v.Value.([]interface{}); ok {
-		if len(slice) == 0 {
-			return "[]"
-		}
-		// Check if this is a slice of Textable objects - render one per line
-		if len(slice) > 0 {
-			if _, isTextable := slice[0].(Textable); isTextable {
-				var lines []string
-				for _, item := range slice {
-					if t, ok := item.(Textable); ok {
-						lines = append(lines, t.Markdown())
-					}
-				}
-				return strings.Join(lines, "\n")
-			}
-		}
-		// Check if this is a slice of maps (should be rendered as table)
-		if len(slice) > 0 {
-			if _, isMap := slice[0].(map[string]interface{}); isMap {
-				return formatSliceOfMapsMarkdown(slice)
-			}
-		}
-		// For primitive slices, just join values
-		var parts []string
-		for _, item := range slice {
-			parts = append(parts, fmt.Sprintf("%v", item))
-		}
-		return strings.Join(parts, ", ")
-	}
-	return fmt.Sprintf("%v", v.Value)
+	Text         Textable
+	Tree         TreeNode
 }
 
 var epoch = time.Now().Add(-50 * 365 * 24 * time.Hour)
@@ -554,6 +300,38 @@ func (v FieldValue) formatArray() string {
 	}
 
 	return fmt.Sprintf("%v", v.Value)
+}
+
+// Formatted returns the formatted string representation of the field value
+func (v FieldValue) Formatted() string {
+	if v.Text != nil {
+		return v.Text.String()
+	}
+	if v.StringValue != nil {
+		return *v.StringValue
+	}
+	return fmt.Sprintf("%v", v.Value)
+}
+
+// Plain returns the plain string representation of the field value
+func (v FieldValue) Plain() string {
+	return v.Formatted()
+}
+
+// Markdown returns the markdown representation of the field value
+func (v FieldValue) Markdown() string {
+	if v.Text != nil {
+		return v.Text.Markdown()
+	}
+	return v.Formatted()
+}
+
+// HTML returns the HTML representation of the field value
+func (v FieldValue) HTML() string {
+	if v.Text != nil {
+		return v.Text.HTML()
+	}
+	return v.Formatted()
 }
 
 // Color determines the display color by matching the field value against
@@ -1036,108 +814,6 @@ func InferValueType(value interface{}) string {
 	}
 }
 
-// FormatMapValue formats a map[string]interface{} value with nice indentation (exported for testing)
-func (f PrettyField) FormatMapValue(mapVal map[string]interface{}) string {
-	return f.formatMapValueWithIndent(mapVal, 0)
-}
-
-// formatMapValueWithIndent formats a map with specified indentation as struct-like fields (no braces)
-func (f PrettyField) formatMapValueWithIndent(mapVal map[string]interface{}, indentLevel int) string {
-	if len(mapVal) == 0 {
-		return EmptyValue
-	}
-
-	// Get sorted keys
-	keys := make([]string, 0, len(mapVal))
-	for k := range mapVal {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-
-	var lines []string
-	indent := strings.Repeat("\t", indentLevel)
-
-	// Find field definitions from schema if available
-	fieldDefs := make(map[string]PrettyField)
-	for _, fieldDef := range f.Fields {
-		fieldDefs[fieldDef.Name] = fieldDef
-	}
-
-	for _, key := range keys {
-		value := mapVal[key]
-		prettyKey := f.prettifyFieldName(key)
-
-		var valueStr string
-
-		// Check if we have a field definition for this key
-		if fieldDef, hasFieldDef := fieldDefs[key]; hasFieldDef {
-			// Format according to field definition
-			if fieldDef.Type == FieldTypeDate || fieldDef.Format == FieldTypeDate {
-				// Handle date formatting with schema
-				switch v := value.(type) {
-				case float64:
-					// Unix timestamp
-					t := time.Unix(int64(v), 0)
-					format := DateTimeFormat
-					if fieldDef.DateFormat != "" {
-						format = fieldDef.DateFormat
-					} else if f, ok := fieldDef.FormatOptions["format"]; ok {
-						format = f
-					}
-					valueStr = t.Format(format)
-				case int64:
-					t := time.Unix(v, 0)
-					format := DateTimeFormat
-					if fieldDef.DateFormat != "" {
-						format = fieldDef.DateFormat
-					} else if f, ok := fieldDef.FormatOptions["format"]; ok {
-						format = f
-					}
-					valueStr = t.Format(format)
-				default:
-					// Parse the value using the field definition
-					if parsed, err := fieldDef.Parse(value); err == nil {
-						valueStr = parsed.Formatted()
-					} else {
-						valueStr = fmt.Sprintf("%v", value)
-					}
-				}
-			} else {
-				// Parse using field definition for other types
-				if parsed, err := fieldDef.Parse(value); err == nil {
-					valueStr = parsed.Formatted()
-				} else {
-					valueStr = fmt.Sprintf("%v", value)
-				}
-			}
-		} else {
-			// No field definition, format based on value type
-			switch v := value.(type) {
-			case map[string]interface{}:
-				// Nested map - format recursively without braces
-				if len(v) > 0 {
-					valueStr = "\n" + f.formatMapValueWithIndent(v, indentLevel+1)
-				} else {
-					valueStr = "(empty)"
-				}
-			case nil:
-				valueStr = "null"
-			default:
-				valueStr = fmt.Sprintf("%v", value)
-			}
-		}
-
-		// Handle nested formatting - already includes newlines for multi-line values
-		if strings.HasPrefix(valueStr, "\n") {
-			lines = append(lines, fmt.Sprintf("%s%s:%s", indent, prettyKey, valueStr))
-		} else {
-			lines = append(lines, fmt.Sprintf("%s%s: %s", indent, prettyKey, valueStr))
-		}
-	}
-
-	return strings.Join(lines, "\n")
-}
-
 // prettifyFieldName converts field names to readable format (for map keys)
 func (f PrettyField) prettifyFieldName(name string) string {
 	// Convert snake_case and camelCase to Title Case
@@ -1206,178 +882,6 @@ func RegisterRenderFunc(name string, fn RenderFunc) {
 	RenderFuncRegistry[name] = fn
 }
 
-// ParsePrettyTag converts a struct tag string into field configuration.
-// Supports format options, styling, colors, and tree/table settings.
-func ParsePrettyTag(tag string) PrettyField {
-	return ParsePrettyTagWithName("", tag)
-}
-
-// ParsePrettyTagWithName creates field configuration from a struct tag,
-// using the provided field name as the default label and identifier.
-func ParsePrettyTagWithName(fieldName, tag string) PrettyField {
-	field := PrettyField{
-		Name:          fieldName,
-		Label:         fieldName, // Default label to field name
-		FormatOptions: make(map[string]string),
-		ColorOptions:  make(map[string]string),
-	}
-
-	if tag == "" {
-		return field
-	}
-
-	parts := strings.Split(tag, ",")
-	for _, part := range parts {
-		part = strings.TrimSpace(part)
-
-		// Parse key=value pairs
-		if strings.Contains(part, "=") {
-			kv := strings.SplitN(part, "=", 2)
-			key := strings.TrimSpace(kv[0])
-			value := strings.TrimSpace(kv[1])
-
-			switch key {
-			case "label":
-				field.Label = value
-			case "sort":
-				field.FormatOptions["sort"] = value
-			case "dir", "direction":
-				field.FormatOptions["dir"] = value
-			case "format":
-				field.Format = value
-			case "digits":
-				field.FormatOptions["digits"] = value
-			case "style":
-				field.Style = value
-			case "label_style":
-				field.LabelStyle = value
-			case "header_style":
-				field.TableOptions.HeaderStyle = value
-			case "row_style":
-				field.TableOptions.RowStyle = value
-			case "title":
-				field.TableOptions.Title = value
-			case "indent":
-				if field.TreeOptions == nil {
-					field.TreeOptions = DefaultTreeOptions()
-				}
-				if size, err := strconv.Atoi(value); err == nil {
-					field.TreeOptions.IndentSize = size
-				}
-			case "render":
-				// Look up custom render function
-				if fn, exists := RenderFuncRegistry[value]; exists {
-					field.RenderFunc = fn
-				}
-			case "max_depth":
-				if field.TreeOptions == nil {
-					field.TreeOptions = DefaultTreeOptions()
-				}
-				if depth, err := strconv.Atoi(value); err == nil {
-					field.TreeOptions.MaxDepth = depth
-				}
-			case ColorGreen, ColorRed, ColorBlue, "yellow", "cyan", "magenta":
-				field.ColorOptions[key] = value
-			default:
-				field.FormatOptions[key] = value
-			}
-		} else {
-			// Simple flags
-			switch part {
-			case "table":
-				field.Format = FormatTable
-			case "tree":
-				field.Format = FormatTree
-				if field.TreeOptions == nil {
-					field.TreeOptions = DefaultTreeOptions()
-				}
-			case "struct":
-				field.Format = "struct"
-			case FormatHide:
-				field.Format = FormatHide
-			case SortAsc, SortDesc:
-				field.FormatOptions["dir"] = part
-			case "compact":
-				field.CompactItems = true
-			case "no_icons":
-				if field.TreeOptions == nil {
-					field.TreeOptions = DefaultTreeOptions()
-				}
-				field.TreeOptions.ShowIcons = false
-			case "ascii":
-				if field.TreeOptions == nil {
-					field.TreeOptions = ASCIITreeOptions()
-				} else {
-					field.TreeOptions.UseUnicode = false
-					field.TreeOptions.BranchPrefix = "+-- "
-					field.TreeOptions.LastPrefix = "`-- "
-					field.TreeOptions.IndentPrefix = "    "
-					field.TreeOptions.ContinuePrefix = "|   "
-				}
-			default:
-				field.FormatOptions[part] = "true"
-			}
-		}
-	}
-
-	return field
-}
-
-// PrettyData contains structured data processed through schema-driven formatting.
-// It separates regular field values from tabular and tree data, maintaining
-// the original data for serialization while providing formatted access.
-type PrettyData struct {
-	Schema *PrettyObject
-	Values map[string]FieldValue
-	Tables map[string][]PrettyDataRow
-	Trees  map[string]PrettyTree
-	// Original stores the original data interface for JSON/YAML marshaling
-	Original interface{}
-}
-type PrettyTree struct {
-	Value    FieldValue
-	Children []PrettyTree
-}
-
-// PrettyDataRow maps column names to their formatted values within a table.
-type PrettyDataRow map[string]FieldValue
-
-func (d *PrettyData) GetTableNames() []string {
-	if len(d.Tables) == 0 {
-		return nil
-	}
-
-	names := make([]string, 0, len(d.Tables))
-	for name := range d.Tables {
-		names = append(names, name)
-	}
-	sort.Strings(names)
-	return names
-}
-
-func (d *PrettyData) GetTable(name string) ([]PrettyDataRow, bool) {
-	table, exists := d.Tables[name]
-	return table, exists
-}
-
-func (d *PrettyData) GetValueKeys() []string {
-	if len(d.Values) == 0 {
-		return nil
-	}
-
-	keys := make([]string, 0, len(d.Values))
-	for k := range d.Values {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-	return keys
-}
-
-func (d *PrettyData) GetValue(key string) (FieldValue, bool) {
-	value, exists := d.Values[key]
-	return value, exists
-}
-
 // Pretty converts PrettyData to a TextList representation.
 // This is the primary method for formatters - call .JoinNewlines().ANSI()/HTML()/Markdown() on the result.
 func (pd *PrettyData) Pretty() TextList {
@@ -1407,7 +911,7 @@ func (pd *PrettyData) Pretty() TextList {
 		if nestedData, ok := fieldValue.Value.(*PrettyData); ok {
 			// Add label with colon on its own line
 			labelText := Text{}.
-				Append(label, "font-bold text-primary").
+				Append(label, "text-purple-500").
 				Append(":", "text-muted")
 			list = append(list, labelText)
 
@@ -1419,9 +923,13 @@ func (pd *PrettyData) Pretty() TextList {
 		} else {
 			// Build field text: "Label: Value"
 			fieldText := Text{}.
-				Append(label, "font-bold text-primary").
-				Append(": ", "text-muted").
-				Add(fieldValue)
+				Append(label, "text-purple-500").
+				Append(": ", "text-muted")
+			if fieldValue.Text != nil {
+				fieldText = fieldText.Add(fieldValue.Text)
+			} else {
+				fieldText = fieldText.Append(fieldValue.Formatted(), "")
+			}
 
 			list = append(list, fieldText)
 		}
@@ -1431,170 +939,6 @@ func (pd *PrettyData) Pretty() TextList {
 	// Phase 3 will implement proper Table object generation in parsers
 
 	return list
-}
-
-// formatSliceOfMapsMarkdown formats a slice of maps as a Markdown table
-func formatSliceOfMapsMarkdown(slice []interface{}) string {
-	if len(slice) == 0 {
-		return "[]"
-	}
-
-	// Extract all unique keys from all maps
-	keysSet := make(map[string]bool)
-	for _, item := range slice {
-		if m, ok := item.(map[string]interface{}); ok {
-			for k := range m {
-				keysSet[k] = true
-			}
-		}
-	}
-
-	// Convert to sorted slice
-	keys := make([]string, 0, len(keysSet))
-	for k := range keysSet {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-
-	// Format as Markdown table
-	var result strings.Builder
-
-	// Header row
-	result.WriteString("| ")
-	for _, k := range keys {
-		result.WriteString(k)
-		result.WriteString(" | ")
-	}
-	result.WriteString("\n")
-
-	// Separator row
-	result.WriteString("| ")
-	for range keys {
-		result.WriteString("--- | ")
-	}
-	result.WriteString("\n")
-
-	// Data rows
-	for _, item := range slice {
-		if m, ok := item.(map[string]interface{}); ok {
-			result.WriteString("| ")
-			for _, k := range keys {
-				val := ""
-				if v, exists := m[k]; exists {
-					val = fmt.Sprintf("%v", v)
-				}
-				result.WriteString(val)
-				result.WriteString(" | ")
-			}
-			result.WriteString("\n")
-		}
-	}
-
-	return result.String()
-}
-
-// formatSliceOfMapsHTML formats a slice of maps as an inline Tailwind HTML table
-func formatSliceOfMapsHTML(slice []interface{}) string {
-	if len(slice) == 0 {
-		return "<span class=\"text-gray-400\">[]</span>"
-	}
-
-	// Extract all unique keys from all maps
-	keysSet := make(map[string]bool)
-	for _, item := range slice {
-		if m, ok := item.(map[string]interface{}); ok {
-			for k := range m {
-				keysSet[k] = true
-			}
-		}
-	}
-
-	// Convert to sorted slice
-	keys := make([]string, 0, len(keysSet))
-	for k := range keysSet {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-
-	// Format as inline Tailwind table
-	var result strings.Builder
-	result.WriteString(`<div class="overflow-x-auto"><table class="min-w-full divide-y divide-gray-200 text-sm">`)
-
-	// Table header
-	result.WriteString(`<thead class="bg-gray-50"><tr>`)
-	for _, k := range keys {
-		result.WriteString(fmt.Sprintf(`<th class="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">%s</th>`, html.EscapeString(k)))
-	}
-	result.WriteString(`</tr></thead>`)
-
-	// Table body
-	result.WriteString(`<tbody class="bg-white divide-y divide-gray-200">`)
-	for _, item := range slice {
-		if m, ok := item.(map[string]interface{}); ok {
-			result.WriteString(`<tr>`)
-			for _, k := range keys {
-				val := ""
-				if v, exists := m[k]; exists {
-					val = fmt.Sprintf("%v", v)
-				}
-				result.WriteString(fmt.Sprintf(`<td class="px-3 py-2 whitespace-nowrap text-gray-900">%s</td>`, html.EscapeString(val)))
-			}
-			result.WriteString(`</tr>`)
-		}
-	}
-	result.WriteString(`</tbody>`)
-	result.WriteString(`</table></div>`)
-
-	return result.String()
-}
-
-// formatSliceOfMapsPlain formats a slice of maps as plain text table
-func formatSliceOfMapsPlain(slice []interface{}) string {
-	if len(slice) == 0 {
-		return "[]"
-	}
-
-	// Extract all unique keys from all maps
-	keysSet := make(map[string]bool)
-	for _, item := range slice {
-		if m, ok := item.(map[string]interface{}); ok {
-			for k := range m {
-				keysSet[k] = true
-			}
-		}
-	}
-
-	// Convert to sorted slice
-	keys := make([]string, 0, len(keysSet))
-	for k := range keysSet {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-
-	// Format as simple text table
-	var result strings.Builder
-	result.WriteString("[")
-	for i, item := range slice {
-		if i > 0 {
-			result.WriteString(", ")
-		}
-		if m, ok := item.(map[string]interface{}); ok {
-			result.WriteString("{")
-			first := true
-			for _, k := range keys {
-				if v, exists := m[k]; exists {
-					if !first {
-						result.WriteString(", ")
-					}
-					first = false
-					result.WriteString(fmt.Sprintf("%s: %v", k, v))
-				}
-			}
-			result.WriteString("}")
-		}
-	}
-	result.WriteString("]")
-	return result.String()
 }
 
 // FormatManager defines the interface for converting data to various output formats.

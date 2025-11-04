@@ -70,9 +70,9 @@ func GetStructHeaders(val reflect.Value) []string {
 }
 
 // GetStructRow extracts field values as a row from structs, respecting pretty tags
-func GetStructRow(val reflect.Value) TextList {
+func GetStructRow(val reflect.Value) api.TextList {
 	typ := val.Type()
-	var row TextList
+	var row api.TextList
 
 	for i := 0; i < val.NumField(); i++ {
 		field := typ.Field(i)
@@ -550,7 +550,7 @@ func parseStructDataWithOptions(val reflect.Value, opts FormatOptions) (*api.Pre
 								logger.V(4).Infof("Failed to get table fields: %v", err)
 							}
 						}
-						field.TableOptions = api.PrettyTable{Fields: tableFields}
+						field.TableOptions = api.TableOptions{Columns: tableFields}
 					}
 				}
 			}
@@ -725,7 +725,7 @@ func convertSliceToPrettyDataWithOptions(val reflect.Value, opts FormatOptions) 
 				{
 					Name:         "table",
 					Format:       api.FormatTable,
-					TableOptions: api.PrettyTable{Fields: tableFields},
+					TableOptions: api.TableOptions{Columns: tableFields},
 				},
 			},
 		},
@@ -1332,8 +1332,8 @@ func convertSliceToPrettyData(val reflect.Value) (*api.PrettyData, error) {
 					Name:   "data",
 					Format: api.FormatTable,
 					Label:  "Data",
-					TableOptions: api.PrettyTable{
-						Fields: tableFields,
+					TableOptions: api.TableOptions{
+						Columns: tableFields,
 					},
 				},
 			},
