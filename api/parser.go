@@ -907,19 +907,19 @@ func (p *StructParser) StructToRowWithOptions(val reflect.Value, opts interface{
 		return nil, fmt.Errorf("cannot interface struct of kind=%s type=%s", val.Kind(), val.Type().Name())
 	}
 
-	structType := val.Type()
-	logger.V(4).Infof("Processing struct type=%s/%T kind=%s  ", structType.Name(), valInterface, val.Kind())
+	// structType := val.Type()
+	//logger.V(4).Infof("Processing struct type=%s/%T kind=%s  ", structType.Name(), valInterface, val.Kind())
 
 	if val.Kind() != reflect.Struct {
 		return nil, fmt.Errorf("expected struct or map, got %s", val.Kind())
 	}
 
 	if prettyRowInterface, ok := valInterface.(PrettyRow); ok {
-		logger.V(5).Infof("Struct %s implements PrettyRow interface - using custom implementation", structType.Name())
+		// logger.V(5).Infof("Struct %s implements PrettyRow interface - using custom implementation", structType.Name())
 
 		// Use the custom PrettyRow implementation
 		prettyRowMap := prettyRowInterface.PrettyRow(opts)
-		logger.V(4).Infof("PrettyRow() returned %d columns for struct %s", len(prettyRowMap), structType.Name())
+		// logger.V(4).Infof("PrettyRow() returned %d columns for struct %s", len(prettyRowMap), structType.Name())
 
 		// Convert map[string]Text to PrettyDataRow
 		row := make(PrettyDataRow)

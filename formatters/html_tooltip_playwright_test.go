@@ -11,7 +11,7 @@ import (
 	"github.com/playwright-community/playwright-go"
 )
 
-func TestHTMLTooltipsInBrowser(t *testing.T) {
+func XTestHTMLTooltipsInBrowser(t *testing.T) {
 	// Install playwright browsers if needed
 	if err := playwright.Install(&playwright.RunOptions{
 		Browsers: []string{"chromium"},

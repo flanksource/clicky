@@ -15,30 +15,30 @@ type PrettyMixin interface {
 
 // FormatOptions contains options for formatting operations
 type FormatOptions struct {
-	Format     string
-	NoColor    bool
-	Output     string
-	Verbose    bool
-	DumpSchema bool
-	Schema     *api.PrettyObject // Schema for schema-aware formatting
-	Filter     string            // CEL expression for filtering table rows and tree nodes
+	Format     string            `json:"format,omitempty"`
+	NoColor    bool              `json:"no_color,omitempty"`
+	Output     string            `json:"output,omitempty"`
+	Verbose    bool              `json:"verbose,omitempty"`
+	DumpSchema bool              `json:"dump_schema,omitempty"`
+	Schema     *api.PrettyObject `json:"-"`                // Schema for schema-aware formatting
+	Filter     string            `json:"filter,omitempty"` // CEL expression for filtering table rows and tree nodes
 
 	// Format-specific boolean flags (mutually exclusive)
-	JSON     bool
-	YAML     bool
-	CSV      bool
-	Markdown bool
-	Pretty   bool
-	HTML     bool
-	PDF      bool
+	JSON     bool `json:"json,omitempty"`
+	YAML     bool `json:"yaml,omitempty"`
+	CSV      bool `json:"csv,omitempty"`
+	Markdown bool `json:"markdown,omitempty"`
+	Pretty   bool `json:"pretty,omitempty"`
+	HTML     bool `json:"html,omitempty"`
+	PDF      bool `json:"pdf,omitempty"`
 
 	// Display structure flags (additive with format flags)
-	Tree  bool // Display in tree structure
-	Table bool // Display in table structure
+	Tree  bool `json:"tree,omitempty"`  // Display in tree structure
+	Table bool `json:"table,omitempty"` // Display in table structure
 
 	// Paging options
-	Page  int // Current page (1-indexed)
-	Limit int // Items per page
+	Page  int `json:"page,omitempty"`  // Current page (1-indexed)
+	Limit int `json:"limit,omitempty"` // Items per page
 
 	// Internal fields (not exposed via flags)
 	depth int // Hidden field for tracking nesting depth in recursive formatting
@@ -120,7 +120,6 @@ func BindFlags(flags *flag.FlagSet, options *FormatOptions) {
 	flags.StringVar(&options.Format, "format", "", "Output format: pretty, json, yaml, csv, html, pdf, markdown")
 	flags.StringVar(&options.Output, "output", "", "Output file pattern (optional, uses stdout if not specified)")
 	flags.BoolVar(&options.NoColor, "no-color", false, "Disable colored output")
-	flags.BoolVar(&options.Verbose, "verbose", false, "Enable verbose output")
 	flags.BoolVar(&options.DumpSchema, "dump-schema", false, "Dump the schema to stderr for debugging")
 	flags.StringVar(&options.Filter, "filter", "", "CEL expression for filtering table rows and tree nodes (e.g., \"status == 'active' && age > 30\")")
 
@@ -143,7 +142,6 @@ func BindPFlags(flags *pflag.FlagSet, options *FormatOptions) {
 	flags.StringVar(&options.Format, "format", "", "Output format: pretty, json, yaml, csv, html, pdf, markdown")
 	flags.StringVar(&options.Output, "output", "", "Output file pattern (optional, uses stdout if not specified)")
 	flags.BoolVar(&options.NoColor, "no-color", false, "Disable colored output")
-	flags.BoolVar(&options.Verbose, "verbose", false, "Enable verbose output")
 	flags.BoolVar(&options.DumpSchema, "dump-schema", false, "Dump the schema to stderr for debugging")
 	flags.StringVar(&options.Filter, "filter", "", "CEL expression for filtering table rows and tree nodes (e.g., \"status == 'active' && age > 30\")")
 

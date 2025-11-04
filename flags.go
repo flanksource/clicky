@@ -3,7 +3,6 @@ package clicky
 import (
 	"github.com/flanksource/commons/collections"
 	"github.com/flanksource/commons/logger"
-	"github.com/flanksource/commons/properties"
 	"github.com/spf13/pflag"
 )
 
@@ -52,8 +51,8 @@ func BindAllFlags(flags *pflag.FlagSet, filters ...string) *AllFlags {
 	if collections.MatchItems("format", filters...) {
 
 		flags.StringVar(&Flags.Format, "format", "", "Output format: pretty, json, yaml, csv, html, pdf, markdown")
-		flags.BoolVar(&Flags.FormatOptions.NoColor, "no-color", false, "Disable colored output")
-		flags.BoolVar(&Flags.Verbose, "verbose", false, "Enable verbose output")
+		flags.StringVar(&Flags.Filter, "filter", "", "CEL expression to filter output data")
+		flags.BoolVar(&Flags.NoColor, "no-color", false, "Disable colored output")
 		flags.BoolVar(&Flags.DumpSchema, "dump-schema", false, "Dump the schema to stderr for debugging")
 
 		// Format-specific flags (mutually exclusive)
@@ -79,10 +78,14 @@ func (a *AllFlags) String() string {
 }
 
 func (a *AllFlags) UseFlags() {
+	if a.NoColor {
+		a.Color = false
+	} else {
+		a.Color = true
+	}
 	logger.Configure(a.Flags)
-	logger.V(6).Infof("Using logger flags: %s", a)
+	logger.V(6).Infof("Using logger flags: %s", MustFormat(*a, FormatOptions{Pretty: true}))
 	a.Apply()
 	UseFormatter(a.FormatOptions)
-	properties.Set("log.level", "trace")
-	properties.Set("log.color", "true")
+
 }

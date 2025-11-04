@@ -344,9 +344,10 @@ func ParseStyle(styleStr string) Style {
 		}
 
 		// Truncation mode classes
-		if class == "truncate-suffix" {
+		switch class {
+		case "truncate-suffix":
 			style.TruncateMode = "suffix"
-		} else if class == "truncate-prefix" {
+		case "truncate-prefix":
 			style.TruncateMode = "prefix"
 		}
 
