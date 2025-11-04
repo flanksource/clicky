@@ -14,8 +14,6 @@ type FormatManager struct {
 	yamlFormatter     *YAMLFormatter
 	csvFormatter      *CSVFormatter
 	markdownFormatter *MarkdownFormatter
-	htmlFormatter     *HTMLFormatter
-	htmlPDFFormatter  *HTMLPDFFormatter
 	prettyFormatter   *PrettyFormatter
 	treeFormatter     *TreeFormatter
 	excelFormatter    *ExcelFormatter
@@ -28,7 +26,6 @@ func NewFormatManager() *FormatManager {
 		yamlFormatter:     NewYAMLFormatter(),
 		csvFormatter:      NewCSVFormatter(),
 		markdownFormatter: NewMarkdownFormatter(),
-		htmlFormatter:     NewHTMLFormatter(),
 		prettyFormatter:   NewPrettyFormatter(),
 		treeFormatter:     NewTreeFormatter(api.DefaultTheme(), false, nil),
 		excelFormatter:    NewExcelFormatter(),
@@ -87,10 +84,20 @@ func (f FormatManager) Markdown(data interface{}) (string, error) {
 
 // HTML implements api.FormatManager.
 func (f FormatManager) HTML(data interface{}) (string, error) {
-	if f.htmlFormatter == nil {
-		f.htmlFormatter = NewHTMLFormatter()
+	if formatter, ok := GetCustomFormatter("html"); ok {
+		return "", fmt.Errorf("html formatter not registered, registing using 'import _ github.com/flanksource/clicky/formatters/http'")
+	} else {
+		return formatter(data, FormatOptions{})
 	}
-	return f.htmlFormatter.Format(data)
+}
+
+func (f FormatManager) HTMLPDF(data interface{}) (string, error) {
+	if formatter, ok := GetCustomFormatter("html-pdf"); ok {
+		return "", fmt.Errorf("html-pdf formatter not registered, registing using 'import _ github.com/flanksource/clicky/formatters/http'")
+	} else {
+		return formatter(data, FormatOptions{})
+	}
+
 }
 
 // Tree formats data as a tree structure
@@ -131,10 +138,7 @@ func (f FormatManager) Format(format string, data interface{}) (string, error) {
 	case "html":
 		return f.HTML(data)
 	case "html-pdf":
-		if f.htmlPDFFormatter == nil {
-			f.htmlPDFFormatter = NewHTMLPDFFormatter()
-		}
-		return f.htmlPDFFormatter.Format(data)
+		return f.HTMLPDF(data)
 	case "excel", "xlsx":
 		return f.Excel(data)
 	case "pretty":
@@ -147,6 +151,63 @@ func (f FormatManager) Format(format string, data interface{}) (string, error) {
 }
 
 // FormatWithOptions formats data using the specified format options
+// convertPrettyDataToSimple converts filtered PrettyData back to simple data structures
+// Returns either a slice of maps (for table data) or a map (for struct data with tables)
+func convertPrettyDataToSimple(prettyData *api.PrettyData) interface{} {
+	// If there are no tables, just return original
+	if len(prettyData.Tables) == 0 {
+		return prettyData.Original
+	}
+
+	// Check if this was originally a slice (single table named "table")
+	if table, ok := prettyData.Tables["table"]; ok && len(prettyData.Tables) == 1 {
+		// This was a slice - convert table rows back to []map[string]interface{}
+		var result []map[string]interface{}
+		for _, row := range table {
+			simpleRow := make(map[string]interface{})
+			for fieldName, fieldValue := range row {
+				simpleRow[fieldName] = fieldValue.Primitive()
+			}
+			result = append(result, simpleRow)
+		}
+		return result
+	}
+
+	// This was a struct with multiple fields - reconstruct with filtered tables
+	result := make(map[string]interface{})
+
+	// Add scalar values from the schema
+	if prettyData.Schema != nil {
+		for _, field := range prettyData.Schema.Fields {
+			if field.Format != api.FormatTable {
+				// Add scalar field value with lowercase field name (matching JSON convention)
+				if fieldValue, ok := prettyData.Values[field.Name]; ok {
+					// Use lowercase field name to match JSON tags
+					fieldKey := strings.ToLower(field.Name[:1]) + field.Name[1:]
+					result[fieldKey] = fieldValue.Primitive()
+				}
+			}
+		}
+	}
+
+	// Add filtered table data as arrays
+	for tableName, rows := range prettyData.Tables {
+		tableArray := make([]map[string]interface{}, 0, len(rows))
+		for _, row := range rows {
+			simpleRow := make(map[string]interface{})
+			for fieldName, fieldValue := range row {
+				simpleRow[fieldName] = fieldValue.Primitive()
+			}
+			tableArray = append(tableArray, simpleRow)
+		}
+		// Use lowercase table name to match JSON tags
+		tableKey := strings.ToLower(tableName[:1]) + tableName[1:]
+		result[tableKey] = tableArray
+	}
+
+	return result
+}
+
 func (f FormatManager) FormatWithOptions(options FormatOptions, data ...any) (string, error) {
 
 	if len(data) == 0 {
@@ -202,12 +263,42 @@ func (f FormatManager) FormatWithOptions(options FormatOptions, data ...any) (st
 	// Handle format-specific options
 	switch strings.ToLower(format) {
 	case "json":
+		// Apply filter if provided by converting to PrettyData first
+		if options.Filter != "" && len(data) == 1 {
+			prettyData, err := ToPrettyDataWithOptions(data[0], options)
+			if err != nil {
+				return "", fmt.Errorf("failed to apply filter: %w", err)
+			}
+			// Convert filtered PrettyData back to simple data
+			filteredData := convertPrettyDataToSimple(prettyData)
+			return f.JSON([]any{filteredData})
+		}
 		return f.JSON(data)
 
 	case "yaml", "yml":
+		// Apply filter if provided by converting to PrettyData first
+		if options.Filter != "" && len(data) == 1 {
+			prettyData, err := ToPrettyDataWithOptions(data[0], options)
+			if err != nil {
+				return "", fmt.Errorf("failed to apply filter: %w", err)
+			}
+			// Convert filtered PrettyData back to simple data
+			filteredData := convertPrettyDataToSimple(prettyData)
+			return f.YAML([]any{filteredData})
+		}
 		return f.YAML(data)
 
 	case "csv":
+		// Apply filter if provided by converting to PrettyData first
+		if options.Filter != "" && len(data) == 1 {
+			prettyData, err := ToPrettyDataWithOptions(data[0], options)
+			if err != nil {
+				return "", fmt.Errorf("failed to apply filter: %w", err)
+			}
+			// Convert filtered PrettyData back to simple data
+			filteredData := convertPrettyDataToSimple(prettyData)
+			return f.CSV([]any{filteredData})
+		}
 		return f.CSV(data)
 
 	case "markdown", "md":
@@ -223,15 +314,12 @@ func (f FormatManager) FormatWithOptions(options FormatOptions, data ...any) (st
 		}
 		return f.markdownFormatter.FormatPrettyData(prettyData, options)
 
-	case "html":
-		return f.HTML(data)
-
-	case "html-pdf":
-		if f.htmlPDFFormatter == nil {
-			f.htmlPDFFormatter = NewHTMLPDFFormatter()
+	case "html", "html-pdf":
+		if formatter, ok := GetCustomFormatter(format); ok {
+			return "", fmt.Errorf("html formatter not registered, registing using 'import _ github.com/flanksource/clicky/formatters/http'")
+		} else {
+			return formatter(data, options)
 		}
-		return f.htmlPDFFormatter.Format(data)
-
 	case "table":
 		if f.prettyFormatter == nil {
 			f.prettyFormatter = NewPrettyFormatter()
@@ -394,16 +482,12 @@ func (f FormatManager) FormatWithSchema(prettyData *api.PrettyData, options Form
 		}
 		f.markdownFormatter.NoColor = options.NoColor
 		return f.markdownFormatter.FormatPrettyData(prettyData, options)
-	case "html":
-		if f.htmlFormatter == nil {
-			f.htmlFormatter = NewHTMLFormatter()
+	case "html", "html-pdf":
+		formatter, ok := GetCustomFormatter(options.Format)
+		if !ok {
+			return "", fmt.Errorf("%s formatter not registered, registing using 'import _ github.com/flanksource/clicky/formatters/http'", options.Format)
 		}
-		return f.htmlFormatter.FormatPrettyData(prettyData)
-	case "html-pdf":
-		if f.htmlPDFFormatter == nil {
-			f.htmlPDFFormatter = NewHTMLPDFFormatter()
-		}
-		return f.htmlPDFFormatter.FormatPrettyData(prettyData)
+		return formatter(prettyData, options)
 	default:
 		// Default to pretty format
 		if f.prettyFormatter == nil {
