@@ -8,9 +8,8 @@
     width: 1.5em;
     height: 1.5em;
     margin-right: 0.25rem;
-    transition: transform 0.2s ease;
     color: #6b7280;
-    font-size: 1.1em;
+    font-size: 1.25em;
     flex-shrink: 0;
 }
 
@@ -18,8 +17,8 @@
     color: #374151;
 }
 
-.tree-toggle.expanded {
-    transform: rotate(90deg);
+.tree-toggle iconify-icon {
+    display: block;
 }
 
 .tree-node-wrapper {
