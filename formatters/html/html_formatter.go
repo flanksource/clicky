@@ -19,6 +19,15 @@ var treeCSS string
 //go:embed tree.js
 var treeJS string
 
+//go:embed gridjs-theme.css
+var gridjsThemeCSS string
+
+//go:embed pdf.css
+var pdfCSS string
+
+//go:embed tooltips.js
+var tooltipsJS string
+
 func init() {
 	html := NewHTMLFormatter()
 	RegisterFormatter("html", html.Format)
@@ -62,94 +71,7 @@ func (f *HTMLFormatter) getCSS() string {
     <script defer src="https://cdn.jsdelivr.net/npm/@alpinejs/collapse@3.x.x/dist/cdn.min.js"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
     <style>
-        /* Grid.js theme customizations to match Tailwind */
-        .gridjs-wrapper {
-            border: 1px solid #e5e7eb;
-            border-radius: 0.5rem;
-            overflow: hidden;
-            box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
-        }
-        .gridjs-head {
-            background: #f9fafb;
-            border-bottom: 1px solid #e5e7eb;
-        }
-        .gridjs-th {
-            background: #f9fafb;
-            color: #6b7280;
-            font-weight: 500;
-            font-size: 0.75rem;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-            padding: 0.75rem 1.5rem;
-            border-right: 1px solid #f3f4f6;
-        }
-        .gridjs-th:last-child {
-            border-right: none;
-        }
-        .gridjs-td {
-            padding: 1rem 1.5rem;
-            font-size: 0.875rem;
-            color: #111827;
-            border-right: 1px solid #f9fafb;
-            vertical-align: top;
-        }
-        .gridjs-td:last-child {
-            border-right: none;
-        }
-        .gridjs-tr:nth-child(even) .gridjs-td {
-            background-color: #fafafa;
-        }
-        .gridjs-tr:hover .gridjs-td {
-            background: #f3f4f6;
-        }
-        .gridjs-search {
-            margin-bottom: 1rem;
-        }
-        .gridjs-search-input {
-            border: 1px solid #d1d5db;
-            border-radius: 0.375rem;
-            padding: 0.5rem 0.75rem;
-            font-size: 0.875rem;
-            width: 300px;
-            transition: border-color 0.15s ease-in-out;
-        }
-        .gridjs-search-input:focus {
-            outline: none;
-            border-color: #3b82f6;
-            box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
-        }
-        .gridjs-pagination {
-            margin-top: 1rem;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-        }
-        .gridjs-pagination .gridjs-pages {
-            margin: 0 0.5rem;
-        }
-        .gridjs-pagination button {
-            padding: 0.5rem 0.75rem;
-            margin: 0 0.25rem;
-            border: 1px solid #d1d5db;
-            border-radius: 0.375rem;
-            background: white;
-            color: #6b7280;
-            font-size: 0.875rem;
-            transition: all 0.15s ease-in-out;
-        }
-        .gridjs-pagination button:hover:not(:disabled) {
-            background: #f9fafb;
-            border-color: #9ca3af;
-        }
-        .gridjs-pagination button:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
-        .gridjs-pagination .gridjs-currentPage {
-            background: #3b82f6;
-            color: white;
-            border-color: #3b82f6;
-        }
+        ` + gridjsThemeCSS + `
 
         /* Chroma syntax highlighting styles */
 ` + api.GetChromaCSS() + `
@@ -165,32 +87,7 @@ func (f *HTMLFormatter) getCSS() string {
 </head>
 <body class="bg-gray-100 min-h-screen p-6">
     <script>
-        // Global Tippy.js initialization function
-        function initTooltips(container) {
-            const target = container || document.body;
-            // Use singleton for better performance with many tooltips
-            tippy('[title]', {
-                content(reference) {
-                    const title = reference.getAttribute('title');
-                    reference.removeAttribute('title');
-                    reference.classList.add('tooltip-target');
-                    return title;
-                },
-                allowHTML: true,
-                theme: 'light-border',
-                placement: 'top',
-                arrow: true,
-                animation: 'shift-away',
-                duration: [200, 150],
-                delay: [0, 0],
-                appendTo: () => document.body,
-            });
-        }
-
-        // Initialize tooltips on page load
-        document.addEventListener('DOMContentLoaded', function() {
-            initTooltips();
-        });
+        ` + tooltipsJS + `
 
         ` + treeJS + `
     </script>
@@ -203,124 +100,7 @@ func (f *HTMLFormatter) getCSS() string {
 func (f *HTMLFormatter) getPDFCSS() string {
 	return `
     <style>
-        /* PDF-specific overrides */
-        @media print, screen {
-            body {
-                font-size: 12px !important;
-                line-height: 1.4 !important;
-                margin: 0 !important;
-                padding: 20px !important;
-                min-height: auto !important;
-                background: white !important;
-            }
-
-            .max-w-7xl {
-                max-width: 100% !important;
-                margin: 0 !important;
-            }
-
-            /* Reduce all font sizes by ~15% */
-            .text-xl { font-size: 16px !important; }
-            .text-lg { font-size: 14px !important; }
-            .text-base { font-size: 12px !important; }
-            .text-sm { font-size: 11px !important; }
-            .text-xs { font-size: 10px !important; }
-
-            /* Compact spacing - reduce by ~40% */
-            .p-6 { padding: 12px !important; }
-            .px-6 { padding-left: 12px !important; padding-right: 12px !important; }
-            .py-4 { padding-top: 8px !important; padding-bottom: 8px !important; }
-            .py-3 { padding-top: 6px !important; padding-bottom: 6px !important; }
-            .px-4 { padding-left: 8px !important; padding-right: 8px !important; }
-            .space-y-8 > * + * { margin-top: 16px !important; }
-            .space-y-4 > * + * { margin-top: 8px !important; }
-            .space-y-1 > * + * { margin-top: 2px !important; }
-            .gap-4 { gap: 8px !important; }
-            .mt-1 { margin-top: 2px !important; }
-            .mb-2 { margin-bottom: 4px !important; }
-            .ml-4 { margin-left: 8px !important; }
-            .mr-2 { margin-right: 4px !important; }
-
-            /* Remove responsive grid - always use 2 columns for better space usage */
-            .md\\:grid-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
-            .grid-cols-1 { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
-
-            /* No overflow scrolling - tables should fit */
-            .overflow-x-auto { overflow: visible !important; }
-
-            /* Ensure tables fit and are compact */
-            table {
-                width: 100% !important;
-                font-size: 11px !important;
-                table-layout: fixed !important;
-            }
-
-            table th {
-                padding: 4px 8px !important;
-                font-size: 10px !important;
-            }
-
-            table td {
-                padding: 4px 8px !important;
-                font-size: 11px !important;
-                word-wrap: break-word !important;
-            }
-
-            .whitespace-nowrap {
-                white-space: normal !important;
-            }
-
-            /* Remove hover states */
-            .hover\\:bg-gray-50:hover { background: transparent !important; }
-
-            /* Remove shadows and use simple borders for cleaner print */
-            .shadow {
-                box-shadow: none !important;
-                border: 1px solid #e5e7eb !important;
-            }
-            .rounded-lg { border-radius: 4px !important; }
-
-            /* Page break handling */
-            .bg-white.rounded-lg {
-                page-break-inside: avoid;
-                margin-bottom: 8px !important;
-            }
-
-            /* Tree view adjustments */
-            .tree-view {
-                font-size: 11px !important;
-            }
-
-            .tree-node {
-                font-size: 11px !important;
-            }
-
-            /* Tree expand/collapse - disable in PDF mode */
-            .tree-toggle {
-                display: none !important;
-            }
-
-            /* Header adjustments */
-            h2 {
-                font-size: 14px !important;
-                margin-bottom: 4px !important;
-            }
-
-            /* Definition list adjustments */
-            dl {
-                font-size: 11px !important;
-            }
-
-            dt {
-                font-size: 10px !important;
-                margin-bottom: 1px !important;
-            }
-
-            dd {
-                font-size: 11px !important;
-                margin-bottom: 4px !important;
-            }
-        }
+        ` + pdfCSS + `
     </style>`
 }
 
@@ -932,7 +712,10 @@ func (f *HTMLFormatter) formatTreeNodeHTML(node api.TreeNode, depth int) string 
 		if len(children) > 0 && !f.IsPDFMode {
 			// Alpine.js toggle for nodes with children
 			nodeID := f.generateNodeID()
-			result.WriteString(fmt.Sprintf(`<span class="tree-toggle" :class="isExpanded('%s') ? 'expanded' : ''" @click.stop="toggleNode('%s')" data-node-id="%s">▸</span>`, nodeID, nodeID, nodeID))
+			result.WriteString(fmt.Sprintf(`<span class="tree-toggle" @click.stop="toggleNode('%s')" data-node-id="%s">`, nodeID, nodeID))
+			result.WriteString(fmt.Sprintf(`<iconify-icon icon="ion:chevron-forward" x-show="!isExpanded('%s')"></iconify-icon>`, nodeID))
+			result.WriteString(fmt.Sprintf(`<iconify-icon icon="ion:chevron-down" x-show="isExpanded('%s')"></iconify-icon>`, nodeID))
+			result.WriteString(`</span>`)
 		} else {
 			// Static indicator for leaf nodes
 			result.WriteString(`<span class="tree-leaf-indicator">•</span>`)
