@@ -1,0 +1,36 @@
+/* Tree expand/collapse styles */
+.tree-toggle {
+    cursor: pointer;
+    user-select: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.5em;
+    height: 1.5em;
+    margin-right: 0.25rem;
+    transition: transform 0.2s ease;
+    color: #6b7280;
+    font-size: 1.1em;
+    flex-shrink: 0;
+}
+
+.tree-toggle:hover {
+    color: #374151;
+}
+
+.tree-toggle.expanded {
+    transform: rotate(90deg);
+}
+
+.tree-node-wrapper {
+    position: relative;
+}
+
+.tree-leaf-indicator {
+    display: none;
+}
+
+.tree-node.cursor-pointer:hover {
+    background-color: #f3f4f6;
+    border-radius: 0.25rem;
+}
