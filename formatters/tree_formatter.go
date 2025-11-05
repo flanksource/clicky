@@ -81,6 +81,19 @@ func (f *TreeFormatter) FormatPrettyData(data *api.PrettyData) (string, error) {
 		return data.Tree.String(), nil
 	}
 
+	// Look for tree fields in TypedMap
+	if data.TypedMap != nil {
+		for _, field := range data.Schema.Fields {
+			if field.Format == api.FormatTree {
+				if fieldValue, exists := (*data.TypedMap)[field.Name]; exists {
+					if fieldValue.Tree != nil {
+						return fieldValue.Tree.String(), nil
+					}
+				}
+			}
+		}
+	}
+
 	// No tree fields found - provide detailed diagnostic information
 	return buildNoTreeDataMessage(data), nil
 }
