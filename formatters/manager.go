@@ -239,10 +239,9 @@ func (f FormatManager) FormatWithOptions(options FormatOptions, data ...any) (st
 
 	case "html", "html-pdf":
 		if formatter, ok := GetCustomFormatter(format); ok {
-			return "", fmt.Errorf("html formatter not registered, registing using 'import _ github.com/flanksource/clicky/formatters/http'")
-		} else {
 			return formatter(data, options)
 		}
+		return "", fmt.Errorf("html formatter not registered, register using 'import _ github.com/flanksource/clicky/formatters/html'")
 	case "table":
 		if f.prettyFormatter == nil {
 			f.prettyFormatter = NewPrettyFormatter()
