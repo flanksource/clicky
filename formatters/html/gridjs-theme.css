@@ -1,0 +1,88 @@
+/* Grid.js theme customizations to match Tailwind */
+.gridjs-wrapper {
+    border: 1px solid #e5e7eb;
+    border-radius: 0.5rem;
+    overflow: hidden;
+    box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1), 0 1px 2px 0 rgba(0, 0, 0, 0.06);
+}
+.gridjs-head {
+    background: #f9fafb;
+    border-bottom: 1px solid #e5e7eb;
+}
+.gridjs-th {
+    background: #f9fafb;
+    color: #6b7280;
+    font-weight: 500;
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 0.75rem 1.5rem;
+    border-right: 1px solid #f3f4f6;
+}
+.gridjs-th:last-child {
+    border-right: none;
+}
+.gridjs-td {
+    padding: 1rem 1.5rem;
+    font-size: 0.875rem;
+    color: #111827;
+    border-right: 1px solid #f9fafb;
+    vertical-align: top;
+}
+.gridjs-td:last-child {
+    border-right: none;
+}
+.gridjs-tr:nth-child(even) .gridjs-td {
+    background-color: #fafafa;
+}
+.gridjs-tr:hover .gridjs-td {
+    background: #f3f4f6;
+}
+.gridjs-search {
+    margin-bottom: 1rem;
+}
+.gridjs-search-input {
+    border: 1px solid #d1d5db;
+    border-radius: 0.375rem;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.875rem;
+    width: 300px;
+    transition: border-color 0.15s ease-in-out;
+}
+.gridjs-search-input:focus {
+    outline: none;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+.gridjs-pagination {
+    margin-top: 1rem;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+.gridjs-pagination .gridjs-pages {
+    margin: 0 0.5rem;
+}
+.gridjs-pagination button {
+    padding: 0.5rem 0.75rem;
+    margin: 0 0.25rem;
+    border: 1px solid #d1d5db;
+    border-radius: 0.375rem;
+    background: white;
+    color: #6b7280;
+    font-size: 0.875rem;
+    transition: all 0.15s ease-in-out;
+}
+.gridjs-pagination button:hover:not(:disabled) {
+    background: #f9fafb;
+    border-color: #9ca3af;
+}
+.gridjs-pagination button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+.gridjs-pagination .gridjs-currentPage {
+    background: #3b82f6;
+    color: white;
+    border-color: #3b82f6;
+}
