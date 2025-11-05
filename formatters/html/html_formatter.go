@@ -1,6 +1,7 @@
 package html
 
 import (
+	_ "embed"
 	"encoding/json"
 	"fmt"
 	"html"
@@ -11,6 +12,12 @@ import (
 	"github.com/flanksource/clicky/formatters"
 	. "github.com/flanksource/clicky/formatters"
 )
+
+//go:embed tree.css
+var treeCSS string
+
+//go:embed tree.js
+var treeJS string
 
 func init() {
 	html := NewHTMLFormatter()
@@ -147,35 +154,7 @@ func (f *HTMLFormatter) getCSS() string {
         /* Chroma syntax highlighting styles */
 ` + api.GetChromaCSS() + `
 
-        /* Tree expand/collapse styles */
-        .tree-toggle {
-            cursor: pointer;
-            user-select: none;
-            display: inline-block;
-            width: 1em;
-            margin-right: 0.25em;
-            transition: transform 0.2s ease;
-            color: #6b7280;
-        }
-
-        .tree-toggle:hover {
-            color: #374151;
-        }
-
-        .tree-toggle.expanded {
-            transform: rotate(90deg);
-        }
-
-        .tree-node-wrapper {
-            position: relative;
-        }
-
-        .tree-leaf-indicator {
-            display: inline-block;
-            width: 1em;
-            margin-right: 0.25em;
-            color: #9ca3af;
-        }
+        ` + treeCSS + `
     </style>`
 
 	if f.IsPDFMode {
@@ -212,6 +191,8 @@ func (f *HTMLFormatter) getCSS() string {
         document.addEventListener('DOMContentLoaded', function() {
             initTooltips();
         });
+
+        ` + treeJS + `
     </script>
     <div class="mx-auto px-4 space-y-8">
 `
@@ -345,6 +326,10 @@ func (f *HTMLFormatter) getPDFCSS() string {
 
 // Format formats PrettyData into HTML output
 func (f *HTMLFormatter) Format(in interface{}, options formatters.FormatOptions) (string, error) {
+	// Unwrap single-element slices from varargs
+	if slice, ok := in.([]interface{}); ok && len(slice) == 1 {
+		in = slice[0]
+	}
 
 	if prettData, ok := in.(*api.PrettyData); ok {
 		return f.FormatPrettyData(prettData)
@@ -910,29 +895,10 @@ func (f *HTMLFormatter) formatTreeNodeHTML(node api.TreeNode, depth int) string 
 	children := node.GetChildren()
 
 	if depth == 0 {
-		// Root node - start the tree with Alpine.js data
+		// Root node - start the tree with Alpine.js data and skip root node label
 		if !f.IsPDFMode {
-			// Interactive mode with Alpine.js
-			result.WriteString(`<div class="tree-view" x-data="{`)
-			result.WriteString(`expandedNodes: new Set(),`)
-			result.WriteString(`expandAll() {`)
-			result.WriteString(`const nodes = this.$el.querySelectorAll('[data-node-id]');`)
-			result.WriteString(`nodes.forEach(n => this.expandedNodes.add(n.dataset.nodeId));`)
-			result.WriteString(`},`)
-			result.WriteString(`collapseAll() {`)
-			result.WriteString(`this.expandedNodes.clear();`)
-			result.WriteString(`},`)
-			result.WriteString(`toggleNode(id) {`)
-			result.WriteString(`if (this.expandedNodes.has(id)) {`)
-			result.WriteString(`this.expandedNodes.delete(id);`)
-			result.WriteString(`} else {`)
-			result.WriteString(`this.expandedNodes.add(id);`)
-			result.WriteString(`}`)
-			result.WriteString(`},`)
-			result.WriteString(`isExpanded(id) {`)
-			result.WriteString(`return this.expandedNodes.has(id);`)
-			result.WriteString(`}`)
-			result.WriteString(`}" x-init="expandAll()">`)
+			// Interactive mode with Alpine.js - use embedded tree function
+			result.WriteString(`<div class="tree-view" x-data="createTreeData()" x-init="expandAll()">`)
 
 			// Add Expand All / Collapse All buttons
 			result.WriteString(`<div class="tree-controls mb-3 flex gap-2">`)
@@ -948,26 +914,9 @@ func (f *HTMLFormatter) formatTreeNodeHTML(node api.TreeNode, depth int) string 
 			result.WriteString(`<div class="tree-view">`)
 		}
 
-		result.WriteString(`<div class="tree-node-wrapper">`)
-
-		if len(children) > 0 && !f.IsPDFMode {
-			// Add Alpine.js toggle for nodes with children
-			nodeID := f.generateNodeID()
-			result.WriteString(fmt.Sprintf(`<span class="tree-toggle" :class="isExpanded('%s') ? 'expanded' : ''" @click="toggleNode('%s')" data-node-id="%s">▸</span>`, nodeID, nodeID, nodeID))
-		}
-
-		result.WriteString(`<span class="tree-node font-semibold text-lg mb-2">`)
-		result.WriteString(node.Pretty().HTML())
-		result.WriteString(`</span>`)
-		result.WriteString(`</div>`)
-
+		// Skip rendering root node label and render children directly at the top level
 		if len(children) > 0 {
-			if !f.IsPDFMode {
-				nodeID := fmt.Sprintf("node-%d", f.nodeCounter)
-				result.WriteString(fmt.Sprintf(`<ul class="tree-children ml-4 space-y-1" x-show="isExpanded('%s')" x-transition>`, nodeID))
-			} else {
-				result.WriteString(`<ul class="tree-children ml-4 space-y-1">`)
-			}
+			result.WriteString(`<ul class="tree-children space-y-1">`)
 			for _, child := range children {
 				childHTML := f.formatTreeNodeHTML(child, depth+1)
 				result.WriteString(childHTML)
@@ -983,21 +932,26 @@ func (f *HTMLFormatter) formatTreeNodeHTML(node api.TreeNode, depth int) string 
 		if len(children) > 0 && !f.IsPDFMode {
 			// Alpine.js toggle for nodes with children
 			nodeID := f.generateNodeID()
-			result.WriteString(fmt.Sprintf(`<span class="tree-toggle" :class="isExpanded('%s') ? 'expanded' : ''" @click="toggleNode('%s')" data-node-id="%s">▸</span>`, nodeID, nodeID, nodeID))
+			result.WriteString(fmt.Sprintf(`<span class="tree-toggle" :class="isExpanded('%s') ? 'expanded' : ''" @click.stop="toggleNode('%s')" data-node-id="%s">▸</span>`, nodeID, nodeID, nodeID))
 		} else {
 			// Static indicator for leaf nodes
 			result.WriteString(`<span class="tree-leaf-indicator">•</span>`)
 		}
 
 		result.WriteString(`<div class="flex-1">`)
-		result.WriteString(`<span class="tree-node">`)
+		if len(children) > 0 && !f.IsPDFMode {
+			nodeID := fmt.Sprintf("node-%d", f.nodeCounter)
+			result.WriteString(fmt.Sprintf(`<span class="tree-node cursor-pointer" @click="toggleNode('%s')">`, nodeID))
+		} else {
+			result.WriteString(`<span class="tree-node">`)
+		}
 		result.WriteString(node.Pretty().HTML())
 		result.WriteString(`</span>`)
 
 		if len(children) > 0 {
 			if !f.IsPDFMode {
 				nodeID := fmt.Sprintf("node-%d", f.nodeCounter)
-				result.WriteString(fmt.Sprintf(`<ul class="tree-children ml-4 mt-1 space-y-1" x-show="isExpanded('%s')" x-transition>`, nodeID))
+				result.WriteString(fmt.Sprintf(`<ul class="tree-children ml-4 mt-1 space-y-1" x-show="isExpanded('%s')">`, nodeID))
 			} else {
 				result.WriteString(`<ul class="tree-children ml-4 mt-1 space-y-1">`)
 			}
