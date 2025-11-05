@@ -241,6 +241,10 @@ func (t Text) Space() Text {
 	return t.Append(" ")
 }
 
+func (t Text) Tab() Text {
+	return t.Append("\t")
+}
+
 // Append adds a new child Text with the specified content and styles.
 func (t Text) Append(text any, styles ...string) Text {
 

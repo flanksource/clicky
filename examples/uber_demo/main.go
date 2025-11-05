@@ -192,7 +192,7 @@ type UberDemo struct {
 
 	// ==================== TREE STRUCTURE ====================
 	// Tree formatted data
-	FileSystem *api.SimpleTreeNode `json:"file_system,omitempty" pretty:"label=File System,omitempty"`
+	FileSystem *clicky.FileTreeNode `json:"file_system,omitempty" pretty:"label=File System,format=tree,omitempty"`
 
 	// ==================== MIXED COMPLEX DATA ====================
 	// Map of slices
@@ -391,44 +391,8 @@ func createDemoData() *UberDemo {
 			},
 		},
 
-		// Tree structure
-		FileSystem: &api.SimpleTreeNode{
-			Label: "root",
-			Children: []api.TreeNode{
-				&api.SimpleTreeNode{
-					Label: "home",
-					Children: []api.TreeNode{
-						&api.SimpleTreeNode{
-							Label: "user",
-							Children: []api.TreeNode{
-								&api.SimpleTreeNode{Label: "documents (10 files)"},
-								&api.SimpleTreeNode{Label: "downloads (5 files)"},
-								&api.SimpleTreeNode{Label: "pictures (150 files)"},
-							},
-						},
-					},
-				},
-				&api.SimpleTreeNode{
-					Label: "etc",
-					Children: []api.TreeNode{
-						&api.SimpleTreeNode{Label: "config (system config)"},
-						&api.SimpleTreeNode{Label: "hosts (network config)"},
-					},
-				},
-				&api.SimpleTreeNode{
-					Label: "var",
-					Children: []api.TreeNode{
-						&api.SimpleTreeNode{
-							Label: "log",
-							Children: []api.TreeNode{
-								&api.SimpleTreeNode{Label: "system.log (2.5 MB)"},
-								&api.SimpleTreeNode{Label: "error.log (150 KB)"},
-							},
-						},
-					},
-				},
-			},
-		},
+		// Tree structure - shows actual filesystem from current directory
+		FileSystem: clicky.NewFileSystem(".", clicky.WithMaxDepth(2)),
 
 		// Mixed complex data
 		CategoryProducts: map[string][]string{
@@ -477,77 +441,14 @@ func createDemoData() *UberDemo {
 }
 
 // createIconsShowcase creates a comprehensive showcase of all available icons
-func createIconsShowcase() []IconShowcase {
-	return []IconShowcase{
-		{Icon: api.Text{}.Add(icons.AI.WithStyle("h-8")), Name: "AI", Description: "Artificial Intelligence / Robot"},
-		{Icon: api.Text{}.Add(icons.ArrowDown), Name: "ArrowDown", Description: "Down arrow"},
-		{Icon: api.Text{}.Add(icons.ArrowLeft), Name: "ArrowLeft", Description: "Left arrow"},
-		{Icon: api.Text{}.Add(icons.ArrowRight), Name: "ArrowRight", Description: "Right arrow"},
-		{Icon: api.Text{}.Add(icons.ArrowUp), Name: "ArrowUp", Description: "Up arrow"},
-		{Icon: api.Text{}.Add(icons.Check), Name: "Check / Pass / Success", Description: "Success indicator"},
-		{Icon: api.Text{}.Add(icons.ChevronDown), Name: "ChevronDown", Description: "Chevron down"},
-		{Icon: api.Text{}.Add(icons.ChevronLeft), Name: "ChevronLeft", Description: "Chevron left"},
-		{Icon: api.Text{}.Add(icons.ChevronRight), Name: "ChevronRight", Description: "Chevron right"},
-		{Icon: api.Text{}.Add(icons.ChevronUp), Name: "ChevronUp", Description: "Chevron up"},
-		{Icon: api.Text{}.Add(icons.CI), Name: "CI", Description: "Continuous Integration"},
-		{Icon: api.Text{}.Add(icons.Clean), Name: "Clean", Description: "Cleaning / Broom"},
-		{Icon: api.Text{}.Add(icons.Cloud), Name: "Cloud", Description: "Cloud computing"},
-		{Icon: api.Text{}.Add(icons.Config), Name: "Config", Description: "Configuration / Settings"},
-		{Icon: api.Text{}.Add(icons.Cost), Name: "Cost", Description: "Money / Dollar sign"},
-		{Icon: api.Text{}.Add(icons.Cross), Name: "Cross / Error / Fail", Description: "Error indicator"},
-		{Icon: api.Text{}.Add(icons.Database), Name: "Database / DB", Description: "Database"},
-		{Icon: api.Text{}.Add(icons.Debug), Name: "Debug", Description: "Debugging / Bug"},
-		{Icon: api.Text{}.Add(icons.Docs), Name: "Docs", Description: "Documentation"},
-		{Icon: api.Text{}.Add(icons.Exclamation), Name: "Exclamation", Description: "Exclamation mark"},
-		{Icon: api.Text{}.Add(icons.Feat), Name: "Feat", Description: "New feature / Sparkles"},
-		{Icon: api.Text{}.Add(icons.File), Name: "File", Description: "File document"},
-		{Icon: api.Text{}.Add(icons.Fix), Name: "Fix", Description: "Bug fix"},
-		{Icon: api.Text{}.Add(icons.Folder), Name: "Folder", Description: "Folder / Directory"},
-		{Icon: api.Text{}.Add(icons.Golang), Name: "Golang", Description: "Go programming language"},
-		{Icon: api.Text{}.Add(icons.Heart), Name: "Heart", Description: "Heart / Love"},
-		{Icon: api.Text{}.Add(icons.Http), Name: "Http", Description: "HTTP / Web"},
-		{Icon: api.Text{}.Add(icons.Idea), Name: "Idea", Description: "Light bulb / Idea"},
-		{Icon: api.Text{}.Add(icons.Info), Name: "Info", Description: "Information"},
-		{Icon: api.Text{}.Add(icons.Java), Name: "Java", Description: "Java programming language"},
-		{Icon: api.Text{}.Add(icons.JS), Name: "JS", Description: "JavaScript"},
-		{Icon: api.Text{}.Add(icons.Key), Name: "Key", Description: "Key / Access"},
-		{Icon: api.Text{}.Add(icons.Kubernetes), Name: "Kubernetes", Description: "Kubernetes"},
-		{Icon: api.Text{}.Add(icons.Lambda), Name: "Lambda", Description: "Lambda function"},
-		{Icon: api.Text{}.Add(icons.Launch), Name: "Launch", Description: "Launch / Party"},
-		{Icon: api.Text{}.Add(icons.Link), Name: "Link", Description: "Link / Chain"},
-		{Icon: api.Text{}.Add(icons.Lock), Name: "Lock", Description: "Lock / Security"},
-		{Icon: api.Text{}.Add(icons.Loop), Name: "Loop", Description: "Loop / Refresh"},
-		{Icon: api.Text{}.Add(icons.Math), Name: "Math", Description: "Mathematics / Calculator"},
-		{Icon: api.Text{}.Add(icons.Method), Name: "Method", Description: "Function / Method"},
-		{Icon: api.Text{}.Add(icons.Monitor), Name: "Monitor", Description: "Computer monitor"},
-		{Icon: api.Text{}.Add(icons.Network), Name: "Network", Description: "Network / Globe"},
-		{Icon: api.Text{}.Add(icons.Package), Name: "Package", Description: "Package / Box"},
-		{Icon: api.Text{}.Add(icons.Pause), Name: "Pause", Description: "Pause"},
-		{Icon: api.Text{}.Add(icons.Pending), Name: "Pending", Description: "Pending / Hourglass"},
-		{Icon: api.Text{}.Add(icons.Performance), Name: "Performance", Description: "Performance / Lightning"},
-		{Icon: api.Text{}.Add(icons.Play), Name: "Play / Start", Description: "Play button"},
-		{Icon: api.Text{}.Add(icons.Plugin), Name: "Plugin", Description: "Plugin / Puzzle piece"},
-		{Icon: api.Text{}.Add(icons.Python), Name: "Python", Description: "Python programming language"},
-		{Icon: api.Text{}.Add(icons.Refactor), Name: "Refactor", Description: "Code refactoring"},
-		{Icon: api.Text{}.Add(icons.Reload), Name: "Reload", Description: "Reload / Refresh"},
-		{Icon: api.Text{}.Add(icons.Robot), Name: "Robot", Description: "Robot"},
-		{Icon: api.Text{}.Add(icons.Rocket), Name: "Rocket", Description: "Rocket"},
-		{Icon: api.Text{}.Add(icons.Search), Name: "Search", Description: "Search / Magnifying glass"},
-		{Icon: api.Text{}.Add(icons.Skip), Name: "Skip", Description: "Skip"},
-		{Icon: api.Text{}.Add(icons.Star), Name: "Star", Description: "Star"},
-		{Icon: api.Text{}.Add(icons.Stop), Name: "Stop", Description: "Stop sign"},
-		{Icon: api.Text{}.Add(icons.Style), Name: "Style", Description: "Style / Palette"},
-		{Icon: api.Text{}.Add(icons.Table), Name: "Table", Description: "Table / Clipboard"},
-		{Icon: api.Text{}.Add(icons.Target), Name: "Target", Description: "Target / Bullseye"},
-		{Icon: api.Text{}.Add(icons.Test), Name: "Test", Description: "Testing / Beaker"},
-		{Icon: api.Text{}.Add(icons.TS), Name: "TS", Description: "TypeScript"},
-		{Icon: api.Text{}.Add(icons.Type), Name: "Type", Description: "Type / Class"},
-		{Icon: api.Text{}.Add(icons.Unknown), Name: "Unknown", Description: "Unknown / Question mark"},
-		{Icon: api.Text{}.Add(icons.Variable), Name: "Variable", Description: "Variable"},
-		{Icon: api.Text{}.Add(icons.Warning), Name: "Warning", Description: "Warning sign"},
-		{Icon: api.Text{}.Add(icons.Wrench), Name: "Wrench", Description: "Wrench / Tool"},
-		{Icon: api.Text{}.Add(icons.Zombie), Name: "Zombie", Description: "Zombie / Skull"},
+func createIconsShowcase() (items []IconShowcase) {
+	for k, v := range icons.All {
+		items = append(items, IconShowcase{
+			Icon: api.Text{}.Add(v.WithStyle("text-xl text-green-500")),
+			Name: k,
+		})
 	}
+	return items
 }
 
 // createColorsShowcase creates a showcase of Tailwind color styles
@@ -600,8 +501,8 @@ func createTextStylesShowcase() []TextStyleExample {
 
 }
 
-// ShowcaseOptions are options for showcase commands
-type ShowcaseOptions struct {
+// AllOptions are options for showcase commands
+type AllOptions struct {
 	IncludeIcons  bool `flag:"icons" help:"Include icons showcase" default:"true"`
 	IncludeColors bool `flag:"colors" help:"Include colors showcase" default:"true"`
 	IncludeStyles bool `flag:"styles" help:"Include text styles showcase" default:"true"`
@@ -621,8 +522,11 @@ type StylesOptions struct{}
 type TypesOptions struct{}
 
 // showAll displays all showcases
-func showAll(opts ShowcaseOptions) (any, error) {
+func showAll(opts AllOptions) (any, error) {
 	demo := createDemoData()
+
+	// Debug: check if FileSystem is set
+	fmt.Fprintf(os.Stderr, "[DEBUG showAll] FileSystem nil? %v\n", demo.FileSystem == nil)
 
 	// Conditionally include showcases based on flags
 	if !opts.IncludeIcons {
@@ -635,13 +539,13 @@ func showAll(opts ShowcaseOptions) (any, error) {
 		demo.TextStylesTable = nil
 	}
 	if !opts.IncludeTypes {
-		// Clear all type demo fields
+		// Clear all type demo fields except FileSystem (which is now a tree demo)
 		demo.StringField = ""
 		demo.IntField = 0
 		demo.Orders = nil
-		demo.FileSystem = nil
 	}
 
+	fmt.Fprintf(os.Stderr, "[DEBUG showAll after filtering] FileSystem nil? %v\n", demo.FileSystem == nil)
 	return demo, nil
 }
 
@@ -670,6 +574,11 @@ func showTypes(opts TypesOptions) (any, error) {
 	return demo, nil
 }
 
+// showTrees displays tree structure examples
+func showTrees(opts clicky.FileTreeOptions) (any, error) {
+	return clicky.NewFileSystem(".", clicky.WithMaxDepth(opts.MaxDepth)), nil
+}
+
 func main() {
 	rootCmd := &cobra.Command{
 		Use:   "uber-demo",
@@ -686,12 +595,12 @@ func main() {
 - Multiple output formats (pretty, json, yaml, html, markdown, csv, pdf)`,
 	}
 
-	clicky.AddCommand(rootCmd, ShowcaseOptions{}, showAll)
+	clicky.AddCommand(rootCmd, AllOptions{}, showAll)
 	clicky.AddCommand(rootCmd, IconsOptions{}, showIcons)
 	clicky.AddCommand(rootCmd, ColorsOptions{}, showColors)
 	clicky.AddCommand(rootCmd, StylesOptions{}, showStyles)
 	clicky.AddCommand(rootCmd, TypesOptions{}, showTypes)
-	clicky.AddCommand(rootCmd, ShowcaseOptions{}, showAll)
+	clicky.AddNamedCommand("trees", rootCmd, clicky.FileTreeOptions{}, showTrees)
 
 	clicky.BindAllFlags(rootCmd.PersistentFlags())
 

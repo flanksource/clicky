@@ -71,8 +71,17 @@ func AddCommand[T any](parent *cobra.Command, opts T, fn func(opts T) (any, erro
 	if optsType.Kind() != reflect.Struct {
 		panic("AddCommand requires a struct type for opts parameter")
 	}
-
 	name := lo.KebabCase(strings.TrimSuffix(optsType.Name(), "Options"))
+	return AddNamedCommand(name, parent, opts, fn)
+}
+
+func AddNamedCommand[T any](name string, parent *cobra.Command, opts T, fn func(opts T) (any, error)) *cobra.Command {
+
+	optsType := reflect.TypeOf(opts)
+	if optsType.Kind() != reflect.Struct {
+		panic("AddCommand requires a struct type for opts parameter")
+	}
+
 	name = strings.TrimPrefix(name, parent.Use+"-")
 	optsValue := reflect.New(optsType).Elem()
 	cmd := &cobra.Command{

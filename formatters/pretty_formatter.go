@@ -44,14 +44,11 @@ func (p *PrettyFormatter) Format(data interface{}) (string, error) {
 	if prettyData, ok := data.(*api.PrettyData); ok {
 		return p.FormatPrettyData(prettyData)
 	}
-	schema, err := p.parser.Parse(data)
+	prettyData, err := ToPrettyData(data)
 	if err != nil {
 		return "", err
 	}
-	return p.FormatPrettyData(&api.PrettyData{
-		Schema:   schema,
-		Original: data,
-	})
+	return p.FormatPrettyData(prettyData)
 }
 
 // FormatPrettyData formats PrettyData structure
