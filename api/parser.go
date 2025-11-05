@@ -347,7 +347,14 @@ func (p *StructParser) ParseDataWithSchema(data interface{}, schema *PrettyObjec
 
 		// Check if this is a table field
 		if field.Format == FormatTable && (fieldVal.Kind() == reflect.Slice || fieldVal.Kind() == reflect.Array) {
-			values[field.Name] = NewTypedValue(p.parseTableData(fieldVal, field))
+			typedValue := NewTypedValue(p.parseTableData(fieldVal, field))
+			// Attach field metadata for rendering hints
+			typedValue.FieldMeta = &FieldMeta{
+				Name:         field.Name,
+				CompactItems: field.CompactItems,
+				Format:       field.Format,
+			}
+			values[field.Name] = typedValue
 		} else if field.Format == FormatTree {
 			// Use NewTypedValue which handles TreeNode and Pretty interfaces
 			values[field.Name] = NewTypedValue(fieldVal.Interface())
