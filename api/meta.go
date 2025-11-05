@@ -236,6 +236,13 @@ var all = []Textable{
 
 type TextMap map[string]Textable
 
+// FieldMeta contains metadata about a field for rendering purposes
+type FieldMeta struct {
+	Name         string
+	CompactItems bool
+	Format       string
+}
+
 type TypedValue struct {
 	Textable   Textable
 	Slice      *TextList
@@ -245,6 +252,7 @@ type TypedValue struct {
 	Table      *TextTable
 	Tree       *TextTree
 	IsCircular bool
+	FieldMeta  *FieldMeta // Metadata for rendering hints
 }
 
 type VisitorFunc func(TypedValue) bool

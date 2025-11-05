@@ -281,6 +281,14 @@ func (f *HTMLFormatter) FormatPrettyData(data *api.PrettyData) (string, error) {
 		result.WriteString(f.getCSS())
 	}
 
+	// Collect deferred nested tables (non-compact tables from nested structs)
+	type deferredTable struct {
+		table     *api.TextTable
+		fieldName string
+		fieldMeta *api.FieldMeta
+	}
+	var deferredTables []deferredTable
+
 	// Count non-table/non-tree fields first
 	summaryFieldCount := 0
 	for _, field := range data.Schema.Fields {
@@ -314,6 +322,15 @@ func (f *HTMLFormatter) FormatPrettyData(data *api.PrettyData) (string, error) {
 			}
 
 			prettyFieldName := f.prettifyFieldName(field.Name)
+
+			// Check if this field contains a non-compact table that should be deferred
+			if fieldValue.Table != nil && fieldValue.FieldMeta != nil && !fieldValue.FieldMeta.CompactItems {
+				deferredTables = append(deferredTables, deferredTable{
+					table:     fieldValue.Table,
+					fieldName: prettyFieldName,
+					fieldMeta: fieldValue.FieldMeta,
+				})
+			}
 
 			// Format field value with styling
 			fieldHTML := f.formatFieldValueHTMLWithStyle(fieldValue, field)
@@ -385,6 +402,30 @@ func (f *HTMLFormatter) FormatPrettyData(data *api.PrettyData) (string, error) {
 		}
 	}
 
+	// Render deferred nested tables (non-compact tables from nested structs)
+	for _, deferred := range deferredTables {
+		result.WriteString("        <div class=\"bg-white rounded-lg shadow\">\n")
+		result.WriteString("            <div class=\"px-6 py-4 border-b border-gray-200\">\n")
+		result.WriteString(fmt.Sprintf("                <h2 class=\"text-xl font-semibold text-gray-900\">%s</h2>\n",
+			html.EscapeString(deferred.fieldName)))
+		result.WriteString("            </div>\n")
+
+		// Format as table - use Grid.js unless in PDF mode
+		var tableHTML string
+		if f.IsPDFMode {
+			// Use static HTML table for PDF generation
+			field := api.PrettyField{Name: deferred.fieldMeta.Name}
+			tableHTML = f.formatTableDataHTML(deferred.table, field)
+		} else {
+			// Use Grid.js for interactive features
+			tableID := f.generateTableID()
+			field := api.PrettyField{Name: deferred.fieldMeta.Name}
+			tableHTML = f.formatTableDataHTMLWithGridJS(deferred.table, field, tableID)
+		}
+		result.WriteString(tableHTML)
+		result.WriteString("        </div>\n")
+	}
+
 	if f.IncludeCSS {
 		result.WriteString("    </div>\n</body>\n</html>")
 	}
@@ -449,8 +490,51 @@ func (f *HTMLFormatter) formatFieldValueHTMLWithStyle(fieldValue api.TypedValue,
 		return f.formatImageHTML(fieldValue, field)
 	}
 
+	// Check if this TypedValue contains a nested table
+	if fieldValue.Table != nil && fieldValue.FieldMeta != nil {
+		// If compact, render inline
+		if fieldValue.FieldMeta.CompactItems {
+			return f.formatCompactTableHTML(fieldValue.Table)
+		}
+		// Otherwise, return placeholder - table will be rendered after struct
+		return fmt.Sprintf(`<span class="text-gray-500 italic">See %s table below</span>`, html.EscapeString(fieldValue.FieldMeta.Name))
+	}
+
 	// Use HTML() method from TypedValue
 	return fieldValue.HTML()
+}
+
+// formatCompactTableHTML renders a table inline with compact styling
+func (f *HTMLFormatter) formatCompactTableHTML(table *api.TextTable) string {
+	if table == nil || len(table.Rows) == 0 {
+		return `<span class="text-gray-400">Empty</span>`
+	}
+
+	var result strings.Builder
+	result.WriteString(`<table class="inline-table text-xs border-collapse border border-gray-300">`)
+
+	// Headers
+	result.WriteString("<thead><tr>")
+	for _, header := range table.Headers {
+		result.WriteString(fmt.Sprintf(`<th class="border border-gray-300 px-2 py-1 bg-gray-100 font-semibold">%s</th>`,
+			html.EscapeString(header.String())))
+	}
+	result.WriteString("</tr></thead>")
+
+	// Rows
+	result.WriteString("<tbody>")
+	for _, row := range table.Rows {
+		result.WriteString("<tr>")
+		for _, header := range table.Headers {
+			cellValue := row[header.String()]
+			result.WriteString(fmt.Sprintf(`<td class="border border-gray-300 px-2 py-1">%s</td>`,
+				cellValue.HTML()))
+		}
+		result.WriteString("</tr>")
+	}
+	result.WriteString("</tbody></table>")
+
+	return result.String()
 }
 
 // formatNestedPrettyData formats a PrettyData structure as nested HTML
