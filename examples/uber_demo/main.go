@@ -469,6 +469,7 @@ func showAll(opts AllOptions) (any, error) {
 	// Debug: check if FileSystem is set
 	fmt.Fprintf(os.Stderr, "[DEBUG showAll] FileSystem nil? %v\n", demo.FileSystem == nil)
 
+	clicky.Infof(clicky.MustFormat(*demo.FileSystem, clicky.FormatOptions{Pretty: true, Format: "pretty"}))
 	// Conditionally include showcases based on flags
 	if !opts.IncludeIcons {
 		demo.IconsTable = nil
