@@ -20,16 +20,16 @@ var _ = ginkgo.Describe("FilterTableRows", func() {
 			name: "filter by string equality",
 			rows: []PrettyDataRow{
 				{
-					"status": FieldValue{Value: "active", Field: PrettyField{Name: "status", Type: "string"}},
-					"name":   FieldValue{Value: "item1", Field: PrettyField{Name: "name", Type: "string"}},
+					"status": NewTypedValue("active"),
+					"name":   NewTypedValue("item1"),
 				},
 				{
-					"status": FieldValue{Value: "inactive", Field: PrettyField{Name: "status", Type: "string"}},
-					"name":   FieldValue{Value: "item2", Field: PrettyField{Name: "name", Type: "string"}},
+					"status": NewTypedValue("inactive"),
+					"name":   NewTypedValue("item2"),
 				},
 				{
-					"status": FieldValue{Value: "active", Field: PrettyField{Name: "status", Type: "string"}},
-					"name":   FieldValue{Value: "item3", Field: PrettyField{Name: "name", Type: "string"}},
+					"status": NewTypedValue("active"),
+					"name":   NewTypedValue("item3"),
 				},
 			},
 			filterExpr:    "status == 'active'",
@@ -39,23 +39,23 @@ var _ = ginkgo.Describe("FilterTableRows", func() {
 			name: "filter by numeric comparison",
 			rows: []PrettyDataRow{
 				{
-					"age":  FieldValue{Value: int64(25), Field: PrettyField{Name: "age", Type: "int"}},
-					"name": FieldValue{Value: "Alice", Field: PrettyField{Name: "name", Type: "string"}},
+					"age":  NewTypedValue(int64(25)),
+					"name": NewTypedValue("Alice"),
 				},
 				{
-					"age":  FieldValue{Value: int64(35), Field: PrettyField{Name: "age", Type: "int"}},
-					"name": FieldValue{Value: "Bob", Field: PrettyField{Name: "name", Type: "string"}},
+					"age":  NewTypedValue(int64(35)),
+					"name": NewTypedValue("Bob"),
 				},
 				{
-					"age":  FieldValue{Value: int64(45), Field: PrettyField{Name: "age", Type: "int"}},
-					"name": FieldValue{Value: "Charlie", Field: PrettyField{Name: "name", Type: "string"}},
+					"age":  NewTypedValue(int64(45)),
+					"name": NewTypedValue("Charlie"),
 				},
 			},
 			filterExpr:    "age > 30",
 			expectedCount: 2,
 			validateResult: func(result []PrettyDataRow) {
 				Expect(result).To(HaveLen(2))
-				names := []string{result[0]["name"].Value.(string), result[1]["name"].Value.(string)}
+				names := []string{result[0]["name"].String(), result[1]["name"].String()}
 				Expect(names).To(ContainElement("Bob"))
 				Expect(names).To(ContainElement("Charlie"))
 			},
@@ -64,12 +64,12 @@ var _ = ginkgo.Describe("FilterTableRows", func() {
 			name: "filter with boolean field",
 			rows: []PrettyDataRow{
 				{
-					"active": FieldValue{Value: true, Field: PrettyField{Name: "active", Type: "boolean"}},
-					"name":   FieldValue{Value: "item1", Field: PrettyField{Name: "name", Type: "string"}},
+					"active": NewTypedValue(true),
+					"name":   NewTypedValue("item1"),
 				},
 				{
-					"active": FieldValue{Value: false, Field: PrettyField{Name: "active", Type: "boolean"}},
-					"name":   FieldValue{Value: "item2", Field: PrettyField{Name: "name", Type: "string"}},
+					"active": NewTypedValue(false),
+					"name":   NewTypedValue("item2"),
 				},
 			},
 			filterExpr:    "active",
@@ -79,16 +79,16 @@ var _ = ginkgo.Describe("FilterTableRows", func() {
 			name: "filter with AND condition",
 			rows: []PrettyDataRow{
 				{
-					"status": FieldValue{Value: "active", Field: PrettyField{Name: "status", Type: "string"}},
-					"age":    FieldValue{Value: int64(25), Field: PrettyField{Name: "age", Type: "int"}},
+					"status": NewTypedValue("active"),
+					"age":    NewTypedValue(int64(25)),
 				},
 				{
-					"status": FieldValue{Value: "active", Field: PrettyField{Name: "status", Type: "string"}},
-					"age":    FieldValue{Value: int64(35), Field: PrettyField{Name: "age", Type: "int"}},
+					"status": NewTypedValue("active"),
+					"age":    NewTypedValue(int64(35)),
 				},
 				{
-					"status": FieldValue{Value: "inactive", Field: PrettyField{Name: "status", Type: "string"}},
-					"age":    FieldValue{Value: int64(35), Field: PrettyField{Name: "age", Type: "int"}},
+					"status": NewTypedValue("inactive"),
+					"age":    NewTypedValue(int64(35)),
 				},
 			},
 			filterExpr:    "status == 'active' && age > 30",
@@ -98,16 +98,16 @@ var _ = ginkgo.Describe("FilterTableRows", func() {
 			name: "filter with OR condition",
 			rows: []PrettyDataRow{
 				{
-					"status":   FieldValue{Value: "pending", Field: PrettyField{Name: "status", Type: "string"}},
-					"priority": FieldValue{Value: int64(1), Field: PrettyField{Name: "priority", Type: "int"}},
+					"status":   NewTypedValue("pending"),
+					"priority": NewTypedValue(int64(1)),
 				},
 				{
-					"status":   FieldValue{Value: "active", Field: PrettyField{Name: "status", Type: "string"}},
-					"priority": FieldValue{Value: int64(5), Field: PrettyField{Name: "priority", Type: "int"}},
+					"status":   NewTypedValue("active"),
+					"priority": NewTypedValue(int64(5)),
 				},
 				{
-					"status":   FieldValue{Value: "inactive", Field: PrettyField{Name: "status", Type: "string"}},
-					"priority": FieldValue{Value: int64(10), Field: PrettyField{Name: "priority", Type: "int"}},
+					"status":   NewTypedValue("inactive"),
+					"priority": NewTypedValue(int64(10)),
 				},
 			},
 			filterExpr:    "status == 'pending' || priority >= 10",
@@ -116,8 +116,8 @@ var _ = ginkgo.Describe("FilterTableRows", func() {
 		{
 			name: "empty filter expression returns all rows",
 			rows: []PrettyDataRow{
-				{"name": FieldValue{Value: "item1", Field: PrettyField{Name: "name", Type: "string"}}},
-				{"name": FieldValue{Value: "item2", Field: PrettyField{Name: "name", Type: "string"}}},
+				{"name": NewTypedValue("item1")},
+				{"name": NewTypedValue("item2")},
 			},
 			filterExpr:    "",
 			expectedCount: 2,
@@ -125,7 +125,7 @@ var _ = ginkgo.Describe("FilterTableRows", func() {
 		{
 			name: "invalid CEL expression returns error",
 			rows: []PrettyDataRow{
-				{"name": FieldValue{Value: "item1", Field: PrettyField{Name: "name", Type: "string"}}},
+				{"name": NewTypedValue("item1")},
 			},
 			filterExpr:  "invalid syntax !!!",
 			expectError: true,
@@ -133,9 +133,9 @@ var _ = ginkgo.Describe("FilterTableRows", func() {
 		{
 			name: "filter with contains function",
 			rows: []PrettyDataRow{
-				{"name": FieldValue{Value: "hello_world", Field: PrettyField{Name: "name", Type: "string"}}},
-				{"name": FieldValue{Value: "goodbye", Field: PrettyField{Name: "name", Type: "string"}}},
-				{"name": FieldValue{Value: "world_map", Field: PrettyField{Name: "name", Type: "string"}}},
+				{"name": NewTypedValue("hello_world")},
+				{"name": NewTypedValue("goodbye")},
+				{"name": NewTypedValue("world_map")},
 			},
 			filterExpr:    "name.contains('world')",
 			expectedCount: 2,
@@ -143,8 +143,8 @@ var _ = ginkgo.Describe("FilterTableRows", func() {
 		{
 			name: "filter no matches returns empty slice",
 			rows: []PrettyDataRow{
-				{"status": FieldValue{Value: "active", Field: PrettyField{Name: "status", Type: "string"}}},
-				{"status": FieldValue{Value: "pending", Field: PrettyField{Name: "status", Type: "string"}}},
+				{"status": NewTypedValue("active")},
+				{"status": NewTypedValue("pending")},
 			},
 			filterExpr:    "status == 'completed'",
 			expectedCount: 0,
@@ -327,8 +327,8 @@ var _ = ginkgo.Describe("rowToCELMap", func() {
 		{
 			name: "string and int fields",
 			row: PrettyDataRow{
-				"name": FieldValue{Value: "test", Field: PrettyField{Name: "name", Type: "string"}},
-				"age":  FieldValue{Value: int64(30), Field: PrettyField{Name: "age", Type: "int"}},
+				"name": NewTypedValue("test"),
+				"age":  NewTypedValue(int64(30)),
 			},
 			expected: map[string]interface{}{
 				"name": "test",
@@ -338,8 +338,8 @@ var _ = ginkgo.Describe("rowToCELMap", func() {
 		{
 			name: "boolean and float fields",
 			row: PrettyDataRow{
-				"active": FieldValue{Value: true, Field: PrettyField{Name: "active", Type: "boolean"}},
-				"score":  FieldValue{Value: 95.5, Field: PrettyField{Name: "score", Type: "float"}},
+				"active": NewTypedValue(true),
+				"score":  NewTypedValue(95.5),
 			},
 			expected: map[string]interface{}{
 				"active": true,
@@ -349,10 +349,7 @@ var _ = ginkgo.Describe("rowToCELMap", func() {
 		{
 			name: "time field",
 			row: PrettyDataRow{
-				"created_at": FieldValue{
-					Value: time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC),
-					Field: PrettyField{Name: "created_at", Type: "date"},
-				},
+				"created_at": NewTypedValue(time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)),
 			},
 			expected: map[string]interface{}{
 				"created_at": time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC),

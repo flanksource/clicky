@@ -157,6 +157,7 @@ func (f FormatManager) FormatWithOptions(options FormatOptions, data ...any) (st
 	}
 	// Resolve format from boolean flags first to check for custom formatters
 	format := options.ResolveFormat()
+	logger.V(4).Infof("FormatWithOptions called with %d data items, format=%s", len(data), format)
 
 	// Check for custom formatters BEFORE the string shortcut
 	// This allows custom formatters to process strings
@@ -202,17 +203,26 @@ func (f FormatManager) FormatWithOptions(options FormatOptions, data ...any) (st
 	// If schema is provided, delegate to external handler
 	// (the calling code should handle ParseDataWithSchema and call FormatWithSchema directly)
 
+	// Extract single element from variadic data
+	var d any
+	if len(data) == 1 {
+		d = data[0]
+	} else {
+		d = data
+	}
+	logger.V(4).Infof("Extracted data type: %T", d)
+
 	// Handle format-specific options
 	switch strings.ToLower(format) {
 	case "json":
 
-		return f.JSON(data)
+		return f.JSON(d)
 
 	case "yaml", "yml":
-		return f.YAML(data)
+		return f.YAML(d)
 
 	case "csv":
-		return f.CSV(data)
+		return f.CSV(d)
 
 	case "markdown", "md":
 		if f.markdownFormatter == nil {
@@ -220,10 +230,10 @@ func (f FormatManager) FormatWithOptions(options FormatOptions, data ...any) (st
 		}
 		f.markdownFormatter.NoColor = options.NoColor
 		// Convert to PrettyData first to handle pretty tags like tree
-		prettyData, err := f.ToPrettyDataWithOptions(data, options)
+		prettyData, err := f.ToPrettyDataWithOptions(d, options)
 		if err != nil {
 			// Fallback to direct formatting if PrettyData conversion fails
-			return f.markdownFormatter.Format(data)
+			return f.markdownFormatter.Format(d)
 		}
 		return f.markdownFormatter.FormatPrettyData(prettyData, options)
 
@@ -239,10 +249,10 @@ func (f FormatManager) FormatWithOptions(options FormatOptions, data ...any) (st
 		}
 		f.prettyFormatter.NoColor = options.NoColor
 		// Force table formatting by setting format option
-		prettyData, err := ToPrettyDataWithOptions(data, FormatOptions{Format: "table"})
+		prettyData, err := ToPrettyDataWithOptions(d, FormatOptions{Format: "table"})
 		if err != nil {
 			// Fallback to direct formatting if PrettyData conversion fails
-			return f.prettyFormatter.Format(data)
+			return f.prettyFormatter.Format(d)
 		}
 		return f.prettyFormatter.FormatPrettyData(prettyData)
 
@@ -250,22 +260,16 @@ func (f FormatManager) FormatWithOptions(options FormatOptions, data ...any) (st
 		if f.treeFormatter == nil {
 			f.treeFormatter = NewTreeFormatter(api.DefaultTheme(), options.NoColor, nil)
 		}
-		return f.treeFormatter.Format(data)
+		return f.treeFormatter.Format(d)
 
 	case "excel", "xlsx":
 		if f.excelFormatter == nil {
 			f.excelFormatter = NewExcelFormatter()
 		}
-		return f.excelFormatter.Format(data)
+		return f.excelFormatter.Format(d)
 
 	case "pretty":
-		var d any
-		if len(data) == 1 {
-			d = data[0]
-		} else {
-			d = data
-		}
-		// Convert to PrettyData first to detect structure (tree vs table)
+		// Convert to PrettyData first
 		prettyData, err := ToPrettyDataWithOptions(d, options)
 		if err != nil {
 			// Fallback to direct formatting if PrettyData conversion fails
@@ -276,26 +280,7 @@ func (f FormatManager) FormatWithOptions(options FormatOptions, data ...any) (st
 			return f.prettyFormatter.Format(d)
 		}
 
-		// Check if data has tree fields - if so, use tree formatter
-		hasTreeField := false
-		if prettyData != nil && prettyData.Schema != nil {
-			for _, field := range prettyData.Schema.Fields {
-				if field.Format == api.FormatTree {
-					hasTreeField = true
-					break
-				}
-			}
-		}
-
-		if hasTreeField {
-			// Use tree formatter for tree-structured data
-			if f.treeFormatter == nil {
-				f.treeFormatter = NewTreeFormatter(api.DefaultTheme(), options.NoColor, nil)
-			}
-			return f.treeFormatter.FormatPrettyData(prettyData)
-		}
-
-		// Otherwise use pretty formatter with table structure
+		// Use pretty formatter
 		if f.prettyFormatter == nil {
 			f.prettyFormatter = NewPrettyFormatter()
 		}
@@ -308,7 +293,7 @@ func (f FormatManager) FormatWithOptions(options FormatOptions, data ...any) (st
 			f.prettyFormatter = NewPrettyFormatter()
 		}
 		f.prettyFormatter.NoColor = options.NoColor
-		return f.prettyFormatter.Format(data)
+		return f.prettyFormatter.Format(d)
 	}
 }
 

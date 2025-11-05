@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/flanksource/clicky"
 	"github.com/flanksource/clicky/api"
 	"github.com/flanksource/clicky/formatters"
 
@@ -118,7 +119,7 @@ func (f *FileTreeNode) Pretty() api.Text {
 	}
 
 	// Add metadata as children
-	var children []api.Text
+	var children []api.Textable
 
 	if sizeStr != "" {
 		children = append(children, api.Text{
@@ -227,6 +228,7 @@ The colors will automatically adjust based on your terminal's background
 (light or dark) for optimal readability.`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			clicky.Flags.UseFlags()
 			// Determine directory to scan
 			scanDir := "."
 			if len(args) > 0 {
@@ -249,18 +251,7 @@ The colors will automatically adjust based on your terminal's background
 				Root *FileTreeNode `json:"root" yaml:"root" pretty:"tree"`
 			}
 
-			fs := FileSystem{Root: tree}
-
-			// Use FormatManager for all formats - now supports tree rendering consistently
-			manager := formatters.NewFormatManager()
-			if err := manager.FormatToFile(formatOpts, fs); err != nil {
-				return err
-			}
-
-			// Show summary for pretty format with verbose
-			if formatOpts.Format == "pretty" && formatOpts.Verbose {
-				showSummary(tree)
-			}
+			clicky.MustPrint(*tree)
 
 			return nil
 		},

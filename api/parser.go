@@ -422,6 +422,14 @@ func (p *StructParser) ParseDataWithSchema(data interface{}, schema *PrettyObjec
 		}
 	}
 
+	// Assign the populated values and list to result
+	if len(values) > 0 {
+		result.TypedMap = &values
+	}
+	if len(list) > 0 {
+		result.TypedList = &list
+	}
+
 	return result, nil
 }
 

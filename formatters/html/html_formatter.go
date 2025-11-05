@@ -454,7 +454,7 @@ func (f *HTMLFormatter) Format(in interface{}, options formatters.FormatOptions)
 		switch field.Format {
 		case api.FormatTable:
 			tableData, exists := data.GetTable(field.Name)
-			if exists && len(tableData) > 0 {
+			if exists && tableData != nil && len(tableData.Rows) > 0 {
 				// Add section title
 				result.WriteString("        <div class=\"bg-white rounded-lg shadow\">\n")
 				result.WriteString("            <div class=\"px-6 py-4 border-b border-gray-200\">\n")
@@ -577,7 +577,7 @@ func (f *HTMLFormatter) FormatPrettyData(data *api.PrettyData) (string, error) {
 		switch field.Format {
 		case api.FormatTable:
 			tableData, exists := data.GetTable(field.Name)
-			if exists && len(tableData) > 0 {
+			if exists && tableData != nil && len(tableData.Rows) > 0 {
 				// Add section title
 				result.WriteString("        <div class=\"bg-white rounded-lg shadow\">\n")
 				result.WriteString("            <div class=\"px-6 py-4 border-b border-gray-200\">\n")
@@ -671,36 +671,21 @@ func (f *HTMLFormatter) prettifyFieldName(name string) string {
 }
 
 // formatFieldValueHTML formats a FieldValue for HTML output (legacy function)
-func (f *HTMLFormatter) formatFieldValueHTML(fieldValue api.FieldValue) string {
+func (f *HTMLFormatter) formatFieldValueHTML(fieldValue api.TypedValue) string {
 	// This is the legacy function, now delegating to the new one with empty field
 	return f.formatFieldValueHTMLWithStyle(fieldValue, api.PrettyField{})
 }
 
-// formatFieldValueHTMLWithStyle formats a FieldValue with field styling for HTML output
-func (f *HTMLFormatter) formatFieldValueHTMLWithStyle(fieldValue api.FieldValue, field api.PrettyField) string {
-	// Handle special structural cases before using FieldValue.HTML()
-
+// formatFieldValueHTMLWithStyle formats a TypedValue with field styling for HTML output
+func (f *HTMLFormatter) formatFieldValueHTMLWithStyle(fieldValue api.TypedValue, field api.PrettyField) string {
 	// Check if this is an image field
-	valueStr := ""
-	if fieldValue.Text != nil {
-		valueStr = fieldValue.Text.String()
-	} else {
-		valueStr = fmt.Sprintf("%v", fieldValue.Value)
-	}
+	valueStr := fieldValue.String()
 	if field.Format == "image" || f.isImageURL(valueStr) {
 		return f.formatImageHTML(fieldValue, field)
 	}
 
-	// Handle nested PrettyData structures
-	if nestedData, ok := fieldValue.Value.(*api.PrettyData); ok {
-		return f.formatNestedPrettyData(nestedData)
-	}
-
-	// Use Text.HTML() as the source of truth for formatted HTML
-	if fieldValue.Text != nil {
-		return fieldValue.Text.HTML()
-	}
-	return fmt.Sprintf("%v", fieldValue.Value)
+	// Use HTML() method from TypedValue
+	return fieldValue.HTML()
 }
 
 // formatNestedPrettyData formats a PrettyData structure as nested HTML
@@ -714,7 +699,7 @@ func (f *HTMLFormatter) formatNestedPrettyData(data *api.PrettyData) string {
 			continue // Skip tables in nested view
 		}
 
-		if fieldValue, ok := data.Values[field.Name]; ok {
+		if fieldValue, ok := data.GetValue(field.Name); ok {
 			label := field.Label
 			if label == "" {
 				label = f.prettifyFieldName(field.Name)
@@ -723,14 +708,7 @@ func (f *HTMLFormatter) formatNestedPrettyData(data *api.PrettyData) string {
 			result.WriteString(`<div class="flex">`)
 			result.WriteString(fmt.Sprintf(`<span class="text-gray-600 font-medium w-32 flex-shrink-0">%s:</span>`, html.EscapeString(label)))
 
-			// Check for further nesting
-			if nestedData, ok := fieldValue.Value.(*api.PrettyData); ok {
-				result.WriteString(`<div class="ml-4">`)
-				result.WriteString(f.formatNestedPrettyData(nestedData))
-				result.WriteString("</div>")
-			} else {
-				result.WriteString(f.formatFieldValueHTML(fieldValue))
-			}
+			result.WriteString(f.formatFieldValueHTML(fieldValue))
 			result.WriteString("</div>")
 		}
 	}
@@ -740,8 +718,8 @@ func (f *HTMLFormatter) formatNestedPrettyData(data *api.PrettyData) string {
 }
 
 // formatTableDataHTML formats table data for HTML output
-func (f *HTMLFormatter) formatTableDataHTML(rows []api.PrettyDataRow, field api.PrettyField) string {
-	if len(rows) == 0 {
+func (f *HTMLFormatter) formatTableDataHTML(table *api.TextTable, field api.PrettyField) string {
+	if table == nil || len(table.Rows) == 0 {
 		return "            <p class=\"text-gray-500 text-center py-8\">No data available</p>"
 	}
 
@@ -772,7 +750,7 @@ func (f *HTMLFormatter) formatTableDataHTML(rows []api.PrettyDataRow, field api.
 
 	// Write data rows
 	result.WriteString("                    <tbody class=\"bg-white divide-y divide-gray-200\">\n")
-	for _, row := range rows {
+	for _, row := range table.Rows {
 		result.WriteString("                        <tr class=\"hover:bg-gray-50\">\n")
 		for _, tableField := range field.TableOptions.Columns {
 			fieldValue, exists := row[tableField.Name]
@@ -803,8 +781,8 @@ func (f *HTMLFormatter) formatTableDataHTML(rows []api.PrettyDataRow, field api.
 }
 
 // formatTableDataHTMLWithGridJS formats table data using Grid.js for interactive features
-func (f *HTMLFormatter) formatTableDataHTMLWithGridJS(rows []api.PrettyDataRow, field api.PrettyField, tableID string) string {
-	if len(rows) == 0 {
+func (f *HTMLFormatter) formatTableDataHTMLWithGridJS(table *api.TextTable, field api.PrettyField, tableID string) string {
+	if table == nil || len(table.Rows) == 0 {
 		return "            <p class=\"text-gray-500 text-center py-8\">No data available</p>"
 	}
 
@@ -838,7 +816,7 @@ func (f *HTMLFormatter) formatTableDataHTMLWithGridJS(rows []api.PrettyDataRow, 
 
 	// Configure data
 	result.WriteString("                        data: [\n")
-	for i, row := range rows {
+	for i, row := range table.Rows {
 		if i > 0 {
 			result.WriteString(",\n")
 		}
@@ -856,11 +834,7 @@ func (f *HTMLFormatter) formatTableDataHTMLWithGridJS(rows []api.PrettyDataRow, 
 				if tableField.Style != "" {
 					cellContent = f.formatFieldValueHTMLWithStyle(fieldValue, tableField)
 				} else {
-					if fieldValue.Text != nil {
-						cellContent = fieldValue.Text.HTML()
-					} else {
-						cellContent = fmt.Sprintf("%v", fieldValue.Value)
-					}
+					cellContent = fieldValue.HTML()
 				}
 			} else {
 				cellContent = ""
@@ -908,23 +882,14 @@ func (f *HTMLFormatter) generateTableID() string {
 }
 
 // formatTreeFieldHTML formats a tree field for HTML output
-func (f *HTMLFormatter) formatTreeFieldHTML(fieldValue api.FieldValue, _ api.PrettyField) string {
-	// Convert value to tree node
-	var node api.TreeNode
-	if fieldValue.Value != nil {
-		if treeNode, ok := fieldValue.Value.(api.TreeNode); ok {
-			node = treeNode
-		} else {
-			node = ConvertToTreeNode(fieldValue.Value)
-		}
-	}
-
-	if node == nil {
+func (f *HTMLFormatter) formatTreeFieldHTML(fieldValue api.TypedValue, _ api.PrettyField) string {
+	// Check if TypedValue has a tree
+	if fieldValue.Tree == nil {
 		return "<p class=\"text-gray-500\">No tree data available</p>"
 	}
 
-	// Format tree using HTML elements
-	return f.formatTreeNodeHTML(node, 0)
+	// Format tree using HTML elements - use the TextTree as-is
+	return fieldValue.Tree.String()
 }
 
 // generateNodeID generates a unique node ID for tree nodes
@@ -1118,13 +1083,8 @@ func (f *HTMLFormatter) isImageURL(s string) bool {
 }
 
 // formatImageHTML formats an image field as HTML
-func (f *HTMLFormatter) formatImageHTML(fieldValue api.FieldValue, field api.PrettyField) string {
-	imageURL := ""
-	if fieldValue.Text != nil {
-		imageURL = fieldValue.Text.String()
-	} else {
-		imageURL = fmt.Sprintf("%v", fieldValue.Value)
-	}
+func (f *HTMLFormatter) formatImageHTML(fieldValue api.TypedValue, field api.PrettyField) string {
+	imageURL := fieldValue.String()
 
 	// Get image options from field
 	width := "auto"

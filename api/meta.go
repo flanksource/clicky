@@ -22,6 +22,25 @@ type PrettyData struct {
 	Original interface{}
 }
 
+// GetValue retrieves a typed value by field name from the TypedMap
+func (pd *PrettyData) GetValue(fieldName string) (TypedValue, bool) {
+	if pd.TypedMap == nil {
+		return TypedValue{}, false
+	}
+	value, exists := (*pd.TypedMap)[fieldName]
+	return value, exists
+}
+
+// GetTable returns the table data if it exists
+func (pd *PrettyData) GetTable(tableName string) (*TextTable, bool) {
+	// Since there's only one table now, ignore the tableName parameter
+	// and just return the single table if it exists
+	if pd.Table != nil {
+		return pd.Table, true
+	}
+	return nil, false
+}
+
 // TreeNode defines the interface for hierarchical tree structures.
 // Implementations provide formatted content and child relationships for tree rendering.
 type TreeNode interface {
@@ -317,12 +336,12 @@ func TryTypedValue(o any) *TypedValue {
 		return &TypedValue{Table: &v}
 	case TextTree:
 		return &TypedValue{Tree: &v}
-	case Pretty:
-		return &TypedValue{Textable: v.Pretty()}
 	case TreeNode:
 		return &TypedValue{Tree: lo.ToPtr(NewTree(v))}
 	case TreeMixin:
 		return &TypedValue{Tree: lo.ToPtr(NewTree(v.Tree()))}
+	case Pretty:
+		return &TypedValue{Textable: v.Pretty()}
 	case []TableMixin:
 		return &TypedValue{Table: lo.ToPtr(NewTable(v))}
 	case []TableRowMixin2:
