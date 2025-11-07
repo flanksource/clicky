@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/flanksource/clicky/ai/cache"
+
 	"github.com/spf13/pflag"
 )
 
@@ -92,6 +93,7 @@ func NewAgentManager(config AgentConfig) *AgentManager {
 }
 
 func GetDefaultAgent() (Agent, error) {
+
 	manager := NewAgentManager(DefaultConfig())
 	return manager.GetDefaultAgent()
 }
@@ -111,6 +113,8 @@ func (am *AgentManager) GetAgent(agentType AgentType) (Agent, error) {
 		agent, err = NewClaudeAgent(am.config)
 	case AgentTypeAider:
 		agent, err = NewAiderAgent(am.config)
+	case AgentTypeLLM:
+		agent, err = NewLLMAgent(am.config)
 	default:
 		return nil, fmt.Errorf("unsupported agent type: %s", agentType)
 	}
@@ -185,12 +189,13 @@ var defaultConfig AgentConfig = AgentConfig{
 	Type:          AgentTypeClaude,
 	Model:         "claude-haiku-4-5",
 	MaxTokens:     10000,
-	MaxConcurrent: 3,
+	MaxConcurrent: 4,
 	Debug:         false,
 	Verbose:       false,
-	Temperature:   0.2,
-	CacheTTL:      24 * time.Hour, // Default 24 hour TTL
-	NoCache:       false,
+	// Temperature:   0.2,
+	StrictMCPConfig: true,
+	CacheTTL:        24 * time.Hour, // Default 24 hour TTL
+	NoCache:         false,
 }
 
 // DefaultConfig returns a default agent configuration

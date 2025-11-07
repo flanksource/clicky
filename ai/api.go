@@ -42,18 +42,20 @@ type AgentConfig struct {
 
 // PromptRequest represents a request to process a prompt
 type PromptRequest struct {
-	Context map[string]string `json:"context,omitempty"`
-	Name    string            `json:"name"`
-	Prompt  string            `json:"prompt"`
+	Context          map[string]string `json:"context,omitempty"`
+	Name             string            `json:"name"`
+	Prompt           string            `json:"prompt"`
+	StructuredOutput interface{}       `json:"structured_output,omitempty"` // Schema for structured JSON output
 }
 
 // PromptResponse represents the response from processing a prompt
 type PromptResponse struct {
-	Request PromptRequest `json:"request,omitempty"`
-	Result  string        `json:"result"`
-	Costs   Costs         `json:"costs,omitempty"`
-	Model   string        `json:"model,omitempty"`
-	Error   string        `json:"error,omitempty"`
+	Request        PromptRequest `json:"request,omitempty"`
+	Result         string        `json:"result"`
+	StructuredData interface{}   `json:"structured_data,omitempty"` // Populated if structured output was requested
+	Costs          Costs         `json:"costs,omitempty"`
+	Model          string        `json:"model,omitempty"`
+	Error          string        `json:"error,omitempty"`
 	// Total wall-clock duration of the request
 	Duration time.Duration `json:"duration,omitempty"`
 	// Duration spent in the model processing as reported by the API
