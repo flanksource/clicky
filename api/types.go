@@ -1,7 +1,6 @@
 package api
 
 import (
-	"encoding/json"
 	"fmt"
 	"html"
 	"reflect"
@@ -638,34 +637,6 @@ func (f PrettyField) Parse(value interface{}) (FieldValue, error) {
 		return v, nil
 	}
 
-	// Check if value implements json.Marshaler (handles json.RawMessage)
-	if marshaler, ok := value.(json.Marshaler); ok {
-		// This is a type that can marshal itself to JSON (like json.RawMessage)
-		// Get the JSON bytes and convert to string
-		jsonBytes, err := marshaler.MarshalJSON()
-		if err == nil {
-			strValue := string(jsonBytes)
-			v.Value = strValue
-			v.StringValue = &strValue
-			return v, nil
-		}
-	}
-
-	// Check if value is a byte slice (handles json.RawMessage type aliases)
-	// Type aliases don't inherit methods, so we need to check the underlying type
-	val := reflect.ValueOf(value)
-	if val.Kind() == reflect.Slice && val.Type().Elem().Kind() == reflect.Uint8 {
-		// This is a []byte - convert to string (handles json.RawMessage type aliases)
-		bytes := make([]byte, val.Len())
-		for i := 0; i < val.Len(); i++ {
-			bytes[i] = byte(val.Index(i).Uint())
-		}
-		strValue := string(bytes)
-		v.Value = strValue
-		v.StringValue = &strValue
-		return v, nil
-	}
-
 	// Check if value implements TreeNode interface - if so, preserve the pointer
 	if _, ok := value.(TreeNode); ok {
 		// Store TreeNode as-is without dereferencing
@@ -673,6 +644,7 @@ func (f PrettyField) Parse(value interface{}) (FieldValue, error) {
 	}
 
 	// Dereference pointer values before processing
+	val := reflect.ValueOf(value)
 	for val.Kind() == reflect.Ptr {
 		if val.IsNil() {
 			return v, nil

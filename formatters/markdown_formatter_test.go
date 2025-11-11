@@ -29,9 +29,7 @@ func TestMarkdownFormatter_SimpleTable(t *testing.T) {
 		"enabled": true,
 	}
 	configJSON, err := json.Marshal(configData)
-	if err != nil {
-		t.Fatalf("Failed to marshal config: %v", err)
-	}
+	g.Expect(err).ToNot(HaveOccurred())
 
 	testData := []struct {
 		testStruct TestDataWithRawMessage
@@ -78,16 +76,12 @@ func TestMarkdownFormatter_SimpleTable(t *testing.T) {
 		}
 
 		prettyData, err := parser.ParseDataWithSchema(data, schema)
-		if err != nil {
-			t.Fatalf("Failed to parse data with schema: %v", err)
-		}
+		g.Expect(err).ToNot(HaveOccurred())
 
 		// Format as markdown
 		formatter := NewMarkdownFormatter()
 		output, err := formatter.FormatPrettyData(prettyData, FormatOptions{})
-		if err != nil {
-			t.Fatalf("Failed to format markdown: %v", err)
-		}
+		g.Expect(err).ToNot(HaveOccurred())
 
 		g.Expect(output).To(Equal(tc.expected))
 	}
