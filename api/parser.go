@@ -1,7 +1,6 @@
 package api
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"reflect"
@@ -1118,15 +1117,6 @@ func (p *StructParser) processFieldValueWithVisited(fieldVal reflect.Value, visi
 	if fieldVal.IsValid() && fieldVal.CanInterface() {
 		if pretty, ok := fieldVal.Interface().(Pretty); ok {
 			return pretty.Pretty()
-		}
-
-		// Check if value implements json.Marshaler (handles json.RawMessage)
-		if marshaler, ok := fieldVal.Interface().(json.Marshaler); ok {
-			// This is a type that can marshal itself to JSON (like json.RawMessage)
-			jsonBytes, err := marshaler.MarshalJSON()
-			if err == nil {
-				return string(jsonBytes)
-			}
 		}
 	}
 
