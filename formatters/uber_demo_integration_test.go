@@ -249,9 +249,9 @@ func createDemoData() *UberDemo {
 
 		// Pointer map
 		PointerMap: map[string]*NestedStruct{
-			"ptr1": &NestedStruct{ID: 201, Name: "Pointer Item 1", Description: stringPtr("First pointer"), Active: true},
+			"ptr1": {ID: 201, Name: "Pointer Item 1", Description: stringPtr("First pointer"), Active: true},
 			"ptr2": nil,
-			"ptr3": &NestedStruct{ID: 203, Name: "Pointer Item 3", Description: nil, Active: true},
+			"ptr3": {ID: 203, Name: "Pointer Item 3", Description: nil, Active: true},
 		},
 
 		// Nil value map

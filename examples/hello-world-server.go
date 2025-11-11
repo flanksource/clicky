@@ -232,8 +232,8 @@ func echoHandler(c echo.Context) error {
 
 	return c.JSON(http.StatusOK, map[string]interface{}{
 		"echo": map[string]interface{}{
-			"received_data": requestBody,
-			"content_type":  c.Request().Header.Get("Content-Type"),
+			"received_data":  requestBody,
+			"content_type":   c.Request().Header.Get("Content-Type"),
 			"content_length": c.Request().ContentLength,
 		},
 		"timestamp":  time.Now().UTC().Format(time.RFC3339),

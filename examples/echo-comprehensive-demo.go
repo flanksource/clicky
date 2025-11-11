@@ -328,8 +328,8 @@ func demonstrateMethodOverrideAndStatic() {
 			},
 		},
 		Static: &middleware.StaticConfig{
-			Root:  "public",
-			Index: "index.html",
+			Root:   "public",
+			Index:  "index.html",
 			Browse: true,
 		},
 	}

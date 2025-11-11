@@ -216,7 +216,7 @@ func demonstrateAdvancedUsage() {
 		}
 
 		return c.JSON(http.StatusOK, map[string]interface{}{
-			"received": data,
+			"received":  data,
 			"timestamp": time.Now().Format(time.RFC3339),
 		})
 	})

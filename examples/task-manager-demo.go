@@ -8,43 +8,45 @@ This demo showcases the clicky task manager with various scenarios including:
 - Stress testing with verbose logging
 
 Usage:
-  Build the demo:
-    go build -o task-manager-demo examples/task-manager-demo.go
 
-  Run different scenarios:
-    ./task-manager-demo --scenario basic --num-tasks 5
-    ./task-manager-demo --scenario errors --error-rate 0.3
-    ./task-manager-demo --scenario groups --max-concurrent 3
-    ./task-manager-demo --scenario stress --log-volume high
-    ./task-manager-demo --scenario all
+	Build the demo:
+	  go build -o task-manager-demo examples/task-manager-demo.go
 
-  Use different output formats:
-    ./task-manager-demo --scenario basic --format json
-    ./task-manager-demo --scenario basic --format yaml
-    ./task-manager-demo --scenario basic --format html
+	Run different scenarios:
+	  ./task-manager-demo --scenario basic --num-tasks 5
+	  ./task-manager-demo --scenario errors --error-rate 0.3
+	  ./task-manager-demo --scenario groups --max-concurrent 3
+	  ./task-manager-demo --scenario stress --log-volume high
+	  ./task-manager-demo --scenario all
 
-  Control logging:
-    ./task-manager-demo --scenario basic --log-volume low
-    ./task-manager-demo --scenario basic --verbose
-    ./task-manager-demo --scenario basic --loglevel -v
+	Use different output formats:
+	  ./task-manager-demo --scenario basic --format json
+	  ./task-manager-demo --scenario basic --format yaml
+	  ./task-manager-demo --scenario basic --format html
 
-  Disable progress display:
-    ./task-manager-demo --scenario all --no-progress
+	Control logging:
+	  ./task-manager-demo --scenario basic --log-volume low
+	  ./task-manager-demo --scenario basic --verbose
+	  ./task-manager-demo --scenario basic --loglevel -v
 
-  Combine flags:
-    ./task-manager-demo --scenario all --num-tasks 5 --error-rate 0.1 --max-concurrent 2 --no-progress
+	Disable progress display:
+	  ./task-manager-demo --scenario all --no-progress
+
+	Combine flags:
+	  ./task-manager-demo --scenario all --num-tasks 5 --error-rate 0.1 --max-concurrent 2 --no-progress
 
 Available Flags:
-  All standard clicky.BindAllFlags() are automatically installed:
-    - Format flags: --format, --json, --yaml, --csv, --html, --pdf, --markdown
-    - Task manager flags: --max-concurrent, --no-progress, --max-retries, --retry-delay
-    - Logging flags: --log-level, --loglevel, --verbose, --json-logs
 
-  Demo-specific flags:
-    --scenario: basic, errors, groups, stress, all (default: all)
-    --num-tasks: Number of tasks per scenario (default: 10)
-    --error-rate: Error rate for tasks 0.0-1.0 (default: 0.2)
-    --log-volume: low, medium, high (default: medium)
+	All standard clicky.BindAllFlags() are automatically installed:
+	  - Format flags: --format, --json, --yaml, --csv, --html, --pdf, --markdown
+	  - Task manager flags: --max-concurrent, --no-progress, --max-retries, --retry-delay
+	  - Logging flags: --log-level, --loglevel, --verbose, --json-logs
+
+	Demo-specific flags:
+	  --scenario: basic, errors, groups, stress, all (default: all)
+	  --num-tasks: Number of tasks per scenario (default: 10)
+	  --error-rate: Error rate for tasks 0.0-1.0 (default: 0.2)
+	  --log-volume: low, medium, high (default: medium)
 */
 package main
 
