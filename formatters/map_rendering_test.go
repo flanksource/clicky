@@ -30,7 +30,7 @@ func createMapRenderTestData() *MapRenderTestStruct {
 			"item1": {ID: 101, Name: "Map Item 1", Description: mapRenderStringPtr("First"), Active: true},
 		},
 		PointerMap: map[string]*MapRenderNestedStruct{
-			"ptr1": &MapRenderNestedStruct{ID: 201, Name: "Ptr Item 1", Description: mapRenderStringPtr("Desc"), Active: true},
+			"ptr1": {ID: 201, Name: "Ptr Item 1", Description: mapRenderStringPtr("Desc"), Active: true},
 			"ptr2": nil,
 		},
 	}

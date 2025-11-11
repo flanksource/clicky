@@ -11,12 +11,12 @@ import (
 )
 
 // Helper functions for creating pointers
-func stringPtr(s string) *string       { return &s }
-func intPtr(i int) *int                { return &i }
-func int64Ptr(i int64) *int64          { return &i }
-func float64Ptr(f float64) *float64    { return &f }
-func boolPtr(b bool) *bool             { return &b }
-func timePtr(t time.Time) *time.Time   { return &t }
+func stringPtr(s string) *string     { return &s }
+func intPtr(i int) *int              { return &i }
+func int64Ptr(i int64) *int64        { return &i }
+func float64Ptr(f float64) *float64  { return &f }
+func boolPtr(b bool) *bool           { return &b }
+func timePtr(t time.Time) *time.Time { return &t }
 
 // NestedStruct demonstrates nested structure handling
 type NestedStruct struct {
@@ -46,7 +46,6 @@ type TableRow struct {
 	OrderDate string  `json:"order_date" pretty:"label=Order Date,format=date"`
 }
 
-
 // UberDemo demonstrates all supported field types and formatting options
 type UberDemo struct {
 	// ==================== PRIMITIVE TYPES ====================
@@ -68,12 +67,12 @@ type UberDemo struct {
 	NilFloat  *float64 `json:"nil_float,omitempty" pretty:"label=Nil Float,omitempty"`
 
 	// ==================== FORMATTED FIELDS ====================
-	Currency       float64 `json:"currency" pretty:"label=Currency,format=currency"`
+	Currency       float64  `json:"currency" pretty:"label=Currency,format=currency"`
 	CurrencyPtr    *float64 `json:"currency_ptr,omitempty" pretty:"label=Currency Pointer,format=currency,omitempty"`
-	DateRFC3339    string  `json:"date_rfc3339" pretty:"label=Date (RFC3339),format=date"`
-	DateUnixInt    int64   `json:"date_unix_int" pretty:"label=Date (Unix Int),format=date"`
-	DateUnixString string  `json:"date_unix_string" pretty:"label=Date (Unix String),format=date"`
-	DateUnixFloat  float64 `json:"date_unix_float" pretty:"label=Date (Unix Float),format=date"`
+	DateRFC3339    string   `json:"date_rfc3339" pretty:"label=Date (RFC3339),format=date"`
+	DateUnixInt    int64    `json:"date_unix_int" pretty:"label=Date (Unix Int),format=date"`
+	DateUnixString string   `json:"date_unix_string" pretty:"label=Date (Unix String),format=date"`
+	DateUnixFloat  float64  `json:"date_unix_float" pretty:"label=Date (Unix Float),format=date"`
 
 	// ==================== SLICES ====================
 	// Primitive slices
@@ -83,16 +82,16 @@ type UberDemo struct {
 	BoolSlice   []bool    `json:"bool_slice" pretty:"label=Boolean Slice"`
 
 	// Pointer slices
-	StringPtrSlice []*string  `json:"string_ptr_slice" pretty:"label=String Pointer Slice"`
-	IntPtrSlice    []*int     `json:"int_ptr_slice" pretty:"label=Integer Pointer Slice"`
-	MixedNilSlice  []*string  `json:"mixed_nil_slice" pretty:"label=Mixed Nil Slice"`
+	StringPtrSlice []*string `json:"string_ptr_slice" pretty:"label=String Pointer Slice"`
+	IntPtrSlice    []*int    `json:"int_ptr_slice" pretty:"label=Integer Pointer Slice"`
+	MixedNilSlice  []*string `json:"mixed_nil_slice" pretty:"label=Mixed Nil Slice"`
 
 	// Struct slices
 	NestedSlice []NestedStruct `json:"nested_slice" pretty:"label=Nested Struct Slice"`
 
 	// Empty and nil slices
-	EmptySlice []string  `json:"empty_slice,omitempty" pretty:"label=Empty Slice,omitempty"`
-	NilSlice   []string  `json:"nil_slice,omitempty" pretty:"label=Nil Slice,omitempty"`
+	EmptySlice []string `json:"empty_slice,omitempty" pretty:"label=Empty Slice,omitempty"`
+	NilSlice   []string `json:"nil_slice,omitempty" pretty:"label=Nil Slice,omitempty"`
 
 	// ==================== MAPS ====================
 	// Simple maps
@@ -228,11 +227,11 @@ func createDemoData() *UberDemo {
 		// Nested maps
 		NestedMap: map[string]map[string]interface{}{
 			"database": {
-				"host":     "localhost",
-				"port":     5432,
-				"name":     "mydb",
-				"ssl":      true,
-				"timeout":  30,
+				"host":    "localhost",
+				"port":    5432,
+				"name":    "mydb",
+				"ssl":     true,
+				"timeout": 30,
 			},
 			"cache": {
 				"type":    "redis",

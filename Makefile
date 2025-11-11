@@ -32,7 +32,7 @@ lint:
 
 # Format code
 fmt:
-	go fmt ./...
+	gofmt -s -w .
 
 # Run all checks
 check: fmt lint test
