@@ -1,6 +1,7 @@
 package api
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"reflect"
@@ -1118,6 +1119,26 @@ func (p *StructParser) processFieldValueWithVisited(fieldVal reflect.Value, visi
 		if pretty, ok := fieldVal.Interface().(Pretty); ok {
 			return pretty.Pretty()
 		}
+
+		// Check if value implements json.Marshaler (handles json.RawMessage)
+		if marshaler, ok := fieldVal.Interface().(json.Marshaler); ok {
+			// This is a type that can marshal itself to JSON (like json.RawMessage)
+			jsonBytes, err := marshaler.MarshalJSON()
+			if err == nil {
+				return string(jsonBytes)
+			}
+		}
+	}
+
+	// Check if value is a byte slice (handles json.RawMessage type aliases)
+	// Type aliases don't inherit methods, so we need to check the underlying type
+	if fieldVal.Kind() == reflect.Slice && fieldVal.Type().Elem().Kind() == reflect.Uint8 {
+		// This is a []byte - convert to string (handles json.RawMessage type aliases)
+		bytes := make([]byte, fieldVal.Len())
+		for i := 0; i < fieldVal.Len(); i++ {
+			bytes[i] = byte(fieldVal.Index(i).Uint())
+		}
+		return string(bytes)
 	}
 
 	// Handle slices - recursively process all elements
