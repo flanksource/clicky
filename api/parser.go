@@ -1120,6 +1120,17 @@ func (p *StructParser) processFieldValueWithVisited(fieldVal reflect.Value, visi
 		}
 	}
 
+	// Check if value is a byte slice (handles json.RawMessage type aliases)
+	// Type aliases don't inherit methods, so we need to check the underlying type
+	if fieldVal.Kind() == reflect.Slice && fieldVal.Type().Elem().Kind() == reflect.Uint8 {
+		// This is a []byte - convert to string (handles json.RawMessage type aliases)
+		bytes := make([]byte, fieldVal.Len())
+		for i := 0; i < fieldVal.Len(); i++ {
+			bytes[i] = byte(fieldVal.Index(i).Uint())
+		}
+		return string(bytes)
+	}
+
 	// Handle slices - recursively process all elements
 	if fieldVal.Kind() == reflect.Slice {
 		result := make([]interface{}, fieldVal.Len())
