@@ -8,7 +8,6 @@ import (
 	"strings"
 	"sync"
 	"sync/atomic"
-	"testing"
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
@@ -33,7 +32,6 @@ type Manager struct {
 	tasks         []*Task
 	groups        []*Group
 	mu            sync.RWMutex
-	wg            sync.WaitGroup
 	stopRender    chan bool
 	width         int
 	verbose       bool
@@ -89,7 +87,7 @@ func init() {
 	// Automatically disable progress and color output during tests
 	// testing.Testing() only works within test execution, not when library is used by test binaries
 	// So we also check for common test environment indicators
-	if testing.Testing() || isTestEnvironment() {
+	if isTestEnvironment() {
 		SetNoProgress(true)
 		SetNoColor(true)
 	}
@@ -134,10 +132,10 @@ func newManagerWithConcurrency(maxConcurrent int) *Manager {
 	// Check stderr for terminal size since we output there
 	width, _, err := term.GetSize(int(os.Stderr.Fd()))
 	if err != nil {
-		width = 80
+		width = 120
 	}
 	if width == 0 {
-		width = 80
+		width = 120
 	}
 
 	// Check if stderr is a terminal (for interactive mode)
@@ -233,22 +231,51 @@ func newManagerWithConcurrency(maxConcurrent int) *Manager {
 
 	// Register shutdown hook to cancel all tasks on interrupt
 	shutdown.AddHookWithPriority("TaskManager", shutdown.PriorityWorkers, func() {
+		// Signal workers to stop
+		close(tm.shutdown)
+
 		// Cancel all running tasks
 		CancelAll()
 
 		// Wait for tasks to complete with timeout
 		done := make(chan bool, 1)
 		go func() {
-			tm.wg.Wait()
-			done <- true
+			// Wait for all workers to become idle
+			timeout := time.After(tm.gracefulTimeout)
+			ticker := time.NewTicker(10 * time.Millisecond)
+			defer ticker.Stop()
+
+			for {
+				select {
+				case <-timeout:
+					done <- false
+					return
+				case <-ticker.C:
+					if tm.taskQueue.Empty() && tm.workersActive.Load() == 0 {
+						done <- true
+						return
+					}
+				}
+			}
 		}()
 
 		select {
-		case <-done:
-			fmt.Fprintf(os.Stderr, "✅ All tasks completed gracefully\n")
-		case <-time.After(tm.gracefulTimeout):
-			fmt.Fprintf(os.Stderr, "⏰ Task shutdown timeout reached\n")
+		case success := <-done:
+			if success {
+				fmt.Fprintf(os.Stderr, "✅ All tasks completed gracefully\n")
+			} else {
+				fmt.Fprintf(os.Stderr, "⏰ Task shutdown timeout reached\n")
+			}
+		case <-time.After(tm.gracefulTimeout + time.Second):
+			fmt.Fprintf(os.Stderr, "⏰ Task shutdown timeout exceeded\n")
 		}
+
+		// Ensure terminal cleanup happens before shutdown completes
+		tm.stopRenderAndWait()
+		tm.StopCapturingOutput()
+
+		// Emergency terminal reset as last resort
+		tm.emergencyCleanup()
 	})
 
 	go tm.render()
@@ -307,6 +334,35 @@ func SetGracefulTimeout(timeout time.Duration) {
 	global.gracefulTimeout = timeout
 }
 
+// emergencyCleanup forcibly resets the terminal to a clean state
+// This is used in fatal error paths where normal cleanup may not be possible
+func (tm *Manager) emergencyCleanup() {
+	// Force terminal reset sequences directly to stderr
+	// This bypasses all normal rendering logic to ensure cleanup happens
+	var outputWriter *os.File
+
+	tm.bufferMutex.Lock()
+	if tm.capturingOutput && tm.originalStderr != nil {
+		outputWriter = tm.originalStderr
+	} else {
+		outputWriter = os.Stderr
+	}
+	tm.bufferMutex.Unlock()
+
+	// Write terminal reset sequences directly
+	// Exit alternate screen mode
+	fmt.Fprintf(outputWriter, "\033[?1049l")
+	// Reset all attributes
+	fmt.Fprintf(outputWriter, "\033[0m")
+	// Show cursor
+	fmt.Fprintf(outputWriter, "\033[?25h")
+	// Clear to end of screen
+	fmt.Fprintf(outputWriter, "\033[J")
+
+	// Mark alternate screen as inactive
+	tm.altScreenActive = false
+}
+
 // stopRenderAndWait signals the render loop to stop and waits for it to complete
 func (tm *Manager) stopRenderAndWait() {
 	// Signal render loop to stop
@@ -316,6 +372,9 @@ func (tm *Manager) stopRenderAndWait() {
 		// Channel might already have a signal, that's ok
 	}
 
+	if tm.noProgress {
+		return
+	}
 	// Wait for render loop to complete by polling the atomic bool
 	for !tm.renderDone.Load() {
 		time.Sleep(10 * time.Millisecond)
@@ -655,10 +714,16 @@ func Debug() string {
 // WaitForAllTasks waits for all global tasks to complete and forces a final render
 func WaitForAllTasks() {
 	// Wait for queue to be empty and all workers to be idle
+	timeout := time.Second * 10
+	start := time.Now()
 	ticker := time.NewTicker(10 * time.Millisecond)
 	defer ticker.Stop()
 
 	for {
+		if time.Since(start) > timeout {
+			logger.Warnf("Still waiting for all tasks to complete after %v", time.Since(start))
+			timeout *= 2 // Exponential backoff for next warning
+		}
 		// Check if queue is empty and no workers are active
 		if global.taskQueue.Empty() && global.workersActive.Load() == 0 {
 			// Also check all tasks are completed
@@ -741,7 +806,7 @@ func (tm *Manager) StartCapturingOutput() {
 			if err != nil {
 				return
 			}
-			(&bufferingWriter{stream: "stdout", manager: tm}).Write(scanner[:n])
+			_, _ = (&bufferingWriter{stream: "stdout", manager: tm}).Write(scanner[:n])
 		}
 	}()
 
@@ -752,7 +817,7 @@ func (tm *Manager) StartCapturingOutput() {
 			if err != nil {
 				return
 			}
-			(&bufferingWriter{stream: "stderr", manager: tm}).Write(scanner[:n])
+			_, _ = (&bufferingWriter{stream: "stderr", manager: tm}).Write(scanner[:n])
 		}
 	}()
 

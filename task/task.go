@@ -387,6 +387,13 @@ func (t *Task) Warning() *Task {
 
 // Fatal marks the task as failed and exits the program immediately
 func (t *Task) Fatal(err error) {
+	// Use defer to ensure cleanup happens even if something goes wrong
+	defer func() {
+		if t.manager != nil {
+			t.manager.emergencyCleanup()
+		}
+	}()
+
 	t.mu.Lock()
 	t.status = StatusFailed
 	t.err = err
@@ -630,7 +637,7 @@ func (t *Task) Pretty() api.Text {
 		displayName += ": " + t.description
 	}
 
-	text.Content = fmt.Sprintf("%s %-10s", lo.Ellipsis(displayName, api.GetTerminalWidth()-10), duration)
+	text.Content = fmt.Sprintf("%s %-10s", lo.Ellipsis(displayName, api.GetTerminalWidth()-20), duration)
 
 	// Note: We can't call t.Status() here since it would try to acquire the same mutex
 	// So we directly access t.status and handle the health check inline
@@ -686,7 +693,7 @@ func (t *Task) Pretty() api.Text {
 		}
 
 		text.Children = append(text.Children, api.Text{
-			Content: fmt.Sprintf("\n\t%s", lo.Ellipsis(log.Message, 500)),
+			Content: fmt.Sprintf("\n%s", lo.Ellipsis(log.Message, 500)),
 			Style:   logStyle,
 		})
 	}
