@@ -34,7 +34,7 @@ type Manager struct {
 	mu            sync.RWMutex
 	stopRender    chan bool
 	width         int
-	verbose       bool
+	verbose       atomic.Bool
 	maxConcurrent int
 	semaphore     chan struct{}
 	retryConfig   RetryConfig
@@ -43,9 +43,9 @@ type Manager struct {
 	styles        styleSet
 
 	gracefulTimeout time.Duration
-	onInterrupt     func() // optional cleanup callback
-	noColor         bool   // Disable colored output
-	noProgress      bool   // Disable progress display
+	onInterrupt     func()      // optional cleanup callback
+	noColor         atomic.Bool // Disable colored output
+	noProgress      atomic.Bool // Disable progress display
 
 	// Priority queue for task scheduling
 	taskQueue     *collections.Queue[*Task]
@@ -196,7 +196,6 @@ func newManagerWithConcurrency(maxConcurrent int) *Manager {
 		groups:          make([]*Group, 0),
 		stopRender:      make(chan bool, 1),
 		width:           width,
-		verbose:         verbose,
 		maxConcurrent:   maxConcurrent,
 		retryConfig:     DefaultRetryConfig(),
 		isInteractive:   isInteractive,
@@ -207,6 +206,9 @@ func newManagerWithConcurrency(maxConcurrent int) *Manager {
 		shutdown:        make(chan struct{}),
 		semaphore:       make(chan struct{}, maxConcurrent),
 	}
+
+	// Initialize atomic bool fields
+	tm.verbose.Store(verbose)
 
 	// Use the stderr renderer for creating styles
 	tm.styles.success = renderer.NewStyle().Foreground(lipgloss.Color("10"))
@@ -284,17 +286,17 @@ func newManagerWithConcurrency(maxConcurrent int) *Manager {
 
 // SetVerbose enables or disables verbose logging
 func SetVerbose(verbose bool) {
-	global.verbose = verbose
+	global.verbose.Store(verbose)
 }
 
 // SetNoColor enables or disables colored output
 func SetNoColor(noColor bool) {
-	global.noColor = noColor
+	global.noColor.Store(noColor)
 }
 
 // SetNoProgress enables or disables progress display
 func SetNoProgress(noProgress bool) {
-	global.noProgress = noProgress
+	global.noProgress.Store(noProgress)
 }
 
 // SetMaxConcurrent sets the maximum number of concurrent tasks
@@ -372,7 +374,7 @@ func (tm *Manager) stopRenderAndWait() {
 		// Channel might already have a signal, that's ok
 	}
 
-	if tm.noProgress {
+	if tm.noProgress.Load() {
 		return
 	}
 	// Wait for render loop to complete by polling the atomic bool
@@ -887,7 +889,7 @@ func (tm *Manager) renderFinal() {
 
 	// Render to stderr without markers or alternate screen
 	rendered := tm.prettyFromTasks(taskSnapshot)
-	if tm.noColor {
+	if tm.noColor.Load() {
 		fmt.Fprintln(os.Stderr, rendered.String())
 	} else {
 		fmt.Fprintln(os.Stderr, rendered.ANSI())
