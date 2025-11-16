@@ -5,11 +5,43 @@ import (
 	"os"
 	"time"
 
+	"github.com/charmbracelet/lipgloss"
 	"github.com/flanksource/clicky/api"
 	"github.com/muesli/termenv"
 )
 
+// PlainRender outputs the current task statuses in plain text without any interactive / ANSI / console features
+func (tm *Manager) PlainRender() {
+
+	tm.mu.RLock()
+	defer tm.mu.RUnlock()
+	if len(tm.tasks) == 0 {
+		return
+	}
+
+	// Create snapshot to avoid holding lock during rendering
+	taskSnapshot := make([]*Task, len(tm.tasks))
+	copy(taskSnapshot, tm.tasks)
+
+	// noProgress mode: only print dirty tasks, never clear screen
+	for _, task := range taskSnapshot {
+		if task.PopDirty() {
+			if tm.noColor.Load() {
+				fmt.Fprintf(os.Stderr, "%s\n", task.Pretty().String())
+			} else {
+				fmt.Fprintf(os.Stderr, "%s\n", task.Pretty().ANSI())
+			}
+		}
+	}
+
+}
+
 func (tm *Manager) Render() {
+	if tm.noProgress.Load() {
+		tm.PlainRender()
+		return
+	}
+
 	// Lock rendering to prevent concurrent renders
 	tm.renderMutex.Lock()
 	defer tm.renderMutex.Unlock()
@@ -25,7 +57,6 @@ func (tm *Manager) Render() {
 	tm.bufferMutex.Unlock()
 
 	output := termenv.NewOutput(outputWriter)
-	noProgress := tm.noProgress
 
 	// Create a snapshot of tasks to avoid holding lock during I/O
 	tm.mu.RLock()
@@ -39,37 +70,28 @@ func (tm *Manager) Render() {
 	copy(taskSnapshot, tm.tasks)
 	tm.mu.RUnlock()
 
-	// Handle rendering based on progress settings
-	if !noProgress {
-		// Enable alternate screen on first render to avoid scrollback pollution
-		if !tm.altScreenActive {
-			output.AltScreen()
-			tm.altScreenActive = true
-		}
-
-		// Clear screen and reset cursor
-		output.ClearScreen()
-		output.MoveCursor(1, 1)
-
-		rendered := tm.prettyFromTasks(taskSnapshot)
-		if tm.noColor {
-			fmt.Fprint(outputWriter, rendered.String())
-		} else {
-			fmt.Fprint(outputWriter, rendered.ANSI())
-		}
-
+	rendered := tm.prettyFromTasks(taskSnapshot)
+	var out string
+	if tm.noColor.Load() {
+		out = rendered.String()
 	} else {
-		// noProgress mode: only print dirty tasks, never clear screen
-		for _, task := range taskSnapshot {
-			if task.PopDirty() {
-				if tm.noColor {
-					fmt.Fprintf(outputWriter, "%s\n", task.Pretty().String())
-				} else {
-					fmt.Fprintf(outputWriter, "%s\n", task.Pretty().ANSI())
-				}
-			}
-		}
+		out = rendered.ANSI()
 	}
+
+	// Enable alternate screen on first render to avoid scrollback pollution
+	if !tm.altScreenActive {
+		output.AltScreen()
+		tm.altScreenActive = true
+	}
+
+	// Clear screen and reset cursor
+	output.ClearScreen()
+	output.MoveCursor(1, 1)
+
+	out = lipgloss.NewStyle().MaxHeight(api.GetTerminalLines()).Render(out)
+
+	fmt.Fprintf(outputWriter, "%s\n", out)
+
 }
 
 // render is the main rendering loop for interactive display
