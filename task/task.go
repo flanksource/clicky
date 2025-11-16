@@ -183,6 +183,7 @@ type Task struct {
 	// Structs
 	mu          sync.Mutex
 	doneOnce    sync.Once // Ensure done channel is closed only once
+	loggerOnce  sync.Once // Ensure bufferedLogger is initialized only once
 	retryConfig RetryConfig
 
 	// 8-byte aligned types
@@ -318,18 +319,24 @@ func (t *Task) Warnf(format string, args ...interface{}) {
 
 // SetName sets the task name
 func (t *Task) SetName(name string) {
+	t.mu.Lock()
 	t.name = name
+	t.mu.Unlock()
 	t.dirty.Store(true) // Mark task as modified
 }
 
 // SetDescription sets the task description
 func (t *Task) SetDescription(description string) {
+	t.mu.Lock()
 	t.description = description
+	t.mu.Unlock()
 	t.dirty.Store(true) // Mark task as modified
 }
 
 // Description returns the task description
 func (t *Task) Description() string {
+	t.mu.Lock()
+	defer t.mu.Unlock()
 	return t.description
 }
 
@@ -354,8 +361,11 @@ func (t *Task) SetStatus(status Status) {
 
 // SetProgress updates the task's progress
 func (t *Task) SetProgress(value, maximum int) {
+	t.mu.Lock()
 	t.progress = value
 	t.maxValue = maximum
+	t.mu.Unlock()
+	t.dirty.Store(true) // Mark task as modified
 }
 
 // Success marks the task as successfully completed
@@ -456,6 +466,8 @@ func (t *Task) StartTime() time.Time {
 
 // Name returns the task name
 func (t *Task) Name() string {
+	t.mu.Lock()
+	defer t.mu.Unlock()
 	return t.name
 }
 
@@ -705,12 +717,12 @@ func (t *Task) Pretty() api.Text {
 
 // getBufferedLogger ensures the buffered logger is initialized
 func (t *Task) getBufferedLogger() *logger.BufferedLogger {
-	if t.bufferedLogger == nil {
+	t.loggerOnce.Do(func() {
 		t.bufferedLogger = logger.NewBufferedLogger(1000)
 		if t.ctx.Logger != nil {
 			t.bufferedLogger.SetLogLevel(t.ctx.Logger.GetLevel())
 		}
-	}
+	})
 	return t.bufferedLogger
 }
 
