@@ -430,6 +430,10 @@ func createTextStylesShowcase() []TextStyleExample {
 		"uppercase font-bold text-green-600 underline",
 		"lowercase italic text-purple-700 opacity-75",
 		"max-w-[5ch] truncate",
+		"max-w-[5ch]",
+		"max-w-[5]",
+		"max-w-[5] truncate-prefix",
+		"max-w-[5] truncate-suffix",
 		"max-w-[5ch] truncate", "max-w-[5ch] text-ellipsis", "max-w-[5ch] text-clip",
 		"text-xs", "text-sm", "text-base", "text-lg", "text-xl", "text-2xl", "text-3xl",
 	} {
@@ -477,12 +481,12 @@ type ProductTable struct {
 
 // EmployeeTable demonstrates table with custom PrettyRow and icons
 type EmployeeTable struct {
-	ID         int      `json:"id"`
-	Name       string   `json:"name"`
-	Department string   `json:"department"`
-	Salary     float64  `json:"salary"`
-	HireDate   string   `json:"hire_date"`
-	Active     bool     `json:"active"`
+	ID         int     `json:"id"`
+	Name       string  `json:"name"`
+	Department string  `json:"department"`
+	Salary     float64 `json:"salary"`
+	HireDate   string  `json:"hire_date"`
+	Active     bool    `json:"active"`
 }
 
 func (e EmployeeTable) PrettyRow(_ any) map[string]api.Text {
@@ -507,14 +511,14 @@ func (e EmployeeTable) PrettyRow(_ any) map[string]api.Text {
 
 // SalesTable demonstrates table with various formatted fields
 type SalesTable struct {
-	OrderID    int     `json:"order_id" pretty:"label=Order ID"`
-	Customer   string  `json:"customer" pretty:"label=Customer"`
-	Product    string  `json:"product" pretty:"label=Product"`
-	Quantity   int     `json:"quantity" pretty:"label=Qty"`
-	UnitPrice  float64 `json:"unit_price" pretty:"label=Unit Price,format=currency"`
-	Total      float64 `json:"total" pretty:"label=Total,format=currency"`
-	OrderDate  string  `json:"order_date" pretty:"label=Order Date,format=date"`
-	Status     string  `json:"status" pretty:"label=Status"`
+	OrderID   int     `json:"order_id" pretty:"label=Order ID"`
+	Customer  string  `json:"customer" pretty:"label=Customer"`
+	Product   string  `json:"product" pretty:"label=Product"`
+	Quantity  int     `json:"quantity" pretty:"label=Qty"`
+	UnitPrice float64 `json:"unit_price" pretty:"label=Unit Price,format=currency"`
+	Total     float64 `json:"total" pretty:"label=Total,format=currency"`
+	OrderDate string  `json:"order_date" pretty:"label=Order Date,format=date"`
+	Status    string  `json:"status" pretty:"label=Status"`
 }
 
 // showAll displays all showcases
@@ -593,34 +597,34 @@ func showTables(opts TablesOptions) (any, error) {
 
 	sales := []SalesTable{
 		{
-			OrderID:    1001,
-			Customer:   "Acme Corp",
-			Product:    "Widget Pro",
-			Quantity:   50,
-			UnitPrice:  29.99,
-			Total:      1499.50,
-			OrderDate:  now.AddDate(0, 0, -5).Format(time.RFC3339),
-			Status:     "Shipped",
+			OrderID:   1001,
+			Customer:  "Acme Corp",
+			Product:   "Widget Pro",
+			Quantity:  50,
+			UnitPrice: 29.99,
+			Total:     1499.50,
+			OrderDate: now.AddDate(0, 0, -5).Format(time.RFC3339),
+			Status:    "Shipped",
 		},
 		{
-			OrderID:    1002,
-			Customer:   "Tech Solutions Inc",
-			Product:    "Gadget Plus",
-			Quantity:   25,
-			UnitPrice:  49.99,
-			Total:      1249.75,
-			OrderDate:  now.AddDate(0, 0, -3).Format(time.RFC3339),
-			Status:     "Processing",
+			OrderID:   1002,
+			Customer:  "Tech Solutions Inc",
+			Product:   "Gadget Plus",
+			Quantity:  25,
+			UnitPrice: 49.99,
+			Total:     1249.75,
+			OrderDate: now.AddDate(0, 0, -3).Format(time.RFC3339),
+			Status:    "Processing",
 		},
 		{
-			OrderID:    1003,
-			Customer:   "Global Industries",
-			Product:    "Tool Master",
-			Quantity:   100,
-			UnitPrice:  19.99,
-			Total:      1999.00,
-			OrderDate:  now.AddDate(0, 0, -1).Format(time.RFC3339),
-			Status:     "Delivered",
+			OrderID:   1003,
+			Customer:  "Global Industries",
+			Product:   "Tool Master",
+			Quantity:  100,
+			UnitPrice: 19.99,
+			Total:     1999.00,
+			OrderDate: now.AddDate(0, 0, -1).Format(time.RFC3339),
+			Status:    "Delivered",
 		},
 	}
 

@@ -57,5 +57,8 @@ func (p *PrettyFormatter) FormatPrettyData(data *api.PrettyData) (string, error)
 		return "", nil
 	}
 
+	if p.NoColor {
+		return data.String(), nil
+	}
 	return data.ANSI(), nil
 }

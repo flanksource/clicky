@@ -194,9 +194,9 @@ type OrderedTestStruct struct {
 // PrettyRow implements PrettyRow interface with explicit column ordering
 func (o OrderedTestStruct) PrettyRow(opts interface{}) map[string]Text {
 	return map[string]Text{
-		"Email":     {Content: o.Email, Style: "order-1"},      // Should appear second (order-1)
-		"FirstName": {Content: o.FirstName, Style: "order-2"},  // Should appear third (order-2)
-		"Age":       {Content: fmt.Sprintf("%d", o.Age)},       // Should appear first (no order = 0)
-		"LastName":  {Content: o.LastName, Style: "order-1"},   // Should appear second (order-1, same as Email)
+		"Email":     {Content: o.Email, Style: "order-1"},     // Should appear second (order-1)
+		"FirstName": {Content: o.FirstName, Style: "order-2"}, // Should appear third (order-2)
+		"Age":       {Content: fmt.Sprintf("%d", o.Age)},      // Should appear first (no order = 0)
+		"LastName":  {Content: o.LastName, Style: "order-1"},  // Should appear second (order-1, same as Email)
 	}
 }
