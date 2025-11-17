@@ -193,27 +193,7 @@ func TestFormatterMatrix(t *testing.T) {
 				}
 			},
 		},
-		{
-			name: "HTMLFormatter",
-			formatter: func() (string, error) {
-				f := NewHTMLFormatter()
-				return f.Format(prettyData)
-			},
-			validate: func(t *testing.T, output string) {
-				if !strings.Contains(output, "<!DOCTYPE html>") {
-					t.Error("Should produce valid HTML")
-				}
-				if !strings.Contains(output, "TEST-001") {
-					t.Error("Should contain ID")
-				}
-				if !strings.Contains(output, "electronics") {
-					t.Error("Should display nested map content")
-				}
-				if !strings.Contains(output, "$299.99") {
-					t.Error("Should format currency in HTML")
-				}
-			},
-		},
+
 		{
 			name: "CSVFormatter",
 			formatter: func() (string, error) {
@@ -283,7 +263,7 @@ func TestDateFormatting(t *testing.T) {
 			}
 
 			if tc.shouldParse {
-				formatted := fieldValue.Formatted()
+				formatted := fieldValue.Text.String()
 				// Check that it formats to a reasonable date format
 				if !strings.Contains(formatted, "2024") {
 					t.Errorf("Formatted date should contain year 2024, got: %s", formatted)

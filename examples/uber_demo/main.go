@@ -462,6 +462,61 @@ type StylesOptions struct{}
 // TypesOptions for showing just data types
 type TypesOptions struct{}
 
+// TablesOptions for showing just table examples
+type TablesOptions struct{}
+
+// ProductTable demonstrates basic table formatting
+type ProductTable struct {
+	ID       int     `json:"id" pretty:"label=ID"`
+	Name     string  `json:"name" pretty:"label=Product Name"`
+	Category string  `json:"category" pretty:"label=Category"`
+	Price    float64 `json:"price" pretty:"label=Price,format=currency"`
+	InStock  bool    `json:"in_stock" pretty:"label=In Stock"`
+	Rating   float64 `json:"rating" pretty:"label=Rating"`
+}
+
+// EmployeeTable demonstrates table with custom PrettyRow and icons
+type EmployeeTable struct {
+	ID         int      `json:"id"`
+	Name       string   `json:"name"`
+	Department string   `json:"department"`
+	Salary     float64  `json:"salary"`
+	HireDate   string   `json:"hire_date"`
+	Active     bool     `json:"active"`
+}
+
+func (e EmployeeTable) PrettyRow(_ any) map[string]api.Text {
+	statusIcon := icons.Cross.WithStyle("text-red-500")
+	statusText := "Inactive"
+	statusStyle := "text-red-600"
+	if e.Active {
+		statusIcon = icons.Check.WithStyle("text-green-500")
+		statusText = "Active"
+		statusStyle = "text-green-600"
+	}
+
+	return map[string]api.Text{
+		"id":         {Content: fmt.Sprintf("%d", e.ID)},
+		"name":       {Content: e.Name, Style: "font-semibold"},
+		"department": api.Text{}.Add(icons.Folder.WithStyle("text-blue-500")).Add(api.Text{Content: e.Department}),
+		"salary":     {Content: fmt.Sprintf("$%.2f", e.Salary), Style: "text-green-600"},
+		"hire_date":  {Content: e.HireDate},
+		"status":     api.Text{}.Add(statusIcon).Add(api.Text{Content: statusText, Style: statusStyle}),
+	}
+}
+
+// SalesTable demonstrates table with various formatted fields
+type SalesTable struct {
+	OrderID    int     `json:"order_id" pretty:"label=Order ID"`
+	Customer   string  `json:"customer" pretty:"label=Customer"`
+	Product    string  `json:"product" pretty:"label=Product"`
+	Quantity   int     `json:"quantity" pretty:"label=Qty"`
+	UnitPrice  float64 `json:"unit_price" pretty:"label=Unit Price,format=currency"`
+	Total      float64 `json:"total" pretty:"label=Total,format=currency"`
+	OrderDate  string  `json:"order_date" pretty:"label=Order Date,format=date"`
+	Status     string  `json:"status" pretty:"label=Status"`
+}
+
 // showAll displays all showcases
 func showAll(opts AllOptions) (any, error) {
 	demo := createDemoData()
@@ -516,6 +571,72 @@ func showTypes(opts TypesOptions) (any, error) {
 	return demo, nil
 }
 
+// showTables displays various table examples
+func showTables(opts TablesOptions) (any, error) {
+	now := time.Now()
+
+	products := []ProductTable{
+		{ID: 1, Name: "Laptop Pro 15", Category: "Electronics", Price: 1299.99, InStock: true, Rating: 4.8},
+		{ID: 2, Name: "Wireless Mouse", Category: "Accessories", Price: 29.99, InStock: true, Rating: 4.5},
+		{ID: 3, Name: "USB-C Hub", Category: "Accessories", Price: 49.99, InStock: false, Rating: 4.2},
+		{ID: 4, Name: "Monitor 27\"", Category: "Electronics", Price: 349.99, InStock: true, Rating: 4.7},
+		{ID: 5, Name: "Mechanical Keyboard", Category: "Accessories", Price: 149.99, InStock: true, Rating: 4.9},
+	}
+
+	employees := []EmployeeTable{
+		{ID: 101, Name: "Alice Johnson", Department: "Engineering", Salary: 95000.00, HireDate: "2020-03-15", Active: true},
+		{ID: 102, Name: "Bob Smith", Department: "Sales", Salary: 75000.00, HireDate: "2019-07-22", Active: true},
+		{ID: 103, Name: "Carol Williams", Department: "Marketing", Salary: 68000.00, HireDate: "2021-01-10", Active: false},
+		{ID: 104, Name: "David Brown", Department: "Engineering", Salary: 102000.00, HireDate: "2018-11-05", Active: true},
+		{ID: 105, Name: "Eve Davis", Department: "HR", Salary: 62000.00, HireDate: "2022-06-18", Active: true},
+	}
+
+	sales := []SalesTable{
+		{
+			OrderID:    1001,
+			Customer:   "Acme Corp",
+			Product:    "Widget Pro",
+			Quantity:   50,
+			UnitPrice:  29.99,
+			Total:      1499.50,
+			OrderDate:  now.AddDate(0, 0, -5).Format(time.RFC3339),
+			Status:     "Shipped",
+		},
+		{
+			OrderID:    1002,
+			Customer:   "Tech Solutions Inc",
+			Product:    "Gadget Plus",
+			Quantity:   25,
+			UnitPrice:  49.99,
+			Total:      1249.75,
+			OrderDate:  now.AddDate(0, 0, -3).Format(time.RFC3339),
+			Status:     "Processing",
+		},
+		{
+			OrderID:    1003,
+			Customer:   "Global Industries",
+			Product:    "Tool Master",
+			Quantity:   100,
+			UnitPrice:  19.99,
+			Total:      1999.00,
+			OrderDate:  now.AddDate(0, 0, -1).Format(time.RFC3339),
+			Status:     "Delivered",
+		},
+	}
+
+	result := struct {
+		Products  []ProductTable  `json:"products" pretty:"label=Product Catalog,format=table"`
+		Employees []EmployeeTable `json:"employees" pretty:"label=Employee Directory,format=table"`
+		Sales     []SalesTable    `json:"sales" pretty:"label=Recent Sales,format=table"`
+	}{
+		Products:  products,
+		Employees: employees,
+		Sales:     sales,
+	}
+
+	return result, nil
+}
+
 // showTrees displays tree structure examples
 func showTrees(opts clicky.FileTreeOptions) (any, error) {
 	return clicky.NewFileSystem(".", clicky.WithMaxDepth(opts.MaxDepth)), nil
@@ -542,6 +663,7 @@ func main() {
 	clicky.AddCommand(rootCmd, ColorsOptions{}, showColors)
 	clicky.AddCommand(rootCmd, StylesOptions{}, showStyles)
 	clicky.AddCommand(rootCmd, TypesOptions{}, showTypes)
+	clicky.AddCommand(rootCmd, TablesOptions{}, showTables)
 	clicky.AddNamedCommand("trees", rootCmd, clicky.FileTreeOptions{}, showTrees)
 
 	clicky.BindAllFlags(rootCmd.PersistentFlags())

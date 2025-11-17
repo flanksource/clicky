@@ -208,32 +208,32 @@ func TestConvertSliceToPrettyDataWithSliceOfSlice(t *testing.T) {
 	}
 
 	// Should have a table field
-	if len(prettyData.Tables) == 0 {
-		t.Error("Expected tables to be populated")
+	tableName := prettyData.Schema.Fields[0].Name
+	table, exists := prettyData.GetTable(tableName)
+	if !exists {
+		t.Error("Expected table to be populated")
 	}
 
 	// Get the table data
-	tableName := prettyData.Schema.Fields[0].Name
-	rows, exists := prettyData.Tables[tableName]
-	if !exists {
+	if table == nil {
 		t.Fatalf("Table %s not found", tableName)
 	}
 
 	// Should have 3 rows after flattening
-	if len(rows) != 3 {
-		t.Errorf("Expected 3 rows after flattening, got %d", len(rows))
+	if len(table.Rows) != 3 {
+		t.Errorf("Expected 3 rows after flattening, got %d", len(table.Rows))
 	}
 
 	// Verify the data is correct
 	expectedNames := []string{"Alice", "Bob", "Charlie"}
-	for i, row := range rows {
+	for i, row := range table.Rows {
 		nameField, exists := row["Name"]
 		if !exists {
 			t.Errorf("Row %d missing Name field", i)
 			continue
 		}
-		if nameField.Value != expectedNames[i] {
-			t.Errorf("Row %d: expected name %s, got %v", i, expectedNames[i], nameField.Value)
+		if nameField.String() != expectedNames[i] {
+			t.Errorf("Row %d: expected name %s, got %v", i, expectedNames[i], nameField.String())
 		}
 	}
 }
@@ -256,20 +256,20 @@ func TestConvertSliceToPrettyDataWithSliceOfSliceOfMaps(t *testing.T) {
 	}
 
 	// Should have a table field
-	if len(prettyData.Tables) == 0 {
-		t.Error("Expected tables to be populated")
+	tableName := prettyData.Schema.Fields[0].Name
+	table, exists := prettyData.GetTable(tableName)
+	if !exists {
+		t.Error("Expected table to be populated")
 	}
 
 	// Get the table data
-	tableName := prettyData.Schema.Fields[0].Name
-	rows, exists := prettyData.Tables[tableName]
-	if !exists {
+	if table == nil {
 		t.Fatalf("Table %s not found", tableName)
 	}
 
 	// Should have 3 rows after flattening
-	if len(rows) != 3 {
-		t.Errorf("Expected 3 rows after flattening, got %d", len(rows))
+	if len(table.Rows) != 3 {
+		t.Errorf("Expected 3 rows after flattening, got %d", len(table.Rows))
 	}
 }
 
@@ -292,18 +292,18 @@ func TestConvertSliceWithFormatOptions(t *testing.T) {
 	}
 
 	// Should have a table field
-	if len(prettyData.Tables) == 0 {
-		t.Error("Expected tables to be populated")
+	tableName := prettyData.Schema.Fields[0].Name
+	table, exists := prettyData.GetTable(tableName)
+	if !exists {
+		t.Error("Expected table to be populated")
 	}
 
-	tableName := prettyData.Schema.Fields[0].Name
-	rows, exists := prettyData.Tables[tableName]
-	if !exists {
+	if table == nil {
 		t.Fatalf("Table %s not found", tableName)
 	}
 
 	// Should have 3 rows after flattening
-	if len(rows) != 3 {
-		t.Errorf("Expected 3 rows after flattening, got %d", len(rows))
+	if len(table.Rows) != 3 {
+		t.Errorf("Expected 3 rows after flattening, got %d", len(table.Rows))
 	}
 }

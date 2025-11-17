@@ -3,6 +3,7 @@ package api
 import (
 	"bytes"
 
+	"github.com/flanksource/commons/logger"
 	"github.com/olekukonko/tablewriter"
 	"github.com/olekukonko/tablewriter/renderer"
 	"github.com/olekukonko/tablewriter/tw"
@@ -51,13 +52,15 @@ func (t *TextTable) render(renderer tw.Renderer, transform TextTransformer) stri
 	var buf bytes.Buffer
 
 	width := GetTerminalWidth()
+	logger.Infof("Rendering table with max width: %d", width)
 
 	// Create tablewriter instance with word wrapping enabled
 	// Set reasonable table max width to enable wrapping (this is distributed across columns)
 	table := tablewriter.NewTable(&buf,
-		tablewriter.WithRowAutoWrap(tw.WrapTruncate),
+		tablewriter.WithRowAutoWrap(tw.WrapNone),
 		tablewriter.WithHeaderAutoFormat(tw.On),
 		tablewriter.WithMaxWidth(width),
+		tablewriter.WithBehavior(tw.Behavior{AutoHide: tw.On}),
 		tablewriter.WithRenderer(renderer),
 	)
 
@@ -66,8 +69,16 @@ func (t *TextTable) render(renderer tw.Renderer, transform TextTransformer) stri
 	for _, row := range t.Rows {
 		values := []any{}
 
-		for _, header := range t.Headers {
-			cell, ok := row[transform(header)]
+		for i, header := range t.Headers {
+			// Use field name from FieldNames if available, otherwise fall back to header
+			var fieldName string
+			if i < len(t.FieldNames) && t.FieldNames[i] != "" {
+				fieldName = t.FieldNames[i]
+			} else {
+				fieldName = transform(header)
+			}
+
+			cell, ok := row[fieldName]
 			if !ok {
 				values = append(values, "")
 				continue

@@ -2,6 +2,7 @@ package api
 
 import (
 	"os"
+	"strings"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/flanksource/commons/logger"
@@ -201,7 +202,6 @@ func NoTTYTheme() Theme {
 // and background color, falling back to NoTTYTheme for non-interactive output.
 func AutoTheme() Theme {
 	if !isTerminal() {
-		logger.V(3).Infof("Output is not a terminal, disabling colors")
 		return NoTTYTheme()
 	}
 
@@ -213,19 +213,46 @@ func AutoTheme() Theme {
 }
 
 var terminalWidth = -1
+var terminalDimensionsLogged = false
 
 func GetTerminalWidth() int {
 	if terminalWidth != -1 {
 		return terminalWidth
 	}
-	width, _, err := term.GetSize(int(os.Stdout.Fd()))
+	width, height, err := term.GetSize(int(os.Stderr.Fd()))
 	if err != nil {
 		return 120 // Default width
 	}
 	terminalWidth = width
+
+	// Log terminal dimensions once at startup when trace logging is enabled
+	if !terminalDimensionsLogged && logger.V(4).Enabled() {
+		terminalDimensionsLogged = true
+
+		// Create test lines with box drawing character
+		halfWidth := width / 2
+		line50 := strings.Repeat("─", halfWidth)
+		line100 := strings.Repeat("─", width)
+
+		logger.V(4).Infof("Terminal dimensions: width=%d, height=%d", width, height)
+		os.Stderr.WriteString(line50 + "\n")
+		os.Stderr.WriteString(line100 + "\n")
+	}
+
 	return width
 }
 
+func GetTerminalLines() int {
+	if terminalWidth != -1 {
+		return terminalWidth
+	}
+	_, height, err := term.GetSize(int(os.Stderr.Fd()))
+	if err != nil {
+		return 40 // Default height
+	}
+	return height
+}
+
 func isTerminal() bool {
-	return term.IsTerminal(int(os.Stdout.Fd()))
+	return term.IsTerminal(int(os.Stderr.Fd()))
 }

@@ -438,8 +438,8 @@ func (p *StructParser) parseTableData(val reflect.Value, field PrettyField) Text
 	tt := TextTable{}
 
 	for _, tableField := range field.TableOptions.Columns {
-
 		tt.Headers = append(tt.Headers, Text{Content: tableField.Label})
+		tt.FieldNames = append(tt.FieldNames, tableField.Name)
 	}
 
 	for i := 0; i < val.Len(); i++ {

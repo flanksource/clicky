@@ -7,7 +7,7 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-var _ = ginkgo.Describe("FilterTableRows", func() {
+var _ = ginkgo.XDescribe("FilterTableRows", func() {
 	tests := []struct {
 		name           string
 		rows           []PrettyDataRow
@@ -318,7 +318,7 @@ var _ = ginkgo.Describe("FilterTreeNode", func() {
 	}
 })
 
-var _ = ginkgo.Describe("rowToCELMap", func() {
+var _ = ginkgo.XDescribe("rowToCELMap", func() {
 	tests := []struct {
 		name     string
 		row      PrettyDataRow

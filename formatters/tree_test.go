@@ -143,7 +143,7 @@ func TestCustomRenderFunction(t *testing.T) {
 		t.Fatalf("Failed to parse: %v", err)
 	}
 
-	if !strings.Contains(output, "CUSTOM:") {
+	if !strings.Contains(output.String(), "CUSTOM:") {
 		t.Error("Output should use custom render function")
 	}
 
@@ -175,14 +175,13 @@ func TestTreeWithPrettyTags(t *testing.T) {
 	}
 
 	// Should render as tree
-	if !strings.Contains(output, "project") {
+	if !strings.Contains(output.String(), "project") {
 		t.Error("Tree should contain root label")
 	}
-	if !strings.Contains(output, "src") && !strings.Contains(output, "test") {
+	if !strings.Contains(output.String(), "src") && !strings.Contains(output.String(), "test") {
 		t.Error("Tree should contain child nodes")
 	}
 
-	t.Logf("Tree with tags output:\n%s", output)
 }
 
 func TestBuiltinRenderers(t *testing.T) {
