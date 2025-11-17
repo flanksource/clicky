@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/flanksource/clicky/flags"
-	"github.com/flanksource/commons/logger"
 	"github.com/samber/lo"
 	"github.com/spf13/cobra"
 )
@@ -93,9 +92,10 @@ func AddNamedCommand[T any](name string, parent *cobra.Command, opts T, fn func(
 		cmd.Use = namer.GetName()
 	}
 
+	cmd.SilenceUsage = true
 	if h, ok := optsValue.Interface().(Help); ok {
 		cmd.SetHelpFunc(func(c *cobra.Command, args []string) {
-			fmt.Println(h.Help().ANSI())
+			os.Stderr.WriteString(h.Help().ANSI())
 		})
 	}
 
@@ -122,7 +122,14 @@ func AddNamedCommand[T any](name string, parent *cobra.Command, opts T, fn func(
 	// Bind all flags
 	for _, info := range fieldInfos {
 		fv := flags.BindFlag(cmd, info)
-		flagValues[info.FlagName] = fv
+		if fv != nil {
+			// Use special key for args-only fields (no flag name)
+			key := info.FlagName
+			if key == "" && info.IsArgs {
+				key = flags.ARGS
+			}
+			flagValues[key] = fv
+		}
 	}
 
 	// Set RunE function
@@ -130,9 +137,24 @@ func AddNamedCommand[T any](name string, parent *cobra.Command, opts T, fn func(
 		// Create new instance of opts
 		optsValue := reflect.New(optsType).Elem()
 
+		// First pass: Find the field with args:"true"
+		var argsFieldValue *flags.FlagValue
+		for _, fv := range flagValues {
+			if fv.IsArgs {
+				argsFieldValue = fv
+				break
+			}
+		}
+
 		// Process flags and populate struct
 		for _, fv := range flagValues {
-			if err := flags.AssignFieldValue(optsValue, fv, args, isStdinAvailable()); err != nil {
+			// Only pass args to the field with args:"true", pass nil to all others
+			argsToPass := []string(nil)
+			if fv.IsArgs && argsFieldValue == fv {
+				argsToPass = args
+			}
+
+			if err := flags.AssignFieldValue(optsValue, fv, argsToPass, isStdinAvailable()); err != nil {
 				return err
 			}
 		}
@@ -143,14 +165,8 @@ func AddNamedCommand[T any](name string, parent *cobra.Command, opts T, fn func(
 			return err
 		}
 
-		// Format and output result
-		output, err := Format(result, Flags.FormatOptions)
-		if err != nil {
-			return fmt.Errorf("formatting result: %w", err)
-		}
-		logger.Infof("Output of %d bytes", len(output))
+		MustPrint(result, Flags.FormatOptions)
 
-		fmt.Println(output)
 		return nil
 	}
 

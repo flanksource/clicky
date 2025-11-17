@@ -19,6 +19,7 @@ type FlagValue struct {
 	DefaultValue   string
 	Required       bool
 	IsStdin        bool
+	IsArgs         bool
 	StringPtr      *string
 	IntPtr         *int
 	BoolPtr        *bool
@@ -39,6 +40,7 @@ type FieldInfo struct {
 	ShortFlag    string
 	Required     bool
 	IsStdin      bool
+	IsArgs       bool
 }
 
 // durationValue implements pflag.Value for duration.Duration
