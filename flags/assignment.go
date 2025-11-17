@@ -9,6 +9,8 @@ import (
 	"strings"
 )
 
+const ARGS = "__args__"
+
 // AssignFieldValue assigns a flag value to a struct field using the field path
 func AssignFieldValue(structValue reflect.Value, fv *FlagValue, args []string, isStdinAvailable bool) error {
 	fieldValue := GetFieldByPath(structValue, fv.FieldPath)
@@ -22,7 +24,11 @@ func AssignFieldValue(structValue reflect.Value, fv *FlagValue, args []string, i
 	case reflect.String:
 		val := *fv.StringPtr
 
-		if val == "" && fv.IsStdin && len(args) > 0 {
+		// Priority: args first, then stdin, then flag value
+		if val == "" && fv.IsArgs && len(args) > 0 {
+			val = args[0]
+		} else if val == "" && fv.IsStdin && len(args) > 0 {
+			// stdin:"true" can also use args as fallback
 			val = args[0]
 		} else if val == "" && fv.IsStdin && isStdinAvailable {
 			if lines, err := loadFromStdin(); err != nil {
@@ -49,7 +55,11 @@ func AssignFieldValue(structValue reflect.Value, fv *FlagValue, args []string, i
 		case reflect.String:
 			val := *fv.StringSlicePtr
 
-			if len(val) == 0 && fv.IsStdin && len(args) > 0 {
+			// Priority: args first, then stdin, then flag value
+			if len(val) == 0 && fv.IsArgs && len(args) > 0 {
+				val = args
+			} else if len(val) == 0 && fv.IsStdin && len(args) > 0 {
+				// stdin:"true" can also use args as fallback
 				val = args
 			} else if len(val) == 0 && fv.IsStdin && isStdinAvailable {
 				if val, err := loadFromStdin(); err != nil {

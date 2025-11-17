@@ -44,7 +44,11 @@ func parseStructFieldsRecursive(structType reflect.Type, fieldPath []int, fields
 
 		// Check for flag tag on this field
 		flagName := field.Tag.Get("flag")
-		if flagName == "" {
+		isArgs := field.Tag.Get("args") == "true"
+		isStdin := field.Tag.Get("stdin") == "true"
+
+		// Skip fields that don't have flag, args, or stdin tags
+		if (flagName == "" || flagName == "-") && !isArgs && !isStdin {
 			continue
 		}
 
@@ -58,7 +62,8 @@ func parseStructFieldsRecursive(structType reflect.Type, fieldPath []int, fields
 			DefaultValue: field.Tag.Get("default"),
 			ShortFlag:    field.Tag.Get("short"),
 			Required:     field.Tag.Get("required") == "true",
-			IsStdin:      field.Tag.Get("stdin") == "true",
+			IsStdin:      isStdin,
+			IsArgs:       isArgs,
 		}
 
 		*fields = append(*fields, info)
