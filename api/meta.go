@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 
+	lipglosstree "github.com/charmbracelet/lipgloss/tree"
 	"github.com/samber/lo"
 )
 
@@ -194,7 +195,56 @@ func (tt TextTree) Visit(visitor VisitorFunc) bool {
 	return true
 }
 
+// buildLipglossTree converts a TextTree to a lipgloss tree
+func (tt TextTree) buildLipglossTree(withColors bool) *lipglosstree.Tree {
+	// Build the node label
+	var nodeLabel string
+	if tt.Node != nil {
+		if withColors {
+			nodeLabel = tt.Node.ANSI()
+		} else {
+			nodeLabel = tt.Node.String()
+		}
+	}
+
+	// If we have no node and only one child, return the child tree directly
+	if nodeLabel == "" && len(tt.Children) == 1 {
+		return tt.Children[0].buildLipglossTree(withColors)
+	}
+
+	// If we have no node and multiple children, we need to create a wrapper
+	// Create the tree with root (use empty string if no node)
+	t := lipglosstree.New().Root(nodeLabel)
+
+	// Add children
+	for _, child := range tt.Children {
+		childTree := child.buildLipglossTree(withColors)
+		if childTree != nil {
+			t = t.Child(childTree)
+		}
+	}
+
+	return t
+}
+
 func (tt TextTree) String() string {
+	if tt.Node == nil && len(tt.Children) == 0 {
+		return ""
+	}
+
+	t := tt.buildLipglossTree(false)
+	if t == nil {
+		return ""
+	}
+
+	// Use rounded enumerator
+	t = t.Enumerator(lipglosstree.RoundedEnumerator)
+
+	return t.String()
+}
+
+func (tt TextTree) HTML() string {
+	// Keep simple indentation for HTML
 	var n = ""
 	if tt.Node != nil {
 		n = strings.Repeat("  ", tt.depth) + tt.Node.String()
@@ -203,20 +253,36 @@ func (tt TextTree) String() string {
 		child.depth = tt.depth + 1
 		n += "\n" + child.String()
 	}
-
 	return n
 }
 
-func (tt TextTree) HTML() string {
-	return tt.String()
-}
-
 func (tt TextTree) ANSI() string {
-	return tt.String()
+	if tt.Node == nil && len(tt.Children) == 0 {
+		return ""
+	}
+
+	t := tt.buildLipglossTree(true)
+	if t == nil {
+		return ""
+	}
+
+	// Use rounded enumerator
+	t = t.Enumerator(lipglosstree.RoundedEnumerator)
+
+	return t.String()
 }
 
 func (tt TextTree) Markdown() string {
-	return tt.String()
+	// Keep simple indentation for Markdown
+	var n = ""
+	if tt.Node != nil {
+		n = strings.Repeat("  ", tt.depth) + tt.Node.String()
+	}
+	for _, child := range tt.Children {
+		child.depth = tt.depth + 1
+		n += "\n" + child.String()
+	}
+	return n
 }
 
 type PrettyFieldData struct {
