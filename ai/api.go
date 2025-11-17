@@ -2,6 +2,7 @@ package ai
 
 import (
 	"context"
+	"encoding/json"
 	"time"
 
 	"github.com/flanksource/clicky/api"
@@ -40,12 +41,30 @@ type AgentConfig struct {
 	NoCache         bool          `json:"no_cache,omitempty"`
 }
 
+func (a AgentConfig) Pretty() api.Text {
+	t := api.Text{}.Append(string(a.Type))
+	if a.Model != "" {
+		t = t.Space().Append(a.Model, "font-mono")
+	}
+	if a.NoCache {
+		t = t.Space().Append(" No Cache", "text-orange-500")
+	}
+	return t
+}
+
 // PromptRequest represents a request to process a prompt
 type PromptRequest struct {
 	Context          map[string]string `json:"context,omitempty"`
 	Name             string            `json:"name"`
 	Prompt           string            `json:"prompt"`
 	StructuredOutput interface{}       `json:"structured_output,omitempty"` // Schema for structured JSON output
+}
+
+// TypedPromptRequest represents a type-safe request with structured output
+type TypedPromptRequest[T any] struct {
+	Context map[string]string `json:"context,omitempty"`
+	Name    string            `json:"name"`
+	Prompt  string            `json:"prompt"`
 }
 
 // PromptResponse represents the response from processing a prompt
@@ -61,6 +80,22 @@ type PromptResponse struct {
 	// Duration spent in the model processing as reported by the API
 	DurationModel time.Duration `json:"duration_model,omitempty"`
 	CacheHit      bool          `json:"cache_hit,omitempty"`
+}
+
+// TypedPromptResponse represents a type-safe response with structured output
+type TypedPromptResponse[T any] struct {
+	Request       TypedPromptRequest[T] `json:"request,omitempty"`
+	Data          T                     `json:"data"`
+	Costs         Costs                 `json:"costs,omitempty"`
+	Model         string                `json:"model,omitempty"`
+	Error         string                `json:"error,omitempty"`
+	Duration      time.Duration         `json:"duration,omitempty"`
+	DurationModel time.Duration         `json:"duration_model,omitempty"`
+	CacheHit      bool                  `json:"cache_hit,omitempty"`
+}
+
+func (tr TypedPromptResponse[T]) IsOK() bool {
+	return tr.Error == ""
 }
 
 func (pr PromptResponse) IsOK() bool {
@@ -112,4 +147,50 @@ type Agent interface {
 
 	// Close cleans up resources
 	Close() error
+}
+
+// ExecutePromptTyped is a generic helper that executes a prompt with type-safe structured output.
+// It automatically cleans up the JSON response before unmarshaling into the target type.
+func ExecutePromptTyped[T any](ctx context.Context, agent Agent, request TypedPromptRequest[T]) (*TypedPromptResponse[T], error) {
+	// Convert to regular PromptRequest
+	var schema T
+	promptReq := PromptRequest{
+		Context:          request.Context,
+		Name:             request.Name,
+		Prompt:           request.Prompt,
+		StructuredOutput: &schema,
+	}
+
+	// Execute the request
+	resp, err := agent.ExecutePrompt(ctx, promptReq)
+	if err != nil {
+		return &TypedPromptResponse[T]{
+			Request: request,
+			Error:   err.Error(),
+		}, err
+	}
+
+	// Convert to typed response
+	typedResp := &TypedPromptResponse[T]{
+		Request:       request,
+		Costs:         resp.Costs,
+		Model:         resp.Model,
+		Duration:      resp.Duration,
+		DurationModel: resp.DurationModel,
+		CacheHit:      resp.CacheHit,
+		Error:         resp.Error,
+	}
+
+	// If there's structured data, convert it
+	if resp.StructuredData != nil {
+		if data, ok := resp.StructuredData.(*T); ok {
+			typedResp.Data = *data
+		} else {
+			err := json.Unmarshal([]byte("failed to convert"), &typedResp.Data)
+			typedResp.Error = "failed to convert structured data to target type"
+			return typedResp, err
+		}
+	}
+
+	return typedResp, nil
 }
