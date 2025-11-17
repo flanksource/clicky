@@ -11,6 +11,15 @@ import (
 
 // BindFlag creates and binds a flag to a Cobra command based on field info
 func BindFlag(cmd *cobra.Command, info FieldInfo) *FlagValue {
+	if info.IsArgs {
+		if info.Required {
+			cmd.Args = cobra.MinimumNArgs(1)
+		} else if info.IsArgs {
+			cmd.Args = cobra.MinimumNArgs(0)
+		} else {
+			cmd.Args = cobra.NoArgs
+		}
+	}
 	fv := &FlagValue{
 		FieldName:    info.FieldName,
 		FieldPath:    info.FieldPath,
@@ -18,9 +27,10 @@ func BindFlag(cmd *cobra.Command, info FieldInfo) *FlagValue {
 		DefaultValue: info.DefaultValue,
 		Required:     info.Required,
 		IsStdin:      info.IsStdin,
+		IsArgs:       info.IsArgs,
 	}
 
-	// Bind flag based on type
+	// Bind flag based on type (skip flag registration if no flag name)
 	switch info.FieldType.Kind() {
 	case reflect.String:
 		var val string
@@ -28,10 +38,12 @@ func BindFlag(cmd *cobra.Command, info FieldInfo) *FlagValue {
 			val = info.DefaultValue
 		}
 		fv.StringPtr = &val
-		if info.ShortFlag != "" {
-			cmd.Flags().StringVarP(fv.StringPtr, info.FlagName, info.ShortFlag, val, info.Help)
-		} else {
-			cmd.Flags().StringVar(fv.StringPtr, info.FlagName, val, info.Help)
+		if info.FlagName != "" {
+			if info.ShortFlag != "" {
+				cmd.Flags().StringVarP(fv.StringPtr, info.FlagName, info.ShortFlag, val, info.Help)
+			} else {
+				cmd.Flags().StringVar(fv.StringPtr, info.FlagName, val, info.Help)
+			}
 		}
 
 	case reflect.Int:
@@ -40,10 +52,12 @@ func BindFlag(cmd *cobra.Command, info FieldInfo) *FlagValue {
 			val, _ = strconv.Atoi(info.DefaultValue)
 		}
 		fv.IntPtr = &val
-		if info.ShortFlag != "" {
-			cmd.Flags().IntVarP(fv.IntPtr, info.FlagName, info.ShortFlag, val, info.Help)
-		} else {
-			cmd.Flags().IntVar(fv.IntPtr, info.FlagName, val, info.Help)
+		if info.FlagName != "" {
+			if info.ShortFlag != "" {
+				cmd.Flags().IntVarP(fv.IntPtr, info.FlagName, info.ShortFlag, val, info.Help)
+			} else {
+				cmd.Flags().IntVar(fv.IntPtr, info.FlagName, val, info.Help)
+			}
 		}
 
 	case reflect.Bool:
@@ -52,10 +66,12 @@ func BindFlag(cmd *cobra.Command, info FieldInfo) *FlagValue {
 			val = info.DefaultValue == "true"
 		}
 		fv.BoolPtr = &val
-		if info.ShortFlag != "" {
-			cmd.Flags().BoolVarP(fv.BoolPtr, info.FlagName, info.ShortFlag, val, info.Help)
-		} else {
-			cmd.Flags().BoolVar(fv.BoolPtr, info.FlagName, val, info.Help)
+		if info.FlagName != "" {
+			if info.ShortFlag != "" {
+				cmd.Flags().BoolVarP(fv.BoolPtr, info.FlagName, info.ShortFlag, val, info.Help)
+			} else {
+				cmd.Flags().BoolVar(fv.BoolPtr, info.FlagName, val, info.Help)
+			}
 		}
 
 	case reflect.Slice:
@@ -63,19 +79,23 @@ func BindFlag(cmd *cobra.Command, info FieldInfo) *FlagValue {
 		case reflect.String:
 			var val []string
 			fv.StringSlicePtr = &val
-			if info.ShortFlag != "" {
-				cmd.Flags().StringSliceVarP(fv.StringSlicePtr, info.FlagName, info.ShortFlag, val, info.Help)
-			} else {
-				cmd.Flags().StringSliceVar(fv.StringSlicePtr, info.FlagName, val, info.Help)
+			if info.FlagName != "" {
+				if info.ShortFlag != "" {
+					cmd.Flags().StringSliceVarP(fv.StringSlicePtr, info.FlagName, info.ShortFlag, val, info.Help)
+				} else {
+					cmd.Flags().StringSliceVar(fv.StringSlicePtr, info.FlagName, val, info.Help)
+				}
 			}
 
 		case reflect.Int:
 			var val []int
 			fv.IntSlicePtr = &val
-			if info.ShortFlag != "" {
-				cmd.Flags().IntSliceVarP(fv.IntSlicePtr, info.FlagName, info.ShortFlag, val, info.Help)
-			} else {
-				cmd.Flags().IntSliceVar(fv.IntSlicePtr, info.FlagName, val, info.Help)
+			if info.FlagName != "" {
+				if info.ShortFlag != "" {
+					cmd.Flags().IntSliceVarP(fv.IntSlicePtr, info.FlagName, info.ShortFlag, val, info.Help)
+				} else {
+					cmd.Flags().IntSliceVar(fv.IntSlicePtr, info.FlagName, val, info.Help)
+				}
 			}
 		}
 
@@ -89,9 +109,11 @@ func BindFlag(cmd *cobra.Command, info FieldInfo) *FlagValue {
 				val, _ = duration.ParseDuration(info.DefaultValue)
 			}
 			fv.DurationPtr = &val
-			cmd.Flags().Var(&durationValue{d: fv.DurationPtr}, info.FlagName, info.Help)
-			if info.ShortFlag != "" {
-				cmd.Flags().Lookup(info.FlagName).Shorthand = info.ShortFlag
+			if info.FlagName != "" {
+				cmd.Flags().Var(&durationValue{d: fv.DurationPtr}, info.FlagName, info.Help)
+				if info.ShortFlag != "" {
+					cmd.Flags().Lookup(info.FlagName).Shorthand = info.ShortFlag
+				}
 			}
 
 		case "time.Time":
@@ -100,14 +122,16 @@ func BindFlag(cmd *cobra.Command, info FieldInfo) *FlagValue {
 				val, _ = parseTime(info.DefaultValue)
 			}
 			fv.TimePtr = &val
-			cmd.Flags().Var(&timeValue{t: fv.TimePtr}, info.FlagName, info.Help)
-			if info.ShortFlag != "" {
-				cmd.Flags().Lookup(info.FlagName).Shorthand = info.ShortFlag
+			if info.FlagName != "" {
+				cmd.Flags().Var(&timeValue{t: fv.TimePtr}, info.FlagName, info.Help)
+				if info.ShortFlag != "" {
+					cmd.Flags().Lookup(info.FlagName).Shorthand = info.ShortFlag
+				}
 			}
 		}
 	}
 
-	if info.Required {
+	if info.Required && info.FlagName != "" {
 		_ = cmd.MarkFlagRequired(info.FlagName)
 	}
 
