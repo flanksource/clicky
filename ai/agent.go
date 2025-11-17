@@ -113,8 +113,7 @@ func (am *AgentManager) GetAgent(agentType AgentType) (Agent, error) {
 		agent, err = NewClaudeAgent(am.config)
 	case AgentTypeAider:
 		agent, err = NewAiderAgent(am.config)
-	case AgentTypeLLM:
-		agent, err = NewLLMAgent(am.config)
+
 	default:
 		return nil, fmt.Errorf("unsupported agent type: %s", agentType)
 	}

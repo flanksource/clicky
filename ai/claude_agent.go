@@ -10,6 +10,7 @@ import (
 
 	flanksourcecontext "github.com/flanksource/commons/context"
 	"github.com/flanksource/commons/logger"
+	"github.com/samber/lo"
 
 	"github.com/flanksource/clicky"
 	"github.com/flanksource/clicky/ai/cache"
@@ -134,7 +135,6 @@ func (ca *ClaudeAgent) ExecutePrompt(ctx context.Context, request PromptRequest)
 
 	task := clicky.StartTask(request.Name,
 		func(ctx flanksourcecontext.Context, t *clicky.Task) (interface{}, error) {
-			t.Infof("Starting Claude request")
 
 			resp, execErr := ca.executeClaude(ctx, request, t)
 			if execErr != nil {
@@ -184,7 +184,6 @@ func (ca *ClaudeAgent) ExecuteBatch(ctx context.Context, requests []PromptReques
 
 		task := clicky.StartTask(req.Name,
 			func(ctx flanksourcecontext.Context, t *clicky.Task) (interface{}, error) {
-				t.Infof("Processing request")
 
 				response, err := ca.executeClaude(t.Context(), req, t)
 
@@ -299,7 +298,7 @@ func (ca *ClaudeAgent) executeClaude(ctx context.Context, request PromptRequest,
 	}
 
 	if logger.V(3).Enabled() {
-		task.Tracef("%s", prompt)
+		task.Tracef("%s", lo.Ellipsis(prompt, 200))
 	}
 
 	startTime := time.Now()

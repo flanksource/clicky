@@ -17,6 +17,10 @@ type Cost struct {
 	OutputCost   float64 `json:"output_cost"`
 }
 
+func (c Cost) IsEmpty() bool {
+	return c.InputTokens == 0 && c.OutputTokens == 0 && c.InputCost == 0 && c.OutputCost == 0
+}
+
 func (c Cost) Total() float64 {
 	return c.InputCost + c.OutputCost
 }
@@ -31,9 +35,36 @@ func (c Cost) Pretty() api.Text {
 	}
 
 	if c.InputTokens+c.OutputTokens > 0 {
-		t = t.Space().Append(fmt.Sprintf("(%d in, %d out)", api.Human(c.InputTokens), api.Human(c.OutputTokens)), "text-muted")
+		t = t.Space().Append(fmt.Sprintf("(%v in, %v out)", api.Human(c.InputTokens), api.Human(c.OutputTokens)), "text-muted")
 	}
 	return t
+}
+
+func (c Costs) AggregateByModel() Costs {
+	modelCosts := make(map[string]Cost)
+	for _, cost := range c {
+		if cost.IsEmpty() {
+			continue
+		}
+		model := cost.Model
+		if model == "" {
+			model = "unknown"
+		}
+
+		existing, ok := modelCosts[model]
+		if !ok {
+			existing = Cost{Model: model}
+		}
+
+		modelCosts[model] = existing.Add(cost)
+	}
+
+	aggregated := Costs{}
+	for _, cost := range modelCosts {
+		aggregated = append(aggregated, cost)
+	}
+
+	return aggregated
 }
 
 func (c Costs) Sum() Cost {
