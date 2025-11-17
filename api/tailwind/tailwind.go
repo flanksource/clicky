@@ -490,9 +490,13 @@ func ApplyStyle(text, styleStr string) (string, Style) {
 		text = TransformText(text, parsedStyle.TextTransform)
 	}
 
-	// Apply truncation if configured
-	if parsedStyle.TruncateMode != "" {
-		text = TruncateText(text, parsedStyle.MaxLines, parsedStyle.MaxWidth, parsedStyle.TruncateMode)
+	// Apply truncation if configured or if constraints exist
+	truncateMode := parsedStyle.TruncateMode
+	if truncateMode == "" && (parsedStyle.MaxWidth > 0 || parsedStyle.MaxLines > 0) {
+		truncateMode = "suffix"
+	}
+	if truncateMode != "" {
+		text = TruncateText(text, parsedStyle.MaxLines, parsedStyle.MaxWidth, truncateMode)
 	}
 
 	return text, parsedStyle
