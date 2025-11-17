@@ -419,7 +419,8 @@ func (v FieldValue) Primitive() interface{} {
 		return *v.BooleanValue
 	}
 	if v.TimeValue != nil {
-		return *v.TimeValue
+		// Return formatted date string without timezone
+		return v.TimeValue.Format(v.DateTimeFormat())
 	}
 	return v.Value
 }
@@ -532,11 +533,11 @@ func (f PrettyField) Parse(value interface{}) (FieldValue, error) {
 		case string:
 			// Try parsing as Unix timestamp (integer)
 			if timestamp, err := strconv.ParseInt(val, 10, 64); err == nil {
-				t := time.Unix(timestamp, 0)
+				t := time.Unix(timestamp, 0).UTC()
 				v.TimeValue = &t
 			} else if timestamp, err := strconv.ParseFloat(val, 64); err == nil {
 				// Try parsing as Unix timestamp (float)
-				t := time.Unix(int64(timestamp), 0)
+				t := time.Unix(int64(timestamp), 0).UTC()
 				v.TimeValue = &t
 			} else {
 				// Try various date string formats
@@ -560,17 +561,17 @@ func (f PrettyField) Parse(value interface{}) (FieldValue, error) {
 			}
 		case int:
 			// Unix timestamp as int
-			t := time.Unix(int64(val), 0)
+			t := time.Unix(int64(val), 0).UTC()
 			v.TimeValue = &t
 		case int64:
 			// Unix timestamp
-			t := time.Unix(val, 0)
+			t := time.Unix(val, 0).UTC()
 			v.TimeValue = &t
 		case float64:
 			// Unix timestamp with possible milliseconds
 			sec := int64(val)
 			nsec := int64((val - float64(sec)) * 1e9)
-			t := time.Unix(sec, nsec)
+			t := time.Unix(sec, nsec).UTC()
 			v.TimeValue = &t
 		}
 

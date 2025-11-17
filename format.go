@@ -10,7 +10,9 @@ import (
 	"github.com/flanksource/clicky/api"
 	"github.com/flanksource/clicky/formatters"
 	_ "github.com/flanksource/clicky/formatters/html"
+	"github.com/flanksource/clicky/task"
 	"github.com/flanksource/clicky/text"
+	"github.com/flanksource/commons/logger"
 )
 
 type FormatOptions = formatters.FormatOptions
@@ -56,11 +58,15 @@ func Warnf(format string, args ...any) {
 }
 
 func Debugf(format string, args ...any) {
-	_, _ = logWriter.WriteString(api.Text{}.Append("DEBUG", "text-muted").Space().Appendf(format, args...).ANSI() + "\n")
+	if logger.IsDebugEnabled() {
+		_, _ = logWriter.WriteString(api.Text{}.Append("DEBUG", "text-muted").Space().Appendf(format, args...).ANSI() + "\n")
+	}
 }
 
 func Tracef(format string, args ...any) {
-	_, _ = logWriter.WriteString(api.Text{}.Append("TRACE", "text-muted").Space().Appendf(format, args...).ANSI() + "\n")
+	if logger.IsTraceEnabled() {
+		_, _ = logWriter.WriteString(api.Text{}.Append("TRACE", "text-muted").Space().Appendf(format, args...).ANSI() + "\n")
+	}
 }
 
 func Format(o any, opts ...FormatOptions) (string, error) {
@@ -68,12 +74,13 @@ func Format(o any, opts ...FormatOptions) (string, error) {
 }
 
 func MustPrint(o any, opts ...FormatOptions) {
-
+	_ = task.Wait()
 	result, err := Format(o, opts...)
 	if err != nil {
 		panic(err)
 	}
-	fmt.Println(result)
+
+	fmt.Print(result)
 }
 
 func MustFormat(o any, opts ...FormatOptions) string {
@@ -89,6 +96,19 @@ func FormatToFile(o any, opts FormatOptions, file string) error {
 
 var Human = api.Human
 var Class = api.Clz
+
+func CompactList[T any](items []T) api.Textable {
+	if len(items) == 0 {
+		return Text("[]", "text-muted")
+	}
+	list := api.List{
+		MaxInline: 3,
+	}
+	for _, item := range items {
+		list.Items = append(list.Items, Human(item))
+	}
+	return list
+}
 
 func Text(content string, tailwindClasses ...string) api.Text {
 	return api.Text{
@@ -113,6 +133,7 @@ func Collapsed(label string, content api.Textable, styles ...string) api.Collaps
 
 var KeyValue = api.KeyValue
 var CodeBlock = api.CodeBlock
+var Badge = api.Badge
 
 func Map[T any](m map[string]T, styles ...string) api.DescriptionList {
 	style := "compact"
@@ -129,6 +150,9 @@ func Map[T any](m map[string]T, styles ...string) api.DescriptionList {
 
 	items := make([]api.KeyValuePair, 0, len(m))
 	for _, k := range keys {
+		if fmt.Sprintf("%v", m[k]) == "" || fmt.Sprintf("%v", m[k]) == "<nil>" {
+			continue
+		}
 		items = append(items, api.KeyValuePair{
 			Key:   k,
 			Value: m[k],

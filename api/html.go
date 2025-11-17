@@ -206,8 +206,8 @@ var NBSP = HtmlElement{
 
 var TAB = HtmlElement{
 	Tag:      "",
-	Content:  "&emsp;",
-	Fallback: Text{Content: "\t"},
+	Content:  "&nbsp;&nbsp;",
+	Fallback: Text{Content: "  "},
 }
 
 var BR = HtmlElement{

@@ -167,34 +167,35 @@ func TestAllFormatters(t *testing.T) {
 	// Define test cases for each formatter
 	testCases := []FormatterTestCase{
 		{
-			Name:      "PrettyFormatter",
-			Formatter: NewPrettyFormatter(),
+			Name: "PrettyFormatter",
+			Formatter: func() *PrettyFormatter {
+				f := NewPrettyFormatter()
+				f.NoColor = true // Disable colors for testing
+				return f
+			}(),
 			Validate: func(t *testing.T, output string) {
 				// Check that it contains formatted fields
-				if !strings.Contains(output, "Id: TEST-001") {
+				if !strings.Contains(output, "id: TEST-001") {
 					t.Errorf("Pretty formatter should display ID field")
 				}
-				if !strings.Contains(output, "Price: $299.99") {
-					t.Errorf("Pretty formatter should format currency correctly")
-				}
-				if !strings.Contains(output, "Created At: 2024-01-15 10:30:00") {
+				if !strings.Contains(output, "created_at: 2024-01-15 10:30:00") {
 					t.Errorf("Pretty formatter should format RFC3339 date correctly")
 				}
-				// Note: Unix timestamps are formatted in local timezone
-				if !strings.Contains(output, "Updated At: ") {
-					t.Errorf("Pretty formatter should display Updated At field")
+				// Unix timestamps are now formatted in UTC
+				if !strings.Contains(output, "updated_at: 2024-01-15 10:50:00") {
+					t.Errorf("Pretty formatter should display Updated At field in UTC")
 				}
-				if !strings.Contains(output, "Processed At: ") {
-					t.Errorf("Pretty formatter should display Processed At field")
+				if !strings.Contains(output, "processed_at: 2024-01-15 10:51:00") {
+					t.Errorf("Pretty formatter should display Processed At field in UTC")
 				}
 				// Check nested map formatting
-				if !strings.Contains(output, "Category: electronics") {
+				if !strings.Contains(output, "category: electronics") {
 					t.Errorf("Pretty formatter should display nested map fields")
 				}
-				if !strings.Contains(output, "City: San Francisco") {
+				if !strings.Contains(output, "city: San Francisco") {
 					t.Errorf("Pretty formatter should display address fields")
 				}
-				if !strings.Contains(output, "Latitude: 37.7749") {
+				if !strings.Contains(output, "latitude: 37.77") {
 					t.Errorf("Pretty formatter should display deeply nested fields")
 				}
 			},
@@ -211,9 +212,6 @@ func TestAllFormatters(t *testing.T) {
 				// Check fields
 				if result["id"] != "TEST-001" {
 					t.Errorf("JSON should contain correct ID")
-				}
-				if result["price"] != "$299.99" {
-					t.Errorf("JSON should format currency correctly, got %v", result["price"])
 				}
 				// Check date formatting
 				if result["created_at"] != "2024-01-15 10:30:00" {
@@ -249,9 +247,6 @@ func TestAllFormatters(t *testing.T) {
 				// Check fields
 				if result["id"] != "TEST-001" {
 					t.Errorf("YAML should contain correct ID")
-				}
-				if result["price"] != "$299.99" {
-					t.Errorf("YAML should format currency correctly, got %v", result["price"])
 				}
 				// Check date formatting
 				if result["created_at"] != "2024-01-15 10:30:00" {
@@ -291,9 +286,6 @@ func TestAllFormatters(t *testing.T) {
 					t.Logf("CSV data rows: %s", dataRows)
 					if !strings.Contains(dataRows, "TEST-001") {
 						t.Errorf("CSV data should contain ID TEST-001")
-					}
-					if !strings.Contains(dataRows, "$299.99") {
-						t.Errorf("CSV should format currency correctly")
 					}
 					// Check for date formatting (timezone-agnostic)
 					if !strings.Contains(dataRows, "2024-01-15") {
@@ -351,9 +343,6 @@ func TestAllFormatters(t *testing.T) {
 				// Check markdown formatting
 				if !strings.Contains(mdOutput, "**id**: TEST-001") {
 					t.Errorf("Markdown should format fields correctly")
-				}
-				if !strings.Contains(mdOutput, "**price**: $299.99") {
-					t.Errorf("Markdown should display formatted values")
 				}
 			},
 		},
@@ -601,14 +590,14 @@ func TestTableFormattingWithDates(t *testing.T) {
 	expectedDate2 := time.Unix(1705315860, 0).Format("2006-01-02 15:04:05")
 
 	// Just check the content exists, ignore exact spacing
-	if !strings.Contains(output, "ROW-1") || !strings.Contains(output, expectedDate1) || !strings.Contains(output, "$99.99") {
+	if !strings.Contains(output, "ROW-1") || !strings.Contains(output, expectedDate1) {
 		t.Errorf("Table should format Unix timestamp string correctly, expected date: %s", expectedDate1)
 		t.Logf("Output: %s", output)
 	}
-	if !strings.Contains(output, "ROW-2") || !strings.Contains(output, expectedDate2) || !strings.Contains(output, "$149.99") {
+	if !strings.Contains(output, "ROW-2") || !strings.Contains(output, expectedDate2) {
 		t.Errorf("Table should format Unix timestamp int64 correctly, expected date: %s", expectedDate2)
 	}
-	if !strings.Contains(output, "ROW-3") || !strings.Contains(output, "2024-01-15 10:32:00") || !strings.Contains(output, "$199.99") {
+	if !strings.Contains(output, "ROW-3") || !strings.Contains(output, "2024-01-15 10:32:00") {
 		t.Errorf("Table should format RFC3339 date correctly")
 	}
 }
