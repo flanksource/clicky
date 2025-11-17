@@ -183,6 +183,10 @@ var (
 	XML               = Icon{Unicode: "📄", Iconify: "vscode-icons:file-type-xml", Style: "muted"}
 	YAML              = Icon{Unicode: "📄", Iconify: "vscode-icons:file-type-yaml", Style: "muted"}
 	Zombie            = Icon{Unicode: "💀", Iconify: "ion:skull", Style: "muted"}
+	Add               = Icon{Unicode: "➕", Iconify: "ion:add-circle", Style: "text-green-500"}
+	Delete            = Icon{Unicode: "➖", Iconify: "ion:remove-circle", Style: "text-red-500"}
+	Edit              = Icon{Unicode: "✏️", Iconify: "ion:pencil", Style: "text-yellow-500"}
+	Rename            = Icon{Unicode: "🔀", Iconify: "ion:swap-horizontal", Style: "text-blue-500"}
 )
 
 var All = map[string]Icon{

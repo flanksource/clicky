@@ -87,7 +87,25 @@ type HtmlElement struct {
 	Fallback   Textable
 }
 
+func Badge(label string, classes ...string) Textable {
+	allClasses := append([]string{"badge", "p-0.5", "mr-1", "rounded-lg", "text-xs", "font-light bg-gray-200"}, classes...)
+	return HtmlElement{
+		Tag: "span",
+		Attributes: map[string]string{
+			"class": strings.Join(allClasses, " "),
+		},
+		Content: label,
+		Fallback: Text{
+			Content: label,
+			Style:   strings.Join(classes, " "),
+		},
+	}
+}
+
 func (e HtmlElement) HTML() string {
+	if e.Tag == "" {
+		return e.Content
+	}
 	return fmt.Sprintf("<%s %s>%s</%s>", e.Tag, formatAttributes(e.Attributes), e.Content, e.Tag)
 }
 
@@ -180,8 +198,23 @@ func (e HtmlElement) Markdown() string {
 	return e.Fallback.Markdown()
 }
 
+var NBSP = HtmlElement{
+	Tag:      "",
+	Content:  "&nbsp;",
+	Fallback: Text{Content: " "},
+}
+
+var TAB = HtmlElement{
+	Tag:      "",
+	Content:  "&emsp;",
+	Fallback: Text{Content: "\t"},
+}
+
 var BR = HtmlElement{
-	Tag:      "br",
+	Tag: "br",
+	Attributes: map[string]string{
+		"class": "clicky",
+	},
 	Content:  "",
 	Fallback: Text{Content: "\n"},
 }
