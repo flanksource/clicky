@@ -159,6 +159,7 @@ func NewTableFromRows(o []PrettyDataRow) TextTable {
 type TableRow map[string]TypedValue
 type TextTable struct {
 	Headers     TextList
+	FieldNames  []string // Maps header index to field name for row lookups
 	Rows        []TableRow
 	Interactive bool
 }

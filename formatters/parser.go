@@ -642,12 +642,44 @@ func convertSliceToPrettyDataWithOptions(val reflect.Value, opts FormatOptions) 
 		// Extract table schema from the first successful row (for structs)
 		// This ensures schema matches PrettyRow columns
 		if i == 0 && len(tableFields) == 0 {
-			for columnName := range row {
-				tableFields = append(tableFields, api.PrettyField{
+			// Create a slice to store columns with their order values for sorting
+			type columnWithOrder struct {
+				field      api.PrettyField
+				orderValue int
+			}
+			columnsToSort := make([]columnWithOrder, 0, len(row))
+
+			for columnName, typedValue := range row {
+				field := api.PrettyField{
 					Name:  columnName,
 					Label: columnName,
 					Type:  "string", // Default type, could be enhanced
+				}
+
+				// Extract order value from the column's style if it's a Text object
+				orderValue := 0
+				if textable := typedValue.Value(); textable != nil {
+					if text, ok := textable.(api.Text); ok {
+						orderValue = api.ExtractOrderValue(text.Style)
+						logger.V(5).Infof("Column %s has order value %d (style: %s)", columnName, orderValue, text.Style)
+					}
+				}
+
+				columnsToSort = append(columnsToSort, columnWithOrder{
+					field:      field,
+					orderValue: orderValue,
 				})
+			}
+
+			// Sort columns by order value (columns without order-X get 0 and appear first)
+			sort.SliceStable(columnsToSort, func(i, j int) bool {
+				return columnsToSort[i].orderValue < columnsToSort[j].orderValue
+			})
+
+			// Extract sorted fields
+			for _, col := range columnsToSort {
+				tableFields = append(tableFields, col.field)
+				logger.V(5).Infof("Sorted column: %s (order=%d)", col.field.Name, col.orderValue)
 			}
 		}
 

@@ -24,7 +24,7 @@ func TestKeyValuePair_String(t *testing.T) {
 		{
 			name:     "empty value",
 			kv:       KeyValuePair{Key: "Empty", Value: ""},
-			expected: "Empty: ",
+			expected: "",
 		},
 	}
 

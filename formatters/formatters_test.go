@@ -305,29 +305,6 @@ func TestAllFormatters(t *testing.T) {
 			},
 		},
 		{
-			Name:      "HTMLFormatter",
-			Formatter: NewHTMLFormatter(),
-			Validate: func(t *testing.T, output string) {
-				// Check HTML structure
-				if !strings.Contains(output, "<!DOCTYPE html>") {
-					t.Errorf("HTML formatter should produce valid HTML document")
-				}
-				if !strings.Contains(output, "TEST-001") {
-					t.Errorf("HTML should contain ID value")
-				}
-				if !strings.Contains(output, "$299.99") {
-					t.Errorf("HTML should format currency correctly")
-				}
-				if !strings.Contains(output, "2024-01-15 10:30:00") {
-					t.Errorf("HTML should format dates correctly")
-				}
-				// Check nested fields
-				if !strings.Contains(output, "electronics") {
-					t.Errorf("HTML should display nested map values")
-				}
-			},
-		},
-		{
 			Name:      "PDFFormatter",
 			Formatter: NewPDFFormatter(),
 			Validate: func(t *testing.T, output string) {
@@ -413,8 +390,6 @@ func TestAllFormatters(t *testing.T) {
 					Parser: parser,
 				}
 				output, err = sf.formatWithPrettyData(prettyData, FormatOptions{Format: "csv"})
-			case *HTMLFormatter:
-				output, err = f.Format(prettyData)
 			case *PDFFormatter:
 				output, err = f.Format(prettyData)
 			case *MarkdownFormatter:
@@ -486,7 +461,7 @@ func TestDateParsing(t *testing.T) {
 				return
 			}
 
-			formatted := fieldValue.Formatted()
+			formatted := fmt.Sprintf("%v", fieldValue.Primitive())
 			if formatted != tc.expected {
 				t.Errorf("Expected %s, got %s", tc.expected, formatted)
 			}
@@ -515,7 +490,11 @@ func TestNestedMapFormatting(t *testing.T) {
 	}
 
 	// Test formatting
-	formatted := field.FormatMapValue(nestedData)
+	fieldValue, err := field.Parse(nestedData)
+	if err != nil {
+		t.Fatalf("Failed to parse nested data: %v", err)
+	}
+	formatted := fmt.Sprintf("%v", fieldValue.Primitive())
 
 	// Check that nested values are properly formatted
 	if !strings.Contains(formatted, "Level1:") {

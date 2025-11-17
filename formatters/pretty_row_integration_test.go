@@ -1,6 +1,7 @@
 package formatters
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -127,4 +128,74 @@ func TestRegularStructWithoutPrettyRowInterface(t *testing.T) {
 	assert.True(t, strings.Contains(result, "item2"))
 	assert.True(t, strings.Contains(result, "100"))
 	assert.True(t, strings.Contains(result, "200"))
+}
+
+// OrderedProduct demonstrates column ordering using order-X Tailwind styles
+type OrderedProduct struct {
+	Name     string
+	Price    float64
+	Category string
+	SKU      string
+}
+
+// PrettyRow implements PrettyRow with explicit column ordering
+func (p OrderedProduct) PrettyRow(opts interface{}) map[string]api.Text {
+	return map[string]api.Text{
+		// SKU should appear first (no order = order-0)
+		"SKU": {Content: p.SKU, Style: "font-mono"},
+		// Name should appear second (order-1)
+		"Name": {Content: p.Name, Style: "font-bold order-1"},
+		// Category should appear third (order-2)
+		"Category": {Content: p.Category, Style: "text-gray-600 order-2"},
+		// Price should appear fourth (order-3)
+		"Price": {Content: fmt.Sprintf("$%.2f", p.Price), Style: "text-green-600 order-3"},
+	}
+}
+
+func TestPrettyRowColumnOrdering(t *testing.T) {
+	products := []OrderedProduct{
+		{SKU: "PROD-001", Name: "Widget", Category: "Tools", Price: 29.99},
+		{SKU: "PROD-002", Name: "Gadget", Category: "Electronics", Price: 49.99},
+	}
+
+	manager := NewFormatManager()
+	opts := FormatOptions{Format: "markdown", NoColor: false}
+
+	result, err := manager.FormatWithOptions(opts, products)
+	assert.NoError(t, err)
+	assert.NotEmpty(t, result)
+
+	// Debug: print the actual result
+	t.Logf("Formatted output:\n%s", result)
+
+	// Extract the header line
+	lines := strings.Split(result, "\n")
+	var headerLine string
+	for _, line := range lines {
+		if strings.HasPrefix(line, "|") && strings.Contains(line, "SKU") {
+			headerLine = line
+			break
+		}
+	}
+
+	assert.NotEmpty(t, headerLine, "Header line not found in output")
+	t.Logf("Header line: %s", headerLine)
+
+	// Verify column order: SKU (order-0), Name (order-1), Category (order-2), Price (order-3)
+	// Find position of each column in the header (case-insensitive)
+	headerUpper := strings.ToUpper(headerLine)
+	skuPos := strings.Index(headerUpper, "SKU")
+	namePos := strings.Index(headerUpper, "NAME")
+	categoryPos := strings.Index(headerUpper, "CATEGORY")
+	pricePos := strings.Index(headerUpper, "PRICE")
+
+	assert.Greater(t, skuPos, -1, "SKU column not found")
+	assert.Greater(t, namePos, -1, "Name column not found")
+	assert.Greater(t, categoryPos, -1, "Category column not found")
+	assert.Greater(t, pricePos, -1, "Price column not found")
+
+	// Verify the order: SKU < Name < Category < Price
+	assert.Less(t, skuPos, namePos, "SKU should appear before Name (got positions: SKU=%d, Name=%d)", skuPos, namePos)
+	assert.Less(t, namePos, categoryPos, "Name should appear before Category (got positions: Name=%d, Category=%d)", namePos, categoryPos)
+	assert.Less(t, categoryPos, pricePos, "Category should appear before Price (got positions: Category=%d, Price=%d)", categoryPos, pricePos)
 }

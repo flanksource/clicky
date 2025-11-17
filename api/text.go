@@ -34,6 +34,16 @@ type Textable interface {
 	Markdown() string // Markdown formatted output
 }
 
+func CompactList[T any](items []T) Textable {
+	list := List{
+		MaxInline: 3,
+	}
+	for _, item := range items {
+		list.Items = append(list.Items, Human(item))
+	}
+	return list
+}
+
 // Text represents styled content that can be rendered to multiple output formats.
 // It supports hierarchical structure through Children, CSS-compatible styling,
 // and format-specific rendering (ANSI, HTML, Markdown).
@@ -58,7 +68,6 @@ func (t Text) MarshalJSON() ([]byte, error) {
 
 // Format implements fmt.Formatter to ensure sensitive values are redacted in all format verbs
 func (t Text) Format(f fmt.State, verb rune) {
-	f.Write([]byte(t.ANSI()))
 	switch verb {
 	case 's':
 		f.Write([]byte(t.String()))
@@ -187,7 +196,7 @@ func (t Text) NewLine() Text {
 }
 
 func (t Text) HR() Text {
-	return t.Add(BR).Indent(t.indent)
+	return t.Add(HR).Indent(t.indent)
 }
 
 // Text adds a new child Text with the specified content and styles.
@@ -238,11 +247,15 @@ func (t Text) Appendf(format string, args ...interface{}) Text {
 }
 
 func (t Text) Space() Text {
-	return t.Append(" ")
+	return t.Append(NBSP)
 }
 
 func (t Text) Tab() Text {
-	return t.Append("\t")
+	return t.Append(TAB)
+}
+
+func (t Text) IsSpace() bool {
+	return strings.TrimSpace(t.Content) == ""
 }
 
 // Append adds a new child Text with the specified content and styles.
@@ -385,15 +398,28 @@ type KeyValuePair struct {
 	Style string // "compact" (default) or "badge"
 }
 
+func (kv KeyValuePair) IsEmpty() bool {
+	return kv.Value == nil || fmt.Sprintf("%v", kv.Value) == ""
+}
+
 func (kv KeyValuePair) String() string {
+	if kv.IsEmpty() {
+		return ""
+	}
 	return fmt.Sprintf("%s: %v", kv.Key, kv.Value)
 }
 
 func (kv KeyValuePair) ANSI() string {
+	if kv.IsEmpty() {
+		return ""
+	}
 	return Text{}.Append(kv.Key+": ", "text-muted").Add(Human(kv.Value, kv.Style)).ANSI()
 }
 
 func (kv KeyValuePair) Markdown() string {
+	if kv.IsEmpty() {
+		return ""
+	}
 	return fmt.Sprintf("**%s**: %v", kv.Key, kv.Value)
 }
 
@@ -470,6 +496,9 @@ func (dl DescriptionList) Markdown() string {
 }
 
 func KeyValue(key string, value any, styles ...string) KeyValuePair {
+	if value == nil || fmt.Sprintf("%v", value) == "" {
+		return KeyValuePair{}
+	}
 	style := "compact"
 	if len(styles) > 0 {
 		style = strings.Join(styles, " ")
@@ -575,16 +604,20 @@ func (tl TextList) Strings() []string {
 
 // JoinNewlines joins all items with newlines and returns a single Textable.
 // This is the primary method for rendering a TextList - call .ANSI(), .HTML(), or .Markdown() on the result.
-func (tl TextList) JoinNewlines() Textable {
+func (tl TextList) JoinNewlines() Text {
+	return tl.Join(BR)
+}
+
+func (tl TextList) Join(sep ...Textable) Text {
 	if len(tl) == 0 {
 		return Text{}
 	}
 
 	result := Text{}
 	for i, item := range tl {
-		if i > 0 {
-			// Add newline between items
-			result = result.NewLine()
+		if i > 0 && len(sep) > 0 {
+			// Add separator between items
+			result = result.Add(sep[0])
 		}
 		result = result.Add(item)
 	}
@@ -645,4 +678,30 @@ func (tl TextList) HTML() string {
 }
 func (tl TextList) Markdown() string {
 	return tl.JoinNewlines().Markdown()
+}
+
+// ExtractOrderValue extracts the Tailwind order-X class value from a style string.
+// Returns 0 for columns without order-X (they appear first).
+// Supports order-1 through order-12 (standard Tailwind range).
+func ExtractOrderValue(style string) int {
+	if style == "" {
+		return 0
+	}
+
+	// Split style string into individual classes
+	classes := strings.Fields(style)
+	for _, class := range classes {
+		// Check if this is an order-X class
+		if strings.HasPrefix(class, "order-") {
+			orderStr := strings.TrimPrefix(class, "order-")
+			// Parse the order value
+			var orderVal int
+			if _, err := fmt.Sscanf(orderStr, "%d", &orderVal); err == nil {
+				return orderVal
+			}
+		}
+	}
+
+	// No order class found, return 0 (appears first)
+	return 0
 }

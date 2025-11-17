@@ -106,8 +106,9 @@ var _ = ginkgo.Describe("StructToRowWithOptions", func() {
 			Expect(exists).To(BeTrue())
 			Expect(nameField.String()).To(Equal("Interface Test"))
 			Expect(nameField.Textable).ToNot(BeNil())
-			nameText, ok := nameField.Textable.(*Text)
-			Expect(ok).To(BeTrue())
+			Expect(fmt.Sprintf("%T", nameField.Textable)).To(Equal("api.Text"))
+
+			nameText, ok := nameField.Textable.(Text)
 			Expect(nameText.Content).To(Equal("Interface Test"))
 			Expect(nameText.Style).To(Equal("font-bold"))
 
@@ -116,7 +117,7 @@ var _ = ginkgo.Describe("StructToRowWithOptions", func() {
 			Expect(exists).To(BeTrue())
 			Expect(countField.String()).To(Equal("7"))
 			Expect(countField.Textable).ToNot(BeNil())
-			countText, ok := countField.Textable.(*Text)
+			countText, ok := countField.Textable.(Text)
 			Expect(ok).To(BeTrue())
 			Expect(countText.Style).To(Equal("text-blue-600"))
 		})
@@ -143,7 +144,59 @@ var _ = ginkgo.Describe("StructToRowWithOptions", func() {
 
 			nameField, exists := row["Name"]
 			Expect(exists).To(BeTrue())
-			Expect(nameField.Value).To(Equal("Regular Struct"))
+			Expect(nameField.Value().String()).To(Equal("Regular Struct"))
 		})
 	})
 })
+
+var _ = ginkgo.Describe("ExtractOrderValue", func() {
+	ginkgo.Context("when extracting order values from style strings", func() {
+		ginkgo.It("should return 0 for empty style", func() {
+			orderValue := ExtractOrderValue("")
+			Expect(orderValue).To(Equal(0))
+		})
+
+		ginkgo.It("should return 0 for style without order class", func() {
+			orderValue := ExtractOrderValue("text-blue-600 font-bold")
+			Expect(orderValue).To(Equal(0))
+		})
+
+		ginkgo.It("should extract order-1", func() {
+			orderValue := ExtractOrderValue("text-blue-600 order-1")
+			Expect(orderValue).To(Equal(1))
+		})
+
+		ginkgo.It("should extract order-5 from complex style", func() {
+			orderValue := ExtractOrderValue("font-bold text-red-600 order-5 underline")
+			Expect(orderValue).To(Equal(5))
+		})
+
+		ginkgo.It("should extract order-12", func() {
+			orderValue := ExtractOrderValue("order-12")
+			Expect(orderValue).To(Equal(12))
+		})
+
+		ginkgo.It("should handle order at the beginning", func() {
+			orderValue := ExtractOrderValue("order-3 text-green-600")
+			Expect(orderValue).To(Equal(3))
+		})
+	})
+})
+
+// OrderedTestStruct implements PrettyRow with order-X styles for testing column ordering
+type OrderedTestStruct struct {
+	FirstName string
+	LastName  string
+	Age       int
+	Email     string
+}
+
+// PrettyRow implements PrettyRow interface with explicit column ordering
+func (o OrderedTestStruct) PrettyRow(opts interface{}) map[string]Text {
+	return map[string]Text{
+		"Email":     {Content: o.Email, Style: "order-1"},      // Should appear second (order-1)
+		"FirstName": {Content: o.FirstName, Style: "order-2"},  // Should appear third (order-2)
+		"Age":       {Content: fmt.Sprintf("%d", o.Age)},       // Should appear first (no order = 0)
+		"LastName":  {Content: o.LastName, Style: "order-1"},   // Should appear second (order-1, same as Email)
+	}
+}

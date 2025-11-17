@@ -1,12 +1,14 @@
 package formatters
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
 
 	"github.com/flanksource/clicky/api"
 	"github.com/flanksource/commons/logger"
+	"gopkg.in/yaml.v3"
 )
 
 type FormatManager struct {
@@ -150,6 +152,33 @@ func (f FormatManager) Format(format string, data interface{}) (string, error) {
 	}
 }
 
+func formatTextable(data api.Textable, opts FormatOptions) (string, error) {
+
+	switch opts.ResolveFormat() {
+	case "json":
+		d, err := json.MarshalIndent(data, "", "  ")
+		if err != nil {
+			return "", fmt.Errorf("failed to marshal JSON: %w", err)
+		}
+		return string(d), nil
+	case "yaml", "yml":
+		d, err := yaml.Marshal(data)
+		if err != nil {
+			return "", fmt.Errorf("failed to marshal YAML: %w", err)
+		}
+		return string(d), nil
+
+	case "markdown", "md":
+		return data.Markdown(), nil
+	case "pretty":
+		return data.ANSI(), nil
+	case "html":
+		return data.HTML(), nil
+	default:
+		return "", fmt.Errorf("unsupported format for Textable: %s", opts.Format)
+	}
+}
+
 func (f FormatManager) FormatWithOptions(options FormatOptions, data ...any) (string, error) {
 
 	if len(data) == 0 {
@@ -166,8 +195,13 @@ func (f FormatManager) FormatWithOptions(options FormatOptions, data ...any) (st
 	}
 
 	if len(data) == 1 {
-		if s, ok := data[0].(string); ok {
-			return s, nil
+		switch v := data[0].(type) {
+		case string:
+			return v, nil
+		case []byte:
+			return string(v), nil
+		case api.Textable:
+			return formatTextable(v, options)
 		}
 	}
 

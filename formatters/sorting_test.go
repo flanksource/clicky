@@ -10,11 +10,11 @@ import (
 func TestSortRows(t *testing.T) {
 	// Create test rows
 	rows := []api.PrettyDataRow{
-		{"name": api.FieldValue{Value: "zebra"}, "language": api.FieldValue{Value: "go"}, "version": api.FieldValue{Value: "1.0"}},
-		{"name": api.FieldValue{Value: "apple"}, "language": api.FieldValue{Value: "python"}, "version": api.FieldValue{Value: "2.0"}},
-		{"name": api.FieldValue{Value: "banana"}, "language": api.FieldValue{Value: "go"}, "version": api.FieldValue{Value: "1.1"}},
-		{"name": api.FieldValue{Value: "cherry"}, "language": api.FieldValue{Value: "javascript"}, "version": api.FieldValue{Value: "3.0"}},
-		{"name": api.FieldValue{Value: "date"}, "language": api.FieldValue{Value: "go"}, "version": api.FieldValue{Value: "1.2"}},
+		{"name": api.TypedValue{Textable: api.Text{Content: "zebra"}}, "language": api.TypedValue{Textable: api.Text{Content: "go"}}, "version": api.TypedValue{Textable: api.Text{Content: "1.0"}}},
+		{"name": api.TypedValue{Textable: api.Text{Content: "apple"}}, "language": api.TypedValue{Textable: api.Text{Content: "python"}}, "version": api.TypedValue{Textable: api.Text{Content: "2.0"}}},
+		{"name": api.TypedValue{Textable: api.Text{Content: "banana"}}, "language": api.TypedValue{Textable: api.Text{Content: "go"}}, "version": api.TypedValue{Textable: api.Text{Content: "1.1"}}},
+		{"name": api.TypedValue{Textable: api.Text{Content: "cherry"}}, "language": api.TypedValue{Textable: api.Text{Content: "javascript"}}, "version": api.TypedValue{Textable: api.Text{Content: "3.0"}}},
+		{"name": api.TypedValue{Textable: api.Text{Content: "date"}}, "language": api.TypedValue{Textable: api.Text{Content: "go"}}, "version": api.TypedValue{Textable: api.Text{Content: "1.2"}}},
 	}
 
 	// Define sort fields (language first, then name)
@@ -36,7 +36,7 @@ func TestSortRows(t *testing.T) {
 	}
 
 	for i, exp := range expected {
-		actualName := rows[i]["name"].Value.(string)
+		actualName := rows[i]["name"].String()
 		if actualName != exp {
 			t.Errorf("Row %d: expected name=%s, got %s", i, exp, actualName)
 		}
