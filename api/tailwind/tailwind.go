@@ -364,6 +364,11 @@ func ParseStyle(styleStr string) Style {
 		if strings.HasPrefix(class, "max-w-[") && strings.HasSuffix(class, "]") {
 			valueStr := strings.TrimPrefix(class, "max-w-[")
 			valueStr = strings.TrimSuffix(valueStr, "]")
+			// Strip unit suffixes like "ch", "px", "rem", etc.
+			valueStr = strings.TrimSuffix(valueStr, "ch")
+			valueStr = strings.TrimSuffix(valueStr, "px")
+			valueStr = strings.TrimSuffix(valueStr, "rem")
+			valueStr = strings.TrimSuffix(valueStr, "em")
 			if value, err := strconv.Atoi(valueStr); err == nil && value > 0 {
 				style.MaxWidth = value
 			}
