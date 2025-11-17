@@ -4,7 +4,10 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/lipgloss/tree"
 	"github.com/flanksource/clicky/api"
+	"github.com/flanksource/clicky/api/tailwind"
 )
 
 type TextTree struct {
@@ -132,78 +135,57 @@ func buildNoTreeDataMessage(data *api.PrettyData) string {
 	return msg.String()
 }
 
-// FormatTree formats a tree node and its children recursively
-func (f *TreeFormatter) FormatTree(node api.TreeNode, depth int, prefix string, isLast bool) string {
+// buildLipglossTree builds a lipgloss tree structure from a TreeNode
+func (f *TreeFormatter) buildLipglossTree(node api.TreeNode, depth int) *tree.Tree {
 	if node == nil {
-		return ""
+		return tree.New()
 	}
 
-	// Check max depth
-	if f.Options.MaxDepth >= 0 && depth > f.Options.MaxDepth {
-		return ""
-	}
-
-	var result strings.Builder
-
-	_prefix := prefix
-	// Build the current line prefix
-	if depth > 0 {
-		if isLast {
-			_prefix += f.Options.LastPrefix
-		} else {
-			_prefix += f.Options.BranchPrefix
-		}
-	}
-	result.WriteString(_prefix)
-
-	// All TreeNodes now implement Pretty(), so use it for formatting
+	// All TreeNodes implement Pretty(), so use it for formatting
 	prettyText := node.Pretty()
-	// Convert Text to string with appropriate formatting
-	if f.NoColor {
-		result.WriteString(strings.ReplaceAll(prettyText.String(), "\n", "\n"+_prefix))
-	} else {
 
-		// FIXME parse for text for ANSI colors, and then reset the ANSI to print the prefix, and then reset back to the original ansi color
-		result.WriteString(strings.ReplaceAll(prettyText.ANSI(), "\n", "\n"+api.Text{Content: _prefix, Style: "text-white"}.ANSI()))
+	// Build the node label with styling
+	var nodeLabel string
+	if f.NoColor {
+		nodeLabel = prettyText.String()
+	} else {
+		// Apply lipgloss styling if we have a style
+		if prettyText.Style != "" {
+			style := parseTailwindToLipgloss(prettyText.Style)
+			nodeLabel = style.Render(prettyText.Content)
+		} else {
+			nodeLabel = prettyText.Content
+		}
 	}
 
 	// Handle compact list node specially
 	if compactNode, ok := node.(*api.CompactListNode); ok && f.Options.Compact {
 		items := f.FormatCompactList(compactNode.GetItems(), "")
 		if items != "" {
-			result.WriteString(": ")
-			result.WriteString(items)
+			nodeLabel = nodeLabel + ": " + items
 		}
 	}
 
-	result.WriteString("\n")
+	// Create the tree with this node as root
+	t := tree.New().Root(nodeLabel)
 
-	// Check if node is collapsed (using pretty text as key)
+	// Check if node is collapsed
 	if f.Options.CollapsedNodes != nil && f.Options.CollapsedNodes[prettyText.String()] {
-		return result.String()
+		return t
 	}
 
-	// Process children
-	children := node.GetChildren()
-	for i, child := range children {
-		isLastChild := i == len(children)-1
-
-		// Build the prefix for child nodes
-		var childPrefix string
-		if depth > 0 {
-			childPrefix = prefix
-			if isLast {
-				childPrefix += f.Options.IndentPrefix
-			} else {
-				childPrefix += f.Options.ContinuePrefix
+	// Process children if not at max depth
+	if f.Options.MaxDepth < 0 || depth < f.Options.MaxDepth {
+		children := node.GetChildren()
+		for _, child := range children {
+			childTree := f.buildLipglossTree(child, depth+1)
+			if childTree != nil {
+				t = t.Child(childTree)
 			}
 		}
-
-		childOutput := f.FormatTree(child, depth+1, childPrefix, isLastChild)
-		result.WriteString(childOutput)
 	}
 
-	return result.String()
+	return t
 }
 
 // FormatCompactList formats a list of items in compact mode
@@ -220,12 +202,72 @@ func (f *TreeFormatter) FormatCompactList(items []string, separator string) stri
 	return strings.Join(items, separator)
 }
 
-// FormatTreeFromRoot formats a tree starting from the root node
+// parseTailwindToLipgloss converts a Tailwind style string to a lipgloss.Style
+func parseTailwindToLipgloss(tailwindStyle string) lipgloss.Style {
+	style := lipgloss.NewStyle()
+
+	// Parse the Tailwind style string
+	classes := strings.Fields(tailwindStyle)
+	for _, class := range classes {
+		// Handle text colors
+		if strings.HasPrefix(class, "text-") {
+			if color, err := tailwind.ParseTailwindColor(class); err == nil && color != "" {
+				style = style.Foreground(lipgloss.Color(color))
+			}
+		}
+		// Handle background colors
+		if strings.HasPrefix(class, "bg-") {
+			if color, err := tailwind.ParseTailwindColor(class); err == nil && color != "" {
+				style = style.Background(lipgloss.Color(color))
+			}
+		}
+		// Handle font weights
+		switch class {
+		case "bold", "font-bold", "font-semibold":
+			style = style.Bold(true)
+		case "italic", "font-italic":
+			style = style.Italic(true)
+		case "underline":
+			style = style.Underline(true)
+		case "strikethrough", "line-through":
+			style = style.Strikethrough(true)
+		}
+	}
+
+	return style
+}
+
+// FormatTreeFromRoot formats a tree starting from the root node using lipgloss
 func (f *TreeFormatter) FormatTreeFromRoot(root api.TreeNode) string {
 	if root == nil {
 		return ""
 	}
-	return f.FormatTree(root, 0, "", true)
+
+	t := f.buildLipglossTree(root, 0)
+	if t == nil {
+		return ""
+	}
+
+	// Configure the tree enumerator (rounded style)
+	t = t.Enumerator(tree.RoundedEnumerator)
+
+	// Use ASCII characters if UseUnicode is false
+	if !f.Options.UseUnicode {
+		t = t.Enumerator(func(children tree.Children, i int) string {
+			if children.Length()-1 == i {
+				return "`-- "
+			}
+			return "+-- "
+		})
+		t = t.Indenter(func(children tree.Children, i int) string {
+			if children.Length()-1 == i {
+				return "    "
+			}
+			return "|   "
+		})
+	}
+
+	return t.String()
 }
 
 // FormatInlineTree formats a tree structure for inline display
