@@ -403,17 +403,33 @@ func (p *StructParser) ParseDataWithSchema(data interface{}, schema *PrettyObjec
 				if err != nil {
 					return nil, err
 				}
-				list = append(list, NewTypedValue(nestedPrettyData))
+				// Store nested maps/structs in values, not list
+				// The TypedValue will contain the nested TypedMap
+				if nestedPrettyData.TypedMap != nil {
+					values[field.Name] = TypedValue{TypedMap: nestedPrettyData.TypedMap}
+				} else {
+					values[field.Name] = NewTypedValue(nestedPrettyData)
+				}
 
 			} else {
-				// Parse regular field - use ProcessFieldValue to handle pointers and structs
-				processedValue := p.ProcessFieldValue(fieldVal)
-				// fieldValue, err := field.Parse(processedValue)
-				// if err != nil {
-				// 	return nil, err
-				// }
-
-				values[field.Name] = processedValue
+				// Apply field schema transformation if field has type/format specified
+				if field.Type != "" && field.Format != "" {
+					// Parse the raw value using the field schema
+					fieldValue, err := field.Parse(fieldVal.Interface())
+					if err != nil {
+						return nil, err
+					}
+					// Convert FieldValue to TypedValue
+					if fieldValue.TimeValue != nil {
+						values[field.Name] = TypedValue{Textable: Human(*fieldValue.TimeValue)}
+					} else {
+						values[field.Name] = p.ProcessFieldValue(fieldVal)
+					}
+				} else {
+					// Use ProcessFieldValue to handle pointers and structs
+					processedValue := p.ProcessFieldValue(fieldVal)
+					values[field.Name] = processedValue
+				}
 			}
 		}
 	}
@@ -438,7 +454,12 @@ func (p *StructParser) parseTableData(val reflect.Value, field PrettyField) Text
 	tt := TextTable{}
 
 	for _, tableField := range field.TableOptions.Columns {
-		tt.Headers = append(tt.Headers, Text{Content: tableField.Label})
+		// Use Label if provided, otherwise prettify the Name
+		headerLabel := tableField.Label
+		if headerLabel == "" {
+			headerLabel = tableField.prettifyFieldName(tableField.Name)
+		}
+		tt.Headers = append(tt.Headers, Text{Content: headerLabel})
 		tt.FieldNames = append(tt.FieldNames, tableField.Name)
 	}
 

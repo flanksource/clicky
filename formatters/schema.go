@@ -181,14 +181,39 @@ func (sf *SchemaFormatter) formatWithPrettyData(data *api.PrettyData, options Fo
 	}
 }
 
+// convertTypedValueToInterface recursively converts TypedValue to appropriate Go types
+// for JSON/YAML serialization, preserving nested structures
+func (sf *SchemaFormatter) convertTypedValueToInterface(tv api.TypedValue) interface{} {
+	// Handle nested maps - preserve as map[string]interface{}
+	if tv.TypedMap != nil {
+		result := make(map[string]interface{})
+		for key, value := range *tv.TypedMap {
+			result[key] = sf.convertTypedValueToInterface(value)
+		}
+		return result
+	}
+
+	// Handle nested lists - preserve as []interface{}
+	if tv.TypedList != nil {
+		result := make([]interface{}, len(*tv.TypedList))
+		for i, value := range *tv.TypedList {
+			result[i] = sf.convertTypedValueToInterface(value)
+		}
+		return result
+	}
+
+	// For primitives (dates, numbers, strings, etc.), use String() to get formatted value
+	return tv.String()
+}
+
 // formatPrettyDataToMap converts PrettyData to a map for JSON/YAML formatting
 func (sf *SchemaFormatter) formatPrettyDataToMap(data *api.PrettyData) map[string]interface{} {
 	output := make(map[string]interface{})
 
-	// Add all values using String() for consistency with other formatters
+	// Add all values using recursive conversion to preserve nested structures
 	if data.TypedMap != nil {
 		for key, typedValue := range *data.TypedMap {
-			output[key] = typedValue.String()
+			output[key] = sf.convertTypedValueToInterface(typedValue)
 		}
 	}
 
@@ -198,33 +223,7 @@ func (sf *SchemaFormatter) formatPrettyDataToMap(data *api.PrettyData) map[strin
 		for i, row := range data.Table.Rows {
 			rowData := make(map[string]interface{})
 			for fieldName, typedValue := range row {
-				rowData[fieldName] = typedValue.String()
-			}
-			tableData[i] = rowData
-		}
-		output["table"] = tableData
-	}
-
-	return output
-}
-
-// convertPrettyDataToMap recursively converts PrettyData to a map
-func (sf *SchemaFormatter) convertPrettyDataToMap(data *api.PrettyData) map[string]interface{} {
-	output := make(map[string]interface{})
-
-	if data.TypedMap != nil {
-		for key, typedValue := range *data.TypedMap {
-			output[key] = typedValue.String()
-		}
-	}
-
-	// Include table if present
-	if data.Table != nil {
-		tableData := make([]map[string]interface{}, len(data.Table.Rows))
-		for i, row := range data.Table.Rows {
-			rowData := make(map[string]interface{})
-			for fieldName, typedValue := range row {
-				rowData[fieldName] = typedValue.String()
+				rowData[fieldName] = sf.convertTypedValueToInterface(typedValue)
 			}
 			tableData[i] = rowData
 		}

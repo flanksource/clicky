@@ -23,11 +23,11 @@ func (t TextTable) String() string {
 }
 
 func (t TextTable) ANSI() string {
-	return t.renderLipgloss(true, TransformerANSI)
+	return "\n" + t.renderLipgloss(true, TransformerANSI)
 }
 
 func (t TextTable) Markdown() string {
-	return t.render(renderer.NewMarkdown(), TransformerMarkdown)
+	return "\n" + t.render(renderer.NewMarkdown(), TransformerMarkdown)
 }
 
 var TransformerANSI TextTransformer = func(t Textable) string {

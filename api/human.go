@@ -58,6 +58,13 @@ func Human(content any, styles ...string) Text {
 				Style:   strings.Join(append(styles, "date"), " "),
 			}
 		}
+		// Only omit timezone if it's UTC
+		if t.Location() == time.UTC {
+			return Text{
+				Content: t.Format("2006-01-02 15:04:05"),
+				Style:   strings.Join(append(styles, "date"), " "),
+			}
+		}
 		return Text{
 			Content: t.Format(time.RFC3339),
 			Style:   strings.Join(append(styles, "date"), " "),

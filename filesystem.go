@@ -42,7 +42,7 @@ type FileTreeNode struct {
 }
 
 // GetChildren implements TreeNode interface
-func (f *FileTreeNode) GetChildren() []api.TreeNode {
+func (f FileTreeNode) GetChildren() []api.TreeNode {
 	if f.Children == nil {
 		return nil
 	}
@@ -54,7 +54,7 @@ func (f *FileTreeNode) GetChildren() []api.TreeNode {
 }
 
 // Pretty returns a formatted Text with file info
-func (f *FileTreeNode) Pretty() api.Text {
+func (f FileTreeNode) Pretty() api.Text {
 	t := api.Text{}
 
 	if f.IsDir {
@@ -103,14 +103,12 @@ func WithHiddenFiles(show bool) FileSystemOption {
 
 // NewFileSystem creates a FileTreeNode from a directory path
 func NewFileSystem(path string, opts ...FileSystemOption) *FileTreeNode {
-	config := &FileTreeOptions{
-		MaxDepth: 10,
-	}
+	config := &FileTreeOptions{}
 	for _, opt := range opts {
 		opt(config)
 	}
 
-	Infof("Listing files in %s (%s)", path, *config)
+	Infof("Listing files in %s", path)
 	tree, err := buildFileTree(path, config.MaxDepth, 0, *config)
 	if err != nil {
 		return &FileTreeNode{
@@ -146,7 +144,7 @@ func buildFileTree(path string, maxDepth int, currentDepth int, options FileTree
 		options:  options,
 	}
 
-	if info.IsDir() && (maxDepth < 0 || currentDepth < maxDepth) {
+	if info.IsDir() && (maxDepth <= 0 || currentDepth < maxDepth) {
 		entries, err := os.ReadDir(path)
 		if err != nil {
 			return node, nil
