@@ -326,7 +326,10 @@ func ParseStyle(styleStr string) Style {
 
 		// Additional text utilities using slice lookup
 		if slices.Contains(truncateClasses, class) {
-			style.MaxWidth = 50 // Example max width
+			// Only set default width if not already specified
+			if style.MaxWidth == 0 {
+				style.MaxWidth = 50 // Default max width
+			}
 		}
 
 		// Visibility utilities using slice lookup
