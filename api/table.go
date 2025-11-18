@@ -56,7 +56,6 @@ func (t *TextTable) render(renderer tw.Renderer, transform TextTransformer) stri
 	var buf bytes.Buffer
 
 	width := GetTerminalWidth()
-	logger.Infof("Rendering table with max width: %d", width)
 
 	// Create tablewriter instance with word wrapping enabled
 	// Set reasonable table max width to enable wrapping (this is distributed across columns)
