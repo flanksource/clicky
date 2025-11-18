@@ -244,16 +244,8 @@ func (tt TextTree) String() string {
 }
 
 func (tt TextTree) HTML() string {
-	// Keep simple indentation for HTML
-	var n = ""
-	if tt.Node != nil {
-		n = strings.Repeat("  ", tt.depth) + tt.Node.String()
-	}
-	for _, child := range tt.Children {
-		child.depth = tt.depth + 1
-		n += "\n" + child.String()
-	}
-	return n
+	// Render as interactive HTML tree with Alpine.js
+	return RenderTreeHTML(&tt, true)
 }
 
 func (tt TextTree) ANSI() string {

@@ -38,7 +38,6 @@ type HTMLFormatter struct {
 	IncludeCSS   bool
 	IsPDFMode    bool
 	tableCounter int // Counter for generating unique table IDs
-	nodeCounter  int // Counter for generating unique tree node IDs
 }
 
 // NewHTMLFormatter creates a new HTML formatter
@@ -761,103 +760,8 @@ func (f *HTMLFormatter) formatTreeFieldHTML(fieldValue api.TypedValue, _ api.Pre
 		return "<p class=\"text-gray-500\">No tree data available</p>"
 	}
 
-	// Format tree using HTML elements - use the TextTree as-is
-	return fieldValue.Tree.String()
-}
-
-// generateNodeID generates a unique node ID for tree nodes
-func (f *HTMLFormatter) generateNodeID() string {
-	f.nodeCounter++
-	return fmt.Sprintf("node-%d", f.nodeCounter)
-}
-
-// formatTreeNodeHTML recursively formats a tree node as HTML
-func (f *HTMLFormatter) formatTreeNodeHTML(node api.TreeNode, depth int) string {
-	if node == nil {
-		return ""
-	}
-
-	var result strings.Builder
-
-	// Get children
-	children := node.GetChildren()
-
-	if depth == 0 {
-		// Root node - start the tree with Alpine.js data and skip root node label
-		if !f.IsPDFMode {
-			// Interactive mode with Alpine.js - use embedded tree function
-			result.WriteString(`<div class="tree-view" x-data="createTreeData()" x-init="expandAll()">`)
-
-			// Add Expand All / Collapse All buttons
-			result.WriteString(`<div class="tree-controls mb-3 flex gap-2">`)
-			result.WriteString(`<button @click="expandAll()" class="px-3 py-1 text-sm bg-blue-500 hover:bg-blue-600 text-white rounded">`)
-			result.WriteString(`Expand All`)
-			result.WriteString(`</button>`)
-			result.WriteString(`<button @click="collapseAll()" class="px-3 py-1 text-sm bg-gray-500 hover:bg-gray-600 text-white rounded">`)
-			result.WriteString(`Collapse All`)
-			result.WriteString(`</button>`)
-			result.WriteString(`</div>`)
-		} else {
-			// PDF mode - static tree
-			result.WriteString(`<div class="tree-view">`)
-		}
-
-		// Skip rendering root node label and render children directly at the top level
-		if len(children) > 0 {
-			result.WriteString(`<ul class="tree-children space-y-1">`)
-			for _, child := range children {
-				childHTML := f.formatTreeNodeHTML(child, depth+1)
-				result.WriteString(childHTML)
-			}
-			result.WriteString(`</ul>`)
-		}
-
-		result.WriteString(`</div>`)
-	} else {
-		// Child node
-		result.WriteString(`<li class="flex items-start tree-node-wrapper">`)
-
-		if len(children) > 0 && !f.IsPDFMode {
-			// Alpine.js toggle for nodes with children
-			nodeID := f.generateNodeID()
-			result.WriteString(fmt.Sprintf(`<span class="tree-toggle" @click.stop="toggleNode('%s')" data-node-id="%s">`, nodeID, nodeID))
-			result.WriteString(fmt.Sprintf(`<iconify-icon icon="ion:chevron-forward" x-show="!isExpanded('%s')"></iconify-icon>`, nodeID))
-			result.WriteString(fmt.Sprintf(`<iconify-icon icon="ion:chevron-down" x-show="isExpanded('%s')"></iconify-icon>`, nodeID))
-			result.WriteString(`</span>`)
-		} else {
-			// Static indicator for leaf nodes
-			result.WriteString(`<span class="tree-leaf-indicator">•</span>`)
-		}
-
-		result.WriteString(`<div class="flex-1">`)
-		if len(children) > 0 && !f.IsPDFMode {
-			nodeID := fmt.Sprintf("node-%d", f.nodeCounter)
-			result.WriteString(fmt.Sprintf(`<span class="tree-node cursor-pointer" @click="toggleNode('%s')">`, nodeID))
-		} else {
-			result.WriteString(`<span class="tree-node">`)
-		}
-		result.WriteString(node.Pretty().HTML())
-		result.WriteString(`</span>`)
-
-		if len(children) > 0 {
-			if !f.IsPDFMode {
-				nodeID := fmt.Sprintf("node-%d", f.nodeCounter)
-				result.WriteString(fmt.Sprintf(`<ul class="tree-children ml-4 mt-1 space-y-1" x-show="isExpanded('%s')">`, nodeID))
-			} else {
-				result.WriteString(`<ul class="tree-children ml-4 mt-1 space-y-1">`)
-			}
-			for _, child := range children {
-				childHTML := f.formatTreeNodeHTML(child, depth+1)
-				result.WriteString(childHTML)
-			}
-			result.WriteString(`</ul>`)
-		}
-
-		result.WriteString(`</div>`)
-		result.WriteString(`</li>`)
-	}
-
-	return result.String()
+	// Render tree as interactive HTML
+	return fieldValue.Tree.HTML()
 }
 
 // formatSingleTreeNode handles rendering when a single TreeNode struct is passed
@@ -878,8 +782,9 @@ func (f *HTMLFormatter) formatSingleTreeNode(root api.TreeNode) string {
 	result.WriteString("        <div class=\"bg-white rounded-lg shadow\">\n")
 	result.WriteString("            <div class=\"px-6 py-4\">\n")
 
-	// Render the tree recursively starting from root
-	treeHTML := f.formatTreeNodeHTML(root, 0)
+	// Convert TreeNode to TextTree and render as HTML
+	textTree := api.NewTree(root)
+	treeHTML := textTree.HTML()
 	result.WriteString(treeHTML)
 
 	result.WriteString("            </div>\n")
