@@ -218,8 +218,20 @@ func (f *HTMLFormatter) Format(in interface{}, options formatters.FormatOptions)
 		// Check for table format
 		switch field.Format {
 		case api.FormatTable:
-			tableData, exists := data.GetTable(field.Name)
-			if exists && tableData != nil && len(tableData.Rows) > 0 {
+			fieldValue, exists := data.GetValue(field.Name)
+			if !exists {
+				continue
+			}
+
+			// Get table data - check both Table field and Textable field (for api.TextTable)
+			var tableData *api.TextTable
+			if fieldValue.Table != nil {
+				tableData = fieldValue.Table
+			} else if textTable, ok := fieldValue.Textable.(api.TextTable); ok {
+				tableData = &textTable
+			}
+
+			if tableData != nil && len(tableData.Rows) > 0 {
 				// Add section title
 				result.WriteString("        <div class=\"bg-white rounded-lg shadow\">\n")
 				result.WriteString("            <div class=\"px-6 py-4 border-b border-gray-200\">\n")
@@ -358,8 +370,20 @@ func (f *HTMLFormatter) FormatPrettyData(data *api.PrettyData) (string, error) {
 		// Check for table format
 		switch field.Format {
 		case api.FormatTable:
-			tableData, exists := data.GetTable(field.Name)
-			if exists && tableData != nil && len(tableData.Rows) > 0 {
+			fieldValue, exists := data.GetValue(field.Name)
+			if !exists {
+				continue
+			}
+
+			// Get table data - check both Table field and Textable field (for api.TextTable)
+			var tableData *api.TextTable
+			if fieldValue.Table != nil {
+				tableData = fieldValue.Table
+			} else if textTable, ok := fieldValue.Textable.(api.TextTable); ok {
+				tableData = &textTable
+			}
+
+			if tableData != nil && len(tableData.Rows) > 0 {
 				// Add section title
 				result.WriteString("        <div class=\"bg-white rounded-lg shadow\">\n")
 				result.WriteString("            <div class=\"px-6 py-4 border-b border-gray-200\">\n")
