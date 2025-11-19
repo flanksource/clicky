@@ -22,7 +22,7 @@ func (f *PDFFormatter) Format(data *api.PrettyData) (string, error) {
 	// Generate HTML using the HTML formatter
 	htmlFormatter, ok := GetCustomFormatter("html")
 	if !ok {
-		return "", fmt.Errorf("html formatter not registered, registering using 'import _ github.com/flanksource/clicky/formatters/http'")
+		return "", fmt.Errorf("html formatter not registered; register it by importing: 'import _ \"github.com/flanksource/clicky/formatters/html\"'")
 	}
 	htmlContent, err := htmlFormatter(data, FormatOptions{})
 	if err != nil {

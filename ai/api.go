@@ -186,9 +186,16 @@ func ExecutePromptTyped[T any](ctx context.Context, agent Agent, request TypedPr
 		if data, ok := resp.StructuredData.(*T); ok {
 			typedResp.Data = *data
 		} else {
-			err := json.Unmarshal([]byte("failed to convert"), &typedResp.Data)
-			typedResp.Error = "failed to convert structured data to target type"
-			return typedResp, err
+			// Try to marshal and unmarshal through JSON
+			jsonData, marshalErr := json.Marshal(resp.StructuredData)
+			if marshalErr != nil {
+				typedResp.Error = fmt.Sprintf("failed to marshal structured data: %v", marshalErr)
+				return typedResp, marshalErr
+			}
+			if unmarshalErr := json.Unmarshal(jsonData, &typedResp.Data); unmarshalErr != nil {
+				typedResp.Error = fmt.Sprintf("failed to unmarshal structured data to target type: %v", unmarshalErr)
+				return typedResp, unmarshalErr
+			}
 		}
 	}
 

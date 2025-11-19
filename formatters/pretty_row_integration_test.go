@@ -139,7 +139,7 @@ type OrderedProduct struct {
 }
 
 // PrettyRow implements PrettyRow with explicit column ordering
-func (p OrderedProduct) PrettyRow(opts interface{}) map[string]api.Text {
+func (p OrderedProduct) PrettyRow(_ interface{}) map[string]api.Text {
 	return map[string]api.Text{
 		// SKU should appear first (no order = order-0)
 		"SKU": {Content: p.SKU, Style: "font-mono"},
@@ -150,6 +150,7 @@ func (p OrderedProduct) PrettyRow(opts interface{}) map[string]api.Text {
 		// Price should appear fourth (order-3)
 		"Price": {Content: fmt.Sprintf("$%.2f", p.Price), Style: "text-green-600 order-3"},
 	}
+}
 }
 
 func TestPrettyRowColumnOrdering(t *testing.T) {
