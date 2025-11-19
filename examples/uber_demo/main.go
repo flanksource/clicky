@@ -530,12 +530,13 @@ type TablesOptions struct{}
 
 // ProductTable demonstrates basic table formatting
 type ProductTable struct {
-	ID       int     `json:"id" pretty:"label=ID"`
-	Name     string  `json:"name" pretty:"label=Product Name"`
-	Category string  `json:"category" pretty:"label=Category"`
-	Price    float64 `json:"price" pretty:"label=Price,format=currency"`
-	InStock  bool    `json:"in_stock" pretty:"label=In Stock"`
-	Rating   float64 `json:"rating" pretty:"label=Rating"`
+	ID          int     `json:"id" pretty:"label=ID"`
+	Name        string  `json:"name" pretty:"label=Product Name"`
+	Category    string  `json:"category" pretty:"label=Category"`
+	Description string  `json:"description" pretty:"label=Description"`
+	Price       float64 `json:"price" pretty:"label=Price,format=currency"`
+	InStock     bool    `json:"in_stock" pretty:"label=In Stock"`
+	Rating      float64 `json:"rating" pretty:"label=Rating"`
 }
 
 // EmployeeTable demonstrates table with custom PrettyRow and icons
@@ -640,7 +641,9 @@ func showTables(opts TablesOptions) (any, error) {
 
 	products := []ProductTable{
 		{ID: 1, Name: "Laptop Pro 15", Category: "Electronics", Price: 1299.99, InStock: true, Rating: 4.8},
-		{ID: 2, Name: "Wireless Mouse", Category: "Accessories", Price: 29.99, InStock: true, Rating: 4.5},
+		{ID: 2, Name: "Wireless Mouse", Category: "Accessories", Price: 29.99, InStock: true, Rating: 4.5,
+			Description: "Format: USB\n Color: Orange",
+		},
 		{ID: 3, Name: "USB-C Hub", Category: "Accessories", Price: 49.99, InStock: false, Rating: 4.2},
 		{ID: 4, Name: "Monitor 27\"", Category: "Electronics", Price: 349.99, InStock: true, Rating: 4.7},
 		{ID: 5, Name: "Mechanical Keyboard", Category: "Accessories", Price: 149.99, InStock: true, Rating: 4.9},

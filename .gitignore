@@ -71,3 +71,6 @@ clicky
 formatters/.playwright-mcp/
 __debug*
 
+ginkgo.report
+*.bak
+examples/uber_demo/uber_demo

@@ -271,7 +271,13 @@ func (t Text) Append(text any, styles ...string) Text {
 	case Textable:
 		t.Children = append(t.Children, v)
 	case string:
-		t.Children = append(t.Children, Text{Content: v, Style: strings.Join(styles, " ")})
+
+		for i, line := range strings.Split(v, "\n") {
+			if i > 0 {
+				t.Children = append(t.Children, BR)
+			}
+			t.Children = append(t.Children, Text{Content: line, Style: strings.Join(styles, " ")})
+		}
 	case time.Time, *time.Time, *time.Duration, time.Duration, float64, float32:
 		t.Children = append(t.Children, Human(v, styles...))
 	case map[string]any:

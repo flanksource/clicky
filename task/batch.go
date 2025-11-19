@@ -2,6 +2,8 @@ package task
 
 import (
 	"fmt"
+	"os"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -24,6 +26,11 @@ type BatchResult[T any] struct {
 	Duration time.Duration
 }
 
+func (b *Batch[T]) tracef(t *Task, format string, args ...any) {
+	if strings.Contains(os.Getenv("DEBUG"), "batch") {
+		t.Tracef("BATCH %s: %s", b.Name, fmt.Sprintf(format, args...))
+	}
+}
 func (b *Batch[T]) Run() chan BatchResult[T] {
 	if b.MaxWorkers <= 0 {
 		b.MaxWorkers = 3
@@ -42,7 +49,7 @@ func (b *Batch[T]) Run() chan BatchResult[T] {
 	}
 
 	StartTask(b.Name, func(ctx flanksourceContext.Context, t *Task) (interface{}, error) {
-		t.Debugf("Batch.Run starting: %s, items=%d, context.Err=%v", b.Name, total, ctx.Err())
+		b.tracef(t, "Run starting: %s, items=%d, context.Err=%v", b.Name, total, ctx.Err())
 
 		sem := semaphore.NewWeighted(int64(b.MaxWorkers))
 		count := atomic.Int32{}
@@ -52,7 +59,7 @@ func (b *Batch[T]) Run() chan BatchResult[T] {
 		t.SetProgress(0, total)
 
 		for i, item := range b.Items {
-			t.Infof("Queuing %v %d of %d", item, i+1, total)
+			b.tracef(t, "Queuing %s %d of %d", item, i+1, total)
 
 			// Check for context cancellation before acquiring semaphore
 			if ctx.Err() != nil {
@@ -65,7 +72,7 @@ func (b *Batch[T]) Run() chan BatchResult[T] {
 				closeResults()
 				return nil, err
 			}
-			t.Infof("Acquired semaphore %v %d of %d", item, i+1, total)
+			b.tracef(t, "Acquired semaphore %v %d of %d", item, i+1, total)
 
 			wg.Add(1)
 			go func(item func(log logger.Logger) (T, error), itemNum int) {
@@ -87,7 +94,7 @@ func (b *Batch[T]) Run() chan BatchResult[T] {
 				}
 
 				start := time.Now()
-				t.Infof("Running %v %d of %d", item, itemNum, total)
+				b.tracef(t, "Running %s %d of %d", item, itemNum, total)
 
 				value, err := item(t)
 				duration := time.Since(start)
@@ -117,14 +124,14 @@ func (b *Batch[T]) Run() chan BatchResult[T] {
 				select {
 				case <-ctx.Done():
 					// Task cancelled, but check if all items completed first
-					t.Infof("Context cancelled detected: count=%d/%d, context.Err=%v", count.Load(), total, ctx.Err())
+					b.tracef(t, "Context cancelled detected: count=%d/%d, context.Err=%v", count.Load(), total, ctx.Err())
 					wg.Wait()
 					finalCount := count.Load()
-					t.Infof("All goroutines finished after cancellation: final count=%d/%d", finalCount, total)
+					b.tracef(t, "All goroutines finished after cancellation: final count=%d/%d", finalCount, total)
 
 					if finalCount >= int32(total) {
 						// All items actually completed before cancellation
-						t.Infof("Completed batch %s %d of %d", b.Name, finalCount, total)
+						b.tracef(t, "Completed batch %s %d of %d", b.Name, finalCount, total)
 						taskMu.Lock()
 						t.Success()
 						taskMu.Unlock()
@@ -132,7 +139,7 @@ func (b *Batch[T]) Run() chan BatchResult[T] {
 						done <- nil
 					} else {
 						// Genuinely cancelled mid-execution
-						t.Infof("Batch cancelled: %s (completed %d of %d)", b.Name, finalCount, total)
+						b.tracef(t, "Batch cancelled: %s (completed %d of %d)", b.Name, finalCount, total)
 						taskMu.Lock()
 						t.SetStatus(StatusCancelled)
 						taskMu.Unlock()
@@ -147,7 +154,7 @@ func (b *Batch[T]) Run() chan BatchResult[T] {
 					finalCount := count.Load()
 					if finalCount >= int32(total) {
 						// All items actually completed before timeout
-						t.Infof("Completed batch %s %d of %d", b.Name, finalCount, total)
+						b.tracef(t, "Completed batch %s %d of %d", b.Name, finalCount, total)
 						taskMu.Lock()
 						t.Success()
 						taskMu.Unlock()
@@ -166,10 +173,9 @@ func (b *Batch[T]) Run() chan BatchResult[T] {
 					return
 				case <-ticker.C:
 					currentCount := count.Load()
-					t.Debugf("Monitoring tick: count=%d/%d", currentCount, total)
 					if currentCount >= int32(total) {
 						// All items completed
-						t.Infof("Completed batch %s %d of %d", b.Name, currentCount, total)
+						b.tracef(t, "Completed batch %s %d of %d", b.Name, currentCount, total)
 						wg.Wait()
 						taskMu.Lock()
 						t.Success()
@@ -178,7 +184,7 @@ func (b *Batch[T]) Run() chan BatchResult[T] {
 						done <- nil
 						return
 					}
-					t.Infof("Waiting %d of %d", currentCount, total)
+					b.tracef(t, "Waiting %d of %d", currentCount, total)
 				}
 			}
 		}()
