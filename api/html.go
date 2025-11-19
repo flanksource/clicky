@@ -106,6 +106,22 @@ func (e HtmlElement) HTML() string {
 	if e.Tag == "" {
 		return e.Content
 	}
+
+	// Void elements should not have closing tags
+	voidElements := map[string]bool{
+		"area": true, "base": true, "br": true, "col": true, "embed": true,
+		"hr": true, "img": true, "input": true, "link": true, "meta": true,
+		"param": true, "source": true, "track": true, "wbr": true,
+	}
+
+	if voidElements[e.Tag] {
+		attrs := formatAttributes(e.Attributes)
+		if attrs != "" {
+			return fmt.Sprintf("<%s %s>", e.Tag, attrs)
+		}
+		return fmt.Sprintf("<%s>", e.Tag)
+	}
+
 	return fmt.Sprintf("<%s %s>%s</%s>", e.Tag, formatAttributes(e.Attributes), e.Content, e.Tag)
 }
 

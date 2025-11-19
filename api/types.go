@@ -20,6 +20,10 @@ type Pretty interface {
 	Pretty() Text
 }
 
+type PrettyFull interface {
+	PrettyFull() Textable
+}
+
 // PrettyRow enables structs to provide custom table row representation with fine-grained control
 // over columns and cell formatting based on output format options.
 // The opts parameter should be of type formatters.FormatOptions.

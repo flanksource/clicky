@@ -21,11 +21,13 @@ import (
 	"github.com/samber/lo"
 )
 
+var log = logger.GetLogger("exec")
+
 // NewExecf creates a new Process with formatted command string
 func NewExecf(cmd string, args ...any) *Process {
 	return &Process{
 		Cmd:  fmt.Sprintf(cmd, args...),
-		log:  logger.GetLogger("exec"),
+		log:  log,
 		Env:  map[string]string{},
 		done: make(chan struct{}),
 	}
@@ -35,7 +37,7 @@ func NewExecf(cmd string, args ...any) *Process {
 func NewExec(cmd string, args ...string) *Process {
 	return &Process{
 		Cmd:  cmd,
-		log:  logger.GetLogger("exec"),
+		log:  log,
 		Args: args,
 		Env:  map[string]string{},
 		done: make(chan struct{}),
@@ -112,8 +114,13 @@ func (r ExecResult) Pretty() api.Text {
 
 	t := api.Text{Content: r.Command, Style: "italic font-mono"}
 
-	if r.PID > 0 {
+	if log.IsTraceEnabled() && r.PID > 0 {
 		t = t.Space().Append("[pid:", "text-muted").Append(r.PID).Append("]", "text-muted")
+	}
+
+	// Build command string
+	if len(r.Args) > 0 {
+		t = t.Space().Append(strings.Join(r.Args, " "), "text-muted")
 	}
 
 	if !r.IsCompleted() {
@@ -122,20 +129,29 @@ func (r ExecResult) Pretty() api.Text {
 		t = t.Space().Append(fmt.Sprintf("exit: %d", r.ExitCode), "text-red-500")
 	}
 
-	if r.Duration > 1*time.Second {
-		t = t.Space().Append(r.Duration, "text-orange-500")
-	}
-	if r.Error != nil {
+	if r.Error != nil && r.Error.Error() != fmt.Sprintf("exit code: %d", r.ExitCode) {
 		t = t.Space().Append("error: ", "text-muted").Append(r.Error.Error(), "text-red-500")
 	}
 
-	// Build command string
-	if len(r.Args) > 0 {
-		t = t.Space().Append(strings.Join(r.Args, " "), "text-muted")
+	if r.Duration > 1*time.Second {
+		t = t.Space().Append(r.Duration, "text-orange-500")
 	}
 
 	return t
 
+}
+
+func (r ExecResult) PrettyFull() api.Textable {
+
+	t := r.Pretty()
+
+	if r.Stdout != "" {
+		t = t.NewLine().Append(api.Text{}.Append(r.Stdout, "max-lines-20"))
+	}
+	if r.Stderr != "" {
+		t = t.NewLine().Append(api.Text{}.Append(r.Stderr, "text-red-500"))
+	}
+	return t
 }
 
 // WrapperFunc is a function type returned by AsWrapper that executes commands
@@ -306,6 +322,7 @@ func (p *Process) Result() *ExecResult {
 		Error:    p.Err,
 		Started:  p.Started,
 		Command:  p.Cmd,
+		Args:     p.Args,
 		short:    p.Short(),
 		process:  p,
 	}
@@ -419,6 +436,12 @@ func (p *Process) Debug() *Process {
 	return p
 }
 
+func (p *Process) tracef(format string, args ...any) {
+	if strings.Contains(os.Getenv("DEBUG"), "batch") {
+		p.log.Debugf(format, args...)
+	}
+}
+
 func (p Process) Short() api.Text {
 	path, args, _ := p.parseCommand()
 
@@ -433,7 +456,7 @@ func (p Process) Short() api.Text {
 	if len(args) > 0 {
 		t = t.Space().Append("[", "text-muted")
 		for _, arg := range args {
-			t = t.Append(arg, "max-w-[10ch] truncate").Append(",", "text-muted")
+			t = t.Append(arg, "max-w-[100ch] truncate").Append(",", "text-muted")
 		}
 		t = t.Append("]", "text-muted")
 	}
@@ -537,7 +560,7 @@ func (p *Process) Run() *Process {
 		p.captureOutput = NewExecLogger()
 	}
 
-	if properties.On(false, "exec.debug") {
+	if properties.On(false, "exec.debug") || strings.Contains(os.Getenv("DEBUG"), "exec") {
 		p = p.Debug()
 	}
 
@@ -596,7 +619,7 @@ func (p *Process) Run() *Process {
 	}
 
 	if p.Err != nil {
-		p.log.Debugf("command finished with error: %v", p.Short().Append(" finished with ").Append(p.Err, "text-red-500").ANSI())
+		p.log.Debugf(p.Short().Append(" finished with ").Append(p.Err, "text-red-500").ANSI())
 	}
 	switch v := p.Err.(type) {
 	case *exec.ExitError:
@@ -615,11 +638,8 @@ func (p *Process) Run() *Process {
 			p.Err = fmt.Errorf("command not found: %s", p.Cmd)
 		}
 	}
-	if p.Err != nil {
-		p.log.Warnf(p.Pretty().ANSI())
-	} else {
-		p.log.Tracef(p.Pretty().ANSI())
-	}
+
+	p.log.Tracef(p.Pretty().ANSI())
 
 	return p
 }
