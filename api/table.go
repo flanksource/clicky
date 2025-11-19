@@ -7,7 +7,6 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/lipgloss/table"
 	"github.com/flanksource/clicky/api/tailwind"
-	"github.com/flanksource/commons/logger"
 	"github.com/olekukonko/tablewriter"
 	"github.com/olekukonko/tablewriter/renderer"
 	"github.com/olekukonko/tablewriter/tw"
@@ -108,7 +107,6 @@ func (t *TextTable) renderLipgloss(withColors bool, transform TextTransformer) s
 	}
 
 	width := GetTerminalWidth()
-	logger.Infof("Rendering lipgloss table with max width: %d", width)
 
 	// Build header strings
 	headers := make([]string, len(t.Headers))

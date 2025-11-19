@@ -496,7 +496,7 @@ func NewTableComponent(headers []string, rows [][]any) *TableComponent {
 	}
 
 	// Set the component's render function to point to our method
-	tc.Component.RenderFunc = tc.renderComponent
+	tc.RenderFunc = tc.renderComponent
 
 	return tc
 }
@@ -760,30 +760,6 @@ func (tc *TableComponent) drawCellBorders(cell *entity.Cell) {
 	tc.Fpdf.SetDrawColor(128, 128, 128) // Gray
 	tc.Fpdf.Rect(cell.X, cell.Y, cell.Width, cell.Height, "D")
 }
-
-// getMarginInfo safely extracts margin and page information from the FPDF interface
-func (tc *TableComponent) getMarginInfo() (leftMargin, topMargin, rightMargin, bottomMargin, pageWidth, pageHeight float64, err error) {
-	if tc.Fpdf == nil {
-		err = errors.New("FPDF interface is nil")
-		return
-	}
-
-	// Get margin information directly from our FPDF interface
-	leftMargin, topMargin, rightMargin, bottomMargin = tc.Fpdf.GetMargins()
-	pageWidth, pageHeight = tc.Fpdf.GetPageSize()
-
-	if tc.Debug {
-		log.Printf("DEBUG: TableComponent.getMarginInfo: FPDF margins L=%.2f R=%.2f T=%.2f B=%.2f",
-			leftMargin, rightMargin, topMargin, bottomMargin)
-		usableWidth := pageWidth - leftMargin - rightMargin
-		usableHeight := pageHeight - topMargin - bottomMargin
-		log.Printf("DEBUG: TableComponent.getMarginInfo: FPDF page size %.2f×%.2f, usable area %.2f×%.2f",
-			pageWidth, pageHeight, usableWidth, usableHeight)
-	}
-
-	return leftMargin, topMargin, rightMargin, bottomMargin, pageWidth, pageHeight, nil
-}
-
 func (tc *TableComponent) drawCellText(text string, cell *entity.Cell, style props.Text, cellStyle api.Class) error {
 	if text == "" {
 		return nil // Empty text is not an error, just return success
@@ -1013,7 +989,7 @@ func NewTable() *TableComponent {
 	}
 
 	// Set the component's render function
-	tc.Component.RenderFunc = tc.renderComponent
+	tc.RenderFunc = tc.renderComponent
 
 	return tc
 }

@@ -52,7 +52,7 @@ func Human(content any, styles ...string) Text {
 	case Textable:
 		return Text{}.Add(t)
 	case time.Time:
-		if t.Truncate(time.Hour*24) == t {
+		if t.Truncate(time.Hour*24).Equal(t) {
 			return Text{
 				Content: t.Format("2006-01-02"),
 				Style:   strings.Join(append(styles, "date"), " "),

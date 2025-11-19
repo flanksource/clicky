@@ -17,7 +17,6 @@ import (
 	cctx "github.com/flanksource/commons/context"
 	"github.com/flanksource/commons/logger"
 	"github.com/flanksource/commons/properties"
-	"github.com/onsi/ginkgo/v2"
 	"github.com/samber/lo"
 )
 
@@ -436,12 +435,6 @@ func (p *Process) Debug() *Process {
 	return p
 }
 
-func (p *Process) tracef(format string, args ...any) {
-	if strings.Contains(os.Getenv("DEBUG"), "batch") {
-		p.log.Debugf(format, args...)
-	}
-}
-
 func (p Process) Short() api.Text {
 	path, args, _ := p.parseCommand()
 
@@ -771,11 +764,8 @@ func (p *Process) GetTask() *task.Task {
 func (p *Process) RunAsTask(name string, opts ...task.Option) task.TypedTask[ExecResult] {
 	taskFunc := func(ctx cctx.Context, t *task.Task) (ExecResult, error) {
 		p.task = t
-		ginkgo.GinkgoWriter.Write([]byte("before:" + p.Pretty().ANSI() + "\n"))
 		out := p.Run()
 		p = out
-		ginkgo.GinkgoWriter.Write([]byte("oput:" + out.Pretty().ANSI() + "\n"))
-		ginkgo.GinkgoWriter.Write([]byte("p:" + p.Pretty().ANSI() + "\n"))
 
 		err := p.Err
 		// Return the result and error
