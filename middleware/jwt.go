@@ -5,7 +5,6 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
-	"io/ioutil"
 	"net/http"
 	"os"
 	"strings"
@@ -188,7 +187,7 @@ func isHMACMethod(method string) bool {
 
 // loadSigningKeyFromFile loads signing key from file for RSA/ECDSA methods
 func loadSigningKeyFromFile(filename, signingMethod string) (interface{}, error) {
-	keyData, err := ioutil.ReadFile(filename)
+	keyData, err := os.ReadFile(filename)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read key file %s: %w", filename, err)
 	}
@@ -201,9 +200,10 @@ func loadSigningKeyFromFile(filename, signingMethod string) (interface{}, error)
 	switch {
 	case strings.HasPrefix(signingMethod, "RS"):
 		// RSA public key for validation
-		if block.Type == "RSA PUBLIC KEY" {
+		switch block.Type {
+		case "RSA PUBLIC KEY":
 			return x509.ParsePKCS1PublicKey(block.Bytes)
-		} else if block.Type == "PUBLIC KEY" {
+		case "PUBLIC KEY":
 			key, err := x509.ParsePKIXPublicKey(block.Bytes)
 			if err != nil {
 				return nil, fmt.Errorf("failed to parse RSA public key: %w", err)
@@ -212,7 +212,7 @@ func loadSigningKeyFromFile(filename, signingMethod string) (interface{}, error)
 				return rsaKey, nil
 			}
 			return nil, fmt.Errorf("key is not an RSA public key")
-		} else {
+		default:
 			return nil, fmt.Errorf("expected RSA public key, got %s", block.Type)
 		}
 

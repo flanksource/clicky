@@ -262,20 +262,6 @@ func getVariableDeclarationsFromRow(row PrettyDataRow) []cel.EnvOption {
 
 	return decls
 }
-
-// getVariableDeclarationsFromNode creates CEL variable declarations from a tree node
-func getVariableDeclarationsFromNode(node TreeNode) []cel.EnvOption {
-	variables := nodeToCELMap(node)
-	var decls []cel.EnvOption
-
-	for key, value := range variables {
-		celType := inferCELTypeFromValue(value)
-		decls = append(decls, cel.Variable(key, celType))
-	}
-
-	return decls
-}
-
 // collectTreeVariableDeclarations collects all unique variable names from an entire tree
 func collectTreeVariableDeclarations(node TreeNode) []cel.EnvOption {
 	if node == nil {

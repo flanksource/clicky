@@ -10,7 +10,6 @@ import (
 	"github.com/flanksource/clicky/api"
 	"github.com/flanksource/clicky/api/tailwind"
 	"github.com/flanksource/clicky/formatters"
-	. "github.com/flanksource/clicky/formatters"
 )
 
 //go:embed tree.css
@@ -30,7 +29,7 @@ var tooltipsJS string
 
 func init() {
 	html := NewHTMLFormatter()
-	RegisterFormatter("html", html.Format)
+	formatters.RegisterFormatter("html", html.Format)
 }
 
 // HTMLFormatter handles HTML formatting
@@ -49,7 +48,7 @@ func NewHTMLFormatter() *HTMLFormatter {
 
 // ToPrettyData converts various input types to PrettyData
 func (f *HTMLFormatter) ToPrettyData(data interface{}) (*api.PrettyData, error) {
-	return ToPrettyDataWithOptions(data, FormatOptions{Format: "html"})
+	return formatters.ToPrettyDataWithOptions(data, formatters.FormatOptions{Format: "html"})
 }
 
 // getCSS returns Tailwind CSS CDN and custom styling
@@ -469,34 +468,9 @@ func (f *HTMLFormatter) applyTailwindStyleToHTML(text, styleStr string) string {
 	escapedText := html.EscapeString(transformedText)
 	return fmt.Sprintf("<span class=\"%s\">%s</span>", styleStr, escapedText)
 }
-
-// getColorClass returns Tailwind CSS class for color
-func (f *HTMLFormatter) getColorClass(color string) string {
-	switch strings.ToLower(color) {
-	case "green":
-		return "text-green-600 font-medium"
-	case "red":
-		return "text-red-600 font-medium"
-	case "blue":
-		return "text-blue-600 font-medium"
-	case "yellow":
-		return "text-yellow-600 font-medium"
-	case "orange":
-		return "text-orange-600 font-medium"
-	case "purple":
-		return "text-purple-600 font-medium"
-	case "gold":
-		return "text-yellow-500 font-bold"
-	case "silver":
-		return "text-gray-500 font-medium"
-	default:
-		return "text-gray-900"
-	}
-}
-
 // prettifyFieldName converts field names to readable format
 func (f *HTMLFormatter) prettifyFieldName(name string) string {
-	return PrettifyFieldName(name)
+	return formatters.PrettifyFieldName(name)
 }
 
 // formatFieldValueHTML formats a FieldValue for HTML output (legacy function)
@@ -557,35 +531,6 @@ func (f *HTMLFormatter) formatCompactTableHTML(table *api.TextTable) string {
 	}
 	result.WriteString("</tbody></table>")
 
-	return result.String()
-}
-
-// formatNestedPrettyData formats a PrettyData structure as nested HTML
-func (f *HTMLFormatter) formatNestedPrettyData(data *api.PrettyData) string {
-	var result strings.Builder
-	result.WriteString(`<div class="space-y-1">`)
-
-	// Format regular fields
-	for _, field := range data.Schema.Fields {
-		if field.Format == api.FormatTable {
-			continue // Skip tables in nested view
-		}
-
-		if fieldValue, ok := data.GetValue(field.Name); ok {
-			label := field.Label
-			if label == "" {
-				label = f.prettifyFieldName(field.Name)
-			}
-
-			result.WriteString(`<div class="flex">`)
-			result.WriteString(fmt.Sprintf(`<span class="text-gray-600 font-medium w-32 flex-shrink-0">%s:</span>`, html.EscapeString(label)))
-
-			result.WriteString(f.formatFieldValueHTML(fieldValue))
-			result.WriteString("</div>")
-		}
-	}
-
-	result.WriteString("</div>")
 	return result.String()
 }
 

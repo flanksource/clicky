@@ -59,7 +59,7 @@ func (b *Batch[T]) Run() chan BatchResult[T] {
 		t.SetProgress(0, total)
 
 		for i, item := range b.Items {
-			b.tracef(t, "Queuing %s %d of %d", item, i+1, total)
+			b.tracef(t, "Queuing item %d of %d", i+1, total)
 
 			// Check for context cancellation before acquiring semaphore
 			if ctx.Err() != nil {
@@ -72,7 +72,7 @@ func (b *Batch[T]) Run() chan BatchResult[T] {
 				closeResults()
 				return nil, err
 			}
-			b.tracef(t, "Acquired semaphore %v %d of %d", item, i+1, total)
+			b.tracef(t, "Acquired semaphore for item %d of %d", i+1, total)
 
 			wg.Add(1)
 			go func(item func(log logger.Logger) (T, error), itemNum int) {
@@ -94,7 +94,7 @@ func (b *Batch[T]) Run() chan BatchResult[T] {
 				}
 
 				start := time.Now()
-				b.tracef(t, "Running %s %d of %d", item, itemNum, total)
+				b.tracef(t, "Running item %d of %d", itemNum, total)
 
 				value, err := item(t)
 				duration := time.Since(start)

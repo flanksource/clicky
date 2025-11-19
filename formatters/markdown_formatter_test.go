@@ -56,8 +56,8 @@ func TestMarkdownFormatter_SimpleTable(t *testing.T) {
 				Name:   "tasks",
 				Type:   "array",
 				Format: api.FormatTable,
-				TableOptions: api.PrettyTable{
-					Fields: []api.PrettyField{
+				TableOptions: api.TableOptions{
+					Columns: []api.PrettyField{
 						{Name: "id", Type: "string", Label: "ID"},
 						{Name: "config", Type: "string", Label: "Configuration"},
 						{Name: "metadata", Type: "string", Label: "Metadata"},

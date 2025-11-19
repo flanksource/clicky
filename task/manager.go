@@ -701,7 +701,7 @@ func Wait() int {
 // Debug returns debug information about the task manager
 func Debug() string {
 	var result string
-	result += fmt.Sprintf("Task Manager: {no-color=%v, no-progress=%v, workers=%v}\n", global.noColor, global.noProgress, global.workersActive.Load())
+	result += fmt.Sprintf("Task Manager: {no-color=%v, no-progress=%v, workers=%v}\n", global.noColor.Load(), global.noProgress.Load(), global.workersActive.Load())
 	result += fmt.Sprintf("  Total Tasks: %d\n", len(global.tasks))
 	result += fmt.Sprintf("  Active Workers: %d\n", global.workersActive.Load())
 	result += "  Task Details:\n"

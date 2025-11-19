@@ -961,7 +961,7 @@ func (p *StructParser) processFieldValueWithVisited(fieldVal reflect.Value, visi
 		for i := 0; i < fieldVal.Len(); i++ {
 			bytes[i] = byte(fieldVal.Index(i).Uint())
 		}
-		return string(bytes)
+		return TypedValue{Textable: Text{}.Append(string(bytes))}
 	}
 
 	// Handle slices - recursively process all elements

@@ -5,43 +5,6 @@ import (
 	"strings"
 )
 
-// secretPattern defines a regex pattern with a replacement string
-type secretPattern struct {
-	pattern     *regexp.Regexp
-	replacement string
-}
-
-// buildSecretPatterns creates patterns for detecting secrets with different quote styles
-func buildSecretPatterns() []secretPattern {
-	keywords := []string{
-		"password|passwd|pwd|pass",
-		"token|api[_-]?key|apikey|secret|auth",
-		"bearer|authorization",
-	}
-
-	var patterns []secretPattern
-	for _, kw := range keywords {
-		// Pattern 1: key='value' (single quotes)
-		patterns = append(patterns, secretPattern{
-			pattern:     regexp.MustCompile(`(?i)(` + kw + `)(\s*[=:]\s*|[ \t]+)('([^']*)')`),
-			replacement: "${1}${2}'***'",
-		})
-		// Pattern 2: key="value" (double quotes)
-		patterns = append(patterns, secretPattern{
-			pattern:     regexp.MustCompile(`(?i)(` + kw + `)(\s*[=:]\s*|[ \t]+)("([^"]*)")`),
-			replacement: `${1}${2}"***"`,
-		})
-		// Pattern 3: key=value or key: value (no quotes) - exclude leading quotes
-		patterns = append(patterns, secretPattern{
-			pattern:     regexp.MustCompile(`(?i)(` + kw + `)(\s*[=:]\s*)([^'"\s]\S*)`),
-			replacement: "${1}${2}***",
-		})
-	}
-	return patterns
-}
-
-var defaultSecretPatterns = buildSecretPatterns()
-
 // RedactSecrets returns a LineProcessor that redacts sensitive data from lines.
 // Uses a tokenizer to properly handle quoted values, ANSI sequences, and complex formats.
 // If patterns are provided, they are used as regex patterns (legacy behavior).
@@ -71,11 +34,12 @@ func RedactSecrets(patterns ...string) LineProcessor {
 				result := line
 				for _, token := range tokens {
 					// Replace the actual secret value with ***
-					if token.QuoteChar == "'" {
+					switch token.QuoteChar {
+					case "'":
 						result = strings.ReplaceAll(result, "'"+token.Value+"'", "'***'")
-					} else if token.QuoteChar == "\"" {
+					case "\"":
 						result = strings.ReplaceAll(result, "\""+token.Value+"\"", "\"***\"")
-					} else {
+					default:
 						result = strings.ReplaceAll(result, token.Value, "***")
 					}
 				}

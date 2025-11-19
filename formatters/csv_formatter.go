@@ -53,7 +53,7 @@ func (f *CSVFormatter) FormatPrettyData(data *api.PrettyData) (string, error) {
 
 	table := data.FirstTable()
 	if table == nil {
-		return "", fmt.Errorf("No tables defined")
+		return "", fmt.Errorf("no tables defined")
 	}
 
 	if err := writer.Write(table.Headers.AsString()); err != nil {
@@ -61,7 +61,9 @@ func (f *CSVFormatter) FormatPrettyData(data *api.PrettyData) (string, error) {
 	}
 
 	for _, row := range table.Rows {
-		writer.Write(table.AsString(row))
+		if err := writer.Write(table.AsString(row)); err != nil {
+			return "", fmt.Errorf("failed to write CSV row: %w", err)
+		}
 	}
 
 	writer.Flush()
@@ -70,44 +72,4 @@ func (f *CSVFormatter) FormatPrettyData(data *api.PrettyData) (string, error) {
 	}
 
 	return output.String(), nil
-}
-
-// flattenTree recursively flattens a tree node into CSV rows
-func (f *CSVFormatter) flattenTree(node api.TreeNode, depth int) [][]string {
-	if node == nil {
-		return nil
-	}
-
-	var rows [][]string
-
-	// Format current node
-	var nodeContent string
-	if prettyNode, ok := node.(api.Pretty); ok {
-		// Use Pretty() method for rich formatting, but get plain text for CSV
-		text := prettyNode.Pretty()
-		nodeContent = text.String()
-	} else {
-		// Fallback to GetLabel()
-		nodeContent = node.Pretty().String()
-	}
-
-	// Create indentation based on depth
-	indent := strings.Repeat("  ", depth)
-
-	// Add current node as a row
-	row := []string{
-		fmt.Sprintf("%d", depth),                 // Level
-		fmt.Sprintf("%s%s", indent, nodeContent), // Name with indentation
-		"",                                       // Details (could be extended)
-	}
-	rows = append(rows, row)
-
-	// Process children recursively
-	children := node.GetChildren()
-	for _, child := range children {
-		childRows := f.flattenTree(child, depth+1)
-		rows = append(rows, childRows...)
-	}
-
-	return rows
 }

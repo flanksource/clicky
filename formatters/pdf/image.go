@@ -606,7 +606,6 @@ func (i *Image) parseImageAlignment(style string) (center bool, left float64, pe
 	left = 0.0
 	percent = 95.0 // Default to 95% of column width
 	verticalAlign = alignment.Vertical
-	paddingMM = 0.0
 
 	// First apply Tailwind parser alignment if detected
 	switch alignment.Horizontal {

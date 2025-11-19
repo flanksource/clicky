@@ -70,9 +70,9 @@ func (t Text) MarshalJSON() ([]byte, error) {
 func (t Text) Format(f fmt.State, verb rune) {
 	switch verb {
 	case 's':
-		f.Write([]byte(t.String()))
+		_, _ = f.Write([]byte(t.String()))
 	default:
-		f.Write([]byte(t.ANSI()))
+		_, _ = f.Write([]byte(t.ANSI()))
 	}
 }
 

@@ -833,7 +833,7 @@ func ValidateConfig(config MiddlewareConfig) error {
 	// Validate Timeout configuration
 	if config.Timeout != nil {
 		if config.Timeout.Timeout <= 0 {
-			return fmt.Errorf("Timeout: timeout must be greater than 0")
+			return fmt.Errorf("timeout: timeout must be greater than 0")
 		}
 	}
 
@@ -858,14 +858,14 @@ func ValidateConfig(config MiddlewareConfig) error {
 	// Validate Gzip configuration
 	if config.Gzip != nil {
 		if config.Gzip.Level < -1 || config.Gzip.Level > 9 {
-			return fmt.Errorf("Gzip: level must be between -1 and 9")
+			return fmt.Errorf("gzip: level must be between -1 and 9")
 		}
 	}
 
 	// Validate Secure configuration
 	if config.Secure != nil {
 		if config.Secure.HSTSMaxAge < 0 {
-			return fmt.Errorf("Secure: hsts_max_age cannot be negative")
+			return fmt.Errorf("secure: hsts_max_age cannot be negative")
 		}
 	}
 
@@ -882,14 +882,14 @@ func ValidateConfig(config MiddlewareConfig) error {
 	// Validate Proxy configuration
 	if config.Proxy != nil {
 		if len(config.Proxy.Targets) == 0 {
-			return fmt.Errorf("Proxy: at least one target must be specified")
+			return fmt.Errorf("proxy: at least one target must be specified")
 		}
 		for i, target := range config.Proxy.Targets {
 			if target == nil {
-				return fmt.Errorf("Proxy: target %d cannot be nil", i)
+				return fmt.Errorf("proxy: target %d cannot be nil", i)
 			}
 			if target.URL == "" {
-				return fmt.Errorf("Proxy: target %d URL cannot be empty", i)
+				return fmt.Errorf("proxy: target %d URL cannot be empty", i)
 			}
 		}
 	}

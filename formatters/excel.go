@@ -164,17 +164,6 @@ func (f *ExcelFormatter) createHeaderStyle(file *excelize.File) (int, error) {
 		},
 	})
 }
-
-// createTitleStyle creates a title cell style
-func (f *ExcelFormatter) createTitleStyle(file *excelize.File) (int, error) {
-	return file.NewStyle(&excelize.Style{
-		Font: &excelize.Font{
-			Bold: true,
-			Size: 14,
-		},
-	})
-}
-
 // getCellReference returns Excel cell reference (e.g., A1, B2)
 func (f *ExcelFormatter) getCellReference(col, row int) string {
 	return f.getColumnName(col) + strconv.Itoa(row)

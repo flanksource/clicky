@@ -113,7 +113,6 @@ func CreateFontMetricsColumn(columnWidth int) core.Col {
 
 // FontMetricsWrapper wraps the tester for use in columns
 type FontMetricsWrapper struct {
-	tester *FontMetricsTester
 }
 
 // FontMetricsTable creates a table-based font metrics display
