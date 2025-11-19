@@ -1,8 +1,7 @@
 // Global Tippy.js initialization function
 function initTooltips(container) {
-    const target = container || document.body;
     // Use singleton for better performance with many tooltips
-    tippy('[title]', {
+    tippy((container || document.body).querySelectorAll('[title]'), {
         content(reference) {
             const title = reference.getAttribute('title');
             reference.removeAttribute('title');
