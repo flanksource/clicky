@@ -19,6 +19,65 @@ func float64Ptr(f float64) *float64  { return &f }
 func boolPtr(b bool) *bool           { return &b }
 func timePtr(t time.Time) *time.Time { return &t }
 
+// IconShowcase demonstrates all available icons
+type IconShowcase struct {
+	Icon        api.Text `json:"icon" pretty:"label=Icon"`
+	Name        string   `json:"name" pretty:"label=Name"`
+	Description string   `json:"description" pretty:"label=Description"`
+}
+
+func (i IconShowcase) PrettyRow(_ any) map[string]api.Text {
+	return map[string]api.Text{
+		"icon":        i.Icon,
+		"name":        clicky.Text(i.Name),
+		"description": clicky.Text(i.Description),
+	}
+}
+
+// ColorExample demonstrates Tailwind color styles
+type ColorExample struct {
+	ColorName api.Text `json:"color_name" pretty:"label=Color Name"`
+	Text50    api.Text `json:"text_50" pretty:"label=50"`
+	Text100   api.Text `json:"text_100" pretty:"label=100"`
+	Text200   api.Text `json:"text_200" pretty:"label=200"`
+	Text300   api.Text `json:"text_300" pretty:"label=300"`
+	Text400   api.Text `json:"text_400" pretty:"label=400"`
+	Text500   api.Text `json:"text_500" pretty:"label=500"`
+	Text600   api.Text `json:"text_600" pretty:"label=600"`
+	Text700   api.Text `json:"text_700" pretty:"label=700"`
+	Text800   api.Text `json:"text_800" pretty:"label=800"`
+	Text900   api.Text `json:"text_900" pretty:"label=900"`
+}
+
+func (c ColorExample) PrettyRow(_ any) map[string]api.Text {
+	return map[string]api.Text{
+		"color_name": c.ColorName,
+		"text_50":    c.Text50,
+		"text_100":   c.Text100,
+		"text_200":   c.Text200,
+		"text_300":   c.Text300,
+		"text_400":   c.Text400,
+		"text_500":   c.Text500,
+		"text_600":   c.Text600,
+		"text_700":   c.Text700,
+		"text_800":   c.Text800,
+		"text_900":   c.Text900,
+	}
+}
+
+// TextStyleExample demonstrates text transformations and styles
+type TextStyleExample struct {
+	StyleName api.Text `json:"style" pretty:"label=Style"`
+	Example   api.Text `json:"example" pretty:"label=Example"`
+}
+
+func (t TextStyleExample) PrettyRow(_ any) map[string]api.Text {
+	return map[string]api.Text{
+		"style":   t.StyleName,
+		"example": t.Example,
+	}
+}
+
 // NestedStruct demonstrates nested structure handling
 type NestedStruct struct {
 	ID          int     `json:"id" pretty:"label=ID"`
