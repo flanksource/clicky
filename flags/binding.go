@@ -14,11 +14,11 @@ func BindFlag(cmd *cobra.Command, info FieldInfo) *FlagValue {
 	if info.IsArgs {
 		if info.Required {
 			cmd.Args = cobra.MinimumNArgs(1)
-		} else if info.IsArgs {
-			cmd.Args = cobra.MinimumNArgs(0)
 		} else {
-			cmd.Args = cobra.NoArgs
+			cmd.Args = cobra.MinimumNArgs(0)
 		}
+	} else {
+		cmd.Args = cobra.NoArgs
 	}
 	fv := &FlagValue{
 		FieldName:    info.FieldName,

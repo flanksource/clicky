@@ -251,7 +251,7 @@ The colors will automatically adjust based on your terminal's background
 				Root *FileTreeNode `json:"root" yaml:"root" pretty:"tree"`
 			}
 
-			clicky.MustPrint(*tree)
+			clicky.MustPrint(tree)
 
 			return nil
 		},

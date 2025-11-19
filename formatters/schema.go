@@ -171,7 +171,7 @@ func (sf *SchemaFormatter) formatWithPrettyData(data *api.PrettyData, options Fo
 	case "html", "html-pdf":
 		formatter, ok := GetCustomFormatter(options.Format)
 		if !ok {
-			return "", fmt.Errorf("%s formatter not registered, registing using 'import _ github.com/flanksource/clicky/formatters/http'", options.Format)
+			return "", fmt.Errorf("%s formatter not registered, register using 'import _ github.com/flanksource/clicky/formatters/html'", options.Format)
 		}
 		return formatter(data, options)
 	default:

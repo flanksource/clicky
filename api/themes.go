@@ -242,14 +242,17 @@ func GetTerminalWidth() int {
 	return width
 }
 
+var terminalHeight = -1
+
 func GetTerminalLines() int {
-	if terminalWidth != -1 {
-		return terminalWidth
+	if terminalHeight != -1 {
+		return terminalHeight
 	}
 	_, height, err := term.GetSize(int(os.Stderr.Fd()))
 	if err != nil {
 		return 40 // Default height
 	}
+	terminalHeight = height
 	return height
 }
 
