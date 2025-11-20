@@ -636,6 +636,10 @@ func convertSliceToPrettyDataWithOptions(val reflect.Value, opts FormatOptions) 
 		}
 	}
 
+	// Create table with column schema
+	table := api.NewTableFromRows(rows)
+	table.Columns = tableFields
+
 	return &api.PrettyData{
 		Schema: &api.PrettyObject{
 			Fields: []api.PrettyField{
@@ -647,7 +651,7 @@ func convertSliceToPrettyDataWithOptions(val reflect.Value, opts FormatOptions) 
 			},
 		},
 
-		TypedValue: *api.TryTypedValue(rows),
+		TypedValue: api.TypedValue{Table: &table},
 		Original:   originalData,
 	}, nil
 }
@@ -759,7 +763,10 @@ func ToPrettyData(data interface{}) (*api.PrettyData, error) {
 				}
 				rows = append(rows, row)
 			}
-			values[field.Name] = api.NewTypedValue(rows)
+			// Create table with column schema
+			table := api.NewTableFromRows(rows)
+			table.Columns = field.TableOptions.Columns
+			values[field.Name] = api.TypedValue{Table: &table}
 
 		} else if field.Format == api.FormatTree {
 			values[field.Name] = api.NewTypedValue(fieldVal.Interface())
@@ -1092,6 +1099,9 @@ func convertSliceToPrettyData(val reflect.Value) (*api.PrettyData, error) {
 	}
 
 	// Create PrettyData with a single table field
+	// Create table with column schema
+	table := api.NewTableFromRows(rows)
+	table.Columns = tableFields
 
 	return &api.PrettyData{
 		Schema: &api.PrettyObject{
@@ -1106,7 +1116,7 @@ func convertSliceToPrettyData(val reflect.Value) (*api.PrettyData, error) {
 				},
 			},
 		},
-		TypedValue: *api.TryTypedValue(rows),
+		TypedValue: api.TypedValue{Table: &table},
 		Original:   originalData,
 	}, nil
 }

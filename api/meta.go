@@ -161,6 +161,7 @@ type TableRow map[string]TypedValue
 type TextTable struct {
 	Headers     TextList
 	FieldNames  []string // Maps header index to field name for row lookups
+	Columns     []PrettyField
 	Rows        []TableRow
 	Interactive bool
 }
