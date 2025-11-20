@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"html"
+	"os"
 	"strings"
 
 	"github.com/flanksource/clicky/api"
@@ -216,8 +217,20 @@ func (f *HTMLFormatter) Format(in interface{}, options formatters.FormatOptions)
 		// Check for table format
 		switch field.Format {
 		case api.FormatTable:
+			fmt.Fprintf(os.Stderr, "HTML formatter: Processing table field '%s'", field.Name)
 			fieldValue, exists := data.GetValue(field.Name)
+			fmt.Fprintf(os.Stderr, "HTML formatter: GetValue('%s') returned exists=%v", field.Name, exists)
+
+			// Fallback: if field doesn't exist in TypedMap, check if data.Table is available
+			if !exists && data.Table != nil {
+				fmt.Fprintf(os.Stderr, "HTML formatter: Using fallback to data.Table for field '%s'", field.Name)
+				// Use the embedded table data directly
+				fieldValue = api.TypedValue{Table: data.Table}
+				exists = true
+			}
+
 			if !exists {
+				fmt.Fprintf(os.Stderr, "HTML formatter: Skipping field '%s' - no data found", field.Name)
 				continue
 			}
 
@@ -225,11 +238,14 @@ func (f *HTMLFormatter) Format(in interface{}, options formatters.FormatOptions)
 			var tableData *api.TextTable
 			if fieldValue.Table != nil {
 				tableData = fieldValue.Table
+				fmt.Fprintf(os.Stderr, "HTML formatter: Found table data in fieldValue.Table for '%s' with %d rows", field.Name, len(tableData.Rows))
 			} else if textTable, ok := fieldValue.Textable.(api.TextTable); ok {
 				tableData = &textTable
+				fmt.Fprintf(os.Stderr, "HTML formatter: Found table data in fieldValue.Textable for '%s' with %d rows", field.Name, len(tableData.Rows))
 			}
 
 			if tableData != nil && len(tableData.Rows) > 0 {
+				fmt.Fprintf(os.Stderr, "HTML formatter: Rendering table '%s' with %d rows and %d columns", field.Name, len(tableData.Rows), len(tableData.Columns))
 				// Add section title
 				result.WriteString("        <div class=\"bg-white rounded-lg shadow\">\n")
 				result.WriteString("            <div class=\"px-6 py-4 border-b border-gray-200\">\n")
@@ -282,8 +298,16 @@ func (f *HTMLFormatter) Format(in interface{}, options formatters.FormatOptions)
 // FormatPrettyData formats PrettyData directly as HTML
 func (f *HTMLFormatter) FormatPrettyData(data *api.PrettyData) (string, error) {
 	if data == nil || data.Schema == nil {
+		fmt.Fprintf(os.Stderr, "HTML formatter: data or schema is nil")
 		return "", nil
 	}
+
+	fmt.Fprintf(os.Stderr, "HTML formatter: FormatPrettyData called with %d schema fields", len(data.Schema.Fields))
+	fmt.Fprintf(os.Stderr, "HTML formatter: data.Table is nil: %v", data.Table == nil)
+	if data.Table != nil {
+		fmt.Fprintf(os.Stderr, "HTML formatter: data.Table has %d rows, %d columns", len(data.Table.Rows), len(data.Table.Columns))
+	}
+	fmt.Fprintf(os.Stderr, "HTML formatter: data.TypedMap is nil: %v", data.TypedMap == nil)
 
 	var result strings.Builder
 
@@ -368,8 +392,20 @@ func (f *HTMLFormatter) FormatPrettyData(data *api.PrettyData) (string, error) {
 		// Check for table format
 		switch field.Format {
 		case api.FormatTable:
+			fmt.Fprintf(os.Stderr, "HTML formatter: Processing table field '%s'", field.Name)
 			fieldValue, exists := data.GetValue(field.Name)
+			fmt.Fprintf(os.Stderr, "HTML formatter: GetValue('%s') returned exists=%v", field.Name, exists)
+
+			// Fallback: if field doesn't exist in TypedMap, check if data.Table is available
+			if !exists && data.Table != nil {
+				fmt.Fprintf(os.Stderr, "HTML formatter: Using fallback to data.Table for field '%s'", field.Name)
+				// Use the embedded table data directly
+				fieldValue = api.TypedValue{Table: data.Table}
+				exists = true
+			}
+
 			if !exists {
+				fmt.Fprintf(os.Stderr, "HTML formatter: Skipping field '%s' - no data found", field.Name)
 				continue
 			}
 
@@ -377,11 +413,14 @@ func (f *HTMLFormatter) FormatPrettyData(data *api.PrettyData) (string, error) {
 			var tableData *api.TextTable
 			if fieldValue.Table != nil {
 				tableData = fieldValue.Table
+				fmt.Fprintf(os.Stderr, "HTML formatter: Found table data in fieldValue.Table for '%s' with %d rows", field.Name, len(tableData.Rows))
 			} else if textTable, ok := fieldValue.Textable.(api.TextTable); ok {
 				tableData = &textTable
+				fmt.Fprintf(os.Stderr, "HTML formatter: Found table data in fieldValue.Textable for '%s' with %d rows", field.Name, len(tableData.Rows))
 			}
 
 			if tableData != nil && len(tableData.Rows) > 0 {
+				fmt.Fprintf(os.Stderr, "HTML formatter: Rendering table '%s' with %d rows and %d columns", field.Name, len(tableData.Rows), len(tableData.Columns))
 				// Add section title
 				result.WriteString("        <div class=\"bg-white rounded-lg shadow\">\n")
 				result.WriteString("            <div class=\"px-6 py-4 border-b border-gray-200\">\n")
@@ -537,9 +576,19 @@ func (f *HTMLFormatter) formatCompactTableHTML(table *api.TextTable) string {
 
 // formatTableDataHTML formats table data for HTML output
 func (f *HTMLFormatter) formatTableDataHTML(table *api.TextTable, field api.PrettyField) string {
+	fmt.Fprintf(os.Stderr, "HTML formatter: formatTableDataHTML called for field '%s'", field.Name)
 	if table == nil || len(table.Rows) == 0 {
+		fmt.Fprintf(os.Stderr, "HTML formatter: table is nil or has no rows")
 		return "            <p class=\"text-gray-500 text-center py-8\">No data available</p>"
 	}
+
+	// Use table's embedded Columns if available, otherwise use field.TableOptions.Columns
+	columns := table.Columns
+	if len(columns) == 0 {
+		columns = field.TableOptions.Columns
+	}
+	fmt.Fprintf(os.Stderr, "HTML formatter: Using %d columns (from table.Columns: %d, from field.TableOptions: %d)",
+		len(columns), len(table.Columns), len(field.TableOptions.Columns))
 
 	var result strings.Builder
 	result.WriteString("            <div class=\"overflow-x-auto\">\n")
@@ -548,7 +597,7 @@ func (f *HTMLFormatter) formatTableDataHTML(table *api.TextTable, field api.Pret
 	// Write headers
 	result.WriteString("                    <thead class=\"bg-gray-50\">\n")
 	result.WriteString("                        <tr>\n")
-	for _, tableField := range field.TableOptions.Columns {
+	for _, tableField := range columns {
 		// Use Label for display, fallback to prettified Name if Label is empty
 		headerLabel := tableField.Label
 		if headerLabel == "" {
@@ -570,7 +619,7 @@ func (f *HTMLFormatter) formatTableDataHTML(table *api.TextTable, field api.Pret
 	result.WriteString("                    <tbody class=\"bg-white divide-y divide-gray-200\">\n")
 	for _, row := range table.Rows {
 		result.WriteString("                        <tr class=\"hover:bg-gray-50\">\n")
-		for _, tableField := range field.TableOptions.Columns {
+		for _, tableField := range columns {
 			fieldValue, exists := row[tableField.Name]
 			var cellContent string
 			if exists {
@@ -600,9 +649,19 @@ func (f *HTMLFormatter) formatTableDataHTML(table *api.TextTable, field api.Pret
 
 // formatTableDataHTMLWithGridJS formats table data using Grid.js for interactive features
 func (f *HTMLFormatter) formatTableDataHTMLWithGridJS(table *api.TextTable, field api.PrettyField, tableID string) string {
+	fmt.Fprintf(os.Stderr, "HTML formatter: formatTableDataHTMLWithGridJS called for field '%s'", field.Name)
 	if table == nil || len(table.Rows) == 0 {
+		fmt.Fprintf(os.Stderr, "HTML formatter: table is nil or has no rows")
 		return "            <p class=\"text-gray-500 text-center py-8\">No data available</p>"
 	}
+
+	// Use table's embedded Columns if available, otherwise use field.TableOptions.Columns
+	columns := table.Columns
+	if len(columns) == 0 {
+		columns = field.TableOptions.Columns
+	}
+	fmt.Fprintf(os.Stderr, "HTML formatter: Using %d columns (from table.Columns: %d, from field.TableOptions: %d)",
+		len(columns), len(table.Columns), len(field.TableOptions.Columns))
 
 	var result strings.Builder
 
@@ -616,7 +675,7 @@ func (f *HTMLFormatter) formatTableDataHTMLWithGridJS(table *api.TextTable, fiel
 
 	// Configure columns
 	result.WriteString("                        columns: [\n")
-	for i, tableField := range field.TableOptions.Columns {
+	for i, tableField := range columns {
 		headerLabel := tableField.Label
 		if headerLabel == "" {
 			headerLabel = f.prettifyFieldName(tableField.Name)
@@ -640,7 +699,7 @@ func (f *HTMLFormatter) formatTableDataHTMLWithGridJS(table *api.TextTable, fiel
 		}
 		result.WriteString("                            [")
 
-		for j, tableField := range field.TableOptions.Columns {
+		for j, tableField := range columns {
 			if j > 0 {
 				result.WriteString(", ")
 			}
