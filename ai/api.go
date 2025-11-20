@@ -3,6 +3,7 @@ package ai
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/flanksource/clicky/api"

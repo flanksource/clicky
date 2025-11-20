@@ -262,6 +262,7 @@ func getVariableDeclarationsFromRow(row PrettyDataRow) []cel.EnvOption {
 
 	return decls
 }
+
 // collectTreeVariableDeclarations collects all unique variable names from an entire tree
 func collectTreeVariableDeclarations(node TreeNode) []cel.EnvOption {
 	if node == nil {

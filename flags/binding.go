@@ -11,15 +11,6 @@ import (
 
 // BindFlag creates and binds a flag to a Cobra command based on field info
 func BindFlag(cmd *cobra.Command, info FieldInfo) *FlagValue {
-	if info.IsArgs {
-		if info.Required {
-			cmd.Args = cobra.MinimumNArgs(1)
-		} else {
-			cmd.Args = cobra.MinimumNArgs(0)
-		}
-	} else {
-		cmd.Args = cobra.NoArgs
-	}
 	fv := &FlagValue{
 		FieldName:    info.FieldName,
 		FieldPath:    info.FieldPath,

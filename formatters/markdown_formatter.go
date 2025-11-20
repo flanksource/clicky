@@ -42,4 +42,3 @@ func (f *MarkdownFormatter) FormatPrettyData(data *api.PrettyData, opts FormatOp
 
 	return data.Markdown(), nil
 }
-
