@@ -151,7 +151,6 @@ func (p OrderedProduct) PrettyRow(_ interface{}) map[string]api.Text {
 		"Price": {Content: fmt.Sprintf("$%.2f", p.Price), Style: "text-green-600 order-3"},
 	}
 }
-}
 
 func TestPrettyRowColumnOrdering(t *testing.T) {
 	products := []OrderedProduct{

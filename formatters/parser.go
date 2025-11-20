@@ -329,6 +329,7 @@ func ToPrettyDataWithOptions(data interface{}, opts FormatOptions) (*api.PrettyD
 	// For single objects (struct or map)
 	return parseStructDataWithOptions(val, opts)
 }
+
 // parseSliceDataWithOptions handles slice/array data with format options
 func parseSliceDataWithOptions(val reflect.Value, opts FormatOptions) (*api.PrettyData, error) {
 	// Safely dereference root level pointer

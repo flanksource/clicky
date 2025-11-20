@@ -86,7 +86,7 @@ func (f FormatManager) Markdown(data interface{}) (string, error) {
 
 // HTML implements api.FormatManager.
 func (f FormatManager) HTML(data interface{}) (string, error) {
-	if formatter, ok := GetCustomFormatter("html"); ok {
+	if formatter, ok := GetCustomFormatter("html"); !ok {
 		return "", fmt.Errorf("html formatter not registered, registing using 'import _ github.com/flanksource/clicky/formatters/http'")
 	} else {
 		return formatter(data, FormatOptions{})
@@ -94,7 +94,7 @@ func (f FormatManager) HTML(data interface{}) (string, error) {
 }
 
 func (f FormatManager) HTMLPDF(data interface{}) (string, error) {
-	if formatter, ok := GetCustomFormatter("html-pdf"); ok {
+	if formatter, ok := GetCustomFormatter("html-pdf"); !ok {
 		return "", fmt.Errorf("html-pdf formatter not registered, registing using 'import _ github.com/flanksource/clicky/formatters/http'")
 	} else {
 		return formatter(data, FormatOptions{})

@@ -132,6 +132,16 @@ func AddNamedCommand[T any](name string, parent *cobra.Command, opts T, fn func(
 		}
 	}
 
+	if fv, ok := flagValues[flags.ARGS]; ok {
+		if fv.Required {
+			cmd.Args = cobra.MinimumNArgs(1)
+		} else {
+			cmd.Args = cobra.MinimumNArgs(0)
+		}
+	} else {
+		cmd.Args = cobra.NoArgs
+	}
+
 	// Set RunE function
 	cmd.RunE = func(c *cobra.Command, args []string) error {
 		// Create new instance of opts

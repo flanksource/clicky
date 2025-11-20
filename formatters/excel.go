@@ -164,6 +164,7 @@ func (f *ExcelFormatter) createHeaderStyle(file *excelize.File) (int, error) {
 		},
 	})
 }
+
 // getCellReference returns Excel cell reference (e.g., A1, B2)
 func (f *ExcelFormatter) getCellReference(col, row int) string {
 	return f.getColumnName(col) + strconv.Itoa(row)

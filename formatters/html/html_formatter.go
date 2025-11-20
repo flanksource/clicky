@@ -468,6 +468,7 @@ func (f *HTMLFormatter) applyTailwindStyleToHTML(text, styleStr string) string {
 	escapedText := html.EscapeString(transformedText)
 	return fmt.Sprintf("<span class=\"%s\">%s</span>", styleStr, escapedText)
 }
+
 // prettifyFieldName converts field names to readable format
 func (f *HTMLFormatter) prettifyFieldName(name string) string {
 	return formatters.PrettifyFieldName(name)

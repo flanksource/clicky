@@ -50,7 +50,22 @@ type SpecialFields struct {
 	Since    time.Time         `flag:"since" help:"Time field"`
 }
 
-var _ = Describe("ParseStructFields", func() {
+type Args struct {
+	Values []string `args:"true" help:"List of values"`
+}
+
+var _ = Describe("Flags", func() {
+	Context("when parsing args struct", func() {
+		It("should extract args field correctly", func() {
+			fields, err := ParseStructFields(reflect.TypeOf(Args{}))
+			Expect(err).ToNot(HaveOccurred())
+			Expect(fields).To(HaveLen(1))
+
+			By("verifying args field")
+			Expect(fields[0].IsArgs).To(BeTrue())
+		})
+	})
+
 	Context("when parsing simple struct", func() {
 		It("should extract all direct fields with metadata", func() {
 			fields, err := ParseStructFields(reflect.TypeOf(BaseOptions{}))
