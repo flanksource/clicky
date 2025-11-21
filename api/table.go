@@ -3,7 +3,6 @@ package api
 import (
 	"bytes"
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
@@ -16,10 +15,9 @@ import (
 )
 
 func (t TextTable) HTML() string {
-	fmt.Fprintf(os.Stderr, "DEBUG table.HTML(): table has %d headers, %d rows, %d columns\n", len(t.Headers), len(t.Rows), len(t.Columns))
+	debug := fmt.Sprintf("<!-- DEBUG table.HTML(): table has %d headers, %d rows, %d columns -->", len(t.Headers), len(t.Rows), len(t.Columns))
 	result := t.render(renderer.NewHTML(), TransformerHTML)
-	fmt.Fprintf(os.Stderr, "DEBUG table.HTML(): result length = %d\n", len(result))
-	return result
+	return debug + "\n" + result
 }
 
 func (t TextTable) String() string {
