@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"html"
-	"os"
 	"strings"
 
 	"github.com/flanksource/clicky/api"
@@ -148,152 +147,45 @@ func (f *HTMLFormatter) Format(in interface{}, options formatters.FormatOptions)
 		return "", nil
 	}
 
+	// Delegate to FormatPrettyData for actual rendering
+	return f.FormatPrettyData(data)
+}
+
+// FormatPrettyData formats PrettyData directly as HTML
+func (f *HTMLFormatter) FormatPrettyData(data *api.PrettyData) (string, error) {
+	if data == nil || data.Schema == nil {
+		return "", nil
+	}
+
 	var result strings.Builder
 
 	if f.IncludeCSS {
 		result.WriteString(f.getCSS())
 	}
 
-	// Count non-table/non-tree fields first
-	summaryFieldCount := 0
-	for _, field := range data.Schema.Fields {
-		if field.Format != api.FormatTable && field.Format != api.FormatTree {
-			if _, exists := data.GetValue(field.Name); exists {
-				summaryFieldCount++
-			}
-		}
-	}
+	// Get the non-nil TypedValue using Value()
+	value := data.Value()
 
-	// Only render Summary section if there are non-table/non-tree fields
-	if summaryFieldCount > 0 {
-		// Summary first - add non-table fields as a summary card
-		result.WriteString("        <div class=\"bg-white rounded-lg shadow\">\n")
-		result.WriteString("            <div class=\"px-6 py-4 border-b border-gray-200\">\n")
-		result.WriteString("                <h2 class=\"text-xl font-semibold text-gray-900\">Summary</h2>\n")
-		result.WriteString("            </div>\n")
-		result.WriteString("            <div class=\"px-6 py-4\">\n")
-		result.WriteString("                <dl class=\"grid grid-cols-1 md:grid-cols-2 gap-4\">\n")
-
-		// Process summary fields (non-table, non-tree, non-hidden)
-		for _, field := range data.Schema.Fields {
-			// Skip table and tree fields (they get special handling)
-			if field.Format == api.FormatTable || field.Format == api.FormatTree {
-				continue
-			}
-
-			fieldValue, exists := data.GetValue(field.Name)
-			if !exists {
-				continue
-			}
-
-			prettyFieldName := f.prettifyFieldName(field.Name)
-
-			// Format field value with styling
-			fieldHTML := f.formatFieldValueHTMLWithStyle(fieldValue, field)
-
-			// Apply label styling
-			var labelHTML string
-			if field.LabelStyle != "" {
-				labelHTML = f.applyTailwindStyleToHTML(prettyFieldName, field.LabelStyle)
-			} else {
-				labelHTML = fmt.Sprintf("<span class=\"text-sm font-medium text-gray-500\">%s</span>", html.EscapeString(prettyFieldName))
-			}
-
-			result.WriteString("                    <div>\n")
-			result.WriteString(fmt.Sprintf("                        <dt>%s</dt>\n", labelHTML))
-			result.WriteString(fmt.Sprintf("                        <dd class=\"mt-1 text-sm\">%s</dd>\n", fieldHTML))
-			result.WriteString("                    </div>\n")
-		}
-		result.WriteString("                </dl>\n")
-		result.WriteString("            </div>\n")
-		result.WriteString("        </div>\n")
-	}
-
-	// Then handle tables
-	for _, field := range data.Schema.Fields {
-		// Check for table format
-		switch field.Format {
-		case api.FormatTable:
-			fmt.Fprintf(os.Stderr, "HTML formatter: Processing table field '%s'", field.Name)
-			fieldValue, exists := data.GetValue(field.Name)
-			fmt.Fprintf(os.Stderr, "HTML formatter: GetValue('%s') returned exists=%v", field.Name, exists)
-
-			// Fallback: if field doesn't exist in TypedMap, check if data.Table is available
-			if !exists && data.Table != nil {
-				fmt.Fprintf(os.Stderr, "HTML formatter: Using fallback to data.Table for field '%s'", field.Name)
-				// Use the embedded table data directly
-				fieldValue = api.TypedValue{Table: data.Table}
-				exists = true
-			}
-
-			if !exists {
-				fmt.Fprintf(os.Stderr, "HTML formatter: Skipping field '%s' - no data found", field.Name)
-				continue
-			}
-
-			// Get table data - check both Table field and Textable field (for api.TextTable)
-			var tableData *api.TextTable
-			if fieldValue.Table != nil {
-				tableData = fieldValue.Table
-				fmt.Fprintf(os.Stderr, "HTML formatter: Found table data in fieldValue.Table for '%s' with %d rows", field.Name, len(tableData.Rows))
-			} else if textTable, ok := fieldValue.Textable.(api.TextTable); ok {
-				tableData = &textTable
-				fmt.Fprintf(os.Stderr, "HTML formatter: Found table data in fieldValue.Textable for '%s' with %d rows", field.Name, len(tableData.Rows))
-			}
-
-			if tableData != nil && len(tableData.Rows) > 0 {
-				fmt.Fprintf(os.Stderr, "HTML formatter: Rendering table '%s' with %d rows and %d columns", field.Name, len(tableData.Rows), len(tableData.Columns))
-				// Add section title
-				result.WriteString("        <div class=\"bg-white rounded-lg shadow\">\n")
-				result.WriteString("            <div class=\"px-6 py-4 border-b border-gray-200\">\n")
-				result.WriteString(fmt.Sprintf("                <h2 class=\"text-xl font-semibold text-gray-900\">%s</h2>\n",
-					f.prettifyFieldName(field.Name)))
-				result.WriteString("            </div>\n")
-
-				// Format as table - use Grid.js unless in PDF mode
-				var tableHTML string
-				if f.IsPDFMode {
-					// Use static HTML table for PDF generation
-					tableHTML = f.formatTableDataHTML(tableData, field)
-				} else {
-					// Use Grid.js for interactive features
-					tableID := f.generateTableID()
-					tableHTML = f.formatTableDataHTMLWithGridJS(tableData, field, tableID)
-				}
-				result.WriteString(tableHTML)
-				result.WriteString("        </div>\n")
-			}
-		case api.FormatTree:
-			// Handle tree format
-			fmt.Fprintf(os.Stderr, "HTML formatter: Processing tree field '%s'\n", field.Name)
-			fieldValue, exists := data.GetValue(field.Name)
-			fmt.Fprintf(os.Stderr, "HTML formatter: GetValue('%s') returned exists=%v\n", field.Name, exists)
-
-			// Fallback: if field doesn't exist in TypedMap, check if data.Tree is available
-			if !exists && data.Tree != nil {
-				fmt.Fprintf(os.Stderr, "HTML formatter: Using fallback to data.Tree for field '%s'\n", field.Name)
-				fieldValue = api.TypedValue{Tree: data.Tree}
-				exists = true
-			}
-
-			if exists {
-				// Add section title
-				result.WriteString("        <div class=\"bg-white rounded-lg shadow\">\n")
-				result.WriteString("            <div class=\"px-6 py-4 border-b border-gray-200\">\n")
-				result.WriteString(fmt.Sprintf("                <h2 class=\"text-xl font-semibold text-gray-900\">%s</h2>\n",
-					f.prettifyFieldName(field.Name)))
-				result.WriteString("            </div>\n")
-				result.WriteString("            <div class=\"px-6 py-4\">\n")
-
-				// Format as tree with HTML styling
-				treeHTML := f.formatTreeFieldHTML(fieldValue, field)
-				result.WriteString(treeHTML)
-
-				result.WriteString("            </div>\n")
-				result.WriteString("        </div>\n")
-			} else {
-				fmt.Fprintf(os.Stderr, "HTML formatter: WARNING - tree field '%s' not found in data\n", field.Name)
-			}
+	// Type switch on the actual data type
+	switch v := value.(type) {
+	case *api.TextTree:
+		// Root level tree - render directly
+		return f.renderTreeAsHTML(v, "Tree")
+	case *api.TextTable:
+		// Root level table - render directly
+		return f.renderTableAsHTML(v, api.PrettyField{Name: "table"})
+	case *api.TypedMap:
+		// Complex structure with fields - iterate and render each
+		f.renderTypedMapAsHTML(&result, v, data.Schema)
+	case api.Textable:
+		// Simple textable content
+		if f.IncludeCSS {
+			result.WriteString("        <div class=\"bg-white rounded-lg shadow p-6\">\n")
+			result.WriteString("            ")
+			result.WriteString(v.HTML())
+			result.WriteString("\n        </div>\n")
+		} else {
+			result.WriteString(v.HTML())
 		}
 	}
 
@@ -304,50 +196,49 @@ func (f *HTMLFormatter) Format(in interface{}, options formatters.FormatOptions)
 	return result.String(), nil
 }
 
-// FormatPrettyData formats PrettyData directly as HTML
-func (f *HTMLFormatter) FormatPrettyData(data *api.PrettyData) (string, error) {
-	if data == nil || data.Schema == nil {
-		fmt.Fprintf(os.Stderr, "HTML formatter: data or schema is nil")
-		return "", nil
-	}
-
-	fmt.Fprintf(os.Stderr, "HTML formatter: FormatPrettyData called with %d schema fields\n", len(data.Schema.Fields))
-	fmt.Fprintf(os.Stderr, "HTML formatter: data.Table is nil: %v\n", data.Table == nil)
-	if data.Table != nil {
-		fmt.Fprintf(os.Stderr, "HTML formatter: data.Table has %d rows, %d columns\n", len(data.Table.Rows), len(data.Table.Columns))
-	}
-	fmt.Fprintf(os.Stderr, "HTML formatter: data.TypedMap is nil: %v\n", data.TypedMap == nil)
-	for i, field := range data.Schema.Fields {
-		fmt.Fprintf(os.Stderr, "HTML formatter: Schema field %d: name=%s format=%s\n", i, field.Name, field.Format)
-	}
-
-	var result strings.Builder
-
-	if f.IncludeCSS {
-		result.WriteString(f.getCSS())
-	}
-
-	// Collect deferred nested tables (non-compact tables from nested structs)
+// renderTypedMapAsHTML renders a TypedMap (complex structure with fields)
+func (f *HTMLFormatter) renderTypedMapAsHTML(result *strings.Builder, typedMap *api.TypedMap, schema *api.PrettyObject) {
+	// Collect fields by category
 	type deferredTable struct {
 		table     *api.TextTable
 		fieldName string
-		fieldMeta *api.FieldMeta
+		field     api.PrettyField
 	}
+	var summaryFields []api.PrettyField
+	var treeSections []api.PrettyField
+	var tableSections []api.PrettyField
 	var deferredTables []deferredTable
 
-	// Count non-table/non-tree fields first
-	summaryFieldCount := 0
-	for _, field := range data.Schema.Fields {
-		if field.Format != api.FormatTable && field.Format != api.FormatTree {
-			if _, exists := data.GetValue(field.Name); exists {
-				summaryFieldCount++
+	// Iterate schema to organize fields
+	for _, field := range schema.Fields {
+		if fieldValue, exists := (*typedMap)[field.Name]; exists {
+			// Get the actual non-nil value
+			value := fieldValue.Value()
+
+			// Type switch to categorize
+			switch v := value.(type) {
+			case *api.TextTree:
+				treeSections = append(treeSections, field)
+			case *api.TextTable:
+				// Check if this is a deferred table (non-compact nested)
+				if fieldValue.FieldMeta != nil && !fieldValue.FieldMeta.CompactItems {
+					deferredTables = append(deferredTables, deferredTable{
+						table:     v,
+						fieldName: f.prettifyFieldName(field.Name),
+						field:     field,
+					})
+				} else {
+					tableSections = append(tableSections, field)
+				}
+			default:
+				// Regular field for summary section
+				summaryFields = append(summaryFields, field)
 			}
 		}
 	}
 
-	// Only render Summary section if there are non-table/non-tree fields
-	if summaryFieldCount > 0 {
-		// Summary first - add non-table fields as a summary card
+	// Render summary section if there are regular fields
+	if len(summaryFields) > 0 {
 		result.WriteString("        <div class=\"bg-white rounded-lg shadow\">\n")
 		result.WriteString("            <div class=\"px-6 py-4 border-b border-gray-200\">\n")
 		result.WriteString("                <h2 class=\"text-xl font-semibold text-gray-900\">Summary</h2>\n")
@@ -355,33 +246,11 @@ func (f *HTMLFormatter) FormatPrettyData(data *api.PrettyData) (string, error) {
 		result.WriteString("            <div class=\"px-6 py-4\">\n")
 		result.WriteString("                <dl class=\"grid grid-cols-1 md:grid-cols-2 gap-4\">\n")
 
-		// Process summary fields (non-table, non-tree, non-hidden)
-		for _, field := range data.Schema.Fields {
-			// Skip table and tree fields (they get special handling)
-			if field.Format == api.FormatTable || field.Format == api.FormatTree {
-				continue
-			}
-
-			fieldValue, exists := data.GetValue(field.Name)
-			if !exists {
-				continue
-			}
-
+		for _, field := range summaryFields {
+			fieldValue, _ := (*typedMap)[field.Name]
 			prettyFieldName := f.prettifyFieldName(field.Name)
-
-			// Check if this field contains a non-compact table that should be deferred
-			if fieldValue.Table != nil && fieldValue.FieldMeta != nil && !fieldValue.FieldMeta.CompactItems {
-				deferredTables = append(deferredTables, deferredTable{
-					table:     fieldValue.Table,
-					fieldName: prettyFieldName,
-					fieldMeta: fieldValue.FieldMeta,
-				})
-			}
-
-			// Format field value with styling
 			fieldHTML := f.formatFieldValueHTMLWithStyle(fieldValue, field)
 
-			// Apply label styling
 			var labelHTML string
 			if field.LabelStyle != "" {
 				labelHTML = f.applyTailwindStyleToHTML(prettyFieldName, field.LabelStyle)
@@ -399,117 +268,120 @@ func (f *HTMLFormatter) FormatPrettyData(data *api.PrettyData) (string, error) {
 		result.WriteString("        </div>\n")
 	}
 
-	// Then handle tables
-	for _, field := range data.Schema.Fields {
-		// Check for table format
-		switch field.Format {
-		case api.FormatTable:
-			fmt.Fprintf(os.Stderr, "HTML formatter: Processing table field '%s'", field.Name)
-			fieldValue, exists := data.GetValue(field.Name)
-			fmt.Fprintf(os.Stderr, "HTML formatter: GetValue('%s') returned exists=%v", field.Name, exists)
-
-			// Fallback: if field doesn't exist in TypedMap, check if data.Table is available
-			if !exists && data.Table != nil {
-				fmt.Fprintf(os.Stderr, "HTML formatter: Using fallback to data.Table for field '%s'", field.Name)
-				// Use the embedded table data directly
-				fieldValue = api.TypedValue{Table: data.Table}
-				exists = true
-			}
-
-			if !exists {
-				fmt.Fprintf(os.Stderr, "HTML formatter: Skipping field '%s' - no data found", field.Name)
-				continue
-			}
-
-			// Get table data - check both Table field and Textable field (for api.TextTable)
-			var tableData *api.TextTable
-			if fieldValue.Table != nil {
-				tableData = fieldValue.Table
-				fmt.Fprintf(os.Stderr, "HTML formatter: Found table data in fieldValue.Table for '%s' with %d rows", field.Name, len(tableData.Rows))
-			} else if textTable, ok := fieldValue.Textable.(api.TextTable); ok {
-				tableData = &textTable
-				fmt.Fprintf(os.Stderr, "HTML formatter: Found table data in fieldValue.Textable for '%s' with %d rows", field.Name, len(tableData.Rows))
-			}
-
-			if tableData != nil && len(tableData.Rows) > 0 {
-				fmt.Fprintf(os.Stderr, "HTML formatter: Rendering table '%s' with %d rows and %d columns", field.Name, len(tableData.Rows), len(tableData.Columns))
-				// Add section title
-				result.WriteString("        <div class=\"bg-white rounded-lg shadow\">\n")
-				result.WriteString("            <div class=\"px-6 py-4 border-b border-gray-200\">\n")
-				result.WriteString(fmt.Sprintf("                <h2 class=\"text-xl font-semibold text-gray-900\">%s</h2>\n",
-					f.prettifyFieldName(field.Name)))
-				result.WriteString("            </div>\n")
-
-				// Format as table - use Grid.js unless in PDF mode
-				var tableHTML string
-				if f.IsPDFMode {
-					// Use static HTML table for PDF generation
-					tableHTML = f.formatTableDataHTML(tableData, field)
-				} else {
-					// Use Grid.js for interactive features
-					tableID := f.generateTableID()
-					tableHTML = f.formatTableDataHTMLWithGridJS(tableData, field, tableID)
-				}
-				result.WriteString(tableHTML)
-				result.WriteString("        </div>\n")
-			}
-		case api.FormatTree:
-			// Handle tree format
-			fmt.Fprintf(os.Stderr, "HTML formatter: Processing tree field '%s'\n", field.Name)
-			fieldValue, exists := data.GetValue(field.Name)
-			fmt.Fprintf(os.Stderr, "HTML formatter: GetValue('%s') returned exists=%v\n", field.Name, exists)
-
-			// Fallback: if field doesn't exist in TypedMap, check if data.Tree is available
-			if !exists && data.Tree != nil {
-				fmt.Fprintf(os.Stderr, "HTML formatter: Using fallback to data.Tree for field '%s'\n", field.Name)
-				fieldValue = api.TypedValue{Tree: data.Tree}
-				exists = true
-			}
-
-			if exists {
-				// Add section title
-				result.WriteString("        <div class=\"bg-white rounded-lg shadow\">\n")
-				result.WriteString("            <div class=\"px-6 py-4 border-b border-gray-200\">\n")
-				result.WriteString(fmt.Sprintf("                <h2 class=\"text-xl font-semibold text-gray-900\">%s</h2>\n",
-					f.prettifyFieldName(field.Name)))
-				result.WriteString("            </div>\n")
-				result.WriteString("            <div class=\"px-6 py-4\">\n")
-
-				// Format as tree with HTML styling
-				treeHTML := f.formatTreeFieldHTML(fieldValue, field)
-				result.WriteString(treeHTML)
-
-				result.WriteString("            </div>\n")
-				result.WriteString("        </div>\n")
-			} else {
-				fmt.Fprintf(os.Stderr, "HTML formatter: WARNING - tree field '%s' not found in data\n", field.Name)
-			}
+	// Render table sections
+	for _, field := range tableSections {
+		fieldValue, _ := (*typedMap)[field.Name]
+		if table, ok := fieldValue.Value().(*api.TextTable); ok {
+			f.renderTableSectionHTML(result, table, field)
 		}
 	}
 
-	// Render deferred nested tables (non-compact tables from nested structs)
+	// Render tree sections
+	for _, field := range treeSections {
+		fieldValue, _ := (*typedMap)[field.Name]
+		if tree, ok := fieldValue.Value().(*api.TextTree); ok {
+			f.renderTreeSectionHTML(result, tree, field)
+		}
+	}
+
+	// Render deferred tables
 	for _, deferred := range deferredTables {
-		result.WriteString("        <div class=\"bg-white rounded-lg shadow\">\n")
-		result.WriteString("            <div class=\"px-6 py-4 border-b border-gray-200\">\n")
-		result.WriteString(fmt.Sprintf("                <h2 class=\"text-xl font-semibold text-gray-900\">%s</h2>\n",
-			html.EscapeString(deferred.fieldName)))
-		result.WriteString("            </div>\n")
-
-		// Format as table - use Grid.js unless in PDF mode
-		var tableHTML string
-		if f.IsPDFMode {
-			// Use static HTML table for PDF generation
-			field := api.PrettyField{Name: deferred.fieldMeta.Name}
-			tableHTML = f.formatTableDataHTML(deferred.table, field)
-		} else {
-			// Use Grid.js for interactive features
-			tableID := f.generateTableID()
-			field := api.PrettyField{Name: deferred.fieldMeta.Name}
-			tableHTML = f.formatTableDataHTMLWithGridJS(deferred.table, field, tableID)
-		}
-		result.WriteString(tableHTML)
-		result.WriteString("        </div>\n")
+		f.renderTableSectionHTML(result, deferred.table, deferred.field)
 	}
+}
+
+// renderTableSectionHTML renders a table as a section with title
+func (f *HTMLFormatter) renderTableSectionHTML(result *strings.Builder, table *api.TextTable, field api.PrettyField) {
+	if table == nil || len(table.Rows) == 0 {
+		return
+	}
+
+	result.WriteString("        <div class=\"bg-white rounded-lg shadow\">\n")
+	result.WriteString("            <div class=\"px-6 py-4 border-b border-gray-200\">\n")
+	result.WriteString(fmt.Sprintf("                <h2 class=\"text-xl font-semibold text-gray-900\">%s</h2>\n",
+		f.prettifyFieldName(field.Name)))
+	result.WriteString("            </div>\n")
+
+	var tableHTML string
+	if f.IsPDFMode {
+		tableHTML = f.formatTableDataHTML(table, field)
+	} else {
+		tableID := f.generateTableID()
+		tableHTML = f.formatTableDataHTMLWithGridJS(table, field, tableID)
+	}
+	result.WriteString(tableHTML)
+	result.WriteString("        </div>\n")
+}
+
+// renderTreeSectionHTML renders a tree as a section with title
+func (f *HTMLFormatter) renderTreeSectionHTML(result *strings.Builder, tree *api.TextTree, field api.PrettyField) {
+	if tree == nil {
+		return
+	}
+
+	result.WriteString("        <div class=\"bg-white rounded-lg shadow\">\n")
+	result.WriteString("            <div class=\"px-6 py-4 border-b border-gray-200\">\n")
+	result.WriteString(fmt.Sprintf("                <h2 class=\"text-xl font-semibold text-gray-900\">%s</h2>\n",
+		f.prettifyFieldName(field.Name)))
+	result.WriteString("            </div>\n")
+	result.WriteString("            <div class=\"px-6 py-4\">\n")
+
+	treeHTML := f.formatTreeFieldHTML(api.TypedValue{Tree: tree}, field)
+	result.WriteString(treeHTML)
+
+	result.WriteString("            </div>\n")
+	result.WriteString("        </div>\n")
+}
+
+// renderTreeAsHTML renders a root-level tree
+func (f *HTMLFormatter) renderTreeAsHTML(tree *api.TextTree, title string) (string, error) {
+	var result strings.Builder
+
+	if f.IncludeCSS {
+		result.WriteString(f.getCSS())
+	}
+
+	result.WriteString("        <div class=\"bg-white rounded-lg shadow\">\n")
+	result.WriteString("            <div class=\"px-6 py-4 border-b border-gray-200\">\n")
+	result.WriteString(fmt.Sprintf("                <h2 class=\"text-xl font-semibold text-gray-900\">%s</h2>\n", html.EscapeString(title)))
+	result.WriteString("            </div>\n")
+	result.WriteString("            <div class=\"px-6 py-4\">\n")
+
+	treeHTML := f.formatTreeFieldHTML(api.TypedValue{Tree: tree}, api.PrettyField{Name: title})
+	result.WriteString(treeHTML)
+
+	result.WriteString("            </div>\n")
+	result.WriteString("        </div>\n")
+
+	if f.IncludeCSS {
+		result.WriteString("    </div>\n</body>\n</html>")
+	}
+
+	return result.String(), nil
+}
+
+// renderTableAsHTML renders a root-level table
+func (f *HTMLFormatter) renderTableAsHTML(table *api.TextTable, field api.PrettyField) (string, error) {
+	var result strings.Builder
+
+	if f.IncludeCSS {
+		result.WriteString(f.getCSS())
+	}
+
+	result.WriteString("        <div class=\"bg-white rounded-lg shadow\">\n")
+	result.WriteString("            <div class=\"px-6 py-4 border-b border-gray-200\">\n")
+	result.WriteString("                <h2 class=\"text-xl font-semibold text-gray-900\">Table</h2>\n")
+	result.WriteString("            </div>\n")
+
+	var tableHTML string
+	if f.IsPDFMode {
+		tableHTML = f.formatTableDataHTML(table, field)
+	} else {
+		tableID := f.generateTableID()
+		tableHTML = f.formatTableDataHTMLWithGridJS(table, field, tableID)
+	}
+	result.WriteString(tableHTML)
+	result.WriteString("        </div>\n")
 
 	if f.IncludeCSS {
 		result.WriteString("    </div>\n</body>\n</html>")
@@ -600,9 +472,7 @@ func (f *HTMLFormatter) formatCompactTableHTML(table *api.TextTable) string {
 
 // formatTableDataHTML formats table data for HTML output
 func (f *HTMLFormatter) formatTableDataHTML(table *api.TextTable, field api.PrettyField) string {
-	fmt.Fprintf(os.Stderr, "HTML formatter: formatTableDataHTML called for field '%s'", field.Name)
 	if table == nil || len(table.Rows) == 0 {
-		fmt.Fprintf(os.Stderr, "HTML formatter: table is nil or has no rows")
 		return "            <p class=\"text-gray-500 text-center py-8\">No data available</p>"
 	}
 
@@ -611,8 +481,6 @@ func (f *HTMLFormatter) formatTableDataHTML(table *api.TextTable, field api.Pret
 	if len(columns) == 0 {
 		columns = field.TableOptions.Columns
 	}
-	fmt.Fprintf(os.Stderr, "HTML formatter: Using %d columns (from table.Columns: %d, from field.TableOptions: %d)",
-		len(columns), len(table.Columns), len(field.TableOptions.Columns))
 
 	var result strings.Builder
 	result.WriteString("            <div class=\"overflow-x-auto\">\n")
@@ -673,9 +541,7 @@ func (f *HTMLFormatter) formatTableDataHTML(table *api.TextTable, field api.Pret
 
 // formatTableDataHTMLWithGridJS formats table data using Grid.js for interactive features
 func (f *HTMLFormatter) formatTableDataHTMLWithGridJS(table *api.TextTable, field api.PrettyField, tableID string) string {
-	fmt.Fprintf(os.Stderr, "HTML formatter: formatTableDataHTMLWithGridJS called for field '%s'", field.Name)
 	if table == nil || len(table.Rows) == 0 {
-		fmt.Fprintf(os.Stderr, "HTML formatter: table is nil or has no rows")
 		return "            <p class=\"text-gray-500 text-center py-8\">No data available</p>"
 	}
 
@@ -684,8 +550,6 @@ func (f *HTMLFormatter) formatTableDataHTMLWithGridJS(table *api.TextTable, fiel
 	if len(columns) == 0 {
 		columns = field.TableOptions.Columns
 	}
-	fmt.Fprintf(os.Stderr, "HTML formatter: Using %d columns (from table.Columns: %d, from field.TableOptions: %d)",
-		len(columns), len(table.Columns), len(field.TableOptions.Columns))
 
 	var result strings.Builder
 
