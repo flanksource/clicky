@@ -1,6 +1,8 @@
 package pdf
 
 import (
+	"strings"
+
 	"github.com/flanksource/clicky/api"
 )
 
@@ -64,24 +66,13 @@ func (b *BoxBuilder) WithBorderColor(color api.Color) *BoxBuilder {
 // First parameter is the label text
 // Additional parameters can be position ("top-left") or styles ("font-bold")
 func (b *BoxBuilder) WithLabel(label string, positionOrStyle ...string) *BoxBuilder {
-	labelBuilder := NewLabelBuilder(label)
-
-	if len(positionOrStyle) > 0 {
-		// First parameter: check if it's a position or style
-		first := positionOrStyle[0]
-		if isPositionString(first) {
-			labelBuilder = labelBuilder.WithPosition(first)
-			// Apply remaining as styles
-			if len(positionOrStyle) > 1 {
-				labelBuilder = labelBuilder.WithStyles(positionOrStyle[1:]...)
-			}
-		} else {
-			// All parameters are styles
-			labelBuilder = labelBuilder.WithStyles(positionOrStyle...)
-		}
-	}
-
-	b.labels = append(b.labels, labelBuilder.Build())
+	b.labels = append(b.labels, Label{
+		Positionable: Positionable{},
+		Text: api.Text{
+			Content: label,
+			Style:   strings.Join(positionOrStyle, " "),
+		},
+	})
 	return b
 }
 

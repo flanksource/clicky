@@ -55,7 +55,7 @@ func (sf *SchemaFormatter) FormatFile(dataFile string, options FormatOptions) (s
 	}
 
 	// Format output
-	return sf.formatWithPrettyData(prettyData, options)
+	return sf.FormatData(prettyData, options)
 }
 
 // FormatFiles formats multiple data files using the schema
@@ -144,8 +144,8 @@ func (sf *SchemaFormatter) convertMapToStruct(data map[string]interface{}) inter
 	return data
 }
 
-// formatWithPrettyData formats PrettyData using the specified format
-func (sf *SchemaFormatter) formatWithPrettyData(data *api.PrettyData, options FormatOptions) (string, error) {
+// FormatData formats PrettyData using the specified format
+func (sf *SchemaFormatter) FormatData(data *api.PrettyData, options FormatOptions) (string, error) {
 	// Convert PrettyData to the appropriate format for the FormatManager
 	output := sf.formatPrettyDataToMap(data)
 

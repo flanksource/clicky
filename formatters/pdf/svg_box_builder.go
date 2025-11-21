@@ -6,6 +6,7 @@ import (
 
 	"github.com/flanksource/clicky/api"
 	"github.com/flanksource/clicky/api/tailwind"
+	"github.com/samber/lo"
 )
 
 // SVGBoxBuilder provides a fluent API for creating SVGBox instances
@@ -96,26 +97,6 @@ func (b *SVGBoxBuilder) WithPadding(padding api.Padding) *SVGBoxBuilder {
 // WithSVGPadding sets the SVG canvas padding
 func (b *SVGBoxBuilder) WithSVGPadding(padding float64) *SVGBoxBuilder {
 	b.svgPadding = padding
-	return b
-}
-
-// WithLabel adds a label to the SVG box using variadic parameters
-func (b *SVGBoxBuilder) WithLabel(label string, positionOrStyle ...string) *SVGBoxBuilder {
-	labelBuilder := NewLabelBuilder(label)
-
-	if len(positionOrStyle) > 0 {
-		first := positionOrStyle[0]
-		if isPositionString(first) {
-			labelBuilder = labelBuilder.WithPosition(first)
-			if len(positionOrStyle) > 1 {
-				labelBuilder = labelBuilder.WithStyles(positionOrStyle[1:]...)
-			}
-		} else {
-			labelBuilder = labelBuilder.WithStyles(positionOrStyle...)
-		}
-	}
-
-	b.labels = append(b.labels, labelBuilder.Build())
 	return b
 }
 
@@ -296,6 +277,15 @@ func (b *SVGBoxBuilder) Build() SVGBox {
 		EnableCollisionAvoidance: b.enableCollisionAvoidance,
 		YAxisUp:                  b.yAxisUp,
 	}
+}
+func (b *SVGBoxBuilder) WithLabel(text, position string, styles ...string) *SVGBoxBuilder {
+	b.labels = append(b.labels, Label{
+		Positionable: Positionable{
+			Position: lo.ToPtr(ParsePosition(position)),
+		},
+		Text: api.Text{Content: text, Style: strings.Join(styles, " ")},
+	})
+	return b
 }
 
 // parseLineStyle parses a style string and applies it to an api.Line
