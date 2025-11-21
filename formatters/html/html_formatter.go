@@ -147,9 +147,6 @@ func (f *HTMLFormatter) Format(in interface{}, options formatters.FormatOptions)
 	if data == nil || data.Schema == nil {
 		return "", nil
 	}
-	if data == nil || data.Schema == nil {
-		return "", nil
-	}
 
 	var result strings.Builder
 
@@ -268,7 +265,17 @@ func (f *HTMLFormatter) Format(in interface{}, options formatters.FormatOptions)
 			}
 		case api.FormatTree:
 			// Handle tree format
+			fmt.Fprintf(os.Stderr, "HTML formatter: Processing tree field '%s'\n", field.Name)
 			fieldValue, exists := data.GetValue(field.Name)
+			fmt.Fprintf(os.Stderr, "HTML formatter: GetValue('%s') returned exists=%v\n", field.Name, exists)
+
+			// Fallback: if field doesn't exist in TypedMap, check if data.Tree is available
+			if !exists && data.Tree != nil {
+				fmt.Fprintf(os.Stderr, "HTML formatter: Using fallback to data.Tree for field '%s'\n", field.Name)
+				fieldValue = api.TypedValue{Tree: data.Tree}
+				exists = true
+			}
+
 			if exists {
 				// Add section title
 				result.WriteString("        <div class=\"bg-white rounded-lg shadow\">\n")
@@ -284,6 +291,8 @@ func (f *HTMLFormatter) Format(in interface{}, options formatters.FormatOptions)
 
 				result.WriteString("            </div>\n")
 				result.WriteString("        </div>\n")
+			} else {
+				fmt.Fprintf(os.Stderr, "HTML formatter: WARNING - tree field '%s' not found in data\n", field.Name)
 			}
 		}
 	}
@@ -302,12 +311,15 @@ func (f *HTMLFormatter) FormatPrettyData(data *api.PrettyData) (string, error) {
 		return "", nil
 	}
 
-	fmt.Fprintf(os.Stderr, "HTML formatter: FormatPrettyData called with %d schema fields", len(data.Schema.Fields))
-	fmt.Fprintf(os.Stderr, "HTML formatter: data.Table is nil: %v", data.Table == nil)
+	fmt.Fprintf(os.Stderr, "HTML formatter: FormatPrettyData called with %d schema fields\n", len(data.Schema.Fields))
+	fmt.Fprintf(os.Stderr, "HTML formatter: data.Table is nil: %v\n", data.Table == nil)
 	if data.Table != nil {
-		fmt.Fprintf(os.Stderr, "HTML formatter: data.Table has %d rows, %d columns", len(data.Table.Rows), len(data.Table.Columns))
+		fmt.Fprintf(os.Stderr, "HTML formatter: data.Table has %d rows, %d columns\n", len(data.Table.Rows), len(data.Table.Columns))
 	}
-	fmt.Fprintf(os.Stderr, "HTML formatter: data.TypedMap is nil: %v", data.TypedMap == nil)
+	fmt.Fprintf(os.Stderr, "HTML formatter: data.TypedMap is nil: %v\n", data.TypedMap == nil)
+	for i, field := range data.Schema.Fields {
+		fmt.Fprintf(os.Stderr, "HTML formatter: Schema field %d: name=%s format=%s\n", i, field.Name, field.Format)
+	}
 
 	var result strings.Builder
 
@@ -443,7 +455,17 @@ func (f *HTMLFormatter) FormatPrettyData(data *api.PrettyData) (string, error) {
 			}
 		case api.FormatTree:
 			// Handle tree format
+			fmt.Fprintf(os.Stderr, "HTML formatter: Processing tree field '%s'\n", field.Name)
 			fieldValue, exists := data.GetValue(field.Name)
+			fmt.Fprintf(os.Stderr, "HTML formatter: GetValue('%s') returned exists=%v\n", field.Name, exists)
+
+			// Fallback: if field doesn't exist in TypedMap, check if data.Tree is available
+			if !exists && data.Tree != nil {
+				fmt.Fprintf(os.Stderr, "HTML formatter: Using fallback to data.Tree for field '%s'\n", field.Name)
+				fieldValue = api.TypedValue{Tree: data.Tree}
+				exists = true
+			}
+
 			if exists {
 				// Add section title
 				result.WriteString("        <div class=\"bg-white rounded-lg shadow\">\n")
@@ -459,6 +481,8 @@ func (f *HTMLFormatter) FormatPrettyData(data *api.PrettyData) (string, error) {
 
 				result.WriteString("            </div>\n")
 				result.WriteString("        </div>\n")
+			} else {
+				fmt.Fprintf(os.Stderr, "HTML formatter: WARNING - tree field '%s' not found in data\n", field.Name)
 			}
 		}
 	}
