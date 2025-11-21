@@ -9,22 +9,18 @@ import (
 
 	"github.com/flanksource/clicky/api"
 	"github.com/flanksource/clicky/api/tailwind"
+	assets "github.com/flanksource/clicky/formatters/html/"
 )
 
-//go:embed tree.css
-var treeCSS string
+var treeCSS = assets.TreeCSS
 
-//go:embed tree.js
-var treeJS string
+var treeJS = assets.TreeJS
 
-//go:embed gridjs-theme.css
-var gridjsThemeCSS string
+var gridjsThemeCSS = assets.GridjsThemeCSS
 
-//go:embed pdf.css
-var pdfCSS string
+var pdfCSS = assets.PDFCSS
 
-//go:embed tooltips.js
-var tooltipsJS string
+var tooltipsJS = assets.TooltipsJS
 
 func init() {
 	html := NewHTMLFormatter()
