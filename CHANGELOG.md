@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.11.2](https://github.com/flanksource/clicky/compare/v1.11.1...v1.11.2) (2025-11-21)
+
+
+### 🐛 Bug Fixes
+
+* bump golangci ([389eb1c](https://github.com/flanksource/clicky/commit/389eb1c6225d29be50e593a52817766c98086617))
+
 ## [1.11.1](https://github.com/flanksource/clicky/compare/v1.11.0...v1.11.1) (2025-11-11)
 
 
