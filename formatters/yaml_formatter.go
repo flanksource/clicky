@@ -43,7 +43,7 @@ func (f *YAMLFormatter) FormatValue(data interface{}) (string, error) {
 	}
 
 	// Check if the data has yaml tags
-	if hasYAMLTags(data) {
+	if HasYAMLTags(data) {
 		// Use yaml.Marshal directly when yaml tags are present
 		if b, err := yaml.Marshal(data); err != nil {
 			return "", err
@@ -71,8 +71,8 @@ func (f *YAMLFormatter) FormatValue(data interface{}) (string, error) {
 	return string(yamlBytes), nil
 }
 
-// hasYAMLTags checks if a value or its nested structures contain yaml struct tags
-func hasYAMLTags(data interface{}) bool {
+// HasYAMLTags checks if a value or its nested structures contain yaml struct tags
+func HasYAMLTags(data interface{}) bool {
 	if data == nil {
 		return false
 	}

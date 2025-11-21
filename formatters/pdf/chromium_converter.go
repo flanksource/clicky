@@ -92,11 +92,6 @@ func (c *ChromiumConverter) Convert(ctx context.Context, svgPath, outputPath str
 		return NewConverterError(c.Name(), "convert", fmt.Errorf("output PDF file was not created"))
 	}
 
-	// If we generated a PDF, decompress its streams for better compatibility
-	if err := uncompressPDFStreams(outputPath); err != nil {
-		return NewConverterError(c.Name(), "decompress PDF streams", fmt.Errorf("failed to decompress PDF streams: %w", err))
-	}
-
 	return nil
 }
 
