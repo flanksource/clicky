@@ -2,8 +2,11 @@ package api
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
+	"html"
 	"strings"
+	"sync/atomic"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/lipgloss/table"
@@ -14,18 +17,150 @@ import (
 	"github.com/samber/lo"
 )
 
-func (t TextTable) HTML() string {
-	debug := fmt.Sprintf("<!-- DEBUG table.HTML(): table has %d headers, %d rows, %d columns -->", len(t.Headers), len(t.Rows), len(t.Columns))
-	result := t.render(renderer.NewHTML(), TransformerHTML)
-	return debug + "\n" + result
+var tableIDCounter = atomic.Int64{}
+
+// jsonEscape properly escapes a string for use in JSON
+func jsonEscape(s string) string {
+	// Use Go's JSON marshaling to properly escape the string
+	escaped, _ := json.Marshal(s)
+	return string(escaped)
+}
+
+func (table TextTable) CompactHTML() string {
+	if len(table.Rows) == 0 {
+		return `<span class="text-gray-400">Empty</span>`
+	}
+
+	var result strings.Builder
+	result.WriteString(`<table class="inline-table text-xs border-collapse border border-gray-300">`)
+
+	// Headers
+	result.WriteString("<thead><tr>")
+	for _, header := range table.Headers {
+		result.WriteString(fmt.Sprintf(`<th class="border border-gray-300 px-2 py-1 bg-gray-100 font-semibold">%s</th>`,
+			html.EscapeString(header.String())))
+	}
+	result.WriteString("</tr></thead>")
+
+	// Rows
+	result.WriteString("<tbody>")
+	for _, row := range table.Rows {
+		result.WriteString("<tr>")
+		for _, header := range table.Headers {
+			cellValue := row[header.String()]
+			result.WriteString(fmt.Sprintf(`<td class="border border-gray-300 px-2 py-1">%s</td>`,
+				cellValue.HTML()))
+		}
+		result.WriteString("</tr>")
+	}
+	result.WriteString("</tbody></table>")
+
+	return result.String()
+}
+
+func (table TextTable) PrintableHTML() string {
+
+	return table.html(true)
+}
+
+func (table TextTable) HTML() string {
+	return table.html(false)
+}
+func (table TextTable) html(interactive bool) string {
+	if len(table.Rows) == 0 {
+		return "            <p class=\"text-gray-500 text-center py-8\">No data available</p>"
+	}
+	if len(table.Columns) == 0 {
+		return "            <p class=\"text-red-500 text-center py-8\">Table has no columns defined</p>"
+	}
+
+	// Use table's embedded Columns if available, otherwise use field.TableOptions.Columns
+	columns := table.Columns
+
+	var result strings.Builder
+
+	tableID := fmt.Sprintf("gridjs-table-%d", tableIDCounter.Add(1))
+
+	// Create a div for Grid.js to mount
+	result.WriteString(fmt.Sprintf("            <div id=\"%s\"></div>\n", tableID))
+
+	// Generate JavaScript to initialize Grid.js
+	result.WriteString("            <script>\n")
+	result.WriteString("                document.addEventListener('DOMContentLoaded', function() {\n")
+	result.WriteString("                    new gridjs.Grid({\n")
+
+	// Configure columns
+	result.WriteString(" columns: [\n")
+	for i, tableField := range columns {
+		headerLabel := tableField.Label
+		if headerLabel == "" {
+			headerLabel = PrettifyFieldName(tableField.Name)
+		}
+
+		if i > 0 {
+			result.WriteString(",\n")
+		}
+
+		// Format column definition with sorting and HTML rendering enabled
+		result.WriteString(fmt.Sprintf("     { name: %s, sort: true, formatter: (cell) => gridjs.html(cell) }", jsonEscape(headerLabel)))
+	}
+	result.WriteString("\n ],\n")
+
+	// Configure data
+	result.WriteString(" data: [\n")
+	for i, row := range table.Rows {
+		if i > 0 {
+			result.WriteString(",\n")
+		}
+		result.WriteString("     [")
+
+		for j, tableField := range columns {
+			if j > 0 {
+				result.WriteString(", ")
+			}
+
+			fieldValue, exists := row[tableField.Name]
+			var cellContent string
+			if exists {
+				cellContent = fieldValue.HTML()
+			} else {
+				cellContent = ""
+			}
+			result.WriteString(jsonEscape(cellContent))
+		}
+		result.WriteString("]")
+	}
+	result.WriteString("\n ],\n")
+
+	// Configure Grid.js options
+	if interactive {
+		result.WriteString(" sort: true,resizable: true, search: true,\n")
+	}
+	result.WriteString(" pagination: false,\n")
+	result.WriteString(" className: {\n")
+	result.WriteString("     table: 'gridjs-table',\n")
+	result.WriteString("     th: 'gridjs-th',\n")
+	result.WriteString("     td: 'gridjs-td'\n")
+	result.WriteString(" }\n")
+
+	result.WriteString(fmt.Sprintf("                    }).render(document.getElementById('%s')).then(() => {\n", tableID))
+	result.WriteString(" // Reinitialize tooltips after Grid.js renders the table\n")
+	result.WriteString(" if (typeof initTooltips === 'function') {\n")
+	result.WriteString("     initTooltips();\n")
+	result.WriteString(" }\n")
+	result.WriteString("                    });\n")
+	result.WriteString("                });\n")
+	result.WriteString("            </script>\n")
+
+	return result.String()
 }
 
 func (t TextTable) String() string {
-	return t.renderLipgloss(false, TransformerString)
+	return t.renderLipgloss(false)
 }
 
 func (t TextTable) ANSI() string {
-	return "\n" + t.renderLipgloss(true, TransformerANSI)
+	return "\n" + t.renderLipgloss(true)
 }
 
 func (t TextTable) Markdown() string {
@@ -104,47 +239,78 @@ func (t *TextTable) render(renderer tw.Renderer, transform TextTransformer) stri
 	return buf.String()
 }
 
-func (t *TextTable) renderLipgloss(withColors bool, transform TextTransformer) string {
+// getCellValue retrieves the Textable value for a given cell in the table
+func (t *TextTable) getCellValue(row TableRow, colIdx int) Textable {
+	var fieldName string
+	if colIdx < len(t.FieldNames) && t.FieldNames[colIdx] != "" {
+		fieldName = t.FieldNames[colIdx]
+	} else {
+		fieldName = t.Headers[colIdx].String()
+	}
+
+	if cell, ok := row[fieldName]; ok {
+		return cell
+	}
+	return &Text{Content: ""}
+}
+
+func (t *TextTable) renderLipgloss(withColors bool) string {
 	if len(t.Headers) == 0 {
 		return ""
 	}
 
-	width := GetTerminalWidth()
+	// Calculate max width per column using .String() for accurate measurement
+	columnWidths := make([]int, len(t.Headers))
 
-	// Build header strings
-	headers := make([]string, len(t.Headers))
-	for i, h := range t.Headers {
-		headers[i] = transform(h)
+	// Measure headers
+	for i, header := range t.Headers {
+		columnWidths[i] = len(header.String())
 	}
 
-	// Build rows
+	// Measure all row cells to find max width per column
+	for _, row := range t.Rows {
+		for colIdx := range t.Headers {
+			cell := t.getCellValue(row, colIdx)
+			width := len(cell.String())
+			if width > columnWidths[colIdx] {
+				columnWidths[colIdx] = width
+			}
+		}
+	}
+
+	// Build header strings for display using appropriate method
+	headers := make([]string, len(t.Headers))
+	for i, h := range t.Headers {
+		if withColors {
+			headers[i] = h.ANSI()
+		} else {
+			headers[i] = h.String()
+		}
+	}
+
+	// Build row data for display
 	rows := make([][]string, len(t.Rows))
 	for rowIdx, row := range t.Rows {
 		rowData := make([]string, len(t.Headers))
-		for colIdx, header := range t.Headers {
-			// Use field name from FieldNames if available, otherwise fall back to header
-			var fieldName string
-			if colIdx < len(t.FieldNames) && t.FieldNames[colIdx] != "" {
-				fieldName = t.FieldNames[colIdx]
+		for colIdx := range t.Headers {
+			cell := t.getCellValue(row, colIdx)
+			if withColors {
+				rowData[colIdx] = cell.ANSI()
 			} else {
-				fieldName = transform(header)
+				rowData[colIdx] = cell.String()
 			}
-
-			cell, ok := row[fieldName]
-			if !ok {
-				rowData[colIdx] = ""
-				continue
-			}
-			rowData[colIdx] = transform(cell)
 		}
 		rows[rowIdx] = rowData
 	}
 
-	// Create lipgloss table
+	// Calculate total width needed for table
+	totalWidth := GetTerminalWidth()
+
+	// Create lipgloss table with calculated dimensions
 	tbl := table.New().
 		Headers(headers...).
 		Rows(rows...).
-		Width(width)
+		Width(totalWidth)
 
 	// Apply styling if colors are enabled
 	if withColors {
@@ -156,18 +322,11 @@ func (t *TextTable) renderLipgloss(withColors bool, transform TextTransformer) s
 
 			// Get the cell value to check for styling
 			if row < len(t.Rows) && col < len(t.Headers) {
-				var fieldName string
-				if col < len(t.FieldNames) && t.FieldNames[col] != "" {
-					fieldName = t.FieldNames[col]
-				} else {
-					fieldName = TransformerString(t.Headers[col])
-				}
+				cell := t.getCellValue(t.Rows[row], col)
 
-				if cell, ok := t.Rows[row][fieldName]; ok {
-					// Check if the Textable is a Text type and has a Style
-					if textCell, isText := cell.Textable.(*Text); isText && textCell.Style != "" {
-						return parseTailwindToLipgloss(textCell.Style)
-					}
+				// Check if the Textable is a Text type and has a Style
+				if textCell, isText := cell.(*Text); isText && textCell.Style != "" {
+					return parseTailwindToLipgloss(textCell.Style)
 				}
 			}
 
