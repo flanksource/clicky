@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/flanksource/clicky/api"
+	. "github.com/flanksource/clicky/formatters"
 	"github.com/stretchr/testify/assert"
 )
 

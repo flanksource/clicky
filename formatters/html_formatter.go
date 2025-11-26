@@ -2,14 +2,13 @@ package formatters
 
 import (
 	_ "embed"
-	"encoding/json"
 	"fmt"
 	"html"
 	"strings"
 
 	"github.com/flanksource/clicky/api"
 	"github.com/flanksource/clicky/api/tailwind"
-	assets "github.com/flanksource/clicky/formatters/html/"
+	assets "github.com/flanksource/clicky/formatters/html"
 )
 
 var treeCSS = assets.TreeCSS
@@ -313,6 +312,10 @@ func (f *HTMLFormatter) renderTableSectionHTML(result *strings.Builder, table *a
 		return
 	}
 
+	if len(table.Columns) == 0 {
+		table.Columns = field.TableOptions.Columns
+	}
+
 	result.WriteString("        <div class=\"bg-white rounded-lg shadow\">\n")
 	result.WriteString("            <div class=\"px-6 py-4 border-b border-gray-200\">\n")
 	result.WriteString(fmt.Sprintf("                <h2 class=\"text-xl font-semibold text-gray-900\">%s</h2>\n",
@@ -321,10 +324,9 @@ func (f *HTMLFormatter) renderTableSectionHTML(result *strings.Builder, table *a
 
 	var tableHTML string
 	if f.IsPDFMode {
-		tableHTML = f.formatTableDataHTML(table, field)
+		tableHTML = table.PrintableHTML()
 	} else {
-		tableID := f.generateTableID()
-		tableHTML = f.formatTableDataHTMLWithGridJS(table, field, tableID)
+		tableHTML = table.HTML()
 	}
 	result.WriteString(tableHTML)
 	result.WriteString("        </div>\n")
@@ -384,6 +386,9 @@ func (f *HTMLFormatter) renderTableAsHTML(table *api.TextTable, field api.Pretty
 	if f.IncludeCSS {
 		result.WriteString(f.getCSS())
 	}
+	if len(table.Columns) == 0 {
+		table.Columns = field.TableOptions.Columns
+	}
 
 	result.WriteString("        <div class=\"bg-white rounded-lg shadow\">\n")
 	result.WriteString("            <div class=\"px-6 py-4 border-b border-gray-200\">\n")
@@ -392,10 +397,9 @@ func (f *HTMLFormatter) renderTableAsHTML(table *api.TextTable, field api.Pretty
 
 	var tableHTML string
 	if f.IsPDFMode {
-		tableHTML = f.formatTableDataHTML(table, field)
+		tableHTML = table.PrintableHTML()
 	} else {
-		tableID := f.generateTableID()
-		tableHTML = f.formatTableDataHTMLWithGridJS(table, field, tableID)
+		tableHTML = table.HTML()
 	}
 	result.WriteString(tableHTML)
 	result.WriteString("        </div>\n")
@@ -426,12 +430,6 @@ func (f *HTMLFormatter) prettifyFieldName(name string) string {
 	return PrettifyFieldName(name)
 }
 
-// formatFieldValueHTML formats a FieldValue for HTML output (legacy function)
-func (f *HTMLFormatter) formatFieldValueHTML(fieldValue api.TypedValue) string {
-	// This is the legacy function, now delegating to the new one with empty field
-	return f.formatFieldValueHTMLWithStyle(fieldValue, api.PrettyField{})
-}
-
 // formatFieldValueHTMLWithStyle formats a TypedValue with field styling for HTML output
 func (f *HTMLFormatter) formatFieldValueHTMLWithStyle(fieldValue api.TypedValue, field api.PrettyField) string {
 	// Check if this is an image field
@@ -442,9 +440,12 @@ func (f *HTMLFormatter) formatFieldValueHTMLWithStyle(fieldValue api.TypedValue,
 
 	// Check if this TypedValue contains a nested table
 	if fieldValue.Table != nil && fieldValue.FieldMeta != nil {
+		if len(fieldValue.Table.Columns) == 0 {
+			fieldValue.Table.Columns = field.TableOptions.Columns
+		}
 		// If compact, render inline
 		if fieldValue.FieldMeta.CompactItems {
-			return f.formatCompactTableHTML(fieldValue.Table)
+			return fieldValue.Table.CompactHTML()
 		}
 		// Otherwise, return placeholder - table will be rendered after struct
 		return fmt.Sprintf(`<span class="text-gray-500 italic">See %s table below</span>`, html.EscapeString(fieldValue.FieldMeta.Name))
@@ -452,215 +453,6 @@ func (f *HTMLFormatter) formatFieldValueHTMLWithStyle(fieldValue api.TypedValue,
 
 	// Use HTML() method from TypedValue
 	return fieldValue.HTML()
-}
-
-// formatCompactTableHTML renders a table inline with compact styling
-func (f *HTMLFormatter) formatCompactTableHTML(table *api.TextTable) string {
-	if table == nil || len(table.Rows) == 0 {
-		return `<span class="text-gray-400">Empty</span>`
-	}
-
-	var result strings.Builder
-	result.WriteString(`<table class="inline-table text-xs border-collapse border border-gray-300">`)
-
-	// Headers
-	result.WriteString("<thead><tr>")
-	for _, header := range table.Headers {
-		result.WriteString(fmt.Sprintf(`<th class="border border-gray-300 px-2 py-1 bg-gray-100 font-semibold">%s</th>`,
-			html.EscapeString(header.String())))
-	}
-	result.WriteString("</tr></thead>")
-
-	// Rows
-	result.WriteString("<tbody>")
-	for _, row := range table.Rows {
-		result.WriteString("<tr>")
-		for _, header := range table.Headers {
-			cellValue := row[header.String()]
-			result.WriteString(fmt.Sprintf(`<td class="border border-gray-300 px-2 py-1">%s</td>`,
-				cellValue.HTML()))
-		}
-		result.WriteString("</tr>")
-	}
-	result.WriteString("</tbody></table>")
-
-	return result.String()
-}
-
-// formatTableDataHTML formats table data for HTML output
-func (f *HTMLFormatter) formatTableDataHTML(table *api.TextTable, field api.PrettyField) string {
-	if table == nil || len(table.Rows) == 0 {
-		return "            <p class=\"text-gray-500 text-center py-8\">No data available</p>"
-	}
-
-	// Use table's embedded Columns if available, otherwise use field.TableOptions.Columns
-	columns := table.Columns
-	if len(columns) == 0 {
-		columns = field.TableOptions.Columns
-	}
-
-	var result strings.Builder
-	result.WriteString("            <div class=\"overflow-x-auto\">\n")
-	result.WriteString("                <table class=\"min-w-full table-auto\">\n")
-
-	// Write headers
-	result.WriteString("                    <thead class=\"bg-gray-50\">\n")
-	result.WriteString("                        <tr>\n")
-	for _, tableField := range columns {
-		// Use Label for display, fallback to prettified Name if Label is empty
-		headerLabel := tableField.Label
-		if headerLabel == "" {
-			headerLabel = f.prettifyFieldName(tableField.Name)
-		}
-
-		var headerHTML string
-		if field.TableOptions.HeaderStyle != "" {
-			headerHTML = f.applyTailwindStyleToHTML(headerLabel, field.TableOptions.HeaderStyle)
-		} else {
-			headerHTML = fmt.Sprintf("<span class=\"text-xs font-medium text-gray-500 uppercase tracking-wider\">%s</span>", html.EscapeString(headerLabel))
-		}
-		result.WriteString(fmt.Sprintf("                            <th class=\"px-6 py-3 text-left\">%s</th>\n", headerHTML))
-	}
-	result.WriteString("                        </tr>\n")
-	result.WriteString("                    </thead>\n")
-
-	// Write data rows
-	result.WriteString("                    <tbody class=\"bg-white divide-y divide-gray-200\">\n")
-	for _, row := range table.Rows {
-		result.WriteString("                        <tr class=\"hover:bg-gray-50\">\n")
-		for _, tableField := range columns {
-			fieldValue, exists := row[tableField.Name]
-			var cellContent string
-			if exists {
-				// Apply styling with priority: tableField.Style > row_style
-				if tableField.Style != "" {
-					cellContent = f.formatFieldValueHTMLWithStyle(fieldValue, tableField)
-				} else if field.TableOptions.RowStyle != "" {
-					// Create a temporary field with row_style
-					tempField := api.PrettyField{Style: field.TableOptions.RowStyle}
-					cellContent = f.formatFieldValueHTMLWithStyle(fieldValue, tempField)
-				} else {
-					cellContent = f.formatFieldValueHTML(fieldValue)
-				}
-			} else {
-				cellContent = ""
-			}
-			result.WriteString(fmt.Sprintf("                            <td class=\"px-6 py-4 whitespace-nowrap text-sm text-gray-900\">%s</td>\n", cellContent))
-		}
-		result.WriteString("                        </tr>\n")
-	}
-	result.WriteString("                    </tbody>\n")
-	result.WriteString("                </table>\n")
-	result.WriteString("            </div>\n")
-
-	return result.String()
-}
-
-// formatTableDataHTMLWithGridJS formats table data using Grid.js for interactive features
-func (f *HTMLFormatter) formatTableDataHTMLWithGridJS(table *api.TextTable, field api.PrettyField, tableID string) string {
-	if table == nil || len(table.Rows) == 0 {
-		return "            <p class=\"text-gray-500 text-center py-8\">No data available</p>"
-	}
-
-	// Use table's embedded Columns if available, otherwise use field.TableOptions.Columns
-	columns := table.Columns
-	if len(columns) == 0 {
-		columns = field.TableOptions.Columns
-	}
-
-	var result strings.Builder
-
-	// Create a div for Grid.js to mount
-	result.WriteString(fmt.Sprintf("            <div id=\"%s\"></div>\n", tableID))
-
-	// Generate JavaScript to initialize Grid.js
-	result.WriteString("            <script>\n")
-	result.WriteString("                document.addEventListener('DOMContentLoaded', function() {\n")
-	result.WriteString("                    new gridjs.Grid({\n")
-
-	// Configure columns
-	result.WriteString("                        columns: [\n")
-	for i, tableField := range columns {
-		headerLabel := tableField.Label
-		if headerLabel == "" {
-			headerLabel = f.prettifyFieldName(tableField.Name)
-		}
-
-		if i > 0 {
-			result.WriteString(",\n")
-		}
-
-		// Format column definition with sorting and HTML rendering enabled
-		result.WriteString(fmt.Sprintf("                            { name: %s, sort: true, formatter: (cell) => gridjs.html(cell) }",
-			f.jsonEscape(headerLabel)))
-	}
-	result.WriteString("\n                        ],\n")
-
-	// Configure data
-	result.WriteString("                        data: [\n")
-	for i, row := range table.Rows {
-		if i > 0 {
-			result.WriteString(",\n")
-		}
-		result.WriteString("                            [")
-
-		for j, tableField := range columns {
-			if j > 0 {
-				result.WriteString(", ")
-			}
-
-			fieldValue, exists := row[tableField.Name]
-			var cellContent string
-			if exists {
-				// Apply styling with HTML content for Grid.js
-				if tableField.Style != "" {
-					cellContent = f.formatFieldValueHTMLWithStyle(fieldValue, tableField)
-				} else {
-					cellContent = fieldValue.HTML()
-				}
-			} else {
-				cellContent = ""
-			}
-			result.WriteString(f.jsonEscape(cellContent))
-		}
-		result.WriteString("]")
-	}
-	result.WriteString("\n                        ],\n")
-
-	// Configure Grid.js options
-	result.WriteString("                        search: true,\n")
-	result.WriteString("                        pagination: false,\n")
-	result.WriteString("                        sort: true,\n")
-	result.WriteString("                        resizable: true,\n")
-	result.WriteString("                        className: {\n")
-	result.WriteString("                            table: 'gridjs-table',\n")
-	result.WriteString("                            th: 'gridjs-th',\n")
-	result.WriteString("                            td: 'gridjs-td'\n")
-	result.WriteString("                        }\n")
-
-	result.WriteString(fmt.Sprintf("                    }).render(document.getElementById('%s')).then(() => {\n", tableID))
-	result.WriteString("                        // Reinitialize tooltips after Grid.js renders the table\n")
-	result.WriteString("                        if (typeof initTooltips === 'function') {\n")
-	result.WriteString("                            initTooltips();\n")
-	result.WriteString("                        }\n")
-	result.WriteString("                    });\n")
-	result.WriteString("                });\n")
-	result.WriteString("            </script>\n")
-
-	return result.String()
-}
-
-// jsonEscape properly escapes a string for use in JSON
-func (f *HTMLFormatter) jsonEscape(s string) string {
-	// Use Go's JSON marshaling to properly escape the string
-	escaped, _ := json.Marshal(s)
-	return string(escaped)
-}
-
-// generateTableID generates a unique table ID for Grid.js
-func (f *HTMLFormatter) generateTableID() string {
-	f.tableCounter++
-	return fmt.Sprintf("gridjs-table-%d", f.tableCounter)
 }
 
 // formatTreeFieldHTML formats a tree field for HTML output
