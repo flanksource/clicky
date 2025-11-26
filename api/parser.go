@@ -452,6 +452,7 @@ func (p *StructParser) parseTableData(val reflect.Value, field PrettyField) Text
 	}
 
 	tt := TextTable{}
+	tt.Columns = field.TableOptions.Columns
 
 	for _, tableField := range field.TableOptions.Columns {
 		// Use Label if provided, otherwise prettify the Name
