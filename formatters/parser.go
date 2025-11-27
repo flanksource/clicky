@@ -512,6 +512,7 @@ func convertSliceToPrettyDataWithOptions(val reflect.Value, opts FormatOptions) 
 	parser := api.NewStructParser()
 
 	// For slices of maps, extract all distinct keys from all maps
+	// For slices of structs, extract fields from struct tags first to get proper labels
 	if firstElem.Kind() == reflect.Map {
 		keysSet := make(map[string]bool)
 		for i := 0; i < val.Len(); i++ {
@@ -540,6 +541,21 @@ func convertSliceToPrettyDataWithOptions(val reflect.Value, opts FormatOptions) 
 				Label: k,
 				Type:  "string",
 			})
+		}
+	} else if firstElem.Kind() == reflect.Struct {
+		// Check if the element implements PrettyRow before using reflection
+		if firstElem.CanInterface() {
+			if _, ok := firstElem.Interface().(api.PrettyRow); ok {
+				// PrettyRow is implemented - skip reflection, columns will come from PrettyRow output
+				logger.V(4).Infof("Struct implements PrettyRow - skipping reflection-based field extraction")
+			} else {
+				// No PrettyRow - extract fields from struct tags for proper labels
+				var err error
+				tableFields, err = GetTableFields(firstElem)
+				if err != nil {
+					logger.V(4).Infof("Failed to get table fields from struct: %v", err)
+				}
+			}
 		}
 	}
 
@@ -639,6 +655,20 @@ func convertSliceToPrettyDataWithOptions(val reflect.Value, opts FormatOptions) 
 	// Create table with column schema
 	table := api.NewTableFromRows(rows)
 	table.Columns = tableFields
+
+	// Update headers to use Labels from tableFields (not raw field names)
+	if len(tableFields) > 0 {
+		table.Headers = make(api.TextList, 0, len(tableFields))
+		table.FieldNames = make([]string, 0, len(tableFields))
+		for _, field := range tableFields {
+			headerLabel := field.Label
+			if headerLabel == "" {
+				headerLabel = api.PrettifyFieldName(field.Name)
+			}
+			table.Headers = append(table.Headers, api.Text{Content: headerLabel})
+			table.FieldNames = append(table.FieldNames, field.Name)
+		}
+	}
 
 	return &api.PrettyData{
 		Schema: &api.PrettyObject{
@@ -1102,6 +1132,20 @@ func convertSliceToPrettyData(val reflect.Value) (*api.PrettyData, error) {
 	// Create table with column schema
 	table := api.NewTableFromRows(rows)
 	table.Columns = tableFields
+
+	// Update headers to use Labels from tableFields (not raw field names)
+	if len(tableFields) > 0 {
+		table.Headers = make(api.TextList, 0, len(tableFields))
+		table.FieldNames = make([]string, 0, len(tableFields))
+		for _, field := range tableFields {
+			headerLabel := field.Label
+			if headerLabel == "" {
+				headerLabel = api.PrettifyFieldName(field.Name)
+			}
+			table.Headers = append(table.Headers, api.Text{Content: headerLabel})
+			table.FieldNames = append(table.FieldNames, field.Name)
+		}
+	}
 
 	return &api.PrettyData{
 		Schema: &api.PrettyObject{

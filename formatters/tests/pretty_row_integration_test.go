@@ -70,11 +70,15 @@ func TestPrettyRowIntegrationWithMarkdown(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotEmpty(t, result)
 
+	t.Logf("Formatted output:\n%s", result)
+
 	// Verify that the output contains the expected table structure
-	assert.True(t, strings.Contains(result, "| ID |"))
-	assert.True(t, strings.Contains(result, "| Username |"))
-	assert.True(t, strings.Contains(result, "| Email |"))
-	assert.True(t, strings.Contains(result, "| Status |"))
+	// Markdown formatter uppercases header names
+	upperResult := strings.ToUpper(result)
+	assert.True(t, strings.Contains(upperResult, "ID"))
+	assert.True(t, strings.Contains(upperResult, "USERNAME"))
+	assert.True(t, strings.Contains(upperResult, "EMAIL"))
+	assert.True(t, strings.Contains(upperResult, "STATUS"))
 
 	// Verify that custom content appears (usernames and emails)
 	assert.True(t, strings.Contains(result, "alice"))
@@ -199,4 +203,45 @@ func TestPrettyRowColumnOrdering(t *testing.T) {
 	assert.Less(t, skuPos, namePos, "SKU should appear before Name (got positions: SKU=%d, Name=%d)", skuPos, namePos)
 	assert.Less(t, namePos, categoryPos, "Name should appear before Category (got positions: Name=%d, Category=%d)", namePos, categoryPos)
 	assert.Less(t, categoryPos, pricePos, "Category should appear before Price (got positions: Category=%d, Price=%d)", categoryPos, pricePos)
+}
+
+func TestPrettyRowWithPointerSlice(t *testing.T) {
+	// Test that PrettyRow works correctly with []*T (slice of pointers)
+	// This was a bug where reflection-based field extraction would run before
+	// checking for PrettyRow, causing JSON tag names to be used instead of PrettyRow columns
+	users := []*SampleUser{
+		{ID: 1, Username: "alice", Email: "alice@example.com", Active: true},
+		{ID: 2, Username: "bob", Email: "bob@example.com", Active: false},
+	}
+
+	manager := NewFormatManager()
+	opts := FormatOptions{Format: "markdown", NoColor: false}
+
+	result, err := manager.FormatWithOptions(opts, users)
+	assert.NoError(t, err)
+	assert.NotEmpty(t, result)
+
+	t.Logf("Formatted output:\n%s", result)
+
+	// Verify that PrettyRow columns are used (ID, Username, Email, Status)
+	// Markdown formatter uppercases header names
+	// NOT JSON tag names (id, username, email, active)
+	upperResult := strings.ToUpper(result)
+	assert.True(t, strings.Contains(upperResult, "ID"), "Should use PrettyRow column 'ID'")
+	assert.True(t, strings.Contains(upperResult, "USERNAME"), "Should use PrettyRow column 'Username'")
+	assert.True(t, strings.Contains(upperResult, "EMAIL"), "Should use PrettyRow column 'Email'")
+	assert.True(t, strings.Contains(upperResult, "STATUS"), "Should use PrettyRow column 'Status'")
+
+	// Verify data is present
+	assert.True(t, strings.Contains(result, "alice"))
+	assert.True(t, strings.Contains(result, "bob"))
+	assert.True(t, strings.Contains(result, "Active"))
+	assert.True(t, strings.Contains(result, "Inactive"))
+
+	// Verify JSON tag field names (lowercase from struct) are NOT used as column headers
+	// Check for exact lowercase column header patterns that would indicate reflection-based extraction
+	assert.False(t, strings.Contains(result, "| id |"), "Should not use json tag 'id' as column name")
+	assert.False(t, strings.Contains(result, "| username |"), "Should not use json tag 'username' as column name")
+	assert.False(t, strings.Contains(result, "| email |"), "Should not use json tag 'email' as column name")
+	assert.False(t, strings.Contains(result, "| active |"), "Should not use json tag 'active' as column name")
 }
