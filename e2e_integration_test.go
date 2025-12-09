@@ -92,7 +92,7 @@ var _ = Describe("E2E Clicky Command Execution", func() {
 
 	Context("when boolean flags are used", func() {
 		It("should work correctly", func() {
-			cmd := exec.Command(binaryPath, "pretty", "--schema", schemaPath, "--verbose", "--no-color", exampleDataPath)
+			cmd := exec.Command(binaryPath, "pretty", "--schema", schemaPath, "--no-color", exampleDataPath)
 
 			var stdout, stderr bytes.Buffer
 			cmd.Stdout = &stdout
