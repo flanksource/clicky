@@ -552,6 +552,7 @@ func (p *Process) Run() *Process {
 	if p.captureOutput == nil {
 		p.captureOutput = NewExecLogger()
 	}
+	p.captureOutput.Reset()
 
 	if properties.On(false, "exec.debug") || strings.Contains(os.Getenv("DEBUG"), "exec") {
 		p = p.Debug()
