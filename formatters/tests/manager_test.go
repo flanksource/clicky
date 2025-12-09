@@ -55,6 +55,7 @@ func TestFormatManager(t *testing.T) {
 		if err != nil {
 			t.Fatalf("CSV format failed: %v", err)
 		}
+		t.Logf("CSV output: %s", result)
 		if !strings.Contains(result, "Name") {
 			t.Error("CSV output should contain Name header (using Label from struct tag)")
 		}
@@ -72,8 +73,10 @@ func TestFormatManager(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Markdown format failed: %v", err)
 		}
-		if !strings.Contains(result, "| name") {
-			t.Error("Markdown output should contain name column")
+		// Should use Label from struct tag (NAME uppercase in markdown header style)
+		if !strings.Contains(result, "NAME") {
+			t.Logf("Markdown output: %s", result)
+			t.Error("Markdown output should contain NAME column header")
 		}
 		if !strings.Contains(result, "John Doe") {
 			t.Error("Markdown output should contain John Doe")

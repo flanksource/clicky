@@ -19,6 +19,8 @@ type FormatManager struct {
 	prettyFormatter   *PrettyFormatter
 	treeFormatter     *TreeFormatter
 	excelFormatter    *ExcelFormatter
+	htmlFormatter     *HTMLFormatter
+	htmlPdf           *HTMLPDFFormatter
 }
 
 // NewFormatManager creates a new format manager with all formatters initialized
@@ -86,20 +88,18 @@ func (f FormatManager) Markdown(data interface{}) (string, error) {
 
 // HTML implements api.FormatManager.
 func (f FormatManager) HTML(data interface{}) (string, error) {
-	if formatter, ok := GetCustomFormatter("html"); !ok {
-		return "", fmt.Errorf("html formatter not registered, registing using 'import _ github.com/flanksource/clicky/formatters/http'")
-	} else {
-		return formatter(data, FormatOptions{})
+	if f.htmlFormatter == nil {
+		f.htmlFormatter = NewHTMLFormatter()
 	}
+	return f.htmlFormatter.Format(data, FormatOptions{})
 }
 
+// HTMLPDF implements api.FormatManager.
 func (f FormatManager) HTMLPDF(data interface{}) (string, error) {
-	if formatter, ok := GetCustomFormatter("html-pdf"); !ok {
-		return "", fmt.Errorf("html-pdf formatter not registered, registing using 'import _ github.com/flanksource/clicky/formatters/http'")
-	} else {
-		return formatter(data, FormatOptions{})
+	if f.htmlPdf == nil {
+		f.htmlPdf = NewHTMLPDFFormatter()
 	}
-
+	return f.htmlPdf.Format(data, FormatOptions{})
 }
 
 // Tree formats data as a tree structure

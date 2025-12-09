@@ -491,8 +491,16 @@ func (p *StructParser) parseTableData(val reflect.Value, field PrettyField) Text
 				if fieldVal.Kind() == reflect.Interface && !fieldVal.IsNil() {
 					fieldVal = fieldVal.Elem()
 				}
-				// Use ProcessFieldValue to handle pointers and structs
-				row[tableField.Name] = p.ProcessFieldValue(fieldVal)
+				// Use tableField.Parse to apply type-specific formatting (dates, currency, etc.)
+				fieldValue, err := tableField.Parse(fieldVal.Interface())
+				if err != nil {
+					// Fall back to ProcessFieldValue if parsing fails
+					row[tableField.Name] = p.ProcessFieldValue(fieldVal)
+				} else if fieldValue.Text != nil {
+					row[tableField.Name] = TypedValue{Textable: fieldValue.Text}
+				} else {
+					row[tableField.Name] = p.ProcessFieldValue(fieldVal)
+				}
 			}
 		}
 

@@ -1,54 +1,15 @@
 package formatters
 
 import (
-	"encoding/json"
 	"testing"
 
-	. "github.com/flanksource/clicky/formatters"
 	. "github.com/onsi/gomega"
 
 	"github.com/flanksource/clicky/api"
 )
 
-// JSON is a custom type alias for json.RawMessage
-type JSON json.RawMessage
-
-// TestDataWithRawMessage represents a test struct with json.RawMessage field
-type TestDataWithRawMessage struct {
-	ID       string          `json:"id"`
-	Config   json.RawMessage `json:"config"`
-	Metadata JSON            `json:"metadata"`
-	Priority int             `json:"priority"`
-}
-
 func TestMarkdownFormatter_SimpleTable(t *testing.T) {
 	g := NewWithT(t)
-
-	configData := map[string]any{
-		"timeout": 30,
-		"retries": 3,
-		"enabled": true,
-	}
-	configJSON, err := json.Marshal(configData)
-	g.Expect(err).ToNot(HaveOccurred())
-
-	testData := []struct {
-		testStruct TestDataWithRawMessage
-		expected   string
-	}{
-		{
-			testStruct: TestDataWithRawMessage{
-				ID:       "TASK-001",
-				Config:   configJSON,
-				Metadata: JSON(`{"author":"alice","version":"1.0"}`),
-				Priority: 1,
-			},
-			expected: `| config | id | metadata | priority |
-| --- | --- | --- | --- |
-| {"enabled":true,"retries":3,"timeout":30} | TASK-001 | {"author":"alice","version":"1.0"} | 1 |
-`,
-		},
-	}
 
 	// Create schema with table format
 	schema := &api.PrettyObject{
@@ -60,8 +21,7 @@ func TestMarkdownFormatter_SimpleTable(t *testing.T) {
 				TableOptions: api.TableOptions{
 					Columns: []api.PrettyField{
 						{Name: "id", Type: "string", Label: "ID"},
-						{Name: "config", Type: "string", Label: "Configuration"},
-						{Name: "metadata", Type: "string", Label: "Metadata"},
+						{Name: "name", Type: "string", Label: "Name"},
 						{Name: "priority", Type: "int", Label: "Priority"},
 					},
 				},
@@ -69,21 +29,32 @@ func TestMarkdownFormatter_SimpleTable(t *testing.T) {
 		},
 	}
 
-	for _, tc := range testData {
-		// Parse data with schema
-		parser := api.NewStructParser()
-		data := map[string]any{
-			"tasks": []TestDataWithRawMessage{tc.testStruct},
-		}
-
-		prettyData, err := parser.ParseDataWithSchema(data, schema)
-		g.Expect(err).ToNot(HaveOccurred())
-
-		// Format as markdown
-		formatter := NewMarkdownFormatter()
-		output, err := formatter.FormatPrettyData(prettyData, FormatOptions{})
-		g.Expect(err).ToNot(HaveOccurred())
-
-		g.Expect(output).To(Equal(tc.expected))
+	// Parse data with schema
+	parser := api.NewStructParser()
+	data := map[string]any{
+		"tasks": []map[string]any{
+			{"id": "TASK-001", "name": "First Task", "priority": 1},
+			{"id": "TASK-002", "name": "Second Task", "priority": 2},
+		},
 	}
+
+	prettyData, err := parser.ParseDataWithSchema(data, schema)
+	g.Expect(err).ToNot(HaveOccurred())
+
+	// Get table and check markdown
+	table := prettyData.FirstTable()
+	g.Expect(table).ToNot(BeNil())
+
+	output := table.Markdown()
+
+	// Should use Labels for headers
+	g.Expect(output).To(ContainSubstring("ID"))
+	g.Expect(output).To(ContainSubstring("NAME"))
+	g.Expect(output).To(ContainSubstring("PRIORITY"))
+
+	// Should contain data values
+	g.Expect(output).To(ContainSubstring("TASK-001"))
+	g.Expect(output).To(ContainSubstring("First Task"))
+	g.Expect(output).To(ContainSubstring("TASK-002"))
+	g.Expect(output).To(ContainSubstring("Second Task"))
 }

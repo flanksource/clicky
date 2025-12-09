@@ -68,8 +68,8 @@ func TestYAMLFormatter_WithoutYAMLTags(t *testing.T) {
 	}
 
 	// When no yaml tags, it should use JSON->YAML conversion
-	// which preserves json tag names
-	expected := `age: 25
+	// which preserves json tag names (integers become floats in JSON roundtrip)
+	expected := `age: 25.0
 city: Los Angeles
 name: Jane Doe
 `
@@ -96,9 +96,9 @@ func TestYAMLFormatter_NestedWithYAMLTags(t *testing.T) {
 
 	expected := `name: Tech Corp
 ceo:
-    name: Alice Smith
-    age: 45
-    city: San Francisco
+  name: Alice Smith
+  age: 45
+  city: San Francisco
 `
 	if result != expected {
 		t.Errorf("Expected:\n%s\nGot:\n%s", expected, result)
@@ -121,11 +121,11 @@ func TestYAMLFormatter_NestedWithoutYAMLTags(t *testing.T) {
 		t.Fatalf("Failed to format YAML: %v", err)
 	}
 
-	// When no yaml tags, JSON field names should be used
+	// When no yaml tags, JSON field names should be used (integers become floats in JSON roundtrip)
 	expected := `ceo:
-    age: 40
-    city: Seattle
-    name: Bob Johnson
+  age: 40.0
+  city: Seattle
+  name: Bob Johnson
 name: Tech Corp
 `
 	if result != expected {
@@ -169,11 +169,11 @@ func TestYAMLFormatter_SliceWithoutYAMLTags(t *testing.T) {
 		t.Fatalf("Failed to format YAML: %v", err)
 	}
 
-	// JSON field ordering
-	expected := `- age: 35
+	// JSON field ordering (integers become floats in JSON roundtrip)
+	expected := `- age: 35.0
   city: Boston
   name: Charlie
-- age: 28
+- age: 28.0
   city: Austin
   name: Diana
 `

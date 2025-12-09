@@ -30,8 +30,10 @@ func Filename(name string) Icon {
 	case ".py":
 		return Python
 
-	case ".json", ".yaml", ".yml":
+	case ".yaml", ".yml":
 		return YAML
+	case ".json":
+		return JSON
 	case ".md", ".txt":
 		return Markdown
 	case ".zip", ".tar", ".gz", ".rar":
@@ -44,6 +46,8 @@ func Filename(name string) Icon {
 		return Audio
 	case ".jsx", ".tsx":
 		return React
+	case ".js":
+		return JS
 	case ".ts":
 		return TypeScript
 	case ".java":

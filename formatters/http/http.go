@@ -31,7 +31,8 @@ func FormatHandler(fn func(*http.Request) (any, error)) http.HandlerFunc {
 		// Extract format options from request
 		opts := extractFormatOptions(r)
 
-		output, err := formatters.FormatManager.FormatWithOptions(opts, data)
+		manager := formatters.NewFormatManager()
+		output, err := manager.FormatWithOptions(opts, data)
 		if err != nil {
 			logger.Errorf("Format error: %v", err)
 			http.Error(w, fmt.Sprintf("Failed to format response: %v", err), http.StatusInternalServerError)
@@ -61,8 +62,8 @@ func FormatHandler(fn func(*http.Request) (any, error)) http.HandlerFunc {
 }
 
 // extractFormatOptions extracts format options from HTTP request
-func extractFormatOptions(r *http.Request) FormatOptions {
-	opts := FormatOptions{}
+func extractFormatOptions(r *http.Request) formatters.FormatOptions {
+	opts := formatters.FormatOptions{}
 
 	// Extract paging parameters from query or headers
 	opts.Page = getIntParam(r, "page", "X-Page")

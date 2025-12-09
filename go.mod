@@ -10,6 +10,7 @@ require (
 	github.com/flanksource/gomplate/v3 v3.24.60
 	github.com/flanksource/maroto/v2 v2.4.2
 	github.com/go-xmlfmt/xmlfmt v1.1.3
+	github.com/goccy/go-yaml v1.18.0
 	github.com/golang-jwt/jwt/v5 v5.3.0
 	github.com/google/cel-go v0.22.1
 	github.com/itchyny/gojq v0.12.17
@@ -66,7 +67,6 @@ require (
 	github.com/go-stack/stack v1.8.1 // indirect
 	github.com/go-task/slim-sprig/v3 v3.0.0 // indirect
 	github.com/gobwas/glob v0.2.3 // indirect
-	github.com/goccy/go-yaml v1.18.0 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/google/pprof v0.0.0-20250403155104-27863c87afa6 // indirect

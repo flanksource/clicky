@@ -271,7 +271,6 @@ func (t Text) Append(text any, styles ...string) Text {
 	case Textable:
 		t.Children = append(t.Children, v)
 	case string:
-
 		for i, line := range strings.Split(v, "\n") {
 			if i > 0 {
 				t.Children = append(t.Children, BR)
@@ -282,6 +281,25 @@ func (t Text) Append(text any, styles ...string) Text {
 		t.Children = append(t.Children, Human(v, styles...))
 	case map[string]any:
 		t.Children = append(t.Children, Map(v, styles...))
+	case map[string]string:
+		t.Children = append(t.Children, Map(v, styles...))
+	case []map[string]any:
+		for _, item := range v {
+			t.Children = append(t.Children, Map(item, styles...))
+		}
+	case []map[string]string:
+		for _, item := range v {
+			t.Children = append(t.Children, Map(item, styles...))
+		}
+	case []any:
+		for _, item := range v {
+			t.Children = append(t.Children, Human(item, styles...))
+		}
+	case []string:
+		for _, item := range v {
+			t.Children = append(t.Children, Text{Content: item, Style: strings.Join(styles, " ")})
+		}
+
 	default:
 		t.Children = append(t.Children, Text{Content: fmt.Sprintf("%v", text), Style: strings.Join(styles, " ")})
 	}
