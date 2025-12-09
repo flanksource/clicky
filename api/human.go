@@ -30,6 +30,9 @@ func HumanDate(d any, format string) Text {
 			Style:   "date",
 		}
 	case *time.Time:
+		if t == nil {
+			return Text{Style: "date"}
+		}
 		return Text{
 			Content: t.Format(format),
 			Style:   "date",

@@ -169,8 +169,13 @@ type TextTable struct {
 
 func (tt TextTable) AsString(row TableRow) []string {
 	var result []string
-	for _, header := range tt.Headers {
-		if cell, exists := row[header.String()]; exists {
+	for i, header := range tt.Headers {
+		// Use FieldNames for row lookup if available (rows are keyed by field names, not labels)
+		key := header.String()
+		if i < len(tt.FieldNames) && tt.FieldNames[i] != "" {
+			key = tt.FieldNames[i]
+		}
+		if cell, exists := row[key]; exists {
 			result = append(result, cell.String())
 		} else {
 			result = append(result, "")
@@ -391,6 +396,11 @@ func TryTypedValue(o any) *TypedValue {
 	switch v := o.(type) {
 	case *PrettyData:
 		return &TypedValue{Textable: v}
+	// TextTable and TextTree must come before Textable since they implement Textable
+	case TextTable:
+		return &TypedValue{Table: &v}
+	case TextTree:
+		return &TypedValue{Tree: &v}
 	case Textable:
 		return &TypedValue{Textable: v}
 	case TextList:
@@ -401,10 +411,6 @@ func TryTypedValue(o any) *TypedValue {
 		return &TypedValue{TypedMap: &v}
 	case TypedList:
 		return &TypedValue{TypedList: &v}
-	case TextTable:
-		return &TypedValue{Table: &v}
-	case TextTree:
-		return &TypedValue{Tree: &v}
 	case TreeNode:
 		return &TypedValue{Tree: lo.ToPtr(NewTree(v))}
 	case TreeMixin:
@@ -544,7 +550,7 @@ func (tm TextMap) String() string {
 func (tm TextMap) Value() Textable {
 	t := TextList{}
 	for k, v := range tm {
-		t = append(t, Text{}.Append(k+": ", "text-muted").Add(v))
+		t = append(t, Text{}.Append(PrettifyFieldName(k)+": ", "text-muted").Add(v))
 	}
 	return t
 }

@@ -3,6 +3,9 @@ package icons
 import (
 	"fmt"
 	"strings"
+
+	"github.com/flanksource/clicky/api/tailwind"
+	"github.com/muesli/termenv"
 )
 
 type Icon struct {
@@ -16,15 +19,37 @@ func (i Icon) String() string {
 	return i.Unicode
 }
 
-// ANSI returns the Unicode representation (same as String for icons)
+// ANSI returns the Unicode representation with color styling applied
 func (i Icon) ANSI() string {
-	return i.Unicode
+	if i.Style == "" {
+		return i.Unicode
+	}
+
+	style := tailwind.ParseStyle(i.Style)
+	output := termenv.DefaultOutput()
+	styled := output.String(i.Unicode)
+
+	if style.Foreground != "" {
+		styled = styled.Foreground(tailwind.ClassToFgColor(i.Style))
+	}
+	if style.Bold {
+		styled = styled.Bold()
+	}
+
+	return styled.String()
 }
 
 // HTML returns an HTML representation using Iconify web components or Unicode fallback
 func (i Icon) HTML() string {
+	classes := "text-lg"
+	if i.Style != "" {
+		classes = classes + " " + i.Style
+	}
 	if i.Iconify != "" {
-		return fmt.Sprintf(`<iconify-icon icon="%s" class="text-lg"></iconify-icon>`, i.Iconify)
+		return fmt.Sprintf(`<iconify-icon icon="%s" class="%s"></iconify-icon>`, i.Iconify, classes)
+	}
+	if i.Style != "" {
+		return fmt.Sprintf(`<span class="%s">%s</span>`, i.Style, i.Unicode)
 	}
 	return i.Unicode
 }

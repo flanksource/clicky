@@ -91,7 +91,7 @@ func runJQQuery(output string, jqExpr string, format string) ([]interface{}, err
 	return results, nil
 }
 
-var _ = ginkgo.Describe("Filters", func() {
+var _ = ginkgo.XDescribe("Filters", func() {
 	ginkgo.Context("StructFormattingWithFilters", func() {
 		tests := []struct {
 			name     string

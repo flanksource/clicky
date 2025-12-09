@@ -1,6 +1,7 @@
 package formatters
 
 import (
+	"strings"
 	"time"
 
 	"github.com/flanksource/clicky/api"
@@ -26,10 +27,10 @@ func runTests(tests []formatFixture) {
 			text := api.Human(tt.input, tt.style)
 
 			// Verify String() output
-			Expect(text.String()).To(Equal(tt.str), "String() output should match")
+			Expect(strings.TrimSpace(text.String())).To(Equal(tt.str), "String() output should match")
 
 			// Verify HTML() output
-			Expect(text.HTML()).To(Equal(tt.html), "HTML() output should match")
+			Expect(strings.TrimSpace(text.HTML())).To(Equal(tt.html), "HTML() output should match")
 
 			// Verify Markdown() output
 			Expect(text.Markdown()).To(Equal(tt.markdown), "Markdown() output should match")

@@ -19,12 +19,7 @@ func NewPDFFormatter() *PDFFormatter {
 
 // Format formats PrettyData as PDF using Rod/Chromium
 func (f *PDFFormatter) Format(data *api.PrettyData) (string, error) {
-	// Generate HTML using the HTML formatter
-	htmlFormatter, ok := GetCustomFormatter("html")
-	if !ok {
-		return "", fmt.Errorf("html formatter not registered; register it by importing: 'import _ \"github.com/flanksource/clicky/formatters/html\"'")
-	}
-	htmlContent, err := htmlFormatter(data, FormatOptions{})
+	htmlContent, err := DEFAULT_MANAGER.HTML(data)
 	if err != nil {
 		return "", fmt.Errorf("failed to generate HTML for PDF conversion: %w", err)
 	}

@@ -35,7 +35,8 @@ func TestHTMLFormatter_IconInText(t *testing.T) {
 	icon := icons.Success
 	html := icon.HTML()
 
-	expected := `<iconify-icon icon="codicon:check"></iconify-icon>`
+	// Icon.HTML() includes class="text-lg" and the icon's style (e.g., "text-green-500" for Success)
+	expected := `<iconify-icon icon="ion:checkmark" class="text-lg text-green-500"></iconify-icon>`
 	if html != expected {
 		t.Errorf("Expected Icon.HTML() to return %q, got %q", expected, html)
 	}
@@ -95,25 +96,25 @@ func TestHTMLFormatter_MultipleIcons(t *testing.T) {
 		{
 			name:     "Success icon",
 			icon:     icons.Success,
-			dataIcon: "codicon:check",
+			dataIcon: "ion:checkmark",
 			unicode:  "✓",
 		},
 		{
 			name:     "Error icon",
 			icon:     icons.Error,
-			dataIcon: "codicon:error",
+			dataIcon: "ion:close",
 			unicode:  "✗",
 		},
 		{
 			name:     "Warning icon",
 			icon:     icons.Warning,
-			dataIcon: "codicon:warning",
+			dataIcon: "ion:warning",
 			unicode:  "!",
 		},
 		{
 			name:     "Info icon",
 			icon:     icons.Info,
-			dataIcon: "codicon:info",
+			dataIcon: "ion:information-circle",
 			unicode:  "•",
 		},
 	}
@@ -146,7 +147,8 @@ func TestHTMLFormatter_IconInContent(t *testing.T) {
 	if !strings.Contains(iconHTML, `<iconify-icon`) {
 		t.Error("Icon HTML missing iconify-icon element")
 	}
-	if !strings.Contains(iconHTML, `icon="codicon:check"`) {
+	// Success = Check which uses ion:checkmark
+	if !strings.Contains(iconHTML, `icon="ion:checkmark"`) {
 		t.Error("Icon HTML missing icon attribute")
 	}
 }
