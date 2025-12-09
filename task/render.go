@@ -31,6 +31,9 @@ func (tm *Manager) PlainRender() {
 			} else {
 				fmt.Fprintf(os.Stderr, "%s\n", task.Pretty().ANSI())
 			}
+			if task.bufferedLogger != nil {
+				task.bufferedLogger.ClearLogs()
+			}
 		}
 	}
 
