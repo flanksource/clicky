@@ -43,6 +43,11 @@ func NewExecLogger() *ExecLogger {
 	return e
 }
 
+func (l *ExecLogger) Reset() {
+	l.stdout.Reset()
+	l.stderr.Reset()
+}
+
 // WithTee returns a new ExecLogger that tees logs to stdout/stderr as well.
 func (l *ExecLogger) Tee(stdout, stderr io.Writer) *ExecLogger {
 	l.Stderr = stderr
