@@ -208,9 +208,9 @@ func (f FormatManager) FormatWithOptions(options FormatOptions, data ...any) (st
 	// Handle display structure overrides (additive flags)
 	// Tree flag: For text formats, use tree visual; for structured formats, pass tree data through
 	// Table flag: Convert to table structure before applying format
-	if options.Tree {
+	if options.Tree != nil && *options.Tree {
 		return f.treeFormatter.Format(data...)
-	} else if options.Table {
+	} else if options.Table != nil && *options.Table {
 		logger.V(4).Infof("Applying table structure transformation before %s formatting", format)
 		// Convert data to table structure first, then apply the format
 		// For text-based formats, apply table formatting directly

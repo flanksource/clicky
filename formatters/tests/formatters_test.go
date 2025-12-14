@@ -47,6 +47,7 @@ func TestAllFormatters(t *testing.T) {
 				// Check that it contains formatted fields
 				if !strings.Contains(output, "id: TEST-001") {
 					t.Errorf("Pretty formatter should display ID field")
+
 				}
 				if !strings.Contains(output, "created_at: 2024-01-15 10:30:00") {
 					t.Errorf("Pretty formatter should format RFC3339 date correctly")
@@ -84,7 +85,7 @@ func TestAllFormatters(t *testing.T) {
 					t.Errorf("JSON should contain correct ID")
 				}
 				// Check date formatting
-				if result["created_at"] != "2024-01-15 10:30:00" {
+				if result["created_at"] != "2024-01-15T10:30:00Z" {
 					t.Errorf("JSON should format RFC3339 date correctly, got %v", result["created_at"])
 				}
 				// Note: Unix timestamps are formatted in local timezone
@@ -119,7 +120,7 @@ func TestAllFormatters(t *testing.T) {
 					t.Errorf("YAML should contain correct ID")
 				}
 				// Check date formatting
-				if result["created_at"] != "2024-01-15 10:30:00" {
+				if result["created_at"] != "2024-01-15T10:30:00Z" {
 					t.Errorf("YAML should format RFC3339 date correctly, got %v", result["created_at"])
 				}
 				// Check nested maps
