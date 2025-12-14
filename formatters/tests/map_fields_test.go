@@ -51,38 +51,39 @@ func TestMapFieldsRendering(t *testing.T) {
 
 	parser := api.NewStructParser()
 
-	// FIXME: Test ParseDataWithSchema - commented out due to API changes
+	// Test ParseDataWithSchema
+	//FIXME
 	// t.Run("ParseDataWithSchema", func(t *testing.T) {
 	// 	prettyData, err := parser.ParseDataWithSchema(testData, schema)
 	// 	if err != nil {
 	// 		t.Fatalf("ParseDataWithSchema failed: %v", err)
 	// 	}
-	//
-	// 	// Check that scalar fields are parsed
-	// 	if _, exists := prettyData.GetValue("name"); !exists {
-	// 		t.Error("name field not found in Values")
-	// 	}
-	// 	if _, exists := prettyData.GetValue("age"); !exists {
-	// 		t.Error("age field not found in Values")
-	// 	}
-	//
-	// 	// Check that map fields are parsed
-	// 	if _, exists := prettyData.GetValue("address"); !exists {
-	// 		t.Error("address map field not found in Values")
-	// 	}
-	// 	if _, exists := prettyData.GetValue("metadata"); !exists {
-	// 		t.Error("metadata map field not found in Values")
-	// 	}
-	//
-	// 	// Check that table data is parsed
-	// 	if _, exists := prettyData.GetTable("items"); !exists {
-	// 		t.Error("items table not found in Tables")
-	// 	}
-	//
-	// 	if table, exists := prettyData.GetTable("items"); exists && len(table.Rows) != 2 {
-	// 		t.Errorf("Expected 2 items in table, got %d", len(table.Rows))
-	// 	}
-	// })
+
+		// Check that scalar fields are parsed
+		if _, exists := prettyData.GetValue("name"); !exists {
+			t.Error("name field not found in Values")
+		}
+		if _, exists := prettyData.GetValue("age"); !exists {
+			t.Error("age field not found in Values")
+		}
+
+		// Check that map fields are parsed
+		if _, exists := prettyData.GetValue("address"); !exists {
+			t.Error("address map field not found in Values")
+		}
+		if _, exists := prettyData.GetValue("metadata"); !exists {
+			t.Error("metadata map field not found in Values")
+		}
+
+		// Check that table data is parsed
+		if _, exists := prettyData.GetTable("items"); !exists {
+			t.Error("items table not found in Tables")
+		}
+
+		if table, exists := prettyData.GetTable("items"); exists && len(table.Rows) != 2 {
+			t.Errorf("Expected 2 items in table, got %d", len(table.Rows))
+		}
+	})
 
 	// Test PrettyFormatter rendering
 	t.Run("PrettyFormatter", func(t *testing.T) {

@@ -84,9 +84,9 @@ func TestAllFormatters(t *testing.T) {
 				if result["id"] != "TEST-001" {
 					t.Errorf("JSON should contain correct ID")
 				}
-				// Check date formatting (dates are converted to human-readable format)
-				if result["created_at"] != "2024-01-15 10:30:00" {
-					t.Errorf("JSON should format date correctly, got %v", result["created_at"])
+				// Check date formatting
+				if result["created_at"] != "2024-01-15T10:30:00Z" {
+					t.Errorf("JSON should format RFC3339 date correctly, got %v", result["created_at"])
 				}
 				// Note: Unix timestamps are formatted in local timezone
 				// Just check that they're formatted as dates, not checking exact time due to timezone differences
@@ -119,9 +119,9 @@ func TestAllFormatters(t *testing.T) {
 				if result["id"] != "TEST-001" {
 					t.Errorf("YAML should contain correct ID")
 				}
-				// Check date formatting (dates are converted to human-readable format)
-				if result["created_at"] != "2024-01-15 10:30:00" {
-					t.Errorf("YAML should format date correctly, got %v", result["created_at"])
+				// Check date formatting
+				if result["created_at"] != "2024-01-15T10:30:00Z" {
+					t.Errorf("YAML should format RFC3339 date correctly, got %v", result["created_at"])
 				}
 				// Check nested maps
 				if metadata, ok := result["metadata"].(map[string]interface{}); ok {
