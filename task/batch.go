@@ -15,10 +15,15 @@ import (
 )
 
 type Batch[T any] struct {
-	Name       string
-	Items      []func(logger logger.Logger) (T, error)
-	MaxWorkers int
-	Results    []T
+	Name string
+	// Items are functions that don't receive context - they cannot be cancelled mid-execution.
+	// Use ItemsWithContext for cancellable items.
+	Items []func(logger logger.Logger) (T, error)
+	// ItemsWithContext are functions that receive context and can be cancelled.
+	// When timeout occurs, the context is cancelled and items should check ctx.Done().
+	ItemsWithContext []func(ctx context.Context, logger logger.Logger) (T, error)
+	MaxWorkers       int
+	Results          []T
 	// Timeout is the maximum duration for the entire batch to complete.
 	// Zero value means no timeout (infinite wait until completion or context cancellation).
 	Timeout time.Duration
@@ -57,13 +62,13 @@ func (b *Batch[T]) Run() chan BatchResult[T] {
 		b.MaxWorkers = 4
 	}
 
+	total := len(b.Items) + len(b.ItemsWithContext)
 	if b.ItemTimeout <= 0 {
-		b.ItemTimeout = 5 * time.Second
+		b.ItemTimeout = 10 * time.Minute
 	}
 	if b.Timeout <= 0 {
-		b.Timeout = time.Duration(len(b.Items)) * b.ItemTimeout
+		b.Timeout = time.Duration(total) * b.ItemTimeout
 	}
-	total := len(b.Items)
 	results := make(chan BatchResult[T], total)
 
 	// Synchronization primitives to prevent race conditions
@@ -295,6 +300,104 @@ func (b *Batch[T]) Run() chan BatchResult[T] {
 
 				// t.Infof("Finished %s %d of %d", item, newCount, total)
 			}(item, i+1)
+		}
+
+		// Process context-aware items
+		for i, item := range b.ItemsWithContext {
+			itemNum := len(b.Items) + i + 1 // Continue numbering after Items
+			b.tracef(t, "Queuing context-aware item %d of %d", itemNum, total)
+
+			// Check for context cancellation before acquiring semaphore
+			if batchCtx.Err() != nil {
+				b.tracef(t, "Context cancelled, stopping new items at %d of %d", itemNum, total)
+				break
+			}
+
+			if err := sem.Acquire(batchCtx, 1); err != nil {
+				b.tracef(t, "Semaphore acquire failed (likely due to context cancellation): %v", err)
+				break
+			}
+			b.tracef(t, "Acquired semaphore for context-aware item %d of %d", itemNum, total)
+
+			wg.Add(1)
+			go func(item func(ctx context.Context, log logger.Logger) (T, error), itemNum int) {
+				defer sem.Release(1)
+				defer wg.Done()
+
+				// Panic recovery to prevent goroutine crashes
+				defer func() {
+					if r := recover(); r != nil {
+						t.Errorf("panic in batch item %d: %v", itemNum, r)
+						results <- BatchResult[T]{Error: fmt.Errorf("panic: %v", r)}
+					}
+				}()
+
+				// Check for context cancellation before executing
+				if batchCtx.Err() != nil {
+					results <- BatchResult[T]{Error: batchCtx.Err()}
+					newCount := count.Add(1)
+					taskMu.Lock()
+					t.SetName(fmt.Sprintf("%s %d of %d", b.Name, newCount, total))
+					t.SetProgress(int(newCount), total)
+					taskMu.Unlock()
+					return
+				}
+
+				// Create per-item timeout context if ItemTimeout is set
+				var itemCtx context.Context = batchCtx
+				var itemCancel context.CancelFunc
+				if b.ItemTimeout > 0 {
+					itemCtx, itemCancel = context.WithTimeout(batchCtx, b.ItemTimeout)
+					defer itemCancel()
+				}
+
+				start := time.Now()
+				b.tracef(t, "Running context-aware item %d of %d", itemNum, total)
+
+				// Check for timeout before execution
+				if b.ItemTimeout > 0 && itemCtx.Err() != nil {
+					duration := time.Since(start)
+					t.Warnf("Item %d in batch '%s' context already done before execution", itemNum, b.Name)
+					results <- BatchResult[T]{
+						Error:    fmt.Errorf("%w: item %d exceeded timeout of %v", ErrItemTimeout, itemNum, b.ItemTimeout),
+						Duration: duration,
+					}
+					newCount := count.Add(1)
+					taskMu.Lock()
+					t.SetName(fmt.Sprintf("%s %d of %d", b.Name, newCount, total))
+					t.SetProgress(int(newCount), total)
+					taskMu.Unlock()
+					return
+				}
+
+				// Execute item WITH context - item can check ctx.Done() for cancellation
+				value, err := item(itemCtx, t)
+				duration := time.Since(start)
+
+				// Check if item timed out during execution
+				if b.ItemTimeout > 0 && itemCtx.Err() == context.DeadlineExceeded {
+					t.Warnf("Item %d in batch '%s' exceeded timeout of %v", itemNum, b.Name, b.ItemTimeout)
+					results <- BatchResult[T]{
+						Error:    fmt.Errorf("%w: item %d exceeded timeout of %v", ErrItemTimeout, itemNum, b.ItemTimeout),
+						Duration: duration,
+					}
+					newCount := count.Add(1)
+					taskMu.Lock()
+					t.SetName(fmt.Sprintf("%s %d of %d", b.Name, newCount, total))
+					t.SetProgress(int(newCount), total)
+					taskMu.Unlock()
+					return
+				}
+
+				results <- BatchResult[T]{Value: value, Error: err, Duration: duration}
+				newCount := count.Add(1)
+
+				// Protect concurrent task updates with mutex
+				taskMu.Lock()
+				t.SetName(fmt.Sprintf("%s %d of %d", b.Name, newCount, total))
+				t.SetProgress(int(newCount), total)
+				taskMu.Unlock()
+			}(item, itemNum)
 		}
 
 		// Wait for monitoring goroutine to complete and signal status

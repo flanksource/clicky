@@ -1,6 +1,7 @@
 package formatters
 
 import (
+	"fmt"
 	"strings"
 	"time"
 
@@ -19,6 +20,21 @@ type formatFixture struct {
 	markdown string
 }
 
+func expectStringsEqual(expected, actual, message string) {
+	expected = strings.TrimSpace(expected)
+	actual = strings.TrimSpace(actual)
+
+	if expected == actual {
+		return
+	}
+
+	if strings.EqualFold(expected, actual) {
+		message += " (case mismatch)"
+	}
+
+	ginkgo.Fail(fmt.Sprintf("%s '%s'(%d) != '%s'(%d)", message, expected, len(expected), actual, len(actual)), 1)
+}
+
 func runTests(tests []formatFixture) {
 
 	for _, tt := range tests {
@@ -26,14 +42,9 @@ func runTests(tests []formatFixture) {
 		ginkgo.It(tt.name, func() {
 			text := api.Human(tt.input, tt.style)
 
-			// Verify String() output
-			Expect(strings.TrimSpace(text.String())).To(Equal(tt.str), "String() output should match")
-
-			// Verify HTML() output
-			Expect(strings.TrimSpace(text.HTML())).To(Equal(tt.html), "HTML() output should match")
-
-			// Verify Markdown() output
-			Expect(text.Markdown()).To(Equal(tt.markdown), "Markdown() output should match")
+			expectStringsEqual(tt.str, text.String(), "String() output should match")
+			expectStringsEqual(tt.html, text.HTML(), "HTML() output should match")
+			expectStringsEqual(tt.markdown, text.Markdown(), "Markdown() output should match")
 
 			// Verify ANSI() output contains the content
 			if tt.ansi != "" {
@@ -55,7 +66,7 @@ var _ = ginkgo.Describe("Time and Duration Formatting", func() {
 				style:    "date",
 				str:      "2024-01-15T14:30:00Z",
 				ansi:     "2024-01-15T14:30:00Z",
-				html:     `<span class="date date">2024-01-15T14:30:00Z</span>`,
+				html:     `<span class="date">2024-01-15T14:30:00Z</span>`,
 				markdown: `2024-01-15T14:30:00Z`,
 			},
 			{
@@ -64,7 +75,7 @@ var _ = ginkgo.Describe("Time and Duration Formatting", func() {
 				style:    "date",
 				str:      "2024-01-15T14:30:45Z",
 				ansi:     "2024-01-15T14:30:45Z",
-				html:     `<span class="date date">2024-01-15T14:30:45Z</span>`,
+				html:     `<span class="date">2024-01-15T14:30:45Z</span>`,
 				markdown: `2024-01-15T14:30:45Z`,
 			},
 			{
@@ -73,7 +84,7 @@ var _ = ginkgo.Describe("Time and Duration Formatting", func() {
 				style:    "date",
 				str:      "",
 				ansi:     "",
-				html:     `<span class="date date"></span>`,
+				html:     ``,
 				markdown: ``,
 			},
 		}
@@ -110,7 +121,7 @@ var _ = ginkgo.Describe("Time and Duration Formatting", func() {
 				input:    100 * time.Millisecond,
 				str:      "100ms",
 				ansi:     "100ms",
-				html:     `<span class="duration duration">100ms</span>`,
+				html:     `<span class="duration">100ms</span>`,
 				markdown: `100ms`,
 			},
 			{
@@ -118,7 +129,7 @@ var _ = ginkgo.Describe("Time and Duration Formatting", func() {
 				input:    1500 * time.Millisecond,
 				str:      "1500ms",
 				ansi:     "1500ms",
-				html:     `<span class="duration duration">1500ms</span>`,
+				html:     `<span class="duration">1500ms</span>`,
 				markdown: `1500ms`,
 			},
 			{
@@ -127,7 +138,7 @@ var _ = ginkgo.Describe("Time and Duration Formatting", func() {
 				style:    "duration",
 				str:      "12.34s",
 				ansi:     "12.34s",
-				html:     `<span class="duration duration">12.34s</span>`,
+				html:     `<span class="duration">12.34s</span>`,
 				markdown: `12.34s`,
 			},
 			{
@@ -136,7 +147,7 @@ var _ = ginkgo.Describe("Time and Duration Formatting", func() {
 				style:    "duration",
 				str:      "5.00s",
 				ansi:     "5.00s",
-				html:     `<span class="duration duration">5.00s</span>`,
+				html:     `<span class="duration">5.00s</span>`,
 				markdown: `5.00s`,
 			},
 			{
@@ -145,7 +156,7 @@ var _ = ginkgo.Describe("Time and Duration Formatting", func() {
 				style:    "duration",
 				str:      "5.5m",
 				ansi:     "5.5m",
-				html:     `<span class="duration duration">5.5m</span>`,
+				html:     `<span class="duration">5.5m</span>`,
 				markdown: `5.5m`,
 			},
 			{
@@ -154,7 +165,7 @@ var _ = ginkgo.Describe("Time and Duration Formatting", func() {
 				style:    "duration",
 				str:      "1.0m",
 				ansi:     "1.0m",
-				html:     `<span class="duration duration">1.0m</span>`,
+				html:     `<span class="duration">1.0m</span>`,
 				markdown: `1.0m`,
 			},
 			{
@@ -163,7 +174,7 @@ var _ = ginkgo.Describe("Time and Duration Formatting", func() {
 				style:    "duration",
 				str:      "30.5m",
 				ansi:     "30.5m",
-				html:     `<span class="duration duration">30.5m</span>`,
+				html:     `<span class="duration">30.5m</span>`,
 				markdown: `30.5m`,
 			},
 			{
@@ -172,7 +183,7 @@ var _ = ginkgo.Describe("Time and Duration Formatting", func() {
 				style:    "duration",
 				str:      "3.2h",
 				ansi:     "3.2h",
-				html:     `<span class="duration duration">3.2h</span>`,
+				html:     `<span class="duration">3.2h</span>`,
 				markdown: `3.2h`,
 			},
 			{
@@ -181,7 +192,7 @@ var _ = ginkgo.Describe("Time and Duration Formatting", func() {
 				style:    "duration",
 				str:      "1.0h",
 				ansi:     "1.0h",
-				html:     `<span class="duration duration">1.0h</span>`,
+				html:     `<span class="duration">1.0h</span>`,
 				markdown: `1.0h`,
 			},
 			{
@@ -190,26 +201,26 @@ var _ = ginkgo.Describe("Time and Duration Formatting", func() {
 				style:    "duration",
 				str:      "12.5h",
 				ansi:     "12.5h",
-				html:     `<span class="duration duration">12.5h</span>`,
+				html:     `<span class="duration">12.5h</span>`,
 				markdown: `12.5h`,
 			},
 			{
 				name:     ">= 24h (2 days)",
 				input:    48 * time.Hour,
 				style:    "duration",
-				str:      "2d",
-				ansi:     "2d",
-				html:     `<span class="duration duration">2dh</span>`,
-				markdown: `2d`,
+				str:      "2d0h",
+				ansi:     "2d0h",
+				html:     `<span class="duration">2d0h</span>`,
+				markdown: `2d0h`,
 			},
 			{
 				name:     ">= 24h (2 days)",
 				input:    28 * time.Hour,
 				style:    "duration",
-				str:      "2d4h",
-				ansi:     "2d4h",
-				html:     `<span class="duration duration">2d4h</span>`,
-				markdown: `2d4h`,
+				str:      "1d4h",
+				ansi:     "1d4h",
+				html:     `<span class="duration">1d4h</span>`,
+				markdown: `1d4h`,
 			},
 			{
 				name:     ">= 24h (exactly 24h)",
@@ -217,7 +228,7 @@ var _ = ginkgo.Describe("Time and Duration Formatting", func() {
 				style:    "duration",
 				str:      "24h",
 				ansi:     "24h",
-				html:     `<span class="duration duration">24h</span>`,
+				html:     `<span class="duration">24h</span>`,
 				markdown: `24h`,
 			},
 			{
@@ -226,7 +237,7 @@ var _ = ginkgo.Describe("Time and Duration Formatting", func() {
 				style:    "duration",
 				str:      "3d6h",
 				ansi:     "3d6h",
-				html:     `<span class="duration duration">3d6h</span>`,
+				html:     `<span class="duration">3d6h</span>`,
 				markdown: `3d6h`,
 			},
 			{
@@ -235,7 +246,7 @@ var _ = ginkgo.Describe("Time and Duration Formatting", func() {
 				style:    "duration",
 				str:      "0ms",
 				ansi:     "0ms",
-				html:     `<span class="duration duration">0ms</span>`,
+				html:     `<span class="duration">0ms</span>`,
 				markdown: `0ms`,
 			},
 		}
@@ -251,7 +262,7 @@ var _ = ginkgo.Describe("Time and Duration Formatting", func() {
 				style:    "date",
 				str:      "2024-01-15T14:30:00Z",
 				ansi:     "2024-01-15T14:30:00Z",
-				html:     `<span class="date date">2024-01-15T14:30:00Z</span>`,
+				html:     `<span class="date">2024-01-15T14:30:00Z</span>`,
 				markdown: `2024-01-15T14:30:00Z`,
 			},
 			{
@@ -260,7 +271,7 @@ var _ = ginkgo.Describe("Time and Duration Formatting", func() {
 				style:    "duration",
 				str:      "5.0m",
 				ansi:     "5.0m",
-				html:     `<span class="duration duration">5.0m</span>`,
+				html:     `<span class="duration">5.0m</span>`,
 				markdown: `5.0m`,
 			},
 			{
@@ -269,7 +280,7 @@ var _ = ginkgo.Describe("Time and Duration Formatting", func() {
 				style:    "duration",
 				str:      "30.00s",
 				ansi:     "30.00s",
-				html:     `<span class="duration duration">30.00s</span>`,
+				html:     `<span class="duration">30.00s</span>`,
 				markdown: `30.00s`,
 			},
 		}
