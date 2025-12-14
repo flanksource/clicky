@@ -3,6 +3,7 @@ package formatters
 import (
 	"flag"
 
+	"github.com/samber/lo"
 	"github.com/spf13/pflag"
 
 	"github.com/flanksource/clicky/api"
@@ -33,8 +34,8 @@ type FormatOptions struct {
 	PDF      bool `json:"pdf,omitempty"`
 
 	// Display structure flags (additive with format flags)
-	Tree  bool `json:"tree,omitempty"`  // Display in tree structure
-	Table bool `json:"table,omitempty"` // Display in table structure
+	Tree  *bool `json:"tree,omitempty"`  // Display in tree structure
+	Table *bool `json:"table,omitempty"` // Display in table structure
 
 	// Paging options
 	Page  int `json:"page,omitempty"`  // Current page (1-indexed)
@@ -42,6 +43,14 @@ type FormatOptions struct {
 
 	// Internal fields (not exposed via flags)
 	depth int // Hidden field for tracking nesting depth in recursive formatting
+}
+
+func (o FormatOptions) SkipTable() bool {
+	return (o.Table != nil && !*o.Table) || (o.Tree != nil && *o.Tree)
+}
+
+func (o FormatOptions) SkipTree() bool {
+	return (o.Tree != nil && !*o.Tree) || (o.Table != nil && *o.Table)
 }
 
 func MergeOptions(opts ...FormatOptions) FormatOptions {
@@ -68,11 +77,11 @@ func MergeOptions(opts ...FormatOptions) FormatOptions {
 		if opt.Filter != "" {
 			merged.Filter = opt.Filter
 		}
-		if opt.Tree {
-			merged.Tree = true
+		if opt.Tree != nil {
+			merged.Tree = opt.Tree
 		}
-		if opt.Table {
-			merged.Table = true
+		if opt.Table != nil {
+			merged.Table = opt.Table
 		}
 		if opt.Page > 0 {
 			merged.Page = opt.Page
@@ -133,8 +142,15 @@ func BindFlags(flags *flag.FlagSet, options *FormatOptions) {
 	flags.BoolVar(&options.PDF, "pdf", false, "Output in PDF format")
 
 	// Display structure flags (additive with format)
-	flags.BoolVar(&options.Tree, "tree", false, "Display in tree structure (additive with format)")
-	flags.BoolVar(&options.Table, "table", false, "Display in table structure (additive with format)")
+	flags.BoolFunc("tree", "Display in tree structure (additive with format)", func(s string) error {
+		options.Tree = lo.ToPtr(s == "true")
+		return nil
+	})
+	flags.BoolFunc("table", "Display in table structure (additive with format), or false to disable tables",
+		func(b string) error {
+			options.Table = lo.ToPtr(b == "true")
+			return nil
+		})
 }
 
 // BindPFlags adds formatting flags to the provided pflag set (for cobra)
@@ -155,8 +171,15 @@ func BindPFlags(flags *pflag.FlagSet, options *FormatOptions) {
 	flags.BoolVar(&options.PDF, "pdf", false, "Output in PDF format")
 
 	// Display structure flags (additive with format)
-	flags.BoolVar(&options.Tree, "tree", false, "Display in tree structure (additive with format)")
-	flags.BoolVar(&options.Table, "table", false, "Display in table structure (additive with format)")
+	flags.BoolFunc("tree", "Display in tree structure (additive with format)", func(s string) error {
+		options.Tree = lo.ToPtr(s == "true")
+		return nil
+	})
+	flags.BoolFunc("table", "Display in table structure (additive with format), or false to disable tables",
+		func(b string) error {
+			options.Table = lo.ToPtr(b == "true")
+			return nil
+		})
 }
 
 // ResolveFormat resolves the output format from format-specific flags

@@ -105,7 +105,7 @@ func ResolveStyles(styles ...string) Class {
 				resolved.Font.Underline = false
 			}
 
-			if class == "line-through" || class == "strikethrough" {
+			if class == "line-through" || class == "strikethrough" || class == "text-strikethrough" {
 				resolved.Font.Strikethrough = true
 			}
 

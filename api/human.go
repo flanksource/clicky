@@ -48,30 +48,30 @@ func Human(content any, styles ...string) Text {
 	if content == nil {
 		return Text{}
 	}
+
+	style := uniqueStyles("", styles...)
 	switch t := content.(type) {
 
 	case Text:
 		return t
 	case Textable:
-		return Text{}.Add(t)
+		return Text{}.Append(t, styles...)
 	case time.Time:
+		if t.IsZero() {
+			return Text{}
+		}
 		if t.Truncate(time.Hour * 24).Equal(t) {
 			return Text{
 				Content: t.Format("2006-01-02"),
-				Style:   strings.Join(append(styles, "date"), " "),
-			}
+			}.Styles(style, "date")
 		}
 		// Only omit timezone if it's UTC
 		if t.Location() == time.UTC {
 			return Text{
-				Content: t.Format("2006-01-02 15:04:05"),
-				Style:   strings.Join(append(styles, "date"), " "),
-			}
+				Content: t.Format("2006-01-02T15:04:05Z")}.Styles(style, "date")
 		}
 		return Text{
-			Content: t.Format(time.RFC3339),
-			Style:   strings.Join(append(styles, "date"), " "),
-		}
+			Content: t.Format(time.RFC3339)}.Styles(style, "date")
 	case *time.Time:
 		if t == nil {
 			return Text{}
@@ -92,8 +92,7 @@ func Human(content any, styles ...string) Text {
 		}
 		return Text{
 			Content: v,
-			Style:   strings.Join(append(styles, "duration"), " "),
-		}
+		}.Styles(style, "duration")
 	case *time.Duration:
 		if t == nil {
 			return Text{}
@@ -108,8 +107,7 @@ func Human(content any, styles ...string) Text {
 	case float32, float64:
 		return Text{
 			Content: fmt.Sprintf("%.2f", t),
-			Style:   strings.Join(append(styles, "number"), " "),
-		}
+		}.Styles(style, "number")
 
 	case bool:
 		if t {
@@ -119,7 +117,7 @@ func Human(content any, styles ...string) Text {
 		}
 	}
 
-	return Text{Content: fmt.Sprintf("%v", content), Style: strings.Join(styles, " ")}
+	return Text{Content: fmt.Sprintf("%v", content), Style: style}
 }
 
 func HumanNumber(value int64, styles ...string) Text {

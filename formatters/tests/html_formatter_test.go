@@ -169,7 +169,7 @@ func TestHTMLFormatter_FormatWithSchema(t *testing.T) {
 	if !strings.Contains(output, "299.99") {
 		t.Errorf("HTML should contain price value")
 	}
-	if !strings.Contains(output, "2024-01-15 10:30:00") {
+	if !strings.Contains(output, "2024-01-15T10:30:00Z") {
 		t.Errorf("HTML should format dates correctly")
 	}
 	// Check nested fields
