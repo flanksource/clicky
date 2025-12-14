@@ -65,8 +65,16 @@ func BindAllFlags(flags *pflag.FlagSet, filters ...string) *AllFlags {
 		flags.BoolVar(&Flags.PDF, "pdf", false, "Output in PDF format")
 
 		// Display structure flags (additive with format)
-		flags.BoolVar(&Flags.Tree, "tree", false, "Display in tree structure (additive with format)")
-		flags.BoolVar(&Flags.Table, "table", false, "Display in table structure (additive with format)")
+		// Display structure flags (additive with format)
+		flags.BoolFunc("tree", "Display in tree structure (additive with format)", func(s string) error {
+			Flags.Tree = lo.ToPtr(s == "true")
+			return nil
+		})
+		flags.BoolFunc("table", "Display in table structure (additive with format), or false to disable tables",
+			func(b string) error {
+				Flags.Table = lo.ToPtr(b == "true")
+				return nil
+			})
 	}
 
 	return Flags
