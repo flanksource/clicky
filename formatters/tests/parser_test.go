@@ -287,7 +287,7 @@ func TestConvertSliceWithFormatOptions(t *testing.T) {
 		{{ID: 2, Name: "Item 2"}, {ID: 3, Name: "Item 3"}},
 	}
 
-	opts := FormatOptions{Table: true}
+	opts := FormatOptions{Table: lo.ToPtr(true)}
 	prettyData, err := ToPrettyDataWithOptions(input, opts)
 	if err != nil {
 		t.Fatalf("ToPrettyDataWithOptions failed: %v", err)
