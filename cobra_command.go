@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"github.com/flanksource/clicky/flags"
-	"github.com/flanksource/commons/logger"
 	"github.com/samber/lo"
 	"github.com/spf13/cobra"
 )

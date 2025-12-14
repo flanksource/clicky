@@ -5,6 +5,72 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.12.0](https://github.com/flanksource/clicky/compare/v1.11.2...v1.12.0) (2025-12-09)
+
+
+### ♻️ Code Refactoring
+
+* extract inline CSS/JS to go:embed files and use Iconify chevrons ([70fcd7f](https://github.com/flanksource/clicky/commit/70fcd7f1869641144b1ecfedb6e6346623df6887))
+* remove Formatted(), Plain(), Markdown(), HTML() from FieldValue ([6b5b78c](https://github.com/flanksource/clicky/commit/6b5b78ce18fb43b4bb7651cd0359a3173809f0e5))
+* **html:** use Value() + type switch instead of GetValue() ([61457b2](https://github.com/flanksource/clicky/commit/61457b2c8892412cc920d34149dff0b6baf6f680))
+* **table:** make lipgloss table Textable-aware ([eb55aee](https://github.com/flanksource/clicky/commit/eb55aee4aca9018299fcae8cd9f1008f95c23014))
+
+
+### ✨ Features
+
+* batch timeouts ([f853be4](https://github.com/flanksource/clicky/commit/f853be4d73eabe83b1f1c402e36fb95f57f0c338))
+* default to truncate-suffix when constraints specified ([df111ba](https://github.com/flanksource/clicky/commit/df111ba7d3245c776502e1f1e6e6eb5ca5b30636))
+* implement nested table rendering in HTML with compact support ([99c8918](https://github.com/flanksource/clicky/commit/99c89182910dfb77e449e1a4a1c006d39dfbed61))
+* migrate terminal tables to lipgloss (hybrid approach) ([26126c5](https://github.com/flanksource/clicky/commit/26126c57e852bed5664509c3a117acc831b915bd))
+* migrate tree rendering to lipgloss ([ceadc44](https://github.com/flanksource/clicky/commit/ceadc44f4ce7fc1ff5c21e5baaa6877ea01e4765))
+* proper rendering of api.Text and Textable in all formatters ([5f84f59](https://github.com/flanksource/clicky/commit/5f84f592407eecedb7fe47573f7aaed9e17960c8))
+* refactor formatters to use FieldValue.Text and PrettyData.Pretty() ([0f7019d](https://github.com/flanksource/clicky/commit/0f7019d83be5937d9faa4de51cc1fa49cf7cb157))
+* **ai:** add LLM agent adapter with structured output support ([9968fd2](https://github.com/flanksource/clicky/commit/9968fd27b4b23ffddd4034b52dfdd6b458dc837a))
+* **formatters:** make TextTable self-contained with column schema ([40f0ee0](https://github.com/flanksource/clicky/commit/40f0ee0848c6371ea02022fe26b1228280b4f89c))
+
+
+### 🐛 Bug Fixes
+
+* add missing types and methods for compilation ([b331825](https://github.com/flanksource/clicky/commit/b331825e2964c76e86b68f3e1ed2001929973485))
+* align tree chevrons to top ([c484df3](https://github.com/flanksource/clicky/commit/c484df31fa839a089963187a057a2911b605674c))
+* args handling in clicky.AddCommand ([557b30a](https://github.com/flanksource/clicky/commit/557b30a79e36f43f331174614cc94dc41277cbbe))
+* batch race conditions ([1bc0c88](https://github.com/flanksource/clicky/commit/1bc0c883b4c20f8312b5369669acbc50a000563c))
+* check PrettyRow interface before extracting struct fields ([e5dca82](https://github.com/flanksource/clicky/commit/e5dca828bcb1b90952a50a6fa4043686dd18d4f1))
+* duplicate rendering of logs with --no-progress ([26623d3](https://github.com/flanksource/clicky/commit/26623d3055d099e7a4649d0247a8bcd430637a44))
+* formatting improvements ([99dd47d](https://github.com/flanksource/clicky/commit/99dd47d7503e46f3b0e1f1fa7057980e06bab14c))
+* formatting tests ([0e6838e](https://github.com/flanksource/clicky/commit/0e6838e94c1a97ecf3db32cf934a3931390bd7f7))
+* improve HTML tree rendering with embedded assets ([f049d29](https://github.com/flanksource/clicky/commit/f049d29dc9e9dc48522014ae234aaa31b7c5d39c))
+* parse max-w unit suffixes (ch, px, rem, em) ([6870944](https://github.com/flanksource/clicky/commit/6870944dbae4a20cd14394f8b830e6810953a582))
+* prevent truncate class from overwriting explicit max-w ([b671c3f](https://github.com/flanksource/clicky/commit/b671c3f3c1507eca557e928ba357376f864047ad))
+* reset capture output when reusing exec wrappers ([77faf25](https://github.com/flanksource/clicky/commit/77faf25d7936f9adf57b2d01980a639cda741ea4))
+* restore table rendering temporarily, fix ANSI test checks ([30fd9bc](https://github.com/flanksource/clicky/commit/30fd9bce79028a811fde4040f0382f336019970c))
+* update test to handle Textable interface properly ([045a4fc](https://github.com/flanksource/clicky/commit/045a4fcdbc24b1f6b38ac0debad4f816544de09e))
+* use interface assertion in NewTypedValue for nested trees ([d906ab6](https://github.com/flanksource/clicky/commit/d906ab686474dc9fa531314a644f43cd2bd1726a))
+* wrap string values in Text for TextList compatibility ([a857c2f](https://github.com/flanksource/clicky/commit/a857c2ff32a836d127059ea61b07ff7748debba0))
+* **html:** add fallback to data.Tree for tree fields ([999e3ca](https://github.com/flanksource/clicky/commit/999e3ca9f999aca4fbb0aa72f6ca035260053177))
+* **task:** prevent hanging and terminal corruption in task manager ([c1f993b](https://github.com/flanksource/clicky/commit/c1f993b9a483aac3809c7d8f55521d64d8d928c4))
+* **task:** resolve data races in Task and Manager ([ce82b46](https://github.com/flanksource/clicky/commit/ce82b4695b7bc8e447a6026fc21131b8c7f54785))
+* **task:** resolve race conditions in batch.go ([107c875](https://github.com/flanksource/clicky/commit/107c875b488d0d2e8f8a80966cc21bcbf78ef495))
+
+
+### 🔧 Maintenance
+
+* ai refactorings ([049a4a9](https://github.com/flanksource/clicky/commit/049a4a918a7d6dd28a47ad8584e1543af7228544))
+* fix lint errors ([f26f0f1](https://github.com/flanksource/clicky/commit/f26f0f186ed3a62b359960b413bcbdeb09f7e14b))
+* fix nested html table output ([2e2a00d](https://github.com/flanksource/clicky/commit/2e2a00db977d216b3be32661f4fb81103234cae3))
+* fix nested html tree output ([9045fd9](https://github.com/flanksource/clicky/commit/9045fd9e7a7888372cbb71c61c167c3fee722f44))
+* fix test errors ([9f16c6c](https://github.com/flanksource/clicky/commit/9f16c6c47d7dd0271836d8ab616c294a8e0c5d29))
+* fix tests ([b28a08b](https://github.com/flanksource/clicky/commit/b28a08bea64d4e91d967827930f8edd744b2d5d4))
+* html fixes ([d02e990](https://github.com/flanksource/clicky/commit/d02e990cc8f126aaa27e2e7dab18cbd8af43791f))
+* html table fixes ([199e562](https://github.com/flanksource/clicky/commit/199e5629a5cbad617cdffa168a26fefeafa95aa7))
+* misc ([77da16b](https://github.com/flanksource/clicky/commit/77da16bed8ce41ec513c16e51811ad308f22e6c2))
+* refactor formatters package ([cefe685](https://github.com/flanksource/clicky/commit/cefe685ef1d52b934b5e9d166b54c192f4ee80c7))
+* refactor formatters package ([d65dfb3](https://github.com/flanksource/clicky/commit/d65dfb349384dcc6121136a614a5443766bf5fb8))
+* review fixes ([7fbbaae](https://github.com/flanksource/clicky/commit/7fbbaaec22794de0c2cf12824b2408aea317c1c2))
+* switch tree/table printing back to lipgloss ([52fc4c8](https://github.com/flanksource/clicky/commit/52fc4c8948be721851f7e55276f266a6f38a1fe6))
+* uber demo ([7d921d9](https://github.com/flanksource/clicky/commit/7d921d9dc5ec3b77d11c46dc6e0b9b41ebd0697e))
+* update examples ([b7fea73](https://github.com/flanksource/clicky/commit/b7fea735f8e683b790aaad7639752cd8bba0ce01))
+
 ## [1.11.2](https://github.com/flanksource/clicky/compare/v1.11.1...v1.11.2) (2025-11-21)
 
 
