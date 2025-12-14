@@ -583,7 +583,7 @@ func (p *Process) Run() *Process {
 	cmd.Stderr = p.captureOutput.GetStderrWriter()
 	cmd.Stdout = p.captureOutput.GetStdoutWriter()
 
-	p.log.Debugf(api.Text{}.Append("run", "text-muted").Append(icons.MinimalArrow, "text-muted").Space().Add(p.Short()).ANSI())
+	p.log.Tracef(api.Text{}.Append("run", "text-muted").Append(icons.MinimalArrow, "text-muted").Space().Add(p.Short()).ANSI())
 
 	now := time.Now()
 	p.Started = &now

@@ -392,17 +392,20 @@ func (tv TypedValue) Visit(visitor VisitorFunc) bool {
 	return true
 }
 
-func TryTypedValue(o any) *TypedValue {
+type TypeOptions struct {
+	SkipTable bool
+	SkipTree  bool
+}
+
+func TryTypedValue(o any, opts ...TypeOptions) *TypedValue {
+
 	switch v := o.(type) {
 	case *PrettyData:
 		return &TypedValue{Textable: v}
-	// TextTable and TextTree must come before Textable since they implement Textable
 	case TextTable:
 		return &TypedValue{Table: &v}
 	case TextTree:
 		return &TypedValue{Tree: &v}
-	case Textable:
-		return &TypedValue{Textable: v}
 	case TextList:
 		return &TypedValue{Slice: &v}
 	case TextMap:
@@ -411,18 +414,41 @@ func TryTypedValue(o any) *TypedValue {
 		return &TypedValue{TypedMap: &v}
 	case TypedList:
 		return &TypedValue{TypedList: &v}
-	case TreeNode:
-		return &TypedValue{Tree: lo.ToPtr(NewTree(v))}
-	case TreeMixin:
-		return &TypedValue{Tree: lo.ToPtr(NewTree(v.Tree()))}
+	}
+
+	skipTable := false
+	skipTree := false
+	for _, opt := range opts {
+		skipTable = skipTable || opt.SkipTable
+		skipTree = skipTree || opt.SkipTree
+	}
+
+	if !skipTable {
+		switch v := o.(type) {
+		case []TableMixin:
+			return &TypedValue{Table: lo.ToPtr(NewTable(v))}
+		case []TableRowMixin2:
+			return &TypedValue{Table: lo.ToPtr(NewTableFromMixin(v))}
+		case []PrettyDataRow:
+			return &TypedValue{Table: lo.ToPtr(NewTableFromRows(v))}
+		}
+	}
+
+	if !skipTree {
+		switch v := o.(type) {
+		case TreeNode:
+			return &TypedValue{Tree: lo.ToPtr(NewTree(v))}
+		case TreeMixin:
+			return &TypedValue{Tree: lo.ToPtr(NewTree(v.Tree()))}
+		}
+	}
+
+	switch v := o.(type) {
 	case Pretty:
 		return &TypedValue{Textable: v.Pretty()}
-	case []TableMixin:
-		return &TypedValue{Table: lo.ToPtr(NewTable(v))}
-	case []TableRowMixin2:
-		return &TypedValue{Table: lo.ToPtr(NewTableFromMixin(v))}
-	case []PrettyDataRow:
-		return &TypedValue{Table: lo.ToPtr(NewTableFromRows(v))}
+	case Textable:
+		return &TypedValue{Textable: v}
+
 	}
 	return nil
 }

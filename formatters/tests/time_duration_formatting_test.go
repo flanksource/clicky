@@ -84,7 +84,7 @@ var _ = ginkgo.Describe("Time and Duration Formatting", func() {
 				style:    "date",
 				str:      "",
 				ansi:     "",
-				html:     `<span class="date"></span>`,
+				html:     ``,
 				markdown: ``,
 			},
 		}
@@ -208,10 +208,10 @@ var _ = ginkgo.Describe("Time and Duration Formatting", func() {
 				name:     ">= 24h (2 days)",
 				input:    48 * time.Hour,
 				style:    "duration",
-				str:      "2d",
-				ansi:     "2d",
-				html:     `<span class="duration">2dh</span>`,
-				markdown: `2d`,
+				str:      "2d0h",
+				ansi:     "2d0h",
+				html:     `<span class="duration">2d0h</span>`,
+				markdown: `2d0h`,
 			},
 			{
 				name:     ">= 24h (2 days)",

@@ -185,13 +185,13 @@ func (am *AgentManager) Close() error {
 }
 
 var defaultConfig AgentConfig = AgentConfig{
-	Type:          AgentTypeClaude,
-	Model:         "claude-haiku-4-5",
-	MaxTokens:     10000,
-	MaxConcurrent: 4,
-	Debug:         false,
-	Verbose:       false,
-	// Temperature:   0.2,
+	Type:            AgentTypeClaude,
+	Model:           "claude-haiku-4-5",
+	MaxTokens:       10000,
+	MaxConcurrent:   4,
+	Debug:           false,
+	Verbose:         false,
+	Temperature:     0.2,
 	StrictMCPConfig: true,
 	CacheTTL:        24 * time.Hour, // Default 24 hour TTL
 	NoCache:         false,
