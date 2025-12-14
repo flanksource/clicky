@@ -1,6 +1,7 @@
 package task_test
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"time"
@@ -13,16 +14,22 @@ import (
 func ExampleBatch_timeout() {
 	batch := &task.Batch[string]{
 		Name:       "example-batch-timeout",
-		Timeout:    500 * time.Millisecond, // Batch must complete within 500ms
-		MaxWorkers: 2,
+		Timeout:    150 * time.Millisecond, // Batch must complete within 150ms
+		MaxWorkers: 1,                      // Only 1 worker to make timing deterministic
 	}
 
-	// Add 10 items that each take 200ms - only ~5 will complete before timeout
-	for i := 0; i < 10; i++ {
+	// Add 5 items that each take 200ms - with 1 worker and 150ms timeout,
+	// zero items will complete before the timeout fires (first item needs 200ms)
+	// Using ItemsWithContext so items can be cancelled when timeout occurs
+	for i := 0; i < 5; i++ {
 		i := i
-		batch.Items = append(batch.Items, func(log logger.Logger) (string, error) {
-			time.Sleep(200 * time.Millisecond)
-			return fmt.Sprintf("item-%d", i), nil
+		batch.ItemsWithContext = append(batch.ItemsWithContext, func(ctx context.Context, log logger.Logger) (string, error) {
+			select {
+			case <-ctx.Done():
+				return "", ctx.Err()
+			case <-time.After(200 * time.Millisecond):
+				return fmt.Sprintf("item-%d", i), nil
+			}
 		})
 	}
 
@@ -43,7 +50,7 @@ func ExampleBatch_timeout() {
 	fmt.Printf("Completed %d items before timeout: %v\n", len(completed), timedOut)
 	// Output:
 	// Batch timeout occurred
-	// Completed 5 items before timeout: true
+	// Completed 0 items before timeout: true
 }
 
 // ExampleBatch_itemTimeout demonstrates using per-item timeouts
