@@ -10,11 +10,12 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/lipgloss/table"
-	"github.com/flanksource/clicky/api/tailwind"
 	"github.com/olekukonko/tablewriter"
 	"github.com/olekukonko/tablewriter/renderer"
 	"github.com/olekukonko/tablewriter/tw"
 	"github.com/samber/lo"
+
+	"github.com/flanksource/clicky/api/tailwind"
 )
 
 var tableIDCounter = atomic.Int64{}
@@ -164,7 +165,58 @@ func (t TextTable) ANSI() string {
 }
 
 func (t TextTable) Markdown() string {
-	return "\n" + t.render(renderer.NewMarkdown(), TransformerMarkdown)
+	if len(t.Headers) == 0 {
+		return ""
+	}
+
+	// Create buffer to capture table output
+	var buf bytes.Buffer
+
+	width := GetTerminalWidth()
+
+	// Create tablewriter instance with word wrapping enabled
+	// Set reasonable table max width to enable wrapping (this is distributed across columns)
+	table := tablewriter.NewTable(&buf,
+		tablewriter.WithRowAutoWrap(tw.WrapBreak),
+		tablewriter.WithHeaderAutoFormat(tw.On),
+		tablewriter.WithMaxWidth(width),
+		tablewriter.WithBehavior(tw.Behavior{AutoHide: tw.On}),
+		tablewriter.WithRenderer(renderer.NewMarkdown()),
+	)
+
+	table.Header(lo.ToAnySlice(t.Headers.AsString())...)
+
+	for _, row := range t.Rows {
+		values := []any{}
+
+		for i, header := range t.Headers {
+			// Use field name from FieldNames if available, otherwise fall back to header
+			var fieldName string
+			if i < len(t.FieldNames) && t.FieldNames[i] != "" {
+				fieldName = t.FieldNames[i]
+			} else {
+				fieldName = TransformerMarkdown(header)
+			}
+
+			cell, ok := row[fieldName]
+			if !ok {
+				values = append(values, "")
+				continue
+			}
+			values = append(values, TransformerMarkdown(cell))
+		}
+
+		if err := table.Append(values...); err != nil {
+			return err.Error()
+		}
+	}
+
+	// Render the table
+	if err := table.Render(); err != nil {
+		return err.Error()
+	}
+
+	return "\n" + buf.String()
 }
 
 var TransformerANSI TextTransformer = func(t Textable) string {
@@ -183,61 +235,6 @@ var TransformerMarkdown TextTransformer = func(t Textable) string {
 }
 
 type TextTransformer func(t Textable) string
-
-func (t *TextTable) render(renderer tw.Renderer, transform TextTransformer) string {
-	if len(t.Headers) == 0 {
-		return ""
-	}
-
-	// Create buffer to capture table output
-	var buf bytes.Buffer
-
-	width := GetTerminalWidth()
-
-	// Create tablewriter instance with word wrapping enabled
-	// Set reasonable table max width to enable wrapping (this is distributed across columns)
-	table := tablewriter.NewTable(&buf,
-		tablewriter.WithRowAutoWrap(tw.WrapBreak),
-		tablewriter.WithHeaderAutoFormat(tw.On),
-		tablewriter.WithMaxWidth(width),
-		tablewriter.WithBehavior(tw.Behavior{AutoHide: tw.On}),
-		tablewriter.WithRenderer(renderer),
-	)
-
-	table.Header(lo.ToAnySlice(t.Headers.AsString())...)
-
-	for _, row := range t.Rows {
-		values := []any{}
-
-		for i, header := range t.Headers {
-			// Use field name from FieldNames if available, otherwise fall back to header
-			var fieldName string
-			if i < len(t.FieldNames) && t.FieldNames[i] != "" {
-				fieldName = t.FieldNames[i]
-			} else {
-				fieldName = transform(header)
-			}
-
-			cell, ok := row[fieldName]
-			if !ok {
-				values = append(values, "")
-				continue
-			}
-			values = append(values, transform(cell))
-		}
-
-		if err := table.Append(values...); err != nil {
-			return err.Error()
-		}
-	}
-
-	// Render the table
-	if err := table.Render(); err != nil {
-		return err.Error()
-	}
-
-	return buf.String()
-}
 
 // getCellValue retrieves the Textable value for a given cell in the table
 func (t *TextTable) getCellValue(row TableRow, colIdx int) Textable {
