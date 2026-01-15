@@ -1,3 +1,10 @@
+## Tool Binaries
+LOCALBIN ?= $(shell pwd)/.bin
+GOLANGCI_LINT ?= $(LOCALBIN)/golangci-lint
+
+## Tool Versions
+GOLANGCI_LINT_VERSION ?= v2.8.0
+
 .PHONY: test build clean install
 
 
@@ -21,13 +28,16 @@ clean:
 install: build
 	mv clicky /usr/local/bin/clicky
 
-# Run linter (if available)
-lint:
-	@if command -v golangci-lint >/dev/null 2>&1; then \
-		golangci-lint run; \
-	else \
-		echo "golangci-lint not installed, skipping lint"; \
-	fi
+# Run linter
+.PHONY: lint
+lint: golangci-lint
+	$(GOLANGCI_LINT) run ./...
+	go vet ./...
+
+.PHONY: golangci-lint
+golangci-lint: $(GOLANGCI_LINT) ## Download golangci-lint locally if necessary.
+$(GOLANGCI_LINT): $(LOCALBIN)
+	test -s $(LOCALBIN)/golangci-lint || curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh | sh -s -- -b $(LOCALBIN) $(GOLANGCI_LINT_VERSION)
 
 
 # Format code
@@ -56,3 +66,6 @@ docker-run:
 
 # Default target
 all: install fmt test build
+
+$(LOCALBIN):
+	mkdir -p $(LOCALBIN)
