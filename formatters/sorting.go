@@ -116,6 +116,12 @@ func compareValues(a, b interface{}) int {
 	if fieldValB, ok := b.(api.FieldValue); ok {
 		b = fieldValB.Value
 	}
+	if typedValA, ok := a.(api.TypedValue); ok {
+		a = typedValA.String()
+	}
+	if typedValB, ok := b.(api.TypedValue); ok {
+		b = typedValB.String()
+	}
 
 	// Handle nil values
 	if a == nil && b == nil {

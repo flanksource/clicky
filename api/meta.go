@@ -34,10 +34,20 @@ func (pd *PrettyData) GetValue(fieldName string) (TypedValue, bool) {
 
 // GetTable returns the table data if it exists
 func (pd *PrettyData) GetTable(tableName string) (*TextTable, bool) {
-	// Since there's only one table now, ignore the tableName parameter
-	// and just return the single table if it exists
 	if pd.Table != nil {
 		return pd.Table, true
+	}
+	if pd.TypedMap != nil {
+		if tableName != "" {
+			if value, exists := (*pd.TypedMap)[tableName]; exists && value.Table != nil {
+				return value.Table, true
+			}
+		}
+		for _, value := range *pd.TypedMap {
+			if value.Table != nil {
+				return value.Table, true
+			}
+		}
 	}
 	return nil, false
 }

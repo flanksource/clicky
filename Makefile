@@ -8,7 +8,7 @@ GOLANGCI_LINT_VERSION ?= v2.8.0
 .PHONY: test build clean install
 
 
-test: build
+test:
 	go test -v ./...
 
 # Run tests with coverage
