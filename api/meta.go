@@ -289,7 +289,7 @@ type PrettyFieldData struct {
 	Value Textable
 }
 
-var all = []Textable{
+var _ = []Textable{
 	Text{},
 	TextList{},
 	TextMap{},
@@ -396,13 +396,10 @@ func TryTypedValue(o any) *TypedValue {
 	switch v := o.(type) {
 	case *PrettyData:
 		return &TypedValue{Textable: v}
-	// TextTable and TextTree must come before Textable since they implement Textable
 	case TextTable:
 		return &TypedValue{Table: &v}
 	case TextTree:
 		return &TypedValue{Tree: &v}
-	case Textable:
-		return &TypedValue{Textable: v}
 	case TextList:
 		return &TypedValue{Slice: &v}
 	case TextMap:
@@ -411,6 +408,8 @@ func TryTypedValue(o any) *TypedValue {
 		return &TypedValue{TypedMap: &v}
 	case TypedList:
 		return &TypedValue{TypedList: &v}
+	case Textable:
+		return &TypedValue{Textable: v}
 	case TreeNode:
 		return &TypedValue{Tree: lo.ToPtr(NewTree(v))}
 	case TreeMixin:

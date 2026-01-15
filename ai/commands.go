@@ -7,12 +7,18 @@ import (
 	"sort"
 	"strings"
 	"text/tabwriter"
+
+	"github.com/flanksource/commons/logger"
 )
 
 // ListModels lists all available models from configured AI agents
 func ListModels(ctx context.Context, config *AgentConfig) error {
 	am := NewAgentManager(*config)
-	defer am.Close()
+	defer func() {
+		if err := am.Close(); err != nil {
+			logger.Errorf("failed to close agent manager: %v", err)
+		}
+	}()
 
 	fmt.Printf("Available AI Models:\n\n")
 
@@ -26,8 +32,12 @@ func ListModels(ctx context.Context, config *AgentConfig) error {
 
 	// Create a tab writer for formatted output
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintf(w, "AGENT\tMODEL ID\tNAME\tPROVIDER\tMAX TOKENS\tINPUT PRICE\tOUTPUT PRICE\n")
-	fmt.Fprintf(w, "-----\t--------\t----\t--------\t----------\t-----------\t------------\n")
+	if _, err := fmt.Fprintf(w, "AGENT\tMODEL ID\tNAME\tPROVIDER\tMAX TOKENS\tINPUT PRICE\tOUTPUT PRICE\n"); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(w, "-----\t--------\t----\t--------\t----------\t-----------\t------------\n"); err != nil {
+		return err
+	}
 
 	// Sort agent types for consistent output
 	agentTypes := make([]AgentType, 0, len(allModels))
@@ -52,18 +62,22 @@ func ListModels(ctx context.Context, config *AgentConfig) error {
 			outputPrice := formatPrice(model.OutputPrice)
 			maxTokens := formatTokens(model.MaxTokens)
 
-			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+			if _, err := fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
 				strings.ToUpper(string(agentType)),
 				model.ID,
 				model.Name,
 				model.Provider,
 				maxTokens,
 				inputPrice,
-				outputPrice)
+				outputPrice); err != nil {
+				return err
+			}
 		}
 	}
 
-	w.Flush()
+	if err := w.Flush(); err != nil {
+		return fmt.Errorf("failed to flush output: %w", err)
+	}
 
 	// Show current configuration
 	fmt.Printf("\nCurrent Configuration:\n")

@@ -430,13 +430,13 @@ func TestTableFormattingWithDates(t *testing.T) {
 
 	// Check table formatting - headers are prettified
 	t.Logf("Table output:\n%s", output)
-	if !(strings.Contains(output, "Id") || strings.Contains(output, "ID") || strings.Contains(output, "id")) {
+	if !strings.Contains(output, "Id") && !strings.Contains(output, "ID") && !strings.Contains(output, "id") {
 		t.Errorf("Table should have id header")
 	}
-	if !(strings.Contains(output, "Created At") || strings.Contains(output, "CREATED AT") || strings.Contains(output, "created_at")) {
+	if !strings.Contains(output, "Created At") && !strings.Contains(output, "CREATED AT") && !strings.Contains(output, "created_at") {
 		t.Errorf("Table should have created_at header")
 	}
-	if !(strings.Contains(output, "Amount") || strings.Contains(output, "AMOUNT") || strings.Contains(output, "amount")) {
+	if !strings.Contains(output, "Amount") && !strings.Contains(output, "AMOUNT") && !strings.Contains(output, "amount") {
 		t.Errorf("Table should have amount header")
 	}
 	// Check dates are formatted (using UTC for Unix timestamps)
@@ -511,7 +511,7 @@ func TestTableWordWrapping(t *testing.T) {
 	t.Logf("Table output with word wrapping:\n%s", output)
 
 	// Check that the table was rendered (headers are prettified)
-	if !(strings.Contains(output, "Id") || strings.Contains(output, "ID") || strings.Contains(output, "id")) {
+	if !strings.Contains(output, "Id") && !strings.Contains(output, "ID") && !strings.Contains(output, "id") {
 		t.Errorf("Table should have id header")
 	}
 

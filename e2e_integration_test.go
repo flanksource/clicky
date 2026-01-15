@@ -280,7 +280,7 @@ func makeHTTPRequest(url, method string, body interface{}) *ExecutionResponse {
 	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(req)
 	Expect(err).ToNot(HaveOccurred(), "Should execute HTTP request")
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	responseBody, err := io.ReadAll(resp.Body)
 	Expect(err).ToNot(HaveOccurred(), "Should read response body")
@@ -312,7 +312,7 @@ func makeHTTPRequestExpectError(url, method string, body interface{}) *Execution
 	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(req)
 	Expect(err).ToNot(HaveOccurred(), "Should execute HTTP request")
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	responseBody, err := io.ReadAll(resp.Body)
 	Expect(err).ToNot(HaveOccurred(), "Should read response body")
@@ -370,5 +370,5 @@ Total: $15,750.00 USD`
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(response)
+	_ = json.NewEncoder(w).Encode(response)
 }

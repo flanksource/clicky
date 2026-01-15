@@ -5,7 +5,6 @@ import (
 	"testing"
 
 	"github.com/flanksource/clicky/api"
-	"github.com/flanksource/clicky/formatters"
 	. "github.com/flanksource/clicky/formatters"
 )
 
@@ -158,7 +157,7 @@ func TestHTMLFormatter_FormatWithSchema(t *testing.T) {
 	// Test HTML formatter
 	formatter := NewHTMLFormatter()
 	formatter.IncludeCSS = false // Simplify output for testing (no DOCTYPE when CSS disabled)
-	output, err := formatter.Format(prettyData, formatters.FormatOptions{})
+	output, err := formatter.Format(prettyData, FormatOptions{})
 	if err != nil {
 		t.Fatalf("HTMLFormatter.Format failed: %v", err)
 	}
@@ -215,7 +214,7 @@ func TestHTMLFormatter_WithMapFields(t *testing.T) {
 
 	formatter := NewHTMLFormatter()
 	formatter.IncludeCSS = false // Simplify output for testing
-	output, err := formatter.Format(prettyData, formatters.FormatOptions{})
+	output, err := formatter.Format(prettyData, FormatOptions{})
 	if err != nil {
 		t.Fatalf("HTMLFormatter.Format failed: %v", err)
 	}

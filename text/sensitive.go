@@ -76,16 +76,16 @@ func (s SensitiveString) Format(f fmt.State, verb rune) {
 	switch verb {
 	case 'v':
 		if f.Flag('#') {
-			fmt.Fprint(f, "[REDACTED]")
+			_, _ = fmt.Fprint(f, "[REDACTED]")
 		} else {
-			fmt.Fprint(f, "[REDACTED]")
+			_, _ = fmt.Fprint(f, "[REDACTED]")
 		}
 	case 's':
-		fmt.Fprint(f, "[REDACTED]")
+		_, _ = fmt.Fprint(f, "[REDACTED]")
 	case 'q':
-		fmt.Fprint(f, `"[REDACTED]"`)
+		_, _ = fmt.Fprint(f, `"[REDACTED]"`)
 	default:
-		fmt.Fprint(f, "[REDACTED]")
+		_, _ = fmt.Fprint(f, "[REDACTED]")
 	}
 }
 

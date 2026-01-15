@@ -353,13 +353,13 @@ func (tm *Manager) emergencyCleanup() {
 
 	// Write terminal reset sequences directly
 	// Exit alternate screen mode
-	fmt.Fprintf(outputWriter, "\033[?1049l")
+	_, _ = fmt.Fprintf(outputWriter, "\033[?1049l")
 	// Reset all attributes
-	fmt.Fprintf(outputWriter, "\033[0m")
+	_, _ = fmt.Fprintf(outputWriter, "\033[0m")
 	// Show cursor
-	fmt.Fprintf(outputWriter, "\033[?25h")
+	_, _ = fmt.Fprintf(outputWriter, "\033[?25h")
 	// Clear to end of screen
-	fmt.Fprintf(outputWriter, "\033[J")
+	_, _ = fmt.Fprintf(outputWriter, "\033[J")
 
 	// Mark alternate screen as inactive
 	tm.altScreenActive = false
@@ -865,9 +865,9 @@ func (tm *Manager) StopCapturingOutput() {
 
 	for _, entry := range buffer {
 		if entry.Stream == "stdout" {
-			fmt.Fprintln(os.Stdout, entry.Line)
+			_, _ = fmt.Fprintln(os.Stdout, entry.Line)
 		} else {
-			fmt.Fprintln(os.Stderr, entry.Line)
+			_, _ = fmt.Fprintln(os.Stderr, entry.Line)
 		}
 	}
 

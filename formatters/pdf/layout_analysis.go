@@ -8,6 +8,8 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+
+	"github.com/flanksource/commons/logger"
 )
 
 // LayoutAnalysisResult contains the results of analyzing a PDF layout
@@ -44,14 +46,20 @@ func ConvertPDFToPNG(pdfData []byte, outputPath string, dpi int) error {
 	if err != nil {
 		return fmt.Errorf("failed to create temp PDF file: %w", err)
 	}
-	defer os.Remove(tempPDF.Name())
+	defer func() {
+		if err := os.Remove(tempPDF.Name()); err != nil {
+			logger.Errorf("failed to remove temp PDF: %v", err)
+		}
+	}()
 
 	// Write PDF data to temp file
 	if _, err := tempPDF.Write(pdfData); err != nil {
-		tempPDF.Close()
+		_ = tempPDF.Close()
 		return fmt.Errorf("failed to write PDF data: %w", err)
 	}
-	tempPDF.Close()
+	if err := tempPDF.Close(); err != nil {
+		return fmt.Errorf("failed to close temp PDF file: %w", err)
+	}
 
 	// Try Ghostscript first
 	if err := convertPDFToPNGWithGhostscript(tempPDF.Name(), outputPath, dpi); err == nil {
@@ -114,7 +122,11 @@ func convertPDFToPNGWithImageMagick(pdfPath, outputPath string, dpi int) error {
 func convertPDFToPNGWithPDFToPPM(pdfPath, outputPath string, dpi int) error {
 	// pdftoppm outputs to PPM, so we need to convert to PNG
 	tempPPM := strings.TrimSuffix(outputPath, ".png") + ".ppm"
-	defer os.Remove(tempPPM)
+	defer func() {
+		if err := os.Remove(tempPPM); err != nil {
+			logger.Errorf("failed to remove temp PPM: %v", err)
+		}
+	}()
 
 	// Convert PDF to PPM
 	cmd := exec.Command("pdftoppm",
@@ -146,8 +158,12 @@ func AnalyzePDFLayout(pdfData []byte, targetLeftRatio, targetRightRatio float64)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create temp PNG file: %w", err)
 	}
-	defer os.Remove(tempPNG.Name())
-	tempPNG.Close()
+	defer func() {
+		if err := os.Remove(tempPNG.Name()); err != nil {
+			logger.Errorf("failed to remove temp PNG: %v", err)
+		}
+	}()
+	_ = tempPNG.Close()
 
 	// Convert PDF to PNG
 	if err := ConvertPDFToPNG(pdfData, tempPNG.Name(), 300); err != nil {
@@ -165,7 +181,11 @@ func AnalyzeImageLayout(imagePath string, targetLeftRatio, targetRightRatio floa
 	if err != nil {
 		return nil, fmt.Errorf("failed to open image: %w", err)
 	}
-	defer file.Close()
+	defer func() {
+		if err := file.Close(); err != nil {
+			logger.Errorf("failed to close file: %v", err)
+		}
+	}()
 
 	img, err := png.Decode(file)
 	if err != nil {
@@ -324,13 +344,21 @@ func SaveAnalysisDebugImage(imagePath, outputPath string, result *LayoutAnalysis
 	if err != nil {
 		return err
 	}
-	defer input.Close()
+	defer func() {
+		if err := input.Close(); err != nil {
+			logger.Errorf("failed to close input: %v", err)
+		}
+	}()
 
 	output, err := os.Create(outputPath)
 	if err != nil {
 		return err
 	}
-	defer output.Close()
+	defer func() {
+		if err := output.Close(); err != nil {
+			logger.Errorf("failed to close output: %v", err)
+		}
+	}()
 
 	img, err := png.Decode(input)
 	if err != nil {

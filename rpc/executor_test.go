@@ -116,7 +116,7 @@ func createTestSubCommand() *cobra.Command {
 
 	createCmd.Flags().String("name", "", "User name")
 	createCmd.Flags().String("email", "", "User email")
-	createCmd.MarkFlagRequired("name")
+	_ = createCmd.MarkFlagRequired("name")
 
 	userCmd.AddCommand(createCmd, listCmd)
 	rootCmd.AddCommand(userCmd)
@@ -530,8 +530,8 @@ func TestExecuteCommandWithOutput(t *testing.T) {
 		Use:   "test",
 		Short: "Test command",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			fmt.Fprint(cmd.OutOrStdout(), "Hello from stdout\n")
-			fmt.Fprint(cmd.ErrOrStderr(), "Warning from stderr\n")
+			_, _ = fmt.Fprint(cmd.OutOrStdout(), "Hello from stdout\n")
+			_, _ = fmt.Fprint(cmd.ErrOrStderr(), "Warning from stderr\n")
 			return nil
 		},
 	}
@@ -588,8 +588,8 @@ func TestExecuteCommandWithError(t *testing.T) {
 		Use:   "test",
 		Short: "Test command",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			fmt.Fprint(cmd.OutOrStdout(), "Some output before error\n")
-			fmt.Fprint(cmd.ErrOrStderr(), "Error details\n")
+			_, _ = fmt.Fprint(cmd.OutOrStdout(), "Some output before error\n")
+			_, _ = fmt.Fprint(cmd.ErrOrStderr(), "Error details\n")
 			return fmt.Errorf("command failed")
 		},
 	}
@@ -649,7 +649,7 @@ func TestExecuteCommandStdoutOnly(t *testing.T) {
 		Use:   "test",
 		Short: "Test command",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			fmt.Fprint(cmd.OutOrStdout(), "Only stdout output")
+			_, _ = fmt.Fprint(cmd.OutOrStdout(), "Only stdout output")
 			return nil
 		},
 	}
@@ -701,7 +701,7 @@ func TestExecuteCommandStderrOnly(t *testing.T) {
 		Use:   "test",
 		Short: "Test command",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			fmt.Fprint(cmd.ErrOrStderr(), "Only stderr output")
+			_, _ = fmt.Fprint(cmd.ErrOrStderr(), "Only stderr output")
 			return nil
 		},
 	}
@@ -808,10 +808,10 @@ func TestExecuteCommandWithMixedOutput(t *testing.T) {
 		Short: "Test command",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Mix of output methods
-			fmt.Fprint(cmd.OutOrStdout(), "Cobra stdout\n")
+			_, _ = fmt.Fprint(cmd.OutOrStdout(), "Cobra stdout\n")
 			fmt.Print("Direct stdout\n")
-			fmt.Fprint(cmd.ErrOrStderr(), "Cobra stderr\n")
-			fmt.Fprint(os.Stderr, "Direct stderr\n")
+			_, _ = fmt.Fprint(cmd.ErrOrStderr(), "Cobra stderr\n")
+			_, _ = fmt.Fprint(os.Stderr, "Direct stderr\n")
 			return nil
 		},
 	}
@@ -1520,7 +1520,7 @@ func TestExecuteCommandIncludesCLI(t *testing.T) {
 		Short: "Test command",
 		Args:  cobra.MinimumNArgs(0),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			fmt.Fprintln(cmd.OutOrStdout(), "Test output")
+			_, _ = fmt.Fprintln(cmd.OutOrStdout(), "Test output")
 			return nil
 		},
 	}

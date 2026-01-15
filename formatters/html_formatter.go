@@ -28,9 +28,8 @@ func init() {
 
 // HTMLFormatter handles HTML formatting
 type HTMLFormatter struct {
-	IncludeCSS   bool
-	IsPDFMode    bool
-	tableCounter int // Counter for generating unique table IDs
+	IncludeCSS bool
+	IsPDFMode  bool
 }
 
 // NewHTMLFormatter creates a new HTML formatter
@@ -263,7 +262,7 @@ func (f *HTMLFormatter) renderTypedMapAsHTML(result *strings.Builder, typedMap *
 		result.WriteString("                <dl class=\"grid grid-cols-1 md:grid-cols-2 gap-4\">\n")
 
 		for _, field := range summaryFields {
-			fieldValue, _ := (*typedMap)[field.Name]
+			fieldValue := (*typedMap)[field.Name]
 			prettyFieldName := f.prettifyFieldName(field.Name)
 			fieldHTML := f.formatFieldValueHTMLWithStyle(fieldValue, field)
 
@@ -275,8 +274,8 @@ func (f *HTMLFormatter) renderTypedMapAsHTML(result *strings.Builder, typedMap *
 			}
 
 			result.WriteString("                    <div>\n")
-			result.WriteString(fmt.Sprintf("                        <dt>%s</dt>\n", labelHTML))
-			result.WriteString(fmt.Sprintf("                        <dd class=\"mt-1 text-sm\">%s</dd>\n", fieldHTML))
+			_, _ = fmt.Fprintf(result, "                        <dt>%s</dt>\n", labelHTML)
+			_, _ = fmt.Fprintf(result, "                        <dd class=\"mt-1 text-sm\">%s</dd>\n", fieldHTML)
 			result.WriteString("                    </div>\n")
 		}
 		result.WriteString("                </dl>\n")
@@ -286,7 +285,7 @@ func (f *HTMLFormatter) renderTypedMapAsHTML(result *strings.Builder, typedMap *
 
 	// Render table sections
 	for _, field := range tableSections {
-		fieldValue, _ := (*typedMap)[field.Name]
+		fieldValue := (*typedMap)[field.Name]
 		if table, ok := fieldValue.Value().(*api.TextTable); ok {
 			f.renderTableSectionHTML(result, table, field)
 		}
@@ -294,7 +293,7 @@ func (f *HTMLFormatter) renderTypedMapAsHTML(result *strings.Builder, typedMap *
 
 	// Render tree sections
 	for _, field := range treeSections {
-		fieldValue, _ := (*typedMap)[field.Name]
+		fieldValue := (*typedMap)[field.Name]
 		if tree, ok := fieldValue.Value().(*api.TextTree); ok {
 			f.renderTreeSectionHTML(result, tree, field)
 		}
@@ -318,8 +317,8 @@ func (f *HTMLFormatter) renderTableSectionHTML(result *strings.Builder, table *a
 
 	result.WriteString("        <div class=\"bg-white rounded-lg shadow\">\n")
 	result.WriteString("            <div class=\"px-6 py-4 border-b border-gray-200\">\n")
-	result.WriteString(fmt.Sprintf("                <h2 class=\"text-xl font-semibold text-gray-900\">%s</h2>\n",
-		f.prettifyFieldName(field.Name)))
+	_, _ = fmt.Fprintf(result, "                <h2 class=\"text-xl font-semibold text-gray-900\">%s</h2>\n",
+		f.prettifyFieldName(field.Name))
 	result.WriteString("            </div>\n")
 
 	var tableHTML string
@@ -340,8 +339,8 @@ func (f *HTMLFormatter) renderTreeSectionHTML(result *strings.Builder, tree *api
 
 	result.WriteString("        <div class=\"bg-white rounded-lg shadow\">\n")
 	result.WriteString("            <div class=\"px-6 py-4 border-b border-gray-200\">\n")
-	result.WriteString(fmt.Sprintf("                <h2 class=\"text-xl font-semibold text-gray-900\">%s</h2>\n",
-		f.prettifyFieldName(field.Name)))
+	_, _ = fmt.Fprintf(result, "                <h2 class=\"text-xl font-semibold text-gray-900\">%s</h2>\n",
+		f.prettifyFieldName(field.Name))
 	result.WriteString("            </div>\n")
 	result.WriteString("            <div class=\"px-6 py-4\">\n")
 

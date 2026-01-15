@@ -105,7 +105,7 @@ func TestValidateConfig(t *testing.T) {
 func TestAgentManager(t *testing.T) {
 	config := ai.DefaultConfig()
 	am := ai.NewAgentManager(config)
-	defer am.Close()
+	defer func() { _ = am.Close() }()
 
 	// Test getting default agent
 	agent, err := am.GetDefaultAgent()
@@ -140,7 +140,7 @@ func TestClaudeAgentListModels(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create Claude agent: %v", err)
 	}
-	defer agent.Close()
+	defer func() { _ = agent.Close() }()
 
 	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 	defer cancel()

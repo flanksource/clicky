@@ -441,17 +441,6 @@ var _ = ginkgo.Describe("nodeToCELMap", func() {
 	}
 })
 
-// Helper functions
-
-func contains(slice []string, item string) bool {
-	for _, s := range slice {
-		if s == item {
-			return true
-		}
-	}
-	return false
-}
-
 func countTreeNodes(node TreeNode) int {
 	if node == nil {
 		return 0

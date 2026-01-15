@@ -236,7 +236,7 @@ func (b *Batch[T]) Run() chan BatchResult[T] {
 				}
 
 				// Create per-item timeout context if ItemTimeout is set
-				var itemCtx context.Context = batchCtx
+				itemCtx := batchCtx
 				var itemCancel context.CancelFunc
 				if b.ItemTimeout > 0 {
 					itemCtx, itemCancel = context.WithTimeout(batchCtx, b.ItemTimeout)

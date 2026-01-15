@@ -406,8 +406,8 @@ func (s *MCPServer) executeToolWithTaskManager(ctx context.Context, tool *ToolDe
 			}
 
 			// Restore stdout/stderr
-			wOut.Close()
-			wErr.Close()
+			_ = wOut.Close()
+			_ = wErr.Close()
 			os.Stdout = oldStdout
 			os.Stderr = oldStderr
 

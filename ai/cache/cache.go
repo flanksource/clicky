@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/flanksource/commons/logger"
 	_ "github.com/mattn/go-sqlite3"
 )
 
@@ -116,7 +117,7 @@ func New(config Config) (*Cache, error) {
 	}
 	for _, pragma := range pragmas {
 		if _, err := db.Exec(pragma); err != nil {
-			db.Close()
+			_ = db.Close()
 			return nil, fmt.Errorf("failed to set pragma %s: %w", pragma, err)
 		}
 	}
@@ -128,7 +129,7 @@ func New(config Config) (*Cache, error) {
 
 	// Initialize schema
 	if err := cache.initSchema(); err != nil {
-		db.Close()
+		_ = db.Close()
 		return nil, fmt.Errorf("failed to initialize schema: %w", err)
 	}
 
@@ -283,7 +284,11 @@ func (c *Cache) GetHistory(limit int, projectName string) ([]Entry, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to get history: %w", err)
 	}
-	defer rows.Close()
+	defer func() {
+		if err := rows.Close(); err != nil {
+			logger.Errorf("failed to close rows: %v", err)
+		}
+	}()
 
 	var entries []Entry
 	for rows.Next() {
@@ -337,7 +342,11 @@ func (c *Cache) GetStats(projectName string) ([]StatsEntry, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to get stats: %w", err)
 	}
-	defer rows.Close()
+	defer func() {
+		if err := rows.Close(); err != nil {
+			logger.Errorf("failed to close rows: %v", err)
+		}
+	}()
 
 	var stats []StatsEntry
 	for rows.Next() {

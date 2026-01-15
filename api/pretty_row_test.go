@@ -108,7 +108,7 @@ var _ = ginkgo.Describe("StructToRowWithOptions", func() {
 			Expect(nameField.Textable).ToNot(BeNil())
 			Expect(fmt.Sprintf("%T", nameField.Textable)).To(Equal("api.Text"))
 
-			nameText, ok := nameField.Textable.(Text)
+			nameText, _ := nameField.Textable.(Text)
 			Expect(nameText.Content).To(Equal("Interface Test"))
 			Expect(nameText.Style).To(Equal("font-bold"))
 

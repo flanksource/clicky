@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/flanksource/commons/logger"
 	"gopkg.in/yaml.v3"
 
 	"github.com/flanksource/clicky/api"
@@ -287,7 +288,11 @@ func (sf *SchemaFormatter) writeToFile(filename, content string) error {
 	if err != nil {
 		return err
 	}
-	defer file.Close()
+	defer func() {
+		if err := file.Close(); err != nil {
+			logger.Errorf("failed to close file: %v", err)
+		}
+	}()
 
 	_, err = file.WriteString(content)
 	return err
