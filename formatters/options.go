@@ -31,6 +31,7 @@ type FormatOptions struct {
 	Pretty   bool `json:"pretty,omitempty"`
 	HTML     bool `json:"html,omitempty"`
 	PDF      bool `json:"pdf,omitempty"`
+	Slack    bool `json:"slack,omitempty"`
 
 	// Display structure flags (additive with format flags)
 	Tree  bool `json:"tree,omitempty"`  // Display in tree structure
@@ -119,13 +120,17 @@ func MergeOptions(opts ...FormatOptions) FormatOptions {
 			merged.PDF = true
 			continue // Only one format can be set
 		}
+		if opt.Slack {
+			merged.Slack = true
+			continue // Only one format can be set
+		}
 	}
 	return merged
 }
 
 // BindFlags adds formatting flags to the provided flag set
 func BindFlags(flags *flag.FlagSet, options *FormatOptions) {
-	flags.StringVar(&options.Format, "format", "", "Output format: pretty, json, yaml, csv, html, pdf, markdown")
+	flags.StringVar(&options.Format, "format", "", "Output format: pretty, json, yaml, csv, html, pdf, markdown, slack")
 	flags.StringVar(&options.Output, "output", "", "Output file pattern (optional, uses stdout if not specified)")
 	flags.BoolVar(&options.NoColor, "no-color", false, "Disable colored output")
 	flags.BoolVar(&options.DumpSchema, "dump-schema", false, "Dump the schema to stderr for debugging")
@@ -139,6 +144,7 @@ func BindFlags(flags *flag.FlagSet, options *FormatOptions) {
 	flags.BoolVar(&options.Pretty, "pretty", false, "Output in pretty format (default)")
 	flags.BoolVar(&options.HTML, "html", false, "Output in HTML format")
 	flags.BoolVar(&options.PDF, "pdf", false, "Output in PDF format")
+	flags.BoolVar(&options.Slack, "slack", false, "Output in Slack Block Kit JSON format")
 
 	// Display structure flags (additive with format)
 	flags.BoolVar(&options.Tree, "tree", false, "Display in tree structure (additive with format)")
@@ -147,7 +153,7 @@ func BindFlags(flags *flag.FlagSet, options *FormatOptions) {
 
 // BindPFlags adds formatting flags to the provided pflag set (for cobra)
 func BindPFlags(flags *pflag.FlagSet, options *FormatOptions) {
-	flags.StringVar(&options.Format, "format", "", "Output format: pretty, json, yaml, csv, html, pdf, markdown")
+	flags.StringVar(&options.Format, "format", "", "Output format: pretty, json, yaml, csv, html, pdf, markdown, slack")
 	flags.StringVar(&options.Output, "output", "", "Output file pattern (optional, uses stdout if not specified)")
 	flags.BoolVar(&options.NoColor, "no-color", false, "Disable colored output")
 	flags.BoolVar(&options.DumpSchema, "dump-schema", false, "Dump the schema to stderr for debugging")
@@ -161,6 +167,7 @@ func BindPFlags(flags *pflag.FlagSet, options *FormatOptions) {
 	flags.BoolVar(&options.Pretty, "pretty", false, "Output in pretty format (default)")
 	flags.BoolVar(&options.HTML, "html", false, "Output in HTML format")
 	flags.BoolVar(&options.PDF, "pdf", false, "Output in PDF format")
+	flags.BoolVar(&options.Slack, "slack", false, "Output in Slack Block Kit JSON format")
 
 	// Display structure flags (additive with format)
 	flags.BoolVar(&options.Tree, "tree", false, "Display in tree structure (additive with format)")
@@ -187,6 +194,8 @@ func (options *FormatOptions) ResolveFormat() string {
 		selectedFormat = append(selectedFormat, "html")
 	} else if options.PDF {
 		selectedFormat = append(selectedFormat, "pdf")
+	} else if options.Slack {
+		selectedFormat = append(selectedFormat, "slack")
 	} else if options.Pretty {
 		selectedFormat = append(selectedFormat, "pretty")
 	}

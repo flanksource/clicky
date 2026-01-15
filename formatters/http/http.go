@@ -154,6 +154,8 @@ func extensionToFormat(ext string) string {
 		return "pdf"
 	case "xlsx", "xls":
 		return "excel"
+	case "slack":
+		return "slack"
 	case "txt":
 		return "pretty"
 	default:
@@ -182,6 +184,8 @@ func acceptToFormat(accept string) string {
 			return "pdf"
 		case "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "application/vnd.ms-excel":
 			return "excel"
+		case "application/vnd.slack.block-kit+json":
+			return "slack"
 		case "text/plain":
 			return "pretty"
 		}
@@ -244,6 +248,8 @@ func formatToContentType(format string) string {
 		return "application/pdf"
 	case "excel", "xlsx":
 		return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+	case "slack":
+		return "application/vnd.slack.block-kit+json"
 	case "pretty", "tree":
 		return "text/plain; charset=utf-8"
 	default:

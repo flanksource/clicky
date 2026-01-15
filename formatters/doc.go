@@ -210,6 +210,7 @@ All struct-based data works seamlessly across multiple output formats:
   - "html-pdf": HTML-to-PDF conversion for reports
   - "excel"/"xlsx": Excel spreadsheet format
   - "tree": Hierarchical tree view for nested data
+  - "slack": Slack Block Kit JSON output
 
 # Format Options
 
