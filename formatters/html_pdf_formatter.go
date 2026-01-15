@@ -6,9 +6,10 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/flanksource/commons/logger"
+
 	"github.com/flanksource/clicky/api"
 	"github.com/flanksource/clicky/formatters/pdf"
-	"github.com/flanksource/commons/logger"
 )
 
 func init() {
@@ -78,7 +79,7 @@ func (f *HTMLPDFFormatter) Format(data interface{}, opts FormatOptions) (string,
 	if err != nil {
 		return "", fmt.Errorf("failed to create temp PDF file: %w", err)
 	}
-	_ = tempPDFFile.Close()                              // Close immediately, we just need the path
+	_ = tempPDFFile.Close() // Close immediately, we just need the path
 	defer func() {
 		if err := os.Remove(tempPDFFile.Name()); err != nil {
 			logger.Errorf("failed to remove temp PDF file: %v", err)
@@ -190,7 +191,7 @@ func (f *HTMLPDFFormatter) FormatPrettyData(data *api.PrettyData) (string, error
 	if err != nil {
 		return "", fmt.Errorf("failed to create temp PDF file: %w", err)
 	}
-	_ = tempPDFFile.Close()                              // Close immediately, we just need the path
+	_ = tempPDFFile.Close() // Close immediately, we just need the path
 	defer func() {
 		if err := os.Remove(tempPDFFile.Name()); err != nil {
 			logger.Errorf("failed to remove temp PDF file: %v", err)
