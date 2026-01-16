@@ -404,6 +404,7 @@ func TestBatch_ErrorIdentification(t *testing.T) {
 		batch := &Batch[int]{
 			Name:        "test-error-id-item",
 			ItemTimeout: 50 * time.Millisecond,
+			Timeout:     1 * time.Second, // Explicit batch timeout to avoid race with item timeout
 			MaxWorkers:  1,
 		}
 

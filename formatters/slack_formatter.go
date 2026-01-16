@@ -143,6 +143,14 @@ func (f *SlackFormatter) formatText(text string, options FormatOptions) (string,
 }
 
 func (f *SlackFormatter) blocksForText(text string) []slackBlock {
+	return f.blocksForTextWithType(text, slackTextMrkdwn)
+}
+
+func (f *SlackFormatter) blocksForPlainText(text string) []slackBlock {
+	return f.blocksForTextWithType(text, slackTextPlain)
+}
+
+func (f *SlackFormatter) blocksForTextWithType(text string, textType string) []slackBlock {
 	clean := f.sanitizeSlackText(text)
 	if clean == "" {
 		clean = " "
@@ -153,7 +161,7 @@ func (f *SlackFormatter) blocksForText(text string) []slackBlock {
 	for _, part := range parts {
 		blocks = append(blocks, slackBlock{
 			Type: slackSectionType,
-			Text: &slackText{Type: slackTextMrkdwn, Text: part},
+			Text: &slackText{Type: textType, Text: part},
 		})
 	}
 	return blocks
@@ -218,7 +226,7 @@ func (f *SlackFormatter) blocksForTable(table *api.TextTable) []slackBlock {
 
 			fields = append(fields, slackText{
 				Type: slackTextMrkdwn,
-				Text: fmt.Sprintf("*%s*\n%s", label, value),
+				Text: fmt.Sprintf("*%s*: %s", label, value),
 			})
 		}
 
@@ -267,6 +275,14 @@ func (f *SlackFormatter) blocksForTextList(list api.TextList) []slackBlock {
 				blocks = append(blocks, slackBlock{Type: slackDividerType})
 				continue
 			}
+		case api.TextTable:
+			flush()
+			blocks = append(blocks, f.blocksForTable(&v)...)
+			continue
+		case *api.TextTable:
+			flush()
+			blocks = append(blocks, f.blocksForTable(v)...)
+			continue
 		case api.ButtonGroup:
 			flush()
 			blocks = append(blocks, f.blocksForActions(v)...)
@@ -283,6 +299,16 @@ func (f *SlackFormatter) blocksForTextList(list api.TextList) []slackBlock {
 			if f.isHeaderText(v) {
 				flush()
 				blocks = append(blocks, f.blocksForTextItem(v)...)
+				continue
+			}
+			if strings.Contains(v.Style, "slack-plain") {
+				flush()
+				blocks = append(blocks, f.blocksForPlainText(v.String())...)
+				continue
+			}
+			if strings.Contains(v.Style, "slack-section") {
+				flush()
+				blocks = append(blocks, f.blocksForText(v.Markdown())...)
 				continue
 			}
 		}
