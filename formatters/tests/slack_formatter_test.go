@@ -1,14 +1,18 @@
 package formatters
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
+
+	"github.com/onsi/gomega"
 
 	"github.com/flanksource/clicky"
 	"github.com/flanksource/clicky/api"
 	clickyformatters "github.com/flanksource/clicky/formatters"
 )
 
-func TestSlackFormatter_ScreenshotMessage(t *testing.T) {
+func TestSlackFormatter(t *testing.T) {
 	type Alert struct {
 		Title   string          `pretty:"title"`
 		Org     string          `pretty:"label=org"`
@@ -48,9 +52,12 @@ func TestSlackFormatter_ScreenshotMessage(t *testing.T) {
 
 	formatter := clickyformatters.NewSlackFormatter()
 	out, err := formatter.Format(message, clickyformatters.FormatOptions{})
-	if err != nil {
-		t.Fatalf("Format() failed: %v", err)
-	}
+	g := gomega.NewWithT(t)
+	g.Expect(err).NotTo(gomega.HaveOccurred())
 
-	t.Logf("slack json (screenshot): %s", out)
+	expectedPath := filepath.Join("testdata", "slack-msg.json")
+	expectedBytes, err := os.ReadFile(expectedPath)
+	g.Expect(err).NotTo(gomega.HaveOccurred())
+
+	g.Expect(out).To(gomega.MatchJSON(expectedBytes))
 }

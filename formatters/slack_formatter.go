@@ -13,6 +13,12 @@ const (
 	slackMaxTextLen  = 3000
 	slackMaxFields   = 10
 	slackDividerType = "divider"
+	slackSectionType = "section"
+	slackHeaderType  = "header"
+	slackActionsType = "actions"
+	slackButtonType  = "button"
+	slackTextMrkdwn  = "mrkdwn"
+	slackTextPlain   = "plain_text"
 )
 
 var slackHTMLTagRE = regexp.MustCompile("<[^>]+>")
@@ -87,18 +93,14 @@ func (f *SlackFormatter) Format(in interface{}, options FormatOptions) (string, 
 			return f.encodeBlocks([]slackBlock{{Type: slackDividerType}})
 		}
 		return f.encodeBlocks(f.blocksForText(v.Markdown()))
-	}
-
-	if prettyData, ok := in.(*api.PrettyData); ok {
-		return f.FormatPrettyData(prettyData, options)
-	}
-
-	if pretty, ok := in.(api.Pretty); ok {
-		return f.formatText(pretty.Pretty().Markdown(), options)
-	}
-
-	if textable, ok := in.(api.Textable); ok {
-		return f.formatText(textable.Markdown(), options)
+	case *api.PrettyData:
+		return f.FormatPrettyData(v, options)
+	case api.PrettyData:
+		return f.FormatPrettyData(&v, options)
+	case api.Pretty:
+		return f.formatText(v.Pretty().Markdown(), options)
+	case api.Textable:
+		return f.formatText(v.Markdown(), options)
 	}
 
 	prettyData, err := ToPrettyDataWithOptions(in, options)
@@ -150,8 +152,8 @@ func (f *SlackFormatter) blocksForText(text string) []slackBlock {
 	blocks := make([]slackBlock, 0, len(parts))
 	for _, part := range parts {
 		blocks = append(blocks, slackBlock{
-			Type: "section",
-			Text: &slackText{Type: "mrkdwn", Text: part},
+			Type: slackSectionType,
+			Text: &slackText{Type: slackTextMrkdwn, Text: part},
 		})
 	}
 	return blocks
@@ -165,8 +167,8 @@ func (f *SlackFormatter) blocksForTextItem(text api.Text) []slackBlock {
 		}
 		return []slackBlock{
 			{
-				Type: "header",
-				Text: &slackText{Type: "plain_text", Text: header},
+				Type: slackHeaderType,
+				Text: &slackText{Type: slackTextPlain, Text: header},
 			},
 		}
 	}
@@ -207,14 +209,7 @@ func (f *SlackFormatter) blocksForTable(table *api.TextTable) []slackBlock {
 				fieldName = table.FieldNames[i]
 			}
 
-			value := ""
-			if cell, ok := row[fieldName]; ok {
-				value = cell.Markdown()
-			}
-			value = f.sanitizeSlackText(value)
-			if value == "" {
-				value = " "
-			}
+			value := f.sanitizeOrPlaceholder(markdownForCell(row, fieldName))
 
 			label := header
 			if label == "" {
@@ -222,21 +217,12 @@ func (f *SlackFormatter) blocksForTable(table *api.TextTable) []slackBlock {
 			}
 
 			fields = append(fields, slackText{
-				Type: "mrkdwn",
+				Type: slackTextMrkdwn,
 				Text: fmt.Sprintf("*%s*\n%s", label, value),
 			})
 		}
 
-		for start := 0; start < len(fields); start += slackMaxFields {
-			end := start + slackMaxFields
-			if end > len(fields) {
-				end = len(fields)
-			}
-			blocks = append(blocks, slackBlock{
-				Type:   "section",
-				Fields: fields[start:end],
-			})
-		}
+		blocks = appendFieldSections(blocks, fields)
 
 		if rowIdx < len(table.Rows)-1 {
 			blocks = append(blocks, slackBlock{Type: slackDividerType})
@@ -328,8 +314,8 @@ func (f *SlackFormatter) blocksForActions(actions api.ButtonGroup) []slackBlock 
 			style = ""
 		}
 		elements = append(elements, slackButton{
-			Type:     "button",
-			Text:     slackText{Type: "plain_text", Text: label},
+			Type:     slackButtonType,
+			Text:     slackText{Type: slackTextPlain, Text: label},
 			URL:      button.Href,
 			ActionID: actionID,
 			Value:    button.Payload,
@@ -342,7 +328,7 @@ func (f *SlackFormatter) blocksForActions(actions api.ButtonGroup) []slackBlock 
 	}
 
 	return []slackBlock{{
-		Type:     "actions",
+		Type:     slackActionsType,
 		Elements: elements,
 	}}
 }
@@ -354,20 +340,17 @@ func (f *SlackFormatter) blocksForSchemaData(data *api.PrettyData) ([]slackBlock
 
 	var blocks []slackBlock
 	fields := make([]slackText, 0, len(data.Schema.Fields))
-	hasHeader := false
 
-	for _, field := range data.Schema.Fields {
-		if field.Format == api.FormatHide {
-			continue
-		}
-		if f.isTitleField(field) {
-			hasHeader = true
-			break
-		}
+	if hasTitleField(data.Schema.Fields, f.isTitleField) {
+		return f.blocksForSchemaWithHeaders(data), true
 	}
 
-	if hasHeader {
-		return f.blocksForSchemaWithHeaders(data), true
+	flushFields := func() {
+		if len(fields) == 0 {
+			return
+		}
+		blocks = appendFieldSections(blocks, fields)
+		fields = nil
 	}
 
 	for _, field := range data.Schema.Fields {
@@ -381,51 +364,17 @@ func (f *SlackFormatter) blocksForSchemaData(data *api.PrettyData) ([]slackBlock
 		}
 
 		if actions, ok := typedValue.Textable.(api.ButtonGroup); ok {
-			if len(fields) > 0 {
-				for start := 0; start < len(fields); start += slackMaxFields {
-					end := start + slackMaxFields
-					if end > len(fields) {
-						end = len(fields)
-					}
-					blocks = append(blocks, slackBlock{
-						Type:   "section",
-						Fields: fields[start:end],
-					})
-				}
-				fields = nil
-			}
+			flushFields()
 			blocks = append(blocks, f.blocksForActions(actions)...)
 			continue
 		}
 
-		value := f.sanitizeSlackText(typedValue.Markdown())
-		if value == "" {
-			value = " "
-		}
+		value := f.sanitizeOrPlaceholder(typedValue.Markdown())
 
-		if f.isTitleField(field) {
-			hasHeader = true
-			headerText := strings.TrimSpace(value)
-			if headerText == "" {
-				headerText = field.Label
-			}
-			headerText = f.truncateSlackHeader(f.sanitizeSlackText(headerText))
-			if headerText != "" {
-				blocks = append(blocks, slackBlock{
-					Type: "header",
-					Text: &slackText{Type: "plain_text", Text: headerText},
-				})
-			}
-			continue
-		}
-
-		label := field.Label
-		if label == "" {
-			label = api.PrettifyFieldName(field.Name)
-		}
+		label := fieldLabel(field)
 
 		fields = append(fields, slackText{
-			Type: "mrkdwn",
+			Type: slackTextMrkdwn,
 			Text: fmt.Sprintf("*%s*\n%s", label, value),
 		})
 	}
@@ -434,16 +383,7 @@ func (f *SlackFormatter) blocksForSchemaData(data *api.PrettyData) ([]slackBlock
 		return nil, false
 	}
 
-	for start := 0; start < len(fields); start += slackMaxFields {
-		end := start + slackMaxFields
-		if end > len(fields) {
-			end = len(fields)
-		}
-		blocks = append(blocks, slackBlock{
-			Type:   "section",
-			Fields: fields[start:end],
-		})
-	}
+	blocks = appendFieldSections(blocks, fields)
 
 	return blocks, true
 }
@@ -475,44 +415,29 @@ func (f *SlackFormatter) blocksForSchemaWithHeaders(data *api.PrettyData) []slac
 			continue
 		}
 
-		value := f.sanitizeSlackText(typedValue.Markdown())
-		if value == "" {
-			value = " "
-		}
-
-		label := field.Label
-		if label == "" {
-			label = api.PrettifyFieldName(field.Name)
-		}
+		value := f.sanitizeOrPlaceholder(typedValue.Markdown())
+		label := fieldLabel(field)
 
 		if f.isTitleField(field) {
-			headerText := label
-			labelSet := field.FormatOptions != nil && field.FormatOptions["label_set"] == "true"
-			titleSet := field.FormatOptions != nil && field.FormatOptions["title"] == "true"
-			if field.TableOptions.Title != "" {
-				headerText = field.TableOptions.Title
-			} else if titleSet && !labelSet {
-				headerText = value
-			}
-			headerText = f.truncateSlackHeader(f.sanitizeSlackText(headerText))
+			headerText, includeValue := f.headerTextForField(field, value, label)
 			if headerText != "" {
 				blocks = append(blocks, slackBlock{
-					Type: "header",
-					Text: &slackText{Type: "plain_text", Text: headerText},
+					Type: slackHeaderType,
+					Text: &slackText{Type: slackTextPlain, Text: headerText},
 				})
 			}
-			if titleSet && strings.TrimSpace(value) != "" && (labelSet || field.TableOptions.Title != "") {
+			if includeValue {
 				blocks = append(blocks, slackBlock{
-					Type: "section",
-					Text: &slackText{Type: "mrkdwn", Text: value},
+					Type: slackSectionType,
+					Text: &slackText{Type: slackTextMrkdwn, Text: value},
 				})
 			}
 			continue
 		}
 
 		blocks = append(blocks, slackBlock{
-			Type: "section",
-			Text: &slackText{Type: "mrkdwn", Text: fmt.Sprintf("%s: %s", label, value)},
+			Type: slackSectionType,
+			Text: &slackText{Type: slackTextMrkdwn, Text: fmt.Sprintf("%s: %s", label, value)},
 		})
 	}
 
@@ -540,6 +465,30 @@ func (f *SlackFormatter) sanitizeSlackText(text string) string {
 		return ""
 	}
 	return slackHTMLTagRE.ReplaceAllString(clean, "")
+}
+
+func (f *SlackFormatter) sanitizeOrPlaceholder(text string) string {
+	clean := f.sanitizeSlackText(text)
+	if clean == "" {
+		return " "
+	}
+	return clean
+}
+
+func (f *SlackFormatter) headerTextForField(field api.PrettyField, value, label string) (string, bool) {
+	labelSet := field.FormatOptions != nil && field.FormatOptions["label_set"] == "true"
+	titleSet := field.FormatOptions != nil && field.FormatOptions["title"] == "true"
+
+	headerText := label
+	if field.TableOptions.Title != "" {
+		headerText = field.TableOptions.Title
+	} else if titleSet && !labelSet {
+		headerText = value
+	}
+	headerText = f.truncateSlackHeader(f.sanitizeSlackText(headerText))
+
+	includeValue := titleSet && strings.TrimSpace(value) != "" && (labelSet || field.TableOptions.Title != "")
+	return headerText, includeValue
 }
 
 func (f *SlackFormatter) isDividerElement(el api.HtmlElement) bool {
@@ -592,6 +541,46 @@ func (f *SlackFormatter) maxTextLen() int {
 		return slackMaxTextLen
 	}
 	return f.MaxTextLen
+}
+
+func fieldLabel(field api.PrettyField) string {
+	if field.Label != "" {
+		return field.Label
+	}
+	return api.PrettifyFieldName(field.Name)
+}
+
+func hasTitleField(fields []api.PrettyField, matcher func(api.PrettyField) bool) bool {
+	for _, field := range fields {
+		if field.Format == api.FormatHide {
+			continue
+		}
+		if matcher(field) {
+			return true
+		}
+	}
+	return false
+}
+
+func appendFieldSections(blocks []slackBlock, fields []slackText) []slackBlock {
+	for start := 0; start < len(fields); start += slackMaxFields {
+		end := start + slackMaxFields
+		if end > len(fields) {
+			end = len(fields)
+		}
+		blocks = append(blocks, slackBlock{
+			Type:   slackSectionType,
+			Fields: fields[start:end],
+		})
+	}
+	return blocks
+}
+
+func markdownForCell(row api.TableRow, fieldName string) string {
+	if cell, ok := row[fieldName]; ok {
+		return cell.Markdown()
+	}
+	return ""
 }
 
 func splitSlackText(text string, max int) []string {

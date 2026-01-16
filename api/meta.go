@@ -405,6 +405,10 @@ func (tv TypedValue) Visit(visitor VisitorFunc) bool {
 
 func TryTypedValue(o any) *TypedValue {
 	switch v := o.(type) {
+	case TypedValue:
+		return &v
+	case *TypedValue:
+		return v
 	case *PrettyData:
 		return &TypedValue{Textable: v}
 	case TextTable:
