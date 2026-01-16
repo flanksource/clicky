@@ -299,6 +299,7 @@ type PrettyFieldData struct {
 	Value Textable
 }
 
+// Compile-time check that these types satisfy Textable.
 var _ = []Textable{
 	Text{},
 	TextList{},
