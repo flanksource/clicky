@@ -58,7 +58,7 @@ func TestRegisterFormatterCaseInsensitive(t *testing.T) {
 	}
 
 	// Retrieve with mixed case
-	fn, exists = GetCustomFormatter("UpPeR")
+	_, exists = GetCustomFormatter("UpPeR")
 	if !exists {
 		t.Fatal("Expected formatter to be found with mixed case")
 	}

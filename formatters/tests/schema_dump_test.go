@@ -45,7 +45,7 @@ func TestDumpSchemaFlag(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Failed to create temp schema file: %v", err)
 	}
-	defer os.Remove(schemaFile.Name())
+	defer func() { _ = os.Remove(schemaFile.Name()) }()
 
 	// Write schema to file
 	schemaYAML, err := yaml.Marshal(testSchema)
@@ -55,20 +55,20 @@ func TestDumpSchemaFlag(t *testing.T) {
 	if _, err := schemaFile.Write(schemaYAML); err != nil {
 		t.Fatalf("Failed to write schema file: %v", err)
 	}
-	schemaFile.Close()
+	_ = schemaFile.Close()
 
 	// Create test data file
 	dataFile, err := os.CreateTemp("", "test-data-*.json")
 	if err != nil {
 		t.Fatalf("Failed to create temp data file: %v", err)
 	}
-	defer os.Remove(dataFile.Name())
+	defer func() { _ = os.Remove(dataFile.Name()) }()
 
 	dataJSON := `{"id":"ORD-001","total":99.99,"status":"completed"}`
 	if _, err := dataFile.WriteString(dataJSON); err != nil {
 		t.Fatalf("Failed to write data file: %v", err)
 	}
-	dataFile.Close()
+	_ = dataFile.Close()
 
 	t.Run("DumpSchema outputs to stderr", func(t *testing.T) {
 		// Capture stderr
@@ -99,10 +99,10 @@ func TestDumpSchemaFlag(t *testing.T) {
 		}
 
 		// Restore stderr and read captured output
-		w.Close()
+		_ = w.Close()
 		os.Stderr = oldStderr
 		var buf bytes.Buffer
-		io.Copy(&buf, r)
+		_, _ = io.Copy(&buf, r)
 		stderrOutput := buf.String()
 
 		// Verify stderr contains schema dump
@@ -149,10 +149,10 @@ func TestDumpSchemaFlag(t *testing.T) {
 		}
 
 		// Restore stderr and read captured output
-		w.Close()
+		_ = w.Close()
 		os.Stderr = oldStderr
 		var buf bytes.Buffer
-		io.Copy(&buf, r)
+		_, _ = io.Copy(&buf, r)
 		stderrOutput := buf.String()
 
 		// Verify stderr does NOT contain schema dump

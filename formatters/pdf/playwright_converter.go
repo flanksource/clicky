@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/flanksource/commons/logger"
 	"github.com/playwright-community/playwright-go"
 )
 
@@ -78,7 +79,11 @@ func (c *PlaywrightConverter) Convert(ctx context.Context, svgPath, outputPath s
 	if err != nil {
 		return NewConverterError(c.Name(), "create page", err)
 	}
-	defer page.Close()
+	defer func() {
+		if err := page.Close(); err != nil {
+			logger.Errorf("failed to close page: %v", err)
+		}
+	}()
 
 	// Create HTML wrapper for SVG
 	htmlContent := fmt.Sprintf(`

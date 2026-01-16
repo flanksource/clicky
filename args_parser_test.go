@@ -94,7 +94,7 @@ var _ = ginkgo.Describe("ParseArgumentsWithFile", func() {
 	})
 
 	ginkgo.AfterEach(func() {
-		os.RemoveAll(tmpDir)
+		_ = os.RemoveAll(tmpDir)
 	})
 
 	tests := []struct {
@@ -303,7 +303,7 @@ var _ = ginkgo.Describe("HeadersFromFile", func() {
 	ginkgo.It("should read header value from file", func() {
 		tmpDir, err := os.MkdirTemp("", "clicky-test-*")
 		Expect(err).ToNot(HaveOccurred())
-		defer os.RemoveAll(tmpDir)
+		defer func() { _ = os.RemoveAll(tmpDir) }()
 
 		headerFile := tmpDir + "/auth.txt"
 		err = os.WriteFile(headerFile, []byte("Bearer token123"), 0644)
@@ -325,7 +325,7 @@ var _ = ginkgo.Describe("BinaryFileHandling", func() {
 	ginkgo.It("should base64 encode binary file content", func() {
 		tmpDir, err := os.MkdirTemp("", "clicky-test-*")
 		Expect(err).ToNot(HaveOccurred())
-		defer os.RemoveAll(tmpDir)
+		defer func() { _ = os.RemoveAll(tmpDir) }()
 
 		binaryFile := tmpDir + "/binary.dat"
 		binaryContent := []byte{0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A} // PNG header
@@ -410,7 +410,7 @@ P004
 	})
 
 	ginkgo.AfterEach(func() {
-		os.RemoveAll(tmpDir)
+		_ = os.RemoveAll(tmpDir)
 	})
 
 	tests := []struct {

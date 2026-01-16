@@ -93,7 +93,7 @@ func (tm *Manager) Render() {
 
 	out = lipgloss.NewStyle().MaxHeight(api.GetTerminalLines()).Render(out)
 
-	fmt.Fprintf(outputWriter, "%s\n", out)
+	_, _ = fmt.Fprintf(outputWriter, "%s\n", out)
 
 }
 

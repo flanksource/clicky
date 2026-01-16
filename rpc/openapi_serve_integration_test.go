@@ -356,7 +356,7 @@ func TestOpenAPIServe_E2E_WithBinary(t *testing.T) {
 
 	// Build the clicky binary
 	binaryPath := buildClickyBinary(t)
-	defer os.Remove(binaryPath)
+	defer func() { _ = os.Remove(binaryPath) }()
 
 	// Start the clicky server with OpenAPI serve and executor enabled
 	serverPort, cleanup := startClickyServer(t, binaryPath)
@@ -822,8 +822,8 @@ func startClickyServer(t *testing.T, binaryPath string) (int, func()) {
 
 	cleanup := func() {
 		if cmd.Process != nil {
-			cmd.Process.Kill()
-			cmd.Wait()
+			_ = cmd.Process.Kill()
+			_ = cmd.Wait()
 		}
 	}
 
@@ -831,6 +831,8 @@ func startClickyServer(t *testing.T, binaryPath string) (int, func()) {
 }
 
 // extractPortFromOutput reads the server output to find which port it's using
+//
+//nolint:unused
 func extractPortFromOutput(t *testing.T, stdout, stderr io.ReadCloser) int {
 	t.Helper()
 
@@ -838,7 +840,7 @@ func extractPortFromOutput(t *testing.T, stdout, stderr io.ReadCloser) int {
 	outputChan := make(chan string, 1)
 
 	go func() {
-		defer stdout.Close()
+		defer func() { _ = stdout.Close() }()
 		scanner := bufio.NewScanner(stdout)
 		var output strings.Builder
 

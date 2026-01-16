@@ -235,8 +235,8 @@ func GetTerminalWidth() int {
 		line100 := strings.Repeat("─", width)
 
 		logger.V(4).Infof("Terminal dimensions: width=%d, height=%d", width, height)
-		os.Stderr.WriteString(line50 + "\n")
-		os.Stderr.WriteString(line100 + "\n")
+		_, _ = os.Stderr.WriteString(line50 + "\n")
+		_, _ = os.Stderr.WriteString(line100 + "\n")
 	}
 
 	return width

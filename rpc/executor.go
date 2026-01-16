@@ -13,6 +13,7 @@ import (
 	"sync"
 	"syscall"
 
+	"github.com/flanksource/commons/logger"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -259,14 +260,22 @@ func (e *CommandExecutor) executeWithGlobalCapture(execCmd *cobra.Command, args 
 	if err != nil {
 		return "", "", fmt.Errorf("failed to create stdout pipe: %w", err)
 	}
-	defer stdoutReader.Close()
+	defer func() {
+		if err := stdoutReader.Close(); err != nil {
+			logger.Errorf("failed to close stdout reader: %v", err)
+		}
+	}()
 
 	stderrReader, stderrWriter, err := os.Pipe()
 	if err != nil {
-		stdoutWriter.Close()
+		_ = stdoutWriter.Close()
 		return "", "", fmt.Errorf("failed to create stderr pipe: %w", err)
 	}
-	defer stderrReader.Close()
+	defer func() {
+		if err := stderrReader.Close(); err != nil {
+			logger.Errorf("failed to close stderr reader: %v", err)
+		}
+	}()
 
 	// Replace global stdout/stderr
 	os.Stdout = stdoutWriter
@@ -301,8 +310,8 @@ func (e *CommandExecutor) executeWithGlobalCapture(execCmd *cobra.Command, args 
 	cmdErr := execCmd.Execute()
 
 	// Close writers to signal end of output and flush remaining data
-	stdoutWriter.Close()
-	stderrWriter.Close()
+	_ = stdoutWriter.Close()
+	_ = stderrWriter.Close()
 
 	// Wait for all output to be copied
 	wg.Wait()

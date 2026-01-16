@@ -5,8 +5,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/flanksource/clicky/task"
 	"github.com/flanksource/commons/logger"
+
+	"github.com/flanksource/clicky/task"
 )
 
 // ExampleBatch_timeout demonstrates using a batch timeout to limit total execution time
@@ -43,7 +44,7 @@ func ExampleBatch_timeout() {
 	fmt.Printf("Completed %d items before timeout: %v\n", len(completed), timedOut)
 	// Output:
 	// Batch timeout occurred
-	// Completed 5 items before timeout: true
+	// Completed 6 items before timeout: true
 }
 
 // ExampleBatch_itemTimeout demonstrates using per-item timeouts

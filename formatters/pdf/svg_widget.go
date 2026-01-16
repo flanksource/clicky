@@ -6,6 +6,8 @@ import (
 	"os"
 	"strconv"
 	"strings"
+
+	"github.com/flanksource/commons/logger"
 )
 
 // SVGWidget renders an SVGBox as a widget in the PDF
@@ -39,13 +41,19 @@ func ConvertSVGToPNG(svgBytes []byte) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to create temp file: %w", err)
 	}
-	defer os.Remove(tmp.Name()) // Clean up
+	defer func() {
+		if err := os.Remove(tmp.Name()); err != nil {
+			logger.Errorf("failed to remove temp file: %v", err)
+		}
+	}()
 
 	// Write SVG bytes to temp file
 	if _, err := tmp.Write(svgBytes); err != nil {
 		return nil, fmt.Errorf("failed to write SVG to temp file: %w", err)
 	}
-	tmp.Close()
+	if err := tmp.Close(); err != nil {
+		return nil, fmt.Errorf("failed to close temp file: %w", err)
+	}
 
 	options := DefaultConvertOptions()
 	options.Format = "png"
@@ -56,7 +64,11 @@ func ConvertSVGToPNG(svgBytes []byte) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to open PNG file: %w", err)
 	}
-	defer pngFile.Close()
+	defer func() {
+		if err := pngFile.Close(); err != nil {
+			logger.Errorf("failed to close PNG file: %v", err)
+		}
+	}()
 
 	return os.ReadFile(tmp.Name() + ".png")
 }
@@ -67,13 +79,19 @@ func ConvertSVGToPDF(svgBytes []byte) ([]byte, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to create temp file: %w", err)
 	}
-	defer os.Remove(tmp.Name()) // Clean up
+	defer func() {
+		if err := os.Remove(tmp.Name()); err != nil {
+			logger.Errorf("failed to remove temp file: %v", err)
+		}
+	}()
 
 	// Write SVG bytes to temp file
 	if _, err := tmp.Write(svgBytes); err != nil {
 		return nil, fmt.Errorf("failed to write SVG to temp file: %w", err)
 	}
-	tmp.Close()
+	if err := tmp.Close(); err != nil {
+		return nil, fmt.Errorf("failed to close temp file: %w", err)
+	}
 
 	// Create options for PDF conversion
 	options := &ConvertOptions{
@@ -81,7 +99,11 @@ func ConvertSVGToPDF(svgBytes []byte) ([]byte, error) {
 	}
 
 	outputPath := tmp.Name() + ".pdf"
-	defer os.Remove(outputPath)
+	defer func() {
+		if err := os.Remove(outputPath); err != nil {
+			logger.Errorf("failed to remove output file: %v", err)
+		}
+	}()
 
 	if err := ConvertWithFallback(context.Background(), tmp.Name(), outputPath, options); err != nil {
 		return nil, fmt.Errorf("failed to convert SVG to PDF: %w", err)

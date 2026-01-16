@@ -9,6 +9,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/flanksource/commons/logger"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -38,7 +39,11 @@ func (us *UserStore) LoadHtpasswdFile(filename string) error {
 	if err != nil {
 		return fmt.Errorf("failed to open htpasswd file %s: %w", filename, err)
 	}
-	defer file.Close()
+	defer func() {
+		if err := file.Close(); err != nil {
+			logger.Errorf("failed to close file: %v", err)
+		}
+	}()
 
 	scanner := bufio.NewScanner(file)
 	lineNum := 0
@@ -84,7 +89,11 @@ func (us *UserStore) LoadUserpassFile(filename string) error {
 	if err != nil {
 		return fmt.Errorf("failed to open userpass file %s: %w", filename, err)
 	}
-	defer file.Close()
+	defer func() {
+		if err := file.Close(); err != nil {
+			logger.Errorf("failed to close file: %v", err)
+		}
+	}()
 
 	scanner := bufio.NewScanner(file)
 	lineNum := 0

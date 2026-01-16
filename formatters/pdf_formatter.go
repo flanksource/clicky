@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/flanksource/commons/logger"
 	"github.com/playwright-community/playwright-go"
 
 	"github.com/flanksource/clicky/api"
@@ -95,14 +96,22 @@ func (f *PDFFormatter) convertHTMLToPDFWithRod(htmlContent string) ([]byte, erro
 	if err != nil {
 		return nil, fmt.Errorf("failed to launch browser: %w", err)
 	}
-	defer browser.Close()
+	defer func() {
+		if err := browser.Close(); err != nil {
+			logger.Errorf("failed to close browser: %v", err)
+		}
+	}()
 
 	// Create a new page
 	page, err := browser.NewPage()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create new page: %w", err)
 	}
-	defer page.Close()
+	defer func() {
+		if err := page.Close(); err != nil {
+			logger.Errorf("failed to close page: %v", err)
+		}
+	}()
 
 	// Set the HTML content
 	err = page.SetContent(htmlContent)

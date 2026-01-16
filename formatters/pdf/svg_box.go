@@ -299,7 +299,7 @@ func (b SVGBox) GenerateSVG() ([]byte, error) {
 		// Render child box nodes at the translated position
 		canvas.Group(fmt.Sprintf("transform=\"translate(%d,%d)\"", childX, childY))
 		childNodes := child.Box.Nodes()
-		fmt.Fprint(canvas.Writer, childNodes)
+		_, _ = fmt.Fprint(canvas.Writer, childNodes)
 		canvas.Gend()
 	}
 

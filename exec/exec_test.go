@@ -530,7 +530,7 @@ echo line3`
 				// Wait for task to complete
 				result, err := t.GetResult()
 
-				GinkgoWriter.Write([]byte("r:" + result.Pretty().ANSI() + "\n"))
+				_, _ = GinkgoWriter.Write([]byte("r:" + result.Pretty().ANSI() + "\n"))
 
 				Expect(err).To(BeNil())
 				Expect(result.Status).To(Equal(string(task.StatusSuccess)))
@@ -552,7 +552,7 @@ echo line3`
 				Expect(p.IsOK()).To(BeFalse())
 				Expect(p.IsRunning()).To(BeFalse())
 				result, _ := t.GetResult()
-				GinkgoWriter.Write([]byte("r2:" + result.Pretty().ANSI() + "\n"))
+				_, _ = GinkgoWriter.Write([]byte("r2:" + result.Pretty().ANSI() + "\n"))
 
 				Expect(result.Status).To(Equal(string(task.StatusFailed)))
 				Expect(result.Error).ToNot(BeNil())

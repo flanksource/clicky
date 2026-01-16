@@ -7,6 +7,8 @@ import (
 	"os"
 	"reflect"
 	"strings"
+
+	"github.com/flanksource/commons/logger"
 )
 
 const ARGS = "__args__"
@@ -131,7 +133,11 @@ func loadFromFileOrURL(path string) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		defer resp.Body.Close()
+		defer func() {
+			if err := resp.Body.Close(); err != nil {
+				logger.Errorf("failed to close response body: %v", err)
+			}
+		}()
 
 		if resp.StatusCode != http.StatusOK {
 			return "", fmt.Errorf("HTTP %d: %s", resp.StatusCode, resp.Status)

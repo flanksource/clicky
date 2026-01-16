@@ -7,7 +7,10 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"os/exec"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -26,6 +29,33 @@ type ExecutionResponse struct {
 	Error    string `json:"error,omitempty"`
 }
 
+var (
+	testBinaryPath string
+	testBinaryDir  string
+)
+
+var _ = BeforeSuite(func() {
+	var err error
+	testBinaryDir, err = os.MkdirTemp("", "clicky-e2e-*")
+	Expect(err).ToNot(HaveOccurred(), "Should create temp dir for test binary")
+
+	binaryName := "clicky"
+	if runtime.GOOS == "windows" {
+		binaryName = "clicky.exe"
+	}
+	testBinaryPath = filepath.Join(testBinaryDir, binaryName)
+
+	cmd := exec.Command("go", "build", "-o", testBinaryPath, "./cmd/clicky")
+	output, err := cmd.CombinedOutput()
+	Expect(err).ToNot(HaveOccurred(), "Failed to build clicky binary: %s", string(output))
+})
+
+var _ = AfterSuite(func() {
+	if testBinaryDir != "" {
+		_ = os.RemoveAll(testBinaryDir)
+	}
+})
+
 var _ = Describe("E2E Clicky Command Execution", func() {
 	var (
 		binaryPath      string
@@ -34,11 +64,12 @@ var _ = Describe("E2E Clicky Command Execution", func() {
 	)
 
 	BeforeEach(func() {
-		binaryPath = "./clicky"
+		binaryPath = testBinaryPath
 		exampleDataPath = "examples/example-data.json"
 		schemaPath = "examples/order-schema.yaml"
 
 		// Verify test files exist
+		Expect(binaryPath).To(BeAnExistingFile(), "Clicky test binary should exist")
 		Expect(exampleDataPath).To(BeAnExistingFile(), "Example data file should exist")
 		Expect(schemaPath).To(BeAnExistingFile(), "Schema file should exist")
 	})
@@ -280,7 +311,7 @@ func makeHTTPRequest(url, method string, body interface{}) *ExecutionResponse {
 	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(req)
 	Expect(err).ToNot(HaveOccurred(), "Should execute HTTP request")
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	responseBody, err := io.ReadAll(resp.Body)
 	Expect(err).ToNot(HaveOccurred(), "Should read response body")
@@ -312,7 +343,7 @@ func makeHTTPRequestExpectError(url, method string, body interface{}) *Execution
 	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(req)
 	Expect(err).ToNot(HaveOccurred(), "Should execute HTTP request")
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	responseBody, err := io.ReadAll(resp.Body)
 	Expect(err).ToNot(HaveOccurred(), "Should read response body")
@@ -370,5 +401,5 @@ Total: $15,750.00 USD`
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(response)
+	_ = json.NewEncoder(w).Encode(response)
 }
