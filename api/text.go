@@ -245,13 +245,16 @@ func uniqueStyles(existing string, styles ...string) string {
 			}
 		}
 	}
-
-	result := make([]string, 0, len(styleSet))
+	uniq := ""
 	for s := range styleSet {
-		result = append(result, s)
+		if uniq == "" {
+			uniq = s
+		} else {
+			uniq += " " + s
+		}
 	}
-	sort.Strings(result)
-	return strings.Join(result, " ")
+
+	return uniq
 }
 
 func (t Text) Styles(classes ...string) Text {
