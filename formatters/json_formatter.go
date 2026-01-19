@@ -20,13 +20,7 @@ func NewJSONFormatter() *JSONFormatter {
 
 // Format formats data as JSON
 func (f *JSONFormatter) Format(data interface{}) (string, error) {
-	// Convert to PrettyData and use FormatPrettyData
-	prettyData, err := ToPrettyData(data)
-	if err != nil || prettyData == nil || prettyData.Original == nil {
-		// Fallback to direct YAML serialization
-		return "", err
-	}
-	return f.FormatPrettyData(prettyData)
+	return f.FormatValue(data)
 }
 
 // FormatPrettyData formats PrettyData as JSON using the original data if available
