@@ -214,13 +214,34 @@ func (t Text) AddIcon(icon Textable, styles ...string) Text {
 	return t.Add(icon)
 }
 
-func (t Text) Styles(classes ...string) Text {
-	if t.Style != "" {
-		// Append new classes to existing style
-		t.Style = t.Style + " " + strings.Join(classes, " ")
-	} else {
-		t.Style = strings.Join(classes, " ")
+func uniqueStyles(existing string, styles ...string) string {
+	styleSet := make(map[string]struct{})
+	if existing != "" {
+		for _, s := range strings.Split(existing, " ") {
+			styleSet[s] = struct{}{}
+		}
 	}
+	for _, style := range styles {
+		for _, s := range strings.Split(style, " ") {
+			if s != "" {
+				styleSet[s] = struct{}{}
+			}
+		}
+	}
+	uniq := ""
+	for s := range styleSet {
+		if uniq == "" {
+			uniq = s
+		} else {
+			uniq += " " + s
+		}
+	}
+
+	return uniq
+}
+
+func (t Text) Styles(classes ...string) Text {
+	t.Style = uniqueStyles(t.Style, classes...)
 	return t
 }
 
