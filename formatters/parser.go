@@ -195,7 +195,7 @@ func parseSliceDataWithOptions(val reflect.Value, opts FormatOptions) (*api.Pret
 	// Handle slices/arrays - default to table format unless items have tree structure
 	if val.Kind() == reflect.Slice || val.Kind() == reflect.Array {
 		// If --table is explicitly set, force table format even for TreeNodes
-		if opts.Table != nil && *opts.Table {
+		if opts.Table {
 			return convertSliceToPrettyDataWithOptions(val, opts)
 		}
 		// Otherwise, detect tree structure and use tree format if applicable
@@ -555,8 +555,14 @@ func parseStructDataWithOptionsAndSchema(val reflect.Value, schema *api.PrettyOb
 	return prettyData, nil
 }
 
-func mergeTypeOptions(opts ...api.TypeOptions) api.TypeOptions {
-	merged := api.TypeOptions{}
+// TypeOptions controls how data is converted to PrettyData
+type TypeOptions struct {
+	SkipTable bool
+	SkipTree  bool
+}
+
+func mergeTypeOptions(opts ...TypeOptions) TypeOptions {
+	merged := TypeOptions{}
 	for _, opt := range opts {
 		merged.SkipTable = merged.SkipTable || opt.SkipTable
 		merged.SkipTree = merged.SkipTree || opt.SkipTree
@@ -565,7 +571,7 @@ func mergeTypeOptions(opts ...api.TypeOptions) api.TypeOptions {
 }
 
 // ToPrettyData converts various input types to PrettyData
-func ToPrettyData(data interface{}, opts ...api.TypeOptions) (*api.PrettyData, error) {
+func ToPrettyData(data interface{}, opts ...TypeOptions) (*api.PrettyData, error) {
 	opt := mergeTypeOptions(opts...)
 	// Handle nil data at root level
 	if data == nil {
