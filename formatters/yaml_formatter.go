@@ -19,16 +19,7 @@ func NewYAMLFormatter() *YAMLFormatter {
 
 // Format formats data as YAML
 func (f *YAMLFormatter) Format(data interface{}) (string, error) {
-	if data == nil {
-		return "null", nil
-	}
-	// Convert to PrettyData and use FormatPrettyData
-	prettyData, err := ToPrettyData(data)
-	if err != nil || prettyData == nil || prettyData.Original == nil {
-		// Fallback to direct YAML serialization
-		return "", err
-	}
-	return f.FormatPrettyData(prettyData)
+	return f.FormatValue(data)
 }
 
 // FormatPrettyData formats PrettyData as YAML using the original data if available
