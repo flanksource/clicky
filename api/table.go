@@ -195,7 +195,7 @@ func (t TextTable) Markdown() string {
 			if i < len(t.FieldNames) && t.FieldNames[i] != "" {
 				fieldName = t.FieldNames[i]
 			} else {
-				fieldName = TransformerMarkdown(header)
+				fieldName = header.String()
 			}
 
 			cell, ok := row[fieldName]
@@ -219,6 +219,8 @@ func (t TextTable) Markdown() string {
 	return "\n" + buf.String()
 }
 
+type TextTransformer func(t Textable) string
+
 var TransformerANSI TextTransformer = func(t Textable) string {
 	return t.ANSI()
 }
@@ -233,8 +235,6 @@ var TransformerHTML TextTransformer = func(t Textable) string {
 var TransformerMarkdown TextTransformer = func(t Textable) string {
 	return t.Markdown()
 }
-
-type TextTransformer func(t Textable) string
 
 // getCellValue retrieves the Textable value for a given cell in the table
 func (t *TextTable) getCellValue(row TableRow, colIdx int) Textable {

@@ -548,18 +548,20 @@ func (f *SlackFormatter) isHeaderText(text api.Text) bool {
 
 func (f *SlackFormatter) truncateSlackHeader(text string) string {
 	const slackHeaderMax = 150
-	if len(text) <= slackHeaderMax {
+	runes := []rune(text)
+	if len(runes) <= slackHeaderMax {
 		return text
 	}
-	return text[:slackHeaderMax]
+	return string(runes[:slackHeaderMax])
 }
 
 func (f *SlackFormatter) truncateSlackButton(text string) string {
 	const slackButtonMax = 75
-	if len(text) <= slackButtonMax {
+	runes := []rune(text)
+	if len(runes) <= slackButtonMax {
 		return text
 	}
-	return text[:slackButtonMax]
+	return string(runes[:slackButtonMax])
 }
 
 func (f *SlackFormatter) maxTextLen() int {
@@ -610,13 +612,15 @@ func markdownForCell(row api.TableRow, fieldName string) string {
 }
 
 func splitSlackText(text string, max int) []string {
-	if max <= 0 || len(text) <= max {
+	runes := []rune(text)
+	if max <= 0 || len(runes) <= max {
 		return []string{text}
 	}
 
 	lines := strings.Split(text, "\n")
 	var parts []string
 	var current strings.Builder
+	var currentRuneLen int
 
 	flush := func() {
 		if current.Len() == 0 {
@@ -624,35 +628,41 @@ func splitSlackText(text string, max int) []string {
 		}
 		parts = append(parts, current.String())
 		current.Reset()
+		currentRuneLen = 0
 	}
 
 	for _, line := range lines {
 		line = strings.TrimRight(line, "\r")
-		if len(line) > max {
+		lineRunes := []rune(line)
+		lineRuneLen := len(lineRunes)
+		if lineRuneLen > max {
 			flush()
-			for start := 0; start < len(line); start += max {
+			for start := 0; start < lineRuneLen; start += max {
 				end := start + max
-				if end > len(line) {
-					end = len(line)
+				if end > lineRuneLen {
+					end = lineRuneLen
 				}
-				parts = append(parts, line[start:end])
+				parts = append(parts, string(lineRunes[start:end]))
 			}
 			continue
 		}
 
-		if current.Len() == 0 {
+		if currentRuneLen == 0 {
 			current.WriteString(line)
+			currentRuneLen = lineRuneLen
 			continue
 		}
 
-		if current.Len()+1+len(line) > max {
+		if currentRuneLen+1+lineRuneLen > max {
 			flush()
 			current.WriteString(line)
+			currentRuneLen = lineRuneLen
 			continue
 		}
 
 		current.WriteString("\n")
 		current.WriteString(line)
+		currentRuneLen += 1 + lineRuneLen
 	}
 
 	flush()
