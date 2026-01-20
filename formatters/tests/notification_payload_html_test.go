@@ -2,6 +2,8 @@ package formatters
 
 import (
 	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/flanksource/clicky/api"
@@ -94,34 +96,12 @@ func fieldsTable(fields []notificationField) api.TextTable {
 
 func labeledList(label string, items []string) api.Text {
 	title := api.Text{Content: label + ": ", Style: "font-semibold"}
-	return title.Add(api.Text{Content: joinLines(items)})
+	return title.Add(api.Text{Content: strings.Join(items, "\n")})
 }
 
 func labeledInlineList(label string, items []string) api.Text {
 	title := api.Text{Content: label + ": ", Style: "font-semibold"}
-	return title.Add(api.Text{Content: joinInline(items)})
-}
-
-func joinLines(items []string) string {
-	out := ""
-	for i, item := range items {
-		if i > 0 {
-			out += "\n"
-		}
-		out += item
-	}
-	return out
-}
-
-func joinInline(items []string) string {
-	out := ""
-	for i, item := range items {
-		if i > 0 {
-			out += ", "
-		}
-		out += item
-	}
-	return out
+	return title.Add(api.Text{Content: strings.Join(items, ", ")})
 }
 
 func TestNotificationPayloadHTML(t *testing.T) {
@@ -150,7 +130,33 @@ func TestNotificationPayloadHTML(t *testing.T) {
 		t.Fatalf("failed to format html: %v", err)
 	}
 
-	if err := os.WriteFile("notification_payload.html", []byte(output), 0o644); err != nil {
+	// Verify output contains expected content
+	expectedContent := []string{
+		"adguard-sync is unhealthy",
+		"HelmRelease status is failing",
+		"Kubernetes::HelmRelease",
+		"Failed",
+		"homelab",
+		"FailedCreate",
+	}
+	for _, expected := range expectedContent {
+		if !strings.Contains(output, expected) {
+			t.Errorf("output missing expected content: %q", expected)
+		}
+	}
+
+	// Verify email mode uses inline styles instead of Tailwind classes
+	if strings.Contains(output, `class="mx-auto"`) {
+		t.Error("email mode should not use Tailwind classes")
+	}
+	if !strings.Contains(output, `style="max-width: 600px;`) {
+		t.Error("email mode should use inline styles for container")
+	}
+
+	// Write to temp directory for inspection
+	tmpDir := t.TempDir()
+	outputPath := filepath.Join(tmpDir, "notification_payload.html")
+	if err := os.WriteFile(outputPath, []byte(output), 0o644); err != nil {
 		t.Fatalf("failed to write html output: %v", err)
 	}
 }

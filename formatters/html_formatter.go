@@ -63,7 +63,6 @@ func (f *HTMLFormatter) getCSS() string {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Clicky Output</title>
     <style>
         table { border-collapse: collapse; }
         th, td { border: 1px solid #e5e7eb; padding: 4px 8px; text-align: left; }
@@ -71,7 +70,7 @@ func (f *HTMLFormatter) getCSS() string {
     </style>
 </head>
 <body style="font-family: Arial, sans-serif;">
-    <div class="mx-auto px-4 space-y-8">
+    <div style="max-width: 600px; margin: 0 auto; padding: 0 16px;">
 `
 	}
 	css := `<!DOCTYPE html>
