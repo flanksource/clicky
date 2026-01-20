@@ -13,12 +13,6 @@ type notificationField struct {
 	Value string
 }
 
-type notificationAction struct {
-	Label string
-	URL   string
-	Style string
-}
-
 type notificationMessagePayload struct {
 	Title            string
 	Description      string
@@ -26,7 +20,6 @@ type notificationMessagePayload struct {
 	LabelFields      []notificationField
 	RecentEvents     []string
 	GroupedResources []string
-	Actions          []notificationAction
 }
 
 func (p notificationMessagePayload) toTextList() api.TextList {
@@ -75,11 +68,6 @@ func (p notificationMessagePayload) toTextList() api.TextList {
 
 	if len(p.GroupedResources) > 0 {
 		out = append(out, labeledList("Also Failing", p.GroupedResources))
-	}
-
-	if len(p.Actions) > 0 {
-		addDivider()
-		out = append(out, actionsToButtonGroup(p.Actions))
 	}
 
 	return out
@@ -136,25 +124,6 @@ func joinInline(items []string) string {
 	return out
 }
 
-func actionsToButtonGroup(actions []notificationAction) api.ButtonGroup {
-	buttons := make([]api.Button, 0, len(actions))
-	for i, action := range actions {
-		if action.URL == "" || action.Label == "" {
-			continue
-		}
-		variant := action.Style
-		if variant == "" && i == 0 {
-			variant = "primary"
-		}
-		buttons = append(buttons, api.Button{
-			Label:   action.Label,
-			Href:    action.URL,
-			Variant: variant,
-		})
-	}
-	return api.ButtonGroup{Buttons: buttons}
-}
-
 func TestNotificationPayloadHTML(t *testing.T) {
 	payload := notificationMessagePayload{
 		Title:       "\U0001F534 adguard-sync is unhealthy",
@@ -172,10 +141,6 @@ func TestNotificationPayloadHTML(t *testing.T) {
 		GroupedResources: []string{
 			"default/HelmRelease/adguard-sync",
 			"default/HelmRelease/adguard-sync-exporter",
-		},
-		Actions: []notificationAction{
-			{Label: "View Catalog", URL: "http://localhost:3000/catalog/abcd", Style: "primary"},
-			{Label: "\U0001F515 Silence", URL: "http://localhost:3000/notifications/silences/add?config_id=abcd"},
 		},
 	}
 
