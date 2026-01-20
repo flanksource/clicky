@@ -6,9 +6,10 @@ import (
 	"os"
 	"strings"
 
-	"github.com/flanksource/clicky/api"
 	"github.com/flanksource/commons/logger"
 	"gopkg.in/yaml.v3"
+
+	"github.com/flanksource/clicky/api"
 )
 
 type FormatManager struct {
@@ -21,6 +22,7 @@ type FormatManager struct {
 	excelFormatter    *ExcelFormatter
 	htmlFormatter     *HTMLFormatter
 	htmlPdf           *HTMLPDFFormatter
+	slackFormatter    *SlackFormatter
 }
 
 // NewFormatManager creates a new format manager with all formatters initialized
@@ -33,6 +35,7 @@ func NewFormatManager() *FormatManager {
 		prettyFormatter:   NewPrettyFormatter(),
 		treeFormatter:     NewTreeFormatter(api.DefaultTheme(), false, nil),
 		excelFormatter:    NewExcelFormatter(),
+		slackFormatter:    NewSlackFormatter(),
 	}
 }
 
@@ -102,6 +105,14 @@ func (f FormatManager) HTMLPDF(data interface{}) (string, error) {
 	return f.htmlPdf.Format(data, FormatOptions{})
 }
 
+// Slack formats data as Slack Block Kit JSON.
+func (f FormatManager) Slack(data interface{}) (string, error) {
+	if f.slackFormatter == nil {
+		f.slackFormatter = NewSlackFormatter()
+	}
+	return f.slackFormatter.Format(data, FormatOptions{})
+}
+
 // Tree formats data as a tree structure
 func (f FormatManager) Tree(data interface{}) (string, error) {
 	if f.treeFormatter == nil {
@@ -128,6 +139,7 @@ func (f FormatManager) ExcelToFile(data interface{}, filename string) error {
 
 // Format implements a generic format method that delegates to specific formatters
 func (f FormatManager) Format(format string, data interface{}) (string, error) {
+	format = strings.ToLower(format)
 	switch format {
 	case "json":
 		return f.JSON(data)
@@ -141,6 +153,8 @@ func (f FormatManager) Format(format string, data interface{}) (string, error) {
 		return f.HTML(data)
 	case "html-pdf":
 		return f.HTMLPDF(data)
+	case "slack":
+		return f.Slack(data)
 	case "excel", "xlsx":
 		return f.Excel(data)
 	case "pretty":
@@ -153,8 +167,8 @@ func (f FormatManager) Format(format string, data interface{}) (string, error) {
 }
 
 func formatTextable(data api.Textable, opts FormatOptions) (string, error) {
-
-	switch opts.ResolveFormat() {
+	format := strings.ToLower(opts.ResolveFormat())
+	switch format {
 	case "json":
 		d, err := json.MarshalIndent(data, "", "  ")
 		if err != nil {
@@ -174,6 +188,9 @@ func formatTextable(data api.Textable, opts FormatOptions) (string, error) {
 		return data.ANSI(), nil
 	case "html":
 		return data.HTML(), nil
+	case "slack":
+		slack := NewSlackFormatter()
+		return slack.Format(data, opts)
 	default:
 		return "", fmt.Errorf("unsupported format for Textable: %s", opts.Format)
 	}
@@ -185,7 +202,7 @@ func (f FormatManager) FormatWithOptions(options FormatOptions, data ...any) (st
 		return "", fmt.Errorf("no data provided for formatting")
 	}
 	// Resolve format from boolean flags first to check for custom formatters
-	format := options.ResolveFormat()
+	format := strings.ToLower(options.ResolveFormat())
 	logger.V(4).Infof("FormatWithOptions called with %d data items, format=%s", len(data), format)
 
 	// Check for custom formatters BEFORE the string shortcut
@@ -247,7 +264,7 @@ func (f FormatManager) FormatWithOptions(options FormatOptions, data ...any) (st
 	logger.V(4).Infof("Extracted data type: %T", d)
 
 	// Handle format-specific options
-	switch strings.ToLower(format) {
+	switch format {
 	case "json":
 
 		return f.JSON(d)
@@ -270,6 +287,16 @@ func (f FormatManager) FormatWithOptions(options FormatOptions, data ...any) (st
 			return f.markdownFormatter.Format(d)
 		}
 		return f.markdownFormatter.FormatPrettyData(prettyData, options)
+
+	case "slack":
+		if f.slackFormatter == nil {
+			f.slackFormatter = NewSlackFormatter()
+		}
+		prettyData, err := f.ToPrettyDataWithOptions(d, options)
+		if err != nil {
+			return f.slackFormatter.Format(d, options)
+		}
+		return f.slackFormatter.FormatPrettyData(prettyData, options)
 
 	case "html", "html-pdf":
 		if formatter, ok := GetCustomFormatter(format); ok {
@@ -386,7 +413,8 @@ func (f FormatManager) ParseSchema(data interface{}) (*api.PrettyObject, error) 
 // FormatWithSchema handles schema-aware formatting using provided PrettyData
 func (f FormatManager) FormatWithSchema(prettyData *api.PrettyData, options FormatOptions) (string, error) {
 	// Handle different output formats for schema-aware data
-	switch strings.ToLower(options.Format) {
+	format := strings.ToLower(options.Format)
+	switch format {
 	case "json":
 
 		return f.jsonFormatter.FormatValue(prettyData.Original)
@@ -403,6 +431,11 @@ func (f FormatManager) FormatWithSchema(prettyData *api.PrettyData, options Form
 		}
 		f.markdownFormatter.NoColor = options.NoColor
 		return f.markdownFormatter.FormatPrettyData(prettyData, options)
+	case "slack":
+		if f.slackFormatter == nil {
+			f.slackFormatter = NewSlackFormatter()
+		}
+		return f.slackFormatter.FormatPrettyData(prettyData, options)
 	case "html", "html-pdf":
 		formatter, ok := GetCustomFormatter(options.Format)
 		if !ok {

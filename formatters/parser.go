@@ -674,51 +674,58 @@ func ToPrettyData(data interface{}, opts ...TypeOptions) (*api.PrettyData, error
 
 		} else if field.Format == api.FormatTree {
 			values[field.Name] = api.NewTypedValue(fieldVal.Interface())
-		} else if (field.Type == "map" || field.Type == "struct") && (fieldVal.Kind() == reflect.Map || fieldVal.Kind() == reflect.Struct) {
-			// Handle nested map/struct - recursively create PrettyData
-			parser := api.NewStructParser()
+		} else if fieldVal.CanInterface() {
+			if typedValue := api.TryTypedValue(fieldVal.Interface()); typedValue != nil {
+				values[field.Name] = *typedValue
+				continue
+			}
 
-			// Create schema for nested structure
-			var nestedSchema *api.PrettyObject
-			if len(field.Fields) > 0 {
-				nestedSchema = &api.PrettyObject{Fields: field.Fields}
-			} else {
-				// Auto-generate schema
-				if fieldVal.Kind() == reflect.Struct {
-					nestedSchema, _ = parser.ParseStructSchema(fieldVal)
-				} else if fieldVal.Kind() == reflect.Map {
-					nestedSchema = &api.PrettyObject{Fields: []api.PrettyField{}}
-					// Sort keys for consistent ordering
-					keys := fieldVal.MapKeys()
-					sort.Slice(keys, func(i, j int) bool {
-						return fmt.Sprint(keys[i].Interface()) < fmt.Sprint(keys[j].Interface())
-					})
+			if (field.Type == "map" || field.Type == "struct") && (fieldVal.Kind() == reflect.Map || fieldVal.Kind() == reflect.Struct) {
+				// Handle nested map/struct - recursively create PrettyData
+				parser := api.NewStructParser()
 
-					for _, key := range keys {
-						if key.Kind() == reflect.String {
-							mapValue := fieldVal.MapIndex(key)
-							if mapValue.IsValid() {
-								nestedSchema.Fields = append(nestedSchema.Fields, api.PrettyField{
-									Name: key.String(),
-									Type: api.InferValueType(mapValue.Interface()),
-								})
+				// Create schema for nested structure
+				var nestedSchema *api.PrettyObject
+				if len(field.Fields) > 0 {
+					nestedSchema = &api.PrettyObject{Fields: field.Fields}
+				} else {
+					// Auto-generate schema
+					if fieldVal.Kind() == reflect.Struct {
+						nestedSchema, _ = parser.ParseStructSchema(fieldVal)
+					} else if fieldVal.Kind() == reflect.Map {
+						nestedSchema = &api.PrettyObject{Fields: []api.PrettyField{}}
+						// Sort keys for consistent ordering
+						keys := fieldVal.MapKeys()
+						sort.Slice(keys, func(i, j int) bool {
+							return fmt.Sprint(keys[i].Interface()) < fmt.Sprint(keys[j].Interface())
+						})
+
+						for _, key := range keys {
+							if key.Kind() == reflect.String {
+								mapValue := fieldVal.MapIndex(key)
+								if mapValue.IsValid() {
+									nestedSchema.Fields = append(nestedSchema.Fields, api.PrettyField{
+										Name: key.String(),
+										Type: api.InferValueType(mapValue.Interface()),
+									})
+								}
 							}
 						}
 					}
 				}
-			}
 
-			// Recursively parse
-			if nestedSchema != nil {
-				nestedData, err := parser.ParseDataWithSchema(fieldVal.Interface(), nestedSchema)
-				if err != nil {
-					return nil, fmt.Errorf("failed to parse nested field %s: %w", field.Name, err)
-				} else {
-					values[field.Name] = api.NewTypedValue(nestedData)
+				// Recursively parse
+				if nestedSchema != nil {
+					nestedData, err := parser.ParseDataWithSchema(fieldVal.Interface(), nestedSchema)
+					if err != nil {
+						return nil, fmt.Errorf("failed to parse nested field %s: %w", field.Name, err)
+					} else {
+						values[field.Name] = api.NewTypedValue(nestedData)
+					}
 				}
+			} else {
+				values[field.Name] = api.NewTypedValue(processFieldValue(fieldVal))
 			}
-		} else {
-			values[field.Name] = api.NewTypedValue(processFieldValue(fieldVal))
 		}
 	}
 	prettyData.TypedMap = &values

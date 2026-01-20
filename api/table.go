@@ -10,11 +10,12 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/lipgloss/table"
-	"github.com/flanksource/clicky/api/tailwind"
 	"github.com/olekukonko/tablewriter"
 	"github.com/olekukonko/tablewriter/renderer"
 	"github.com/olekukonko/tablewriter/tw"
 	"github.com/samber/lo"
+
+	"github.com/flanksource/clicky/api/tailwind"
 )
 
 var tableIDCounter = atomic.Int64{}
@@ -164,27 +165,6 @@ func (t TextTable) ANSI() string {
 }
 
 func (t TextTable) Markdown() string {
-	return "\n" + t.render(renderer.NewMarkdown(), TransformerMarkdown)
-}
-
-var TransformerANSI TextTransformer = func(t Textable) string {
-	return t.ANSI()
-}
-
-var TransformerString TextTransformer = func(t Textable) string {
-	return t.String()
-}
-var TransformerHTML TextTransformer = func(t Textable) string {
-	return t.HTML()
-}
-
-var TransformerMarkdown TextTransformer = func(t Textable) string {
-	return t.Markdown()
-}
-
-type TextTransformer func(t Textable) string
-
-func (t *TextTable) render(renderer tw.Renderer, transform TextTransformer) string {
 	if len(t.Headers) == 0 {
 		return ""
 	}
@@ -201,7 +181,7 @@ func (t *TextTable) render(renderer tw.Renderer, transform TextTransformer) stri
 		tablewriter.WithHeaderAutoFormat(tw.On),
 		tablewriter.WithMaxWidth(width),
 		tablewriter.WithBehavior(tw.Behavior{AutoHide: tw.On}),
-		tablewriter.WithRenderer(renderer),
+		tablewriter.WithRenderer(renderer.NewMarkdown()),
 	)
 
 	table.Header(lo.ToAnySlice(t.Headers.AsString())...)
@@ -215,7 +195,7 @@ func (t *TextTable) render(renderer tw.Renderer, transform TextTransformer) stri
 			if i < len(t.FieldNames) && t.FieldNames[i] != "" {
 				fieldName = t.FieldNames[i]
 			} else {
-				fieldName = transform(header)
+				fieldName = header.String()
 			}
 
 			cell, ok := row[fieldName]
@@ -223,7 +203,7 @@ func (t *TextTable) render(renderer tw.Renderer, transform TextTransformer) stri
 				values = append(values, "")
 				continue
 			}
-			values = append(values, transform(cell))
+			values = append(values, TransformerMarkdown(cell))
 		}
 
 		if err := table.Append(values...); err != nil {
@@ -236,7 +216,24 @@ func (t *TextTable) render(renderer tw.Renderer, transform TextTransformer) stri
 		return err.Error()
 	}
 
-	return buf.String()
+	return "\n" + buf.String()
+}
+
+type TextTransformer func(t Textable) string
+
+var TransformerANSI TextTransformer = func(t Textable) string {
+	return t.ANSI()
+}
+
+var TransformerString TextTransformer = func(t Textable) string {
+	return t.String()
+}
+var TransformerHTML TextTransformer = func(t Textable) string {
+	return t.HTML()
+}
+
+var TransformerMarkdown TextTransformer = func(t Textable) string {
+	return t.Markdown()
 }
 
 // getCellValue retrieves the Textable value for a given cell in the table

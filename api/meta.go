@@ -299,6 +299,7 @@ type PrettyFieldData struct {
 	Value Textable
 }
 
+// Compile-time check that these types satisfy Textable.
 var _ = []Textable{
 	Text{},
 	TextList{},
@@ -404,6 +405,10 @@ func (tv TypedValue) Visit(visitor VisitorFunc) bool {
 
 func TryTypedValue(o any) *TypedValue {
 	switch v := o.(type) {
+	case TypedValue:
+		return &v
+	case *TypedValue:
+		return v
 	case *PrettyData:
 		return &TypedValue{Textable: v}
 	case TextTable:

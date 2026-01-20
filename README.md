@@ -5,7 +5,7 @@ A comprehensive Go framework for data formatting, concurrent task execution, web
 ## Core Components
 
 ### 🎨 **Formatters** - Advanced Data Formatting
-- **Multi-format output**: Pretty tables, JSON, YAML, CSV, Markdown, HTML, PDF, Excel, Tree views
+- **Multi-format output**: Pretty tables, JSON, YAML, CSV, Markdown, HTML, PDF, Excel, Tree views, Slack Block Kit
 - **Smart struct tags**: Control formatting with `pretty` tags for tables, trees, and styling
 - **Tailwind CSS integration**: Built-in support for Tailwind utility classes
 - **Dynamic styling**: Fluent API for programmatic content styling
@@ -143,6 +143,7 @@ All struct-based data works seamlessly across multiple output formats:
 - **`html-pdf`**: HTML-to-PDF conversion for reports
 - **`excel`/`xlsx`**: Excel spreadsheet format
 - **`tree`**: Hierarchical tree view for nested data
+- **`slack`**: Slack Block Kit JSON output
 
 #### Pretty Tag Reference
 
@@ -871,7 +872,7 @@ func newServersCommand() *cobra.Command {
             return nil
         },
     }
-    listCmd.Flags().StringP("format", "f", "pretty", "Output format (pretty, json, yaml, markdown, excel)")
+    listCmd.Flags().StringP("format", "f", "pretty", "Output format (pretty, json, yaml, markdown, excel, slack)")
 
     cmd.AddCommand(listCmd)
     return cmd

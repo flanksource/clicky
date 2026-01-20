@@ -359,6 +359,13 @@ func (p *StructParser) ParseDataWithSchema(data interface{}, schema *PrettyObjec
 			// Use NewTypedValue which handles TreeNode and Pretty interfaces
 			values[field.Name] = NewTypedValue(fieldVal.Interface())
 		} else {
+			if fieldVal.CanInterface() {
+				if typedValue := TryTypedValue(fieldVal.Interface()); typedValue != nil {
+					values[field.Name] = *typedValue
+					continue
+				}
+			}
+
 			// Handle nested struct/map fields - recursively create PrettyData
 			if (field.Type == "struct" || field.Type == "map") && (fieldVal.Kind() == reflect.Map || fieldVal.Kind() == reflect.Struct) {
 				// Create a schema for the nested structure

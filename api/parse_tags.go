@@ -38,6 +38,10 @@ func ParsePrettyTagWithName(fieldName, tag string) PrettyField {
 			switch key {
 			case "label":
 				field.Label = value
+				field.FormatOptions["label_set"] = "true"
+			case "title":
+				field.TableOptions.Title = value
+				field.FormatOptions["title"] = "true"
 			case "sort":
 				field.FormatOptions["sort"] = value
 			case "dir", "direction":
@@ -54,8 +58,6 @@ func ParsePrettyTagWithName(fieldName, tag string) PrettyField {
 				field.TableOptions.HeaderStyle = value
 			case "row_style":
 				field.TableOptions.RowStyle = value
-			case "title":
-				field.TableOptions.Title = value
 			case "indent":
 				if field.TreeOptions == nil {
 					field.TreeOptions = DefaultTreeOptions()
@@ -83,6 +85,8 @@ func ParsePrettyTagWithName(fieldName, tag string) PrettyField {
 		} else {
 			// Simple flags
 			switch part {
+			case "title":
+				field.FormatOptions["title"] = "true"
 			case "table":
 				field.Format = FormatTable
 			case "tree":

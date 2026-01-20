@@ -1,0 +1,87 @@
+{
+  "blocks": [
+    {
+      "type": "header",
+      "text": {
+        "type": "plain_text",
+        "text": "GitHub Action 'Create Release' Failing 🚨"
+      }
+    },
+    {
+      "type": "section",
+      "text": {
+        "type": "mrkdwn",
+        "text": "org: flanksource"
+      }
+    },
+    {
+      "type": "divider"
+    },
+    {
+      "type": "header",
+      "text": {
+        "type": "plain_text",
+        "text": "Summary:"
+      }
+    },
+    {
+      "type": "section",
+      "text": {
+        "type": "mrkdwn",
+        "text": "The Create Release GitHub Actions workflow for `config-db` is failing. A process within the workflow is exiting with code 2, which is blocking the creation of new software releases."
+      }
+    },
+    {
+      "type": "header",
+      "text": {
+        "type": "plain_text",
+        "text": "Recommended Fix:"
+      }
+    },
+    {
+      "type": "section",
+      "text": {
+        "type": "mrkdwn",
+        "text": "• Check GitHub Actions logs for the exact failing step.\n• Review the `.github/workflows/release.yml` script for errors.\n• Verify repository secrets and `GITHUB_TOKEN` permissions."
+      }
+    },
+    {
+      "type": "header",
+      "text": {
+        "type": "plain_text",
+        "text": "Also Affected:"
+      }
+    },
+    {
+      "type": "section",
+      "text": {
+        "type": "mrkdwn",
+        "text": "- /GitHubAction::Workflow/config-db/Create Release"
+      }
+    },
+    {
+      "type": "actions",
+      "elements": [
+        {
+          "type": "button",
+          "text": {
+            "type": "plain_text",
+            "text": "View Config"
+          },
+          "url": "https://example.com/config",
+          "action_id": "action_1",
+          "style": "primary"
+        },
+        {
+          "type": "button",
+          "text": {
+            "type": "plain_text",
+            "text": "Silence"
+          },
+          "url": "https://example.com/silence",
+          "action_id": "action_2"
+        }
+      ]
+    }
+  ]
+}
