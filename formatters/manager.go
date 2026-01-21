@@ -186,7 +186,7 @@ func formatTextable(data api.Textable, opts FormatOptions) (string, error) {
 		return data.Markdown(), nil
 	case "pretty":
 		return data.ANSI(), nil
-	case "html":
+	case "html", "email":
 		return data.HTML(), nil
 	case "slack":
 		slack := NewSlackFormatter()

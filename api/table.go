@@ -71,12 +71,26 @@ func (table TextTable) html(interactive bool) string {
 	if len(table.Rows) == 0 {
 		return "            <p class=\"text-gray-500 text-center py-8\">No data available</p>"
 	}
-	if len(table.Columns) == 0 {
-		return "            <p class=\"text-red-500 text-center py-8\">Table has no columns defined</p>"
+
+	// Use table's embedded Columns if available, otherwise derive from headers.
+	columns := table.Columns
+	if len(columns) == 0 && len(table.Headers) > 0 {
+		columns = make([]PrettyField, 0, len(table.Headers))
+		for i, header := range table.Headers {
+			name := header.String()
+			if i < len(table.FieldNames) && table.FieldNames[i] != "" {
+				name = table.FieldNames[i]
+			}
+			columns = append(columns, PrettyField{
+				Name:  name,
+				Label: header.String(),
+			})
+		}
 	}
 
-	// Use table's embedded Columns if available, otherwise use field.TableOptions.Columns
-	columns := table.Columns
+	if len(columns) == 0 {
+		return "            <p class=\"text-red-500 text-center py-8\">Table has no columns defined</p>"
+	}
 
 	var result strings.Builder
 

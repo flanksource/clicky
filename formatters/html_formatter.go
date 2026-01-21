@@ -24,18 +24,29 @@ var tooltipsJS = assets.TooltipsJS
 func init() {
 	html := NewHTMLFormatter()
 	RegisterFormatter("html", html.Format)
+	email := NewEmailHTMLFormatter()
+	RegisterFormatter("email", email.Format)
 }
 
 // HTMLFormatter handles HTML formatting
 type HTMLFormatter struct {
 	IncludeCSS bool
 	IsPDFMode  bool
+	EmailMode  bool
 }
 
 // NewHTMLFormatter creates a new HTML formatter
 func NewHTMLFormatter() *HTMLFormatter {
 	return &HTMLFormatter{
 		IncludeCSS: true,
+	}
+}
+
+// NewEmailHTMLFormatter creates an HTML formatter suitable for email clients.
+func NewEmailHTMLFormatter() *HTMLFormatter {
+	return &HTMLFormatter{
+		IncludeCSS: true,
+		EmailMode:  true,
 	}
 }
 
@@ -46,6 +57,22 @@ func (f *HTMLFormatter) ToPrettyData(data interface{}) (*api.PrettyData, error) 
 
 // getCSS returns Tailwind CSS CDN and custom styling
 func (f *HTMLFormatter) getCSS() string {
+	if f.EmailMode {
+		return `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        table { border-collapse: collapse; }
+        th, td { border: 1px solid #e5e7eb; padding: 4px 8px; text-align: left; }
+        th { background-color: #f9fafb; font-weight: 600; }
+    </style>
+</head>
+<body style="font-family: Arial, sans-serif;">
+    <div style="max-width: 600px; margin: 0 auto; padding: 0 16px;">
+`
+	}
 	css := `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -122,10 +149,40 @@ func (f *HTMLFormatter) Format(in interface{}, options FormatOptions) (string, e
 			result.WriteString(f.getCSS())
 			result.WriteString("        <div class=\"bg-white rounded-lg shadow p-6\">\n")
 			result.WriteString("            ")
-			result.WriteString(htmlContent)
+			if f.EmailMode {
+				result.WriteString(f.formatTextableForEmail(text))
+			} else {
+				result.WriteString(htmlContent)
+			}
 			result.WriteString("\n        </div>\n")
 			result.WriteString("    </div>\n</body>\n</html>")
 			return result.String(), nil
+		}
+		if f.EmailMode {
+			return f.formatTextableForEmail(text), nil
+		}
+		return htmlContent, nil
+	}
+
+	// Handle Textable inputs directly (e.g., TextList)
+	if textable, ok := in.(api.Textable); ok {
+		htmlContent := textable.HTML()
+		if f.IncludeCSS {
+			var result strings.Builder
+			result.WriteString(f.getCSS())
+			result.WriteString("        <div class=\"bg-white rounded-lg shadow p-6\">\n")
+			result.WriteString("            ")
+			if f.EmailMode {
+				result.WriteString(f.formatTextableForEmail(textable))
+			} else {
+				result.WriteString(htmlContent)
+			}
+			result.WriteString("\n        </div>\n")
+			result.WriteString("    </div>\n</body>\n</html>")
+			return result.String(), nil
+		}
+		if f.EmailMode {
+			return f.formatTextableForEmail(textable), nil
 		}
 		return htmlContent, nil
 	}
@@ -195,6 +252,39 @@ func (f *HTMLFormatter) FormatPrettyData(data *api.PrettyData) (string, error) {
 	}
 
 	return result.String(), nil
+}
+
+func (f *HTMLFormatter) formatTextableForEmail(textable api.Textable) string {
+	switch v := textable.(type) {
+	case api.TextList:
+		return f.formatTextListForEmail(v)
+	case *api.TextList:
+		return f.formatTextListForEmail(*v)
+	case api.TextTable:
+		return v.CompactHTML()
+	case *api.TextTable:
+		return v.CompactHTML()
+	default:
+		return textable.HTML()
+	}
+}
+
+func (f *HTMLFormatter) formatTextListForEmail(list api.TextList) string {
+	if len(list) == 0 {
+		return ""
+	}
+	parts := make([]string, 0, len(list))
+	for _, item := range list {
+		switch v := item.(type) {
+		case api.TextTable:
+			parts = append(parts, v.CompactHTML())
+		case *api.TextTable:
+			parts = append(parts, v.CompactHTML())
+		default:
+			parts = append(parts, item.HTML())
+		}
+	}
+	return strings.Join(parts, api.BR.HTML())
 }
 
 // renderTypedMapAsHTML renders a TypedMap (complex structure with fields)
