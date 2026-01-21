@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.14.0](https://github.com/flanksource/clicky/compare/v1.13.0...v1.14.0) (2026-01-21)
+
+
+### ✨ Features
+
+* HTML for email and fix html tables ([#66](https://github.com/flanksource/clicky/issues/66)) ([d2f670c](https://github.com/flanksource/clicky/commit/d2f670c46c2fa0580c842a11a9543e61d43878ce))
+
 ## [1.13.0](https://github.com/flanksource/clicky/compare/v1.12.2...v1.13.0) (2026-01-20)
 
 
