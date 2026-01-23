@@ -36,10 +36,11 @@ func (b Button) HTML() string {
 	label := htmlEscapeString(b.Label)
 	if b.Href != "" {
 		classes := strings.TrimSpace("inline-flex items-center px-3 py-1 rounded-md bg-gray-100 text-gray-900 text-sm")
+		style := "display: inline-block; padding: 4px 12px; border-radius: 6px; background-color: #f3f4f6; color: #111827; border: 1px solid #e5e7eb; font-size: 14px; text-decoration: none;"
 		if b.Variant != "" {
 			classes = b.Variant
 		}
-		return fmt.Sprintf(`<a href="%s" class="%s">%s</a>`, htmlEscapeString(b.Href), classes, label)
+		return fmt.Sprintf(`<a href="%s" class="%s" style="%s">%s</a>`, htmlEscapeString(b.Href), classes, style, label)
 	}
 	return label
 }
