@@ -6,8 +6,8 @@
     {
       "type": "TextBlock",
       "text": "GitHub Action 'Create Release' Failing 🚨",
-      "weight": "Bolder",
-      "size": "Large",
+      "weight": "bolder",
+      "size": "large",
       "wrap": true
     },
     {
@@ -23,7 +23,7 @@
     {
       "type": "TextBlock",
       "text": "Summary:",
-      "weight": "Bolder",
+      "weight": "bolder",
       "wrap": true
     },
     {
@@ -34,7 +34,7 @@
     {
       "type": "TextBlock",
       "text": "Recommended Fix:",
-      "weight": "Bolder",
+      "weight": "bolder",
       "wrap": true
     },
     {
@@ -45,7 +45,7 @@
     {
       "type": "TextBlock",
       "text": "Also Affected:",
-      "weight": "Bolder",
+      "weight": "bolder",
       "wrap": true
     },
     {

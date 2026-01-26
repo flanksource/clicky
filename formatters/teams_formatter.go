@@ -506,9 +506,9 @@ func textElement(text string) teamsElement {
 }
 
 func headerElement(text string, primary bool) teamsElement {
-	element := teamsElement{Type: "TextBlock", Text: text, Wrap: true, Weight: "Bolder"}
+	element := teamsElement{Type: "TextBlock", Text: text, Wrap: true, Weight: "bolder"}
 	if primary {
-		element.Size = "Large"
+		element.Size = "large"
 	}
 	return element
 }
