@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.16.0](https://github.com/flanksource/clicky/compare/v1.15.0...v1.16.0) (2026-01-27)
+
+
+### ♻️ Code Refactoring
+
+* improve CSV/HTML formatter handling of empty data ([934112a](https://github.com/flanksource/clicky/commit/934112aa65293dd51fccb374734de661050ead23))
+* migrate task rendering to bubbletea ([1dc0bcf](https://github.com/flanksource/clicky/commit/1dc0bcf669df18d824859d0bc83b6a1833414344))
+* rename TableProvider.Rows() to Row() for clarity ([5cdd030](https://github.com/flanksource/clicky/commit/5cdd030d98a3bcecae6524d786b1f52ad15aedbf))
+
+
+### ✨ Features
+
+* export Column builder in aliases ([026e98b](https://github.com/flanksource/clicky/commit/026e98b312127a30a7735fc159b1241874dd8890))
+
+
+### 🐛 Bug Fixes
+
+* use TryTypedValue for generic interface handling in struct fields ([a32c670](https://github.com/flanksource/clicky/commit/a32c6703164bf848b1f9afa78eda18a8acbb370a))
+
+
+### 🔧 Maintenance
+
+* fix tests ([0e9262e](https://github.com/flanksource/clicky/commit/0e9262e4bc82eafac69682666bc3b85937033ba1))
+* remove pdf  dependencies ([fd87d74](https://github.com/flanksource/clicky/commit/fd87d74d38c4fcd9fe73c1450ac628fd473e2b3e))
+* update dependencies ([73048ac](https://github.com/flanksource/clicky/commit/73048ac135d4f9e874079764b9b7f8218dae7a12))
+
 ## [1.15.0](https://github.com/flanksource/clicky/compare/v1.14.0...v1.15.0) (2026-01-27)
 
 
