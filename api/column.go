@@ -94,9 +94,9 @@ type TableProvider interface {
 	// Columns returns the column schema in display order.
 	Columns() []ColumnDef
 
-	// Rows returns the raw data for this item as a map of column name to value.
+	// Row returns the raw data for this item as a map of column name to value.
 	// Values are rendered using Text{}.Add(value).
-	Rows() map[string]any
+	Row() map[string]any
 }
 
 // NewTableFrom creates a TextTable from a slice of TableProvider items.
@@ -131,7 +131,7 @@ func NewTableFrom[T TableProvider](items []T) TextTable {
 
 	// Build rows
 	for _, item := range items {
-		rowData := item.Rows()
+		rowData := item.Row()
 		row := TableRow{}
 
 		for _, col := range columns {
