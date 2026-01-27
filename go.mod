@@ -9,20 +9,17 @@ require (
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/flanksource/commons v1.42.3
 	github.com/flanksource/gomplate/v3 v3.24.60
-	github.com/flanksource/maroto/v2 v2.4.2
 	github.com/go-xmlfmt/xmlfmt v1.1.3
 	github.com/goccy/go-yaml v1.18.0
 	github.com/golang-jwt/jwt/v5 v5.3.0
 	github.com/google/cel-go v0.22.1
 	github.com/itchyny/gojq v0.12.17
 	github.com/labstack/echo/v4 v4.13.4
-	github.com/ledongthuc/pdf v0.0.0-20250511090121-5959a4027728
 	github.com/mattn/go-sqlite3 v1.14.30
 	github.com/muesli/termenv v0.16.0
 	github.com/olekukonko/tablewriter v1.1.0
 	github.com/onsi/ginkgo/v2 v2.26.0
 	github.com/onsi/gomega v1.38.2
-	github.com/pdfcpu/pdfcpu v0.11.0
 	github.com/playwright-community/playwright-go v0.4702.0
 	github.com/samber/lo v1.52.0
 	github.com/spf13/cobra v1.9.2-0.20250831231508-51d675196729
@@ -81,16 +78,11 @@ require (
 	github.com/hairyhenderson/toml v0.4.2-0.20210923231440-40456b8e66cf // indirect
 	github.com/hairyhenderson/yaml v0.0.0-20220618171115-2d35fca545ce // indirect
 	github.com/henvic/httpretty v0.1.4 // indirect
-	github.com/hhrutter/lzw v1.0.0 // indirect
-	github.com/hhrutter/pkcs7 v0.2.0 // indirect
-	github.com/hhrutter/tiff v1.0.2 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/itchyny/timefmt-go v0.1.6 // indirect
 	github.com/jeremywohl/flatten v0.0.0-20180923035001-588fe0d4c603 // indirect
 	github.com/jmespath/go-jmespath v0.4.1-0.20220621161143-b0104c826a24 // indirect
-	github.com/johnfercher/go-tree v1.0.5 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
-	github.com/jung-kurt/gofpdf v1.16.2 // indirect
 	github.com/kr/pretty v0.3.1 // indirect
 	github.com/kr/text v0.2.0 // indirect
 	github.com/labstack/gommon v0.4.2 // indirect

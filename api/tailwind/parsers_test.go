@@ -2,8 +2,6 @@ package tailwind
 
 import (
 	"testing"
-
-	"github.com/flanksource/maroto/v2/pkg/consts/align"
 )
 
 // TestRegexBasedSpacingParser tests the refactored spacing parser using regex
@@ -75,37 +73,37 @@ func TestRegexBasedAlignmentParser(t *testing.T) {
 	tests := []struct {
 		name               string
 		class              string
-		expectedHorizontal align.Type
+		expectedHorizontal Alignment
 		expectedVertical   VerticalAlign
 	}{
 		{
 			name:               "text-left using regex",
 			class:              "text-left",
-			expectedHorizontal: align.Left,
+			expectedHorizontal: Left,
 			expectedVertical:   VerticalMiddle,
 		},
 		{
 			name:               "text-center using regex",
 			class:              "text-center",
-			expectedHorizontal: align.Center,
+			expectedHorizontal: Center,
 			expectedVertical:   VerticalMiddle,
 		},
 		{
 			name:               "text-right-top using regex",
 			class:              "text-right-top",
-			expectedHorizontal: align.Right,
+			expectedHorizontal: Right,
 			expectedVertical:   VerticalTop,
 		},
 		{
 			name:               "text-center-bottom using regex",
 			class:              "text-center-bottom",
-			expectedHorizontal: align.Center,
+			expectedHorizontal: Center,
 			expectedVertical:   VerticalBottom,
 		},
 		{
 			name:               "align-middle using regex",
 			class:              "align-middle",
-			expectedHorizontal: align.Left,
+			expectedHorizontal: Left,
 			expectedVertical:   VerticalMiddle,
 		},
 	}

@@ -14,126 +14,10 @@
 package pdf_test
 
 import (
-	"bytes"
-	"fmt"
 	"os"
 	"strings"
 	"testing"
-
-	ledongpdf "github.com/ledongthuc/pdf"
-	"github.com/pdfcpu/pdfcpu/pkg/api"
-	"github.com/pdfcpu/pdfcpu/pkg/pdfcpu/model"
 )
-
-// ExtractTextFromPDF extracts all text content from a PDF byte array
-// using the ledongthuc/pdf library for actual text extraction
-func ExtractTextFromPDF(pdfData []byte) (string, error) {
-	// Create a reader from the PDF data
-	reader := bytes.NewReader(pdfData)
-
-	// Parse the PDF
-	pdfReader, err := ledongpdf.NewReader(reader, int64(len(pdfData)))
-	if err != nil {
-		return "", fmt.Errorf("failed to create PDF reader: %w", err)
-	}
-
-	// Extract text from all pages
-	var allText strings.Builder
-	numPages := pdfReader.NumPage()
-
-	for pageNum := 1; pageNum <= numPages; pageNum++ {
-		page := pdfReader.Page(pageNum)
-		if page.V.IsNull() {
-			continue
-		}
-
-		// Extract text from the page
-		textContent, err := page.GetPlainText(nil)
-		if err != nil {
-			// Continue with other pages even if one fails
-			continue
-		}
-
-		if allText.Len() > 0 {
-			allText.WriteString("\n")
-		}
-		allText.WriteString(textContent)
-	}
-
-	return allText.String(), nil
-}
-
-// ExtractTextFromPage extracts text content from a specific page of a PDF
-func ExtractTextFromPage(pdfData []byte, pageNum int) (string, error) {
-	// Create a reader from the PDF data
-	reader := bytes.NewReader(pdfData)
-
-	// Parse the PDF
-	pdfReader, err := ledongpdf.NewReader(reader, int64(len(pdfData)))
-	if err != nil {
-		return "", fmt.Errorf("failed to create PDF reader: %w", err)
-	}
-
-	// Check if page number is valid
-	if pageNum < 1 || pageNum > pdfReader.NumPage() {
-		return "", fmt.Errorf("page number %d out of range (1-%d)", pageNum, pdfReader.NumPage())
-	}
-
-	// Get the specific page
-	page := pdfReader.Page(pageNum)
-	if page.V.IsNull() {
-		return "", fmt.Errorf("page %d is null", pageNum)
-	}
-
-	// Extract text from the page
-	textContent, err := page.GetPlainText(nil)
-	if err != nil {
-		return "", fmt.Errorf("failed to extract text from page %d: %w", pageNum, err)
-	}
-
-	return textContent, nil
-}
-
-// assertPDFTextOrder verifies that text appears in the PDF in the expected order
-func assertPDFTextOrder(t *testing.T, pdfData []byte, orderedTexts []string) {
-	t.Helper()
-
-	// Extract text from the PDF
-	extractedText, err := ExtractTextFromPDF(pdfData)
-	if err != nil {
-		t.Errorf("Failed to extract text from PDF: %v", err)
-		return
-	}
-
-	// Check that texts appear in the correct order
-	lastIndex := -1
-	for _, expected := range orderedTexts {
-		index := strings.Index(extractedText[lastIndex+1:], expected)
-		if index == -1 {
-			t.Errorf("PDF does not contain expected text in order: %q", expected)
-			if lastIndex >= 0 {
-				t.Logf("Last found text was at position %d", lastIndex)
-			}
-			break
-		}
-		lastIndex = lastIndex + 1 + index
-	}
-
-	if len(orderedTexts) > 0 {
-		t.Logf("✓ PDF contains all %d text segments in correct order", len(orderedTexts))
-	}
-}
-
-// GetPDFInfo returns basic information about a PDF
-func GetPDFInfo(pdfData []byte) (pages, size int, err error) {
-	reader := bytes.NewReader(pdfData)
-	ctx, err := api.ReadContext(reader, model.NewDefaultConfiguration())
-	if err != nil {
-		return 0, 0, fmt.Errorf("failed to read PDF: %w", err)
-	}
-
-	return ctx.PageCount, len(pdfData), nil
-}
 
 // SVG Test Utilities
 
@@ -253,38 +137,6 @@ func assertPDFDoesNotContainErrors(t *testing.T, pdfData []byte) {
 	}
 
 	t.Logf("✓ PDF contains no error messages")
-}
-
-// assertNoImageLoadErrors checks specifically for image loading errors
-func assertNoImageLoadErrors(t *testing.T, pdfData []byte) {
-	t.Helper()
-
-	// Extract text from the PDF
-	extractedText, err := ExtractTextFromPDF(pdfData)
-	if err != nil {
-		t.Errorf("Failed to extract text from PDF: %v", err)
-		return
-	}
-
-	// Check for image-related error patterns
-	imageErrorPatterns := []string{
-		"could not load image",
-		"Image Placeholder",
-		"image file not found",
-		"failed to download image",
-		"failed to convert",
-	}
-
-	for _, pattern := range imageErrorPatterns {
-		if strings.Contains(strings.ToLower(extractedText), strings.ToLower(pattern)) {
-			t.Errorf("PDF contains image loading error: %q", pattern)
-			// Show context
-			index := strings.Index(strings.ToLower(extractedText), strings.ToLower(pattern))
-			start := maxInt(0, index-30)
-			end := minInt(len(extractedText), index+len(pattern)+30)
-			t.Logf("Context: ...%s...", extractedText[start:end])
-		}
-	}
 }
 
 // assertNoSVGRenderingErrors checks specifically for SVG rendering errors

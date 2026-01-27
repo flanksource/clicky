@@ -3,8 +3,27 @@ package tailwind
 import (
 	"regexp"
 	"strings"
+)
 
-	"github.com/flanksource/maroto/v2/pkg/consts/align"
+// Type is a representation of a column align.
+type Alignment string
+
+const (
+	// Left represents a left horizontal align.
+	Left Alignment = "L"
+	// Right represents a right horizontal align.
+	Right Alignment = "R"
+	// Center represents a center horizontal and/or vertical align.
+	Center Alignment = "C"
+	// Top represents a top vertical align.
+	Top Alignment = "T"
+	// Bottom represents a bottom vertical align.
+	Bottom Alignment = "B"
+	// Middle represents a middle align (from gofpdf).
+	Middle Alignment = "M"
+	// Justify represents a horizontal alignment that distributes
+	// the text evenly between the left and right margins.
+	Justify Alignment = "J"
 )
 
 // Compiled regex patterns for alignment parsing
@@ -28,7 +47,7 @@ const (
 
 // ParsedAlignment contains both horizontal and vertical alignment information
 type ParsedAlignment struct {
-	Horizontal align.Type
+	Horizontal Alignment
 	Vertical   VerticalAlign
 }
 
@@ -44,14 +63,14 @@ func NewAlignmentParser() *AlignmentParser {
 func (ap *AlignmentParser) ParseAlignment(style string) ParsedAlignment {
 	classes := strings.Fields(style)
 	alignment := ParsedAlignment{
-		Horizontal: align.Left,     // Default horizontal alignment
+		Horizontal: Left,           // Default horizontal alignment
 		Vertical:   VerticalMiddle, // Default vertical alignment
 	}
 
 	// Parse alignment classes - last one wins for conflicts
 	for _, class := range classes {
 		if parsed := ap.parseAlignmentClass(class); parsed != nil {
-			if parsed.Horizontal != align.Left || class == "text-left" {
+			if parsed.Horizontal != Left || class == "text-left" {
 				alignment.Horizontal = parsed.Horizontal
 			}
 			if parsed.Vertical != VerticalMiddle || strings.Contains(class, "align-") {
@@ -64,18 +83,18 @@ func (ap *AlignmentParser) ParseAlignment(style string) ParsedAlignment {
 }
 
 // stringToHorizontalAlign converts string to horizontal alignment type
-func stringToHorizontalAlign(s string) align.Type {
+func stringToHorizontalAlign(s string) Alignment {
 	switch s {
 	case "left":
-		return align.Left
+		return Left
 	case "center":
-		return align.Center
+		return Center
 	case "right":
-		return align.Right
+		return Right
 	case "justify":
-		return align.Justify
+		return Justify
 	default:
-		return align.Left
+		return Left
 	}
 }
 
@@ -111,7 +130,7 @@ func (ap *AlignmentParser) parseAlignmentClass(class string) *ParsedAlignment {
 	// Try standalone vertical alignment pattern
 	if matches := verticalAlignRegex.FindStringSubmatch(class); matches != nil {
 		vertical := stringToVerticalAlign(matches[1])
-		return &ParsedAlignment{Horizontal: align.Left, Vertical: vertical}
+		return &ParsedAlignment{Horizontal: Left, Vertical: vertical}
 	}
 
 	return nil
