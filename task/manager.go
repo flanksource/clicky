@@ -10,12 +10,12 @@ import (
 	"sync/atomic"
 	"time"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/flanksource/clicky/shutdown"
 	"github.com/flanksource/commons/collections"
 	flanksourceContext "github.com/flanksource/commons/context"
 	"github.com/flanksource/commons/logger"
-	"github.com/muesli/termenv"
 	"golang.org/x/sync/semaphore"
 	"golang.org/x/term"
 )
@@ -32,7 +32,6 @@ type Manager struct {
 	tasks         []*Task
 	groups        []*Group
 	mu            sync.RWMutex
-	stopRender    chan bool
 	width         int
 	verbose       atomic.Bool
 	maxConcurrent int
@@ -52,16 +51,20 @@ type Manager struct {
 	workers       []*worker
 	shutdown      chan struct{}
 	workersActive atomic.Int32
-	renderDone    atomic.Bool
 
 	// Task identity tracking for deduplication
 	tasksByIdentity sync.Map // map[string]*Task
 
+	// Bubbletea program for interactive rendering
+	program *tea.Program
+
+	// Plain render loop control
+	stopPlainRender chan struct{}
+	plainRenderDone chan struct{}
+
 	// Output buffering
 	outputBuffer    []OutputEntry
 	bufferMutex     sync.Mutex
-	renderMutex     sync.Mutex
-	altScreenActive bool
 	originalStdout  *os.File
 	originalStderr  *os.File
 	capturingOutput bool
@@ -194,7 +197,6 @@ func newManagerWithConcurrency(maxConcurrent int) *Manager {
 	tm := &Manager{
 		tasks:           make([]*Task, 0),
 		groups:          make([]*Group, 0),
-		stopRender:      make(chan bool, 1),
 		width:           width,
 		maxConcurrent:   maxConcurrent,
 		retryConfig:     DefaultRetryConfig(),
@@ -272,15 +274,21 @@ func newManagerWithConcurrency(maxConcurrent int) *Manager {
 			fmt.Fprintf(os.Stderr, "⏰ Task shutdown timeout exceeded\n")
 		}
 
-		// Ensure terminal cleanup happens before shutdown completes
-		tm.stopRenderAndWait()
+		// Stop the Bubbletea program if running
+		tm.stopProgram()
 		tm.StopCapturingOutput()
-
-		// Emergency terminal reset as last resort
-		tm.emergencyCleanup()
 	})
 
-	go tm.render()
+	// Start appropriate rendering based on mode
+	if !tm.noProgress.Load() {
+		if isInteractive {
+			tm.startProgram()
+		} else {
+			// Non-interactive mode: start a plain render loop
+			go tm.plainRenderLoop()
+		}
+	}
+
 	return tm
 }
 
@@ -336,69 +344,59 @@ func SetGracefulTimeout(timeout time.Duration) {
 	global.gracefulTimeout = timeout
 }
 
-// emergencyCleanup forcibly resets the terminal to a clean state
-// This is used in fatal error paths where normal cleanup may not be possible
-func (tm *Manager) emergencyCleanup() {
-	// Force terminal reset sequences directly to stderr
-	// This bypasses all normal rendering logic to ensure cleanup happens
-	var outputWriter *os.File
-
-	tm.bufferMutex.Lock()
-	if tm.capturingOutput && tm.originalStderr != nil {
-		outputWriter = tm.originalStderr
-	} else {
-		outputWriter = os.Stderr
-	}
-	tm.bufferMutex.Unlock()
-
-	// Write terminal reset sequences directly
-	// Exit alternate screen mode
-	_, _ = fmt.Fprintf(outputWriter, "\033[?1049l")
-	// Reset all attributes
-	_, _ = fmt.Fprintf(outputWriter, "\033[0m")
-	// Show cursor
-	_, _ = fmt.Fprintf(outputWriter, "\033[?25h")
-	// Clear to end of screen
-	_, _ = fmt.Fprintf(outputWriter, "\033[J")
-
-	// Mark alternate screen as inactive
-	tm.altScreenActive = false
-}
-
-// stopRenderAndWait signals the render loop to stop and waits for it to complete
-func (tm *Manager) stopRenderAndWait() {
-	// Signal render loop to stop
-	select {
-	case tm.stopRender <- true:
-	default:
-		// Channel might already have a signal, that's ok
-	}
-
-	if tm.noProgress.Load() {
+// startProgram initializes and starts the Bubbletea program
+func (tm *Manager) startProgram() {
+	if tm.program != nil {
 		return
 	}
-	// Wait for render loop to complete by polling the atomic bool
-	for !tm.renderDone.Load() {
-		time.Sleep(10 * time.Millisecond)
+
+	model := newTaskModel(tm)
+	tm.program = tea.NewProgram(model, tea.WithOutput(os.Stderr))
+	go func() {
+		if _, err := tm.program.Run(); err != nil {
+			logger.Errorf("bubbletea program error: %v", err)
+		}
+	}()
+}
+
+// stopProgram signals the Bubbletea program to stop and waits for cleanup
+func (tm *Manager) stopProgram() {
+	// Stop plain render loop if running
+	if tm.stopPlainRender != nil {
+		close(tm.stopPlainRender)
+		<-tm.plainRenderDone
+		tm.stopPlainRender = nil
 	}
 
-	// Exit alternate screen if it was active
-	if tm.altScreenActive {
-		tm.bufferMutex.Lock()
-		var outputWriter *os.File
-		if tm.capturingOutput && tm.originalStderr != nil {
-			outputWriter = tm.originalStderr
-		} else {
-			outputWriter = os.Stderr
+	if tm.program == nil {
+		return
+	}
+
+	tm.program.Send(shutdownMsg{})
+	tm.program.Wait()
+	tm.program = nil
+
+	// Render final task status
+	tm.renderFinal()
+}
+
+// plainRenderLoop runs a simple render loop for non-interactive mode
+func (tm *Manager) plainRenderLoop() {
+	tm.stopPlainRender = make(chan struct{})
+	tm.plainRenderDone = make(chan struct{})
+	defer close(tm.plainRenderDone)
+
+	ticker := time.NewTicker(250 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-tm.stopPlainRender:
+			tm.PlainRender()
+			return
+		case <-ticker.C:
+			tm.PlainRender()
 		}
-		tm.bufferMutex.Unlock()
-
-		output := termenv.NewOutput(outputWriter)
-		output.ExitAltScreen()
-		tm.altScreenActive = false
-
-		// Render final task status to primary screen
-		tm.renderFinal()
 	}
 }
 
@@ -626,7 +624,7 @@ func WaitSilent() int {
 		<-ticker.C
 	}
 
-	global.stopRenderAndWait()
+	global.stopProgram()
 
 	global.mu.RLock()
 	tasks := global.tasks
@@ -675,7 +673,7 @@ func Wait() int {
 		<-ticker.C
 	}
 
-	global.stopRenderAndWait()
+	global.stopProgram()
 
 	var failed, canceled int
 
@@ -747,8 +745,10 @@ func WaitForAllTasks() {
 		<-ticker.C
 	}
 
-	// Force a final render to ensure all task status is displayed
-	global.Render()
+	// For plain render mode, force a final render
+	if global.noProgress.Load() {
+		global.PlainRender()
+	}
 }
 
 // bufferingWriter captures writes to a buffer with timestamps
@@ -828,9 +828,6 @@ func (tm *Manager) StartCapturingOutput() {
 
 // StopCapturingOutput restores stdout/stderr and prints buffered output
 func (tm *Manager) StopCapturingOutput() {
-	tm.renderMutex.Lock()
-	defer tm.renderMutex.Unlock()
-
 	tm.bufferMutex.Lock()
 	capturing := tm.capturingOutput
 	tm.capturingOutput = false
@@ -838,19 +835,6 @@ func (tm *Manager) StopCapturingOutput() {
 
 	if !capturing {
 		return
-	}
-
-	// Exit alternate screen if active before restoring output
-	if tm.altScreenActive {
-		var outputWriter *os.File
-		if tm.originalStderr != nil {
-			outputWriter = tm.originalStderr
-		} else {
-			outputWriter = os.Stderr
-		}
-		output := termenv.NewOutput(outputWriter)
-		output.ExitAltScreen()
-		tm.altScreenActive = false
 	}
 
 	// Restore original stdout/stderr
@@ -870,9 +854,6 @@ func (tm *Manager) StopCapturingOutput() {
 			_, _ = fmt.Fprintln(os.Stderr, entry.Line)
 		}
 	}
-
-	// Final task render to primary screen without alternate screen
-	tm.renderFinal()
 }
 
 // renderFinal renders task status to primary screen without using alternate screen

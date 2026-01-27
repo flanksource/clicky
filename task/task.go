@@ -397,13 +397,6 @@ func (t *Task) Warning() *Task {
 
 // Fatal marks the task as failed and exits the program immediately
 func (t *Task) Fatal(err error) {
-	// Use defer to ensure cleanup happens even if something goes wrong
-	defer func() {
-		if t.manager != nil {
-			t.manager.emergencyCleanup()
-		}
-	}()
-
 	t.mu.Lock()
 	t.status = StatusFailed
 	t.err = err
@@ -415,7 +408,7 @@ func (t *Task) Fatal(err error) {
 	t.mu.Unlock()
 
 	if t.manager != nil {
-		t.manager.stopRenderAndWait()
+		t.manager.stopProgram()
 	}
 
 	logger.Fatalf("Fatal: %s: %v", name, err)
