@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.15.0](https://github.com/flanksource/clicky/compare/v1.14.0...v1.15.0) (2026-01-27)
+
+
+### ✅ Tests
+
+* cover slack semibold markdown ([d12a994](https://github.com/flanksource/clicky/commit/d12a9943badb9f78cb1d454b3217bdad05307300))
+
+
+### ✨ Features
+
+* add slack-specific markdown rendering ([d8e38b8](https://github.com/flanksource/clicky/commit/d8e38b8ac461fc3555619059a8847813679bdd60))
+
+
+### 🐛 Bug Fixes
+
+* drop unused slack cell helper ([d7e665f](https://github.com/flanksource/clicky/commit/d7e665f1c8bd02016aa25a7a825387ebcc0af7f1))
+* render slack collapsed sections without html ([c72a117](https://github.com/flanksource/clicky/commit/c72a117ac0a1fef3ef44779c49aad1108a1e57df))
+
 ## [1.14.0](https://github.com/flanksource/clicky/compare/v1.13.0...v1.14.0) (2026-01-21)
 
 
