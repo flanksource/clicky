@@ -61,6 +61,7 @@ type Manager struct {
 	// Plain render loop control
 	stopPlainRender chan struct{}
 	plainRenderDone chan struct{}
+	programStopped  sync.Once // ensures stopProgram runs only once
 
 	// Output buffering
 	outputBuffer    []OutputEntry
@@ -363,28 +364,36 @@ func (tm *Manager) startProgram() {
 
 // stopProgram signals the Bubbletea program to stop and waits for cleanup
 func (tm *Manager) stopProgram() {
-	// Stop plain render loop if running
-	if tm.stopPlainRender != nil {
-		close(tm.stopPlainRender)
-		<-tm.plainRenderDone
-		tm.stopPlainRender = nil
-	}
+	tm.programStopped.Do(func() {
+		// Stop plain render loop if running
+		if tm.stopPlainRender != nil {
+			close(tm.stopPlainRender)
+			<-tm.plainRenderDone
+			tm.stopPlainRender = nil
+		}
 
-	if tm.program == nil {
-		return
-	}
+		if tm.program == nil {
+			return
+		}
 
-	tm.program.Send(shutdownMsg{})
-	tm.program.Wait()
-	tm.program = nil
+		tm.program.Send(shutdownMsg{})
+		tm.program.Wait()
+		tm.program = nil
 
-	// Render final task status
-	tm.renderFinal()
+		// Render final task status
+		tm.renderFinal()
+	})
 }
 
 // plainRenderLoop runs a simple render loop for non-interactive mode
 func (tm *Manager) plainRenderLoop() {
 	defer close(tm.plainRenderDone)
+	defer func() {
+		if r := recover(); r != nil {
+			tm.cleanupTerminal()
+			panic(r) // re-panic after cleanup
+		}
+	}()
 
 	ticker := time.NewTicker(250 * time.Millisecond)
 	defer ticker.Stop()
@@ -398,6 +407,14 @@ func (tm *Manager) plainRenderLoop() {
 			tm.PlainRender()
 		}
 	}
+}
+
+// cleanupTerminal ensures terminal is restored to a clean state
+func (tm *Manager) cleanupTerminal() {
+	output := tm.renderer.Output()
+	output.ExitAltScreen()
+	output.ShowCursor()
+	output.Reset()
 }
 
 // SetInterruptHandler sets a custom callback to be called on interrupt
