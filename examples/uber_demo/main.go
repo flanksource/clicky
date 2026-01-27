@@ -8,6 +8,8 @@ import (
 	"github.com/flanksource/clicky"
 	"github.com/flanksource/clicky/api"
 	"github.com/flanksource/clicky/api/icons"
+	"github.com/flanksource/clicky/task"
+	flanksourceContext "github.com/flanksource/commons/context"
 	"github.com/spf13/cobra"
 )
 
@@ -528,6 +530,13 @@ type TypesOptions struct{}
 // TablesOptions for showing just table examples
 type TablesOptions struct{}
 
+// TasksOptions for showing task progress tracking
+type TasksOptions struct {
+	Scenario string `flag:"scenario" help:"Task scenario to run (basic, concurrent, dependencies, all)" default:"basic"`
+	NumTasks int    `flag:"tasks" help:"Number of tasks for concurrent scenario" default:"5"`
+	NoSleep  bool   `flag:"no-sleep" help:"Skip simulated delays" default:"false"`
+}
+
 // ProductTable demonstrates basic table formatting
 type ProductTable struct {
 	ID          int     `json:"id" pretty:"label=ID"`
@@ -539,7 +548,7 @@ type ProductTable struct {
 	Rating      float64 `json:"rating" pretty:"label=Rating"`
 }
 
-// EmployeeTable demonstrates table with custom PrettyRow and icons
+// EmployeeTable demonstrates the new TableProvider interface with builder-style columns
 type EmployeeTable struct {
 	ID         int     `json:"id"`
 	Name       string  `json:"name"`
@@ -549,7 +558,20 @@ type EmployeeTable struct {
 	Active     bool    `json:"active"`
 }
 
-func (e EmployeeTable) PrettyRow(_ any) map[string]api.Text {
+// Columns implements api.TableProvider - defines column schema in display order
+func (EmployeeTable) Columns() []api.ColumnDef {
+	return []api.ColumnDef{
+		api.Column("id").Label("ID").Build(),
+		api.Column("name").Label("Name").Style("font-semibold").Build(),
+		api.Column("department").Label("Department").Build(),
+		api.Column("salary").Label("Salary").Format("currency").Style("text-green-600").Build(),
+		api.Column("hire_date").Label("Hire Date").Build(),
+		api.Column("status").Label("Status").Build(),
+	}
+}
+
+// Rows implements api.TableProvider - returns raw data for this item
+func (e EmployeeTable) Rows() map[string]any {
 	statusIcon := icons.Cross.WithStyle("text-red-500")
 	statusText := "Inactive"
 	statusStyle := "text-red-600"
@@ -559,12 +581,12 @@ func (e EmployeeTable) PrettyRow(_ any) map[string]api.Text {
 		statusStyle = "text-green-600"
 	}
 
-	return map[string]api.Text{
-		"id":         {Content: fmt.Sprintf("%d", e.ID)},
-		"name":       {Content: e.Name, Style: "font-semibold"},
+	return map[string]any{
+		"id":         e.ID,
+		"name":       e.Name,
 		"department": api.Text{}.Add(icons.Folder.WithStyle("text-blue-500")).Add(api.Text{Content: e.Department}),
-		"salary":     {Content: fmt.Sprintf("$%.2f", e.Salary), Style: "text-green-600"},
-		"hire_date":  {Content: e.HireDate},
+		"salary":     e.Salary,
+		"hire_date":  e.HireDate,
 		"status":     api.Text{}.Add(statusIcon).Add(api.Text{Content: statusText, Style: statusStyle}),
 	}
 }
@@ -700,12 +722,129 @@ func showTables(opts TablesOptions) (any, error) {
 		Sales:     sales,
 	}
 
+	// Demonstrate new TableProvider interface using NewTableFrom
+	employeeTable := api.NewTableFrom(employees)
+	clicky.MustPrint(employeeTable)
 	return result, nil
 }
 
 // showTrees displays tree structure examples
 func showTrees(opts clicky.FileTreeOptions) (any, error) {
 	return clicky.NewFileSystem(".", clicky.WithMaxDepth(opts.MaxDepth)), nil
+}
+
+// showTasks displays task progress tracking examples
+func showTasks(opts TasksOptions) (any, error) {
+	sleep := func(d time.Duration) {
+		if !opts.NoSleep {
+			time.Sleep(d)
+		}
+	}
+
+	fmt.Fprintln(os.Stderr, "[stderr] starting")
+	fmt.Fprintln(os.Stdout, "[stdout] starting")
+
+	switch opts.Scenario {
+	case "basic":
+		runBasicTasks(sleep)
+	case "concurrent":
+		runConcurrentTasks(opts.NumTasks, sleep)
+	case "dependencies":
+		runDependencyTasks(sleep)
+	case "all":
+		runBasicTasks(sleep)
+		runConcurrentTasks(opts.NumTasks, sleep)
+		runDependencyTasks(sleep)
+	default:
+		runBasicTasks(sleep)
+	}
+
+	task.Wait()
+
+	fmt.Fprintln(os.Stderr, "[stderr] stopping")
+	fmt.Fprintln(os.Stdout, "[stdout] stopping")
+
+	return nil, nil
+}
+
+func runBasicTasks(sleep func(time.Duration)) {
+	task.StartTask("Download dependencies", func(ctx flanksourceContext.Context, t *task.Task) (any, error) {
+		t.Infof("Starting dependency download")
+		for i := 1; i <= 5; i++ {
+			sleep(150 * time.Millisecond)
+			t.SetProgress(i, 5)
+			t.Infof("Downloaded package %d of 5", i)
+		}
+		t.Success()
+		return nil, nil
+	})
+
+	task.StartTask("Build project", func(ctx flanksourceContext.Context, t *task.Task) (any, error) {
+		steps := []string{"Parsing", "Type checking", "Compiling", "Linking"}
+		for i, step := range steps {
+			sleep(200 * time.Millisecond)
+			t.SetProgress(i+1, len(steps))
+			t.Infof("%s...", step)
+		}
+		t.Warnf("Found 2 deprecated API calls")
+		t.Warning()
+		return nil, nil
+	})
+
+	task.StartTask("Run tests", func(ctx flanksourceContext.Context, t *task.Task) (any, error) {
+		for i := 1; i <= 8; i++ {
+			sleep(100 * time.Millisecond)
+			t.SetProgress(i, 8)
+			t.Infof("Test %d passed", i)
+		}
+		t.Success()
+		return nil, nil
+	})
+}
+
+func runConcurrentTasks(numTasks int, sleep func(time.Duration)) {
+	for i := 1; i <= numTasks; i++ {
+		taskNum := i
+		task.StartTask(fmt.Sprintf("Process batch %d", taskNum), func(ctx flanksourceContext.Context, t *task.Task) (any, error) {
+			items := 10
+			for j := 1; j <= items; j++ {
+				sleep(50 * time.Millisecond)
+				t.SetProgress(j, items)
+			}
+			t.Infof("Processed %d items", items)
+			t.Success()
+			return nil, nil
+		})
+	}
+}
+
+func runDependencyTasks(sleep func(time.Duration)) {
+	setup := task.StartTask("Setup environment", func(ctx flanksourceContext.Context, t *task.Task) (any, error) {
+		sleep(300 * time.Millisecond)
+		t.Infof("Environment ready")
+		t.Success()
+		return nil, nil
+	})
+
+	build := task.StartTask("Build application", func(ctx flanksourceContext.Context, t *task.Task) (any, error) {
+		for i := 1; i <= 4; i++ {
+			sleep(150 * time.Millisecond)
+			t.SetProgress(i, 4)
+		}
+		t.Success()
+		return nil, nil
+	}, task.WithDependencies(setup.GetTask()))
+
+	task.StartTask("Deploy application", func(ctx flanksourceContext.Context, t *task.Task) (any, error) {
+		stages := []string{"Upload", "Configure", "Start", "Verify"}
+		for i, stage := range stages {
+			sleep(200 * time.Millisecond)
+			t.SetProgress(i+1, len(stages))
+			t.Infof("%s complete", stage)
+		}
+		t.Success()
+		return nil, nil
+	}, task.WithDependencies(build.GetTask()))
 }
 
 func main() {
@@ -731,6 +870,7 @@ func main() {
 	clicky.AddCommand(rootCmd, TypesOptions{}, showTypes)
 	clicky.AddCommand(rootCmd, TablesOptions{}, showTables)
 	clicky.AddNamedCommand("trees", rootCmd, clicky.FileTreeOptions{}, showTrees)
+	clicky.AddNamedCommand("tasks", rootCmd, TasksOptions{}, showTasks)
 
 	clicky.BindAllFlags(rootCmd.PersistentFlags())
 
