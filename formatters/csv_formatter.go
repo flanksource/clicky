@@ -8,6 +8,11 @@ import (
 	"github.com/flanksource/clicky/api"
 )
 
+func init() {
+	csvFormatter := NewCSVFormatter()
+	RegisterFormatter("csv", csvFormatter.Format)
+}
+
 // CSVFormatter handles CSV formatting
 type CSVFormatter struct {
 	Separator rune
@@ -21,7 +26,20 @@ func NewCSVFormatter() *CSVFormatter {
 }
 
 // Format formats data as CSV
-func (f *CSVFormatter) Format(data interface{}) (string, error) {
+func (f *CSVFormatter) Format(data interface{}, _ FormatOptions) (string, error) {
+	// Unwrap single-element slices from varargs
+	if slice, ok := data.([]interface{}); ok && len(slice) == 1 {
+		data = slice[0]
+	}
+
+	// Handle TextTable directly
+	switch v := data.(type) {
+	case *api.TextTable:
+		return f.FormatTable(v)
+	case api.TextTable:
+		return f.FormatTable(&v)
+	}
+
 	// Check if data implements Pretty interface first
 	if pretty, ok := data.(api.Pretty); ok {
 		text := pretty.Pretty()
@@ -34,27 +52,22 @@ func (f *CSVFormatter) Format(data interface{}) (string, error) {
 		return "", fmt.Errorf("failed to convert to PrettyData: %w", err)
 	}
 
-	if prettyData == nil || prettyData.Schema == nil {
+	if prettyData.IsEmpty() {
 		return "", nil
 	}
 
 	return f.FormatPrettyData(prettyData)
 }
 
-// FormatPrettyData formats PrettyData as CSV, flattening all fields
-func (f *CSVFormatter) FormatPrettyData(data *api.PrettyData) (string, error) {
-	if data == nil || data.Schema == nil {
+// FormatTable formats a TextTable as CSV
+func (f *CSVFormatter) FormatTable(table *api.TextTable) (string, error) {
+	if table == nil {
 		return "", nil
 	}
 
 	var output strings.Builder
 	writer := csv.NewWriter(&output)
 	writer.Comma = f.Separator
-
-	table := data.FirstTable()
-	if table == nil {
-		return "", fmt.Errorf("no tables defined")
-	}
 
 	if err := writer.Write(table.Headers.AsString()); err != nil {
 		return "", fmt.Errorf("failed to write CSV headers: %w", err)
@@ -72,4 +85,18 @@ func (f *CSVFormatter) FormatPrettyData(data *api.PrettyData) (string, error) {
 	}
 
 	return output.String(), nil
+}
+
+// FormatPrettyData formats PrettyData as CSV, flattening all fields
+func (f *CSVFormatter) FormatPrettyData(data *api.PrettyData) (string, error) {
+	if data.IsEmpty() {
+		return "", nil
+	}
+
+	table := data.FirstTable()
+	if table == nil {
+		return "", fmt.Errorf("no tables defined")
+	}
+
+	return f.FormatTable(table)
 }

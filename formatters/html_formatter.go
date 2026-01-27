@@ -193,7 +193,7 @@ func (f *HTMLFormatter) Format(in interface{}, options FormatOptions) (string, e
 		return "", fmt.Errorf("failed to convert to PrettyData: %w", err)
 	}
 
-	if data == nil || data.Schema == nil {
+	if data.IsEmpty() {
 		return "", nil
 	}
 
@@ -203,7 +203,11 @@ func (f *HTMLFormatter) Format(in interface{}, options FormatOptions) (string, e
 
 // FormatPrettyData formats PrettyData directly as HTML
 func (f *HTMLFormatter) FormatPrettyData(data *api.PrettyData) (string, error) {
-	if data == nil || data.Schema == nil {
+	if data == nil {
+		return "", nil
+	}
+
+	if data.IsEmpty() {
 		return "", nil
 	}
 

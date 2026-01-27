@@ -78,7 +78,7 @@ func (f FormatManager) CSV(data interface{}) (string, error) {
 	if f.csvFormatter == nil {
 		f.csvFormatter = NewCSVFormatter()
 	}
-	return f.csvFormatter.Format(data)
+	return f.csvFormatter.Format(data, FormatOptions{Format: "csv"})
 }
 
 // Markdown implements api.FormatManager.
