@@ -213,9 +213,9 @@ func (g *TypedGroup[T]) WaitFor() *WaitResult {
 	result.Status = g.Status()
 	result.Duration = g.Duration()
 
-	// Force a final render to ensure all completed tasks are displayed
-	if g.manager != nil {
-		g.manager.Render()
+	// For plain render mode, force a final render
+	if g.manager != nil && g.manager.noProgress.Load() {
+		g.manager.PlainRender()
 	}
 
 	return result
