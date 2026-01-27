@@ -571,7 +571,7 @@ func (EmployeeTable) Columns() []api.ColumnDef {
 }
 
 // Rows implements api.TableProvider - returns raw data for this item
-func (e EmployeeTable) Rows() map[string]any {
+func (e EmployeeTable) Row() map[string]any {
 	statusIcon := icons.Cross.WithStyle("text-red-500")
 	statusText := "Inactive"
 	statusStyle := "text-red-600"
@@ -722,10 +722,29 @@ func showTables(opts TablesOptions) (any, error) {
 		Sales:     sales,
 	}
 
-	// Demonstrate new TableProvider interface using NewTableFrom
-	employeeTable := api.NewTableFrom(employees)
-	clicky.MustPrint(employeeTable)
 	return result, nil
+}
+
+// TableProviderOptions for demonstrating the new TableProvider interface
+type TableProviderOptions struct {
+	Single bool `flag:"single" help:"Show single item table instead of slice"`
+}
+
+// showTableProvider demonstrates the new TableProvider interface with NewTableFrom
+func showTableProvider(opts TableProviderOptions) (any, error) {
+	employees := []EmployeeTable{
+		{ID: 101, Name: "Alice Johnson", Department: "Engineering", Salary: 95000, HireDate: "2020-03-15", Active: true},
+		{ID: 102, Name: "Bob Smith", Department: "Sales", Salary: 75000, HireDate: "2019-07-22", Active: true},
+		{ID: 103, Name: "Carol Williams", Department: "Marketing", Salary: 68000, HireDate: "2021-01-10", Active: false},
+	}
+
+	if opts.Single {
+		// Demonstrate single item as table
+		return api.NewTableFrom([]EmployeeTable{employees[0]}), nil
+	}
+
+	// Demonstrate slice as table
+	return api.NewTableFrom(employees), nil
 }
 
 // showTrees displays tree structure examples
@@ -869,6 +888,7 @@ func main() {
 	clicky.AddCommand(rootCmd, StylesOptions{}, showStyles)
 	clicky.AddCommand(rootCmd, TypesOptions{}, showTypes)
 	clicky.AddCommand(rootCmd, TablesOptions{}, showTables)
+	clicky.AddNamedCommand("table-provider", rootCmd, TableProviderOptions{}, showTableProvider)
 	clicky.AddNamedCommand("trees", rootCmd, clicky.FileTreeOptions{}, showTrees)
 	clicky.AddNamedCommand("tasks", rootCmd, TasksOptions{}, showTasks)
 
