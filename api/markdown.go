@@ -5,10 +5,37 @@ import (
 	"strings"
 )
 
+func markdownTextable(t Textable, slack bool) string {
+	if t == nil {
+		return ""
+	}
+	if slack {
+		if v, ok := t.(interface{ MarkdownSlack() string }); ok {
+			return v.MarkdownSlack()
+		}
+	}
+	return t.Markdown()
+}
+
 func (t Text) Markdown() string {
+	return t.markdown(false)
+}
+
+func (t Text) MarkdownSlack() string {
+	return t.markdown(true)
+}
+
+func (t Text) boldMD(text string, slack bool) string {
+	if slack {
+		return "*" + text + "*"
+	}
+	return "**" + text + "**"
+}
+
+func (t Text) markdown(slack bool) string {
 	content := t.Content
 	for _, child := range t.Children {
-		content += child.Markdown()
+		content += markdownTextable(child, slack)
 	}
 
 	// Get the effective style (Class takes precedence over Style string)
@@ -53,9 +80,9 @@ func (t Text) Markdown() string {
 	if style.Bold {
 		if hasColors {
 			// Bold inside the span
-			result = strings.Replace(result, transformedText, "**"+transformedText+"**", 1)
+			result = strings.Replace(result, transformedText, t.boldMD(transformedText, slack), 1)
 		} else {
-			result = "**" + result + "**"
+			result = t.boldMD(result, slack)
 		}
 	}
 	if style.Italic {
@@ -63,7 +90,7 @@ func (t Text) Markdown() string {
 			// Italic inside the span
 			contentToReplace := transformedText
 			if style.Bold {
-				contentToReplace = "**" + transformedText + "**"
+				contentToReplace = t.boldMD(transformedText, slack)
 			}
 			result = strings.Replace(result, contentToReplace, "*"+contentToReplace+"*", 1)
 		} else {
@@ -75,9 +102,9 @@ func (t Text) Markdown() string {
 			// Find the text to strikethrough (may be wrapped in bold/italic)
 			contentToReplace := transformedText
 			if style.Bold && style.Italic {
-				contentToReplace = "*" + "**" + transformedText + "**" + "*"
+				contentToReplace = "*" + t.boldMD(transformedText, slack) + "*"
 			} else if style.Bold {
-				contentToReplace = "**" + transformedText + "**"
+				contentToReplace = t.boldMD(transformedText, slack)
 			} else if style.Italic {
 				contentToReplace = "*" + transformedText + "*"
 			}

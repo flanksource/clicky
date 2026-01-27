@@ -122,3 +122,19 @@ func (c Collapsed) Markdown() string {
 
 	return result.String()
 }
+
+func (c Collapsed) MarkdownSlack() string {
+	var result strings.Builder
+
+	result.WriteString("<details>\n")
+	result.WriteString(fmt.Sprintf("<summary>%s</summary>\n\n", c.Label))
+
+	if c.Content != nil {
+		result.WriteString(markdownTextable(c.Content, true))
+		result.WriteString("\n")
+	}
+
+	result.WriteString("</details>")
+
+	return result.String()
+}
