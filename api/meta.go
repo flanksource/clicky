@@ -4,12 +4,25 @@
 package api
 
 import (
+	"encoding/json"
 	"fmt"
+	"reflect"
 	"sort"
 	"strings"
 
 	lipglosstree "github.com/charmbracelet/lipgloss/tree"
 	"github.com/samber/lo"
+)
+
+// Interface types for reflection-based slice checking
+var (
+	tableProviderType  = reflect.TypeOf((*TableProvider)(nil)).Elem()
+	tableMixinType     = reflect.TypeOf((*TableMixin)(nil)).Elem()
+	tableRowMixin2Type = reflect.TypeOf((*TableRowMixin2)(nil)).Elem()
+	treeNodeType       = reflect.TypeOf((*TreeNode)(nil)).Elem()
+	treeMixinType      = reflect.TypeOf((*TreeMixin)(nil)).Elem()
+	prettyType         = reflect.TypeOf((*Pretty)(nil)).Elem()
+	textableType       = reflect.TypeOf((*Textable)(nil)).Elem()
 )
 
 // PrettyData contains structured data processed through schema-driven formatting.
@@ -21,6 +34,14 @@ type PrettyData struct {
 	Schema *PrettyObject
 
 	Original interface{}
+}
+
+// IsEmpty returns true if the PrettyData has no meaningful content
+func (pd *PrettyData) IsEmpty() bool {
+	if pd == nil {
+		return true
+	}
+	return pd.Schema == nil && pd.Table == nil && pd.Tree == nil && pd.TypedMap == nil
 }
 
 // GetValue retrieves a typed value by field name from the TypedMap
@@ -192,6 +213,32 @@ func (tt TextTable) AsString(row TableRow) []string {
 		}
 	}
 	return result
+}
+
+// MarshalJSON serializes TextTable as an array of row objects
+func (tt TextTable) MarshalJSON() ([]byte, error) {
+	rows := make([]map[string]any, len(tt.Rows))
+	for i, row := range tt.Rows {
+		rowMap := make(map[string]any)
+		for key, value := range row {
+			rowMap[key] = value.String()
+		}
+		rows[i] = rowMap
+	}
+	return json.Marshal(rows)
+}
+
+// MarshalYAML serializes TextTable as an array of row objects
+func (tt TextTable) MarshalYAML() (interface{}, error) {
+	rows := make([]map[string]any, len(tt.Rows))
+	for i, row := range tt.Rows {
+		rowMap := make(map[string]any)
+		for key, value := range row {
+			rowMap[key] = value.String()
+		}
+		rows[i] = rowMap
+	}
+	return rows, nil
 }
 
 type TextTree struct {
@@ -438,6 +485,76 @@ func TryTypedValue(o any) *TypedValue {
 	case []PrettyDataRow:
 		return &TypedValue{Table: lo.ToPtr(NewTableFromRows(v))}
 	}
+
+	// Use reflection to check slices of interface implementations
+	val := reflect.ValueOf(o)
+	if val.Kind() == reflect.Slice && val.Len() > 0 {
+		elemType := val.Type().Elem()
+
+		// Check TableProvider first (most specific table interface)
+		if elemType.Implements(tableProviderType) {
+			items := make([]TableProvider, val.Len())
+			for i := 0; i < val.Len(); i++ {
+				items[i] = val.Index(i).Interface().(TableProvider)
+			}
+			return &TypedValue{Table: lo.ToPtr(NewTableFrom(items))}
+		}
+
+		// Check TableMixin
+		if elemType.Implements(tableMixinType) {
+			items := make([]TableMixin, val.Len())
+			for i := 0; i < val.Len(); i++ {
+				items[i] = val.Index(i).Interface().(TableMixin)
+			}
+			return &TypedValue{Table: lo.ToPtr(NewTable(items))}
+		}
+
+		// Check TableRowMixin2
+		if elemType.Implements(tableRowMixin2Type) {
+			items := make([]TableRowMixin2, val.Len())
+			for i := 0; i < val.Len(); i++ {
+				items[i] = val.Index(i).Interface().(TableRowMixin2)
+			}
+			return &TypedValue{Table: lo.ToPtr(NewTableFromMixin(items))}
+		}
+
+		// Check TreeNode
+		if elemType.Implements(treeNodeType) {
+			items := make([]TreeNode, val.Len())
+			for i := 0; i < val.Len(); i++ {
+				items[i] = val.Index(i).Interface().(TreeNode)
+			}
+			return &TypedValue{Tree: lo.ToPtr(NewTree(items...))}
+		}
+
+		// Check TreeMixin
+		if elemType.Implements(treeMixinType) {
+			nodes := make([]TreeNode, val.Len())
+			for i := 0; i < val.Len(); i++ {
+				nodes[i] = val.Index(i).Interface().(TreeMixin).Tree()
+			}
+			return &TypedValue{Tree: lo.ToPtr(NewTree(nodes...))}
+		}
+
+		// Check Pretty
+		if elemType.Implements(prettyType) {
+			list := make(TextList, val.Len())
+			for i := 0; i < val.Len(); i++ {
+				list[i] = val.Index(i).Interface().(Pretty).Pretty()
+			}
+			return &TypedValue{Slice: &list}
+		}
+
+		// Check Textable (last - most general)
+		if elemType.Implements(textableType) {
+			list := make(TextList, val.Len())
+			for i := 0; i < val.Len(); i++ {
+				list[i] = val.Index(i).Interface().(Textable)
+			}
+			return &TypedValue{Slice: &list}
+		}
+	}
+
 	return nil
 }
 

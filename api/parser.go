@@ -345,6 +345,14 @@ func (p *StructParser) ParseDataWithSchema(data interface{}, schema *PrettyObjec
 			fieldVal = fieldVal.Elem()
 		}
 
+		// Try TryTypedValue first - handles TableProvider, TreeNode, Textable, etc.
+		if fieldVal.CanInterface() {
+			if tv := TryTypedValue(fieldVal.Interface()); tv != nil {
+				values[field.Name] = *tv
+				continue
+			}
+		}
+
 		// Check if this is a table field
 		if field.Format == FormatTable && (fieldVal.Kind() == reflect.Slice || fieldVal.Kind() == reflect.Array) {
 			typedValue := NewTypedValue(p.parseTableData(fieldVal, field))

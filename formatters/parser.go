@@ -165,6 +165,14 @@ func ToPrettyDataWithOptions(data interface{}, opts FormatOptions) (*api.PrettyD
 		}, nil
 	}
 
+	// Check if data is already a known typed value (TextTable, TextTree, etc.)
+	if v := api.TryTypedValue(data); v != nil {
+		return &api.PrettyData{
+			Original:   data,
+			TypedValue: *v,
+		}, nil
+	}
+
 	// Check if data implements Pretty interface first
 	if pretty, ok := data.(api.Pretty); ok {
 		return &api.PrettyData{
@@ -644,6 +652,14 @@ func ToPrettyData(data interface{}, opts ...TypeOptions) (*api.PrettyData, error
 		fieldVal := GetFieldValueWithAliases(val, field)
 		if !fieldVal.IsValid() {
 			continue
+		}
+
+		// Try TryTypedValue first - handles TableProvider, TreeNode, Textable, etc.
+		if fieldVal.CanInterface() {
+			if tv := api.TryTypedValue(fieldVal.Interface()); tv != nil {
+				values[field.Name] = *tv
+				continue
+			}
 		}
 
 		// Handle table fields
