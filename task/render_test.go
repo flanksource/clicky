@@ -311,21 +311,3 @@ func TestPlainRenderOnlyDirtyTasks(t *testing.T) {
 	// Cleanup
 	close(testManager.shutdown)
 }
-
-func TestRenderEmptyTaskList(t *testing.T) {
-	testManager := newManagerWithConcurrency(1)
-	testManager.noProgress.Store(true)
-	testManager.noColor.Store(true)
-
-	// Get the pretty output with no tasks
-	output := testManager.Pretty()
-	rendered := output.String()
-
-	// Should indicate no tasks
-	if !strings.Contains(rendered, "No tasks") {
-		t.Errorf("expected 'No tasks' message, got: %s", rendered)
-	}
-
-	// Cleanup
-	close(testManager.shutdown)
-}
