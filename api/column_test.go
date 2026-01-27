@@ -24,7 +24,7 @@ func (mockEmployee) Columns() []ColumnDef {
 	}
 }
 
-func (e mockEmployee) Rows() map[string]any {
+func (e mockEmployee) Row() map[string]any {
 	status := "Inactive"
 	if e.Active {
 		status = "Active"
