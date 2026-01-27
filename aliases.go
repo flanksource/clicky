@@ -5,6 +5,7 @@ import (
 
 	flanksourceContext "github.com/flanksource/commons/context"
 
+	"github.com/flanksource/clicky/api"
 	"github.com/flanksource/clicky/exec"
 	"github.com/flanksource/clicky/task"
 )
@@ -52,6 +53,8 @@ var (
 	BindTaskManagerFlags      = task.BindManagerFlags
 	BindTaskManagerPFlags     = task.BindManagerPFlags
 )
+
+var Column = api.Column
 
 var Exec = exec.NewExec
 
