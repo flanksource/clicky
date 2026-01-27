@@ -488,6 +488,10 @@ func (tv TypedValue) Markdown() string {
 	return tv.Value().Markdown()
 }
 
+func (tv TypedValue) MarkdownSlack() string {
+	return markdownTextable(tv.Value(), true)
+}
+
 type TypedMap map[string]TypedValue
 type TypedList []TypedValue
 
@@ -524,6 +528,10 @@ func (tl TypedList) Markdown() string {
 	return tl.Value().Markdown()
 }
 
+func (tl TypedList) MarkdownSlack() string {
+	return markdownTextable(tl.Value(), true)
+}
+
 func (tm TypedMap) Value() Textable {
 	textMap := TextMap{}
 	for key, val := range tm {
@@ -545,6 +553,10 @@ func (tm TypedMap) ANSI() string {
 
 func (tm TypedMap) Markdown() string {
 	return tm.Value().Markdown()
+}
+
+func (tm TypedMap) MarkdownSlack() string {
+	return markdownTextable(tm.Value(), true)
 }
 
 func (tm TextMap) String() string {
@@ -579,4 +591,8 @@ func (tm TextMap) ANSI() string {
 
 func (tm TextMap) Markdown() string {
 	return tm.Value().Markdown()
+}
+
+func (tm TextMap) MarkdownSlack() string {
+	return markdownTextable(tm.Value(), true)
 }

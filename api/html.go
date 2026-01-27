@@ -214,6 +214,10 @@ func (e HtmlElement) Markdown() string {
 	return e.Fallback.Markdown()
 }
 
+func (e HtmlElement) MarkdownSlack() string {
+	return markdownTextable(e.Fallback, true)
+}
+
 var NBSP = HtmlElement{
 	Tag:      "",
 	Content:  "&nbsp;",

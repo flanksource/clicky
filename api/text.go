@@ -145,6 +145,23 @@ func (l List) Markdown() string {
 	return strings.Join(parts, "\n")
 }
 
+func (l List) MarkdownSlack() string {
+	if len(l.Items) == 0 {
+		return ""
+	}
+	var parts []string
+	for i, item := range l.Items {
+		var bullet string
+		if l.Numbered {
+			bullet = fmt.Sprintf("%d. ", i+1)
+		} else if l.Bullet != nil {
+			bullet = markdownTextable(l.Bullet, true)
+		}
+		parts = append(parts, fmt.Sprintf("%s%s", bullet, markdownTextable(item, true)))
+	}
+	return strings.Join(parts, "\n")
+}
+
 func (l List) ANSI() string {
 	if len(l.Items) == 0 {
 		return ""
@@ -468,6 +485,13 @@ func (kv KeyValuePair) Markdown() string {
 	return fmt.Sprintf("**%s**: %v", kv.Key, kv.Value)
 }
 
+func (kv KeyValuePair) MarkdownSlack() string {
+	if kv.IsEmpty() {
+		return ""
+	}
+	return fmt.Sprintf("%s: %v", Text{}.boldMD(kv.Key, true), kv.Value)
+}
+
 // DescriptionList represents a collection of key-value pairs rendered as an HTML description list.
 // It supports two styles: "compact" (default, inline flex layout) and "badge" (pill-shaped badges).
 type DescriptionList struct {
@@ -536,6 +560,17 @@ func (dl DescriptionList) Markdown() string {
 	var parts []string
 	for _, item := range dl.Items {
 		parts = append(parts, item.Markdown())
+	}
+	return strings.Join(parts, ", ")
+}
+
+func (dl DescriptionList) MarkdownSlack() string {
+	if len(dl.Items) == 0 {
+		return ""
+	}
+	var parts []string
+	for _, item := range dl.Items {
+		parts = append(parts, markdownTextable(item, true))
 	}
 	return strings.Join(parts, ", ")
 }
@@ -723,6 +758,10 @@ func (tl TextList) HTML() string {
 }
 func (tl TextList) Markdown() string {
 	return tl.JoinNewlines().Markdown()
+}
+
+func (tl TextList) MarkdownSlack() string {
+	return tl.JoinNewlines().MarkdownSlack()
 }
 
 // ExtractOrderValue extracts the Tailwind order-X class value from a style string.

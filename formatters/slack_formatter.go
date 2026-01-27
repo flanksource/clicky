@@ -68,9 +68,9 @@ func (f *SlackFormatter) Format(in interface{}, options FormatOptions) (string, 
 	case *api.TextList:
 		return f.encodeBlocks(f.blocksForTextList(*v))
 	case api.List:
-		return f.encodeBlocks(f.blocksForText(v.Markdown()))
+		return f.encodeBlocks(f.blocksForText(f.markdownTextable(v)))
 	case *api.List:
-		return f.encodeBlocks(f.blocksForText(v.Markdown()))
+		return f.encodeBlocks(f.blocksForText(f.markdownTextable(v)))
 	case api.ButtonGroup:
 		return f.encodeBlocks(f.blocksForActions(v))
 	case *api.ButtonGroup:
@@ -87,20 +87,20 @@ func (f *SlackFormatter) Format(in interface{}, options FormatOptions) (string, 
 		if f.isDividerElement(v) {
 			return f.encodeBlocks([]slackBlock{{Type: slackDividerType}})
 		}
-		return f.encodeBlocks(f.blocksForText(v.Markdown()))
+		return f.encodeBlocks(f.blocksForText(f.markdownTextable(v)))
 	case *api.HtmlElement:
 		if f.isDividerElement(*v) {
 			return f.encodeBlocks([]slackBlock{{Type: slackDividerType}})
 		}
-		return f.encodeBlocks(f.blocksForText(v.Markdown()))
+		return f.encodeBlocks(f.blocksForText(f.markdownTextable(v)))
 	case *api.PrettyData:
 		return f.FormatPrettyData(v, options)
 	case api.PrettyData:
 		return f.FormatPrettyData(&v, options)
 	case api.Pretty:
-		return f.formatText(v.Pretty().Markdown(), options)
+		return f.formatText(f.markdownTextable(v.Pretty()), options)
 	case api.Textable:
-		return f.formatText(v.Markdown(), options)
+		return f.formatText(f.markdownTextable(v), options)
 	}
 
 	prettyData, err := ToPrettyDataWithOptions(in, options)
@@ -131,7 +131,7 @@ func (f *SlackFormatter) FormatPrettyData(data *api.PrettyData, options FormatOp
 	case api.TextTree:
 		return f.encodeBlocks(f.blocksForTree(&v))
 	case api.Textable:
-		return f.formatText(v.Markdown(), options)
+		return f.formatText(f.markdownTextable(v), options)
 	default:
 		return f.formatText(fmt.Sprintf("%v", value), options)
 	}
@@ -180,7 +180,7 @@ func (f *SlackFormatter) blocksForTextItem(text api.Text) []slackBlock {
 			},
 		}
 	}
-	return f.blocksForText(text.Markdown())
+	return f.blocksForText(text.MarkdownSlack())
 }
 
 func (f *SlackFormatter) blocksForTree(tree *api.TextTree) []slackBlock {
@@ -201,7 +201,7 @@ func (f *SlackFormatter) blocksForTable(table *api.TextTable) []slackBlock {
 
 	headers := make([]string, len(table.Headers))
 	for i, header := range table.Headers {
-		label := f.sanitizeSlackText(header.Markdown())
+		label := f.sanitizeSlackText(f.markdownTextable(header))
 		if label == "" {
 			label = header.String()
 		}
@@ -217,7 +217,7 @@ func (f *SlackFormatter) blocksForTable(table *api.TextTable) []slackBlock {
 				fieldName = table.FieldNames[i]
 			}
 
-			value := f.sanitizeOrPlaceholder(markdownForCell(row, fieldName))
+			value := f.sanitizeOrPlaceholder(f.markdownForCell(row, fieldName))
 
 			label := header
 			if label == "" {
@@ -293,7 +293,7 @@ func (f *SlackFormatter) blocksForTextList(list api.TextList) []slackBlock {
 			continue
 		case api.List:
 			flush()
-			blocks = append(blocks, f.blocksForText(v.Markdown())...)
+			blocks = append(blocks, f.blocksForText(f.markdownTextable(v))...)
 			continue
 		case api.Text:
 			if f.isHeaderText(v) {
@@ -308,12 +308,12 @@ func (f *SlackFormatter) blocksForTextList(list api.TextList) []slackBlock {
 			}
 			if strings.Contains(v.Style, "slack-section") {
 				flush()
-				blocks = append(blocks, f.blocksForText(v.Markdown())...)
+				blocks = append(blocks, f.blocksForText(v.MarkdownSlack())...)
 				continue
 			}
 		}
 
-		appendText(item.Markdown())
+		appendText(f.markdownTextable(item))
 	}
 
 	flush()
@@ -395,7 +395,7 @@ func (f *SlackFormatter) blocksForSchemaData(data *api.PrettyData) ([]slackBlock
 			continue
 		}
 
-		value := f.sanitizeOrPlaceholder(typedValue.Markdown())
+		value := f.sanitizeOrPlaceholder(f.markdownTextable(typedValue))
 
 		label := fieldLabel(field)
 
@@ -441,7 +441,7 @@ func (f *SlackFormatter) blocksForSchemaWithHeaders(data *api.PrettyData) []slac
 			continue
 		}
 
-		value := f.sanitizeOrPlaceholder(typedValue.Markdown())
+		value := f.sanitizeOrPlaceholder(f.markdownTextable(typedValue))
 		label := fieldLabel(field)
 
 		if f.isTitleField(field) {
@@ -499,6 +499,23 @@ func (f *SlackFormatter) sanitizeOrPlaceholder(text string) string {
 		return " "
 	}
 	return clean
+}
+
+func (f *SlackFormatter) markdownTextable(textable api.Textable) string {
+	if textable == nil {
+		return ""
+	}
+	if v, ok := textable.(interface{ MarkdownSlack() string }); ok {
+		return v.MarkdownSlack()
+	}
+	return textable.Markdown()
+}
+
+func (f *SlackFormatter) markdownForCell(row api.TableRow, fieldName string) string {
+	if cell, ok := row[fieldName]; ok {
+		return f.markdownTextable(cell)
+	}
+	return ""
 }
 
 func (f *SlackFormatter) headerTextForField(field api.PrettyField, value, label string) (string, bool) {
