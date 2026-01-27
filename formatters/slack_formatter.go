@@ -621,13 +621,6 @@ func appendFieldSections(blocks []slackBlock, fields []slackText) []slackBlock {
 	return blocks
 }
 
-func markdownForCell(row api.TableRow, fieldName string) string {
-	if cell, ok := row[fieldName]; ok {
-		return cell.Markdown()
-	}
-	return ""
-}
-
 func splitSlackText(text string, max int) []string {
 	runes := []rune(text)
 	if max <= 0 || len(runes) <= max {
