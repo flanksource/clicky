@@ -630,6 +630,8 @@ func ToPrettyData(data interface{}, opts ...TypeOptions) (*api.PrettyData, error
 		if !opt.SkipTable {
 			return convertSliceToPrettyData(val)
 		}
+		// Both SkipTable and SkipTree are set - cannot format slice
+		return nil, fmt.Errorf("cannot format slice input when both SkipTable and SkipTree are set")
 	}
 
 	// Create the schema from struct tags

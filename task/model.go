@@ -79,10 +79,9 @@ func (m taskModel) View() string {
 }
 
 func (m taskModel) renderFinalView() string {
-	return ""
-	// rendered := m.manager.Pretty()
-	// if m.manager.noColor.Load() {
-	// 	return rendered.String()
-	// }
-	// return rendered.ANSI()
+	rendered := m.manager.Pretty()
+	if m.manager.noColor.Load() {
+		return rendered.String()
+	}
+	return rendered.ANSI()
 }
