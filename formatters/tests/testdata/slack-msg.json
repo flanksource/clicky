@@ -42,7 +42,7 @@
       "type": "section",
       "text": {
         "type": "mrkdwn",
-        "text": "• Check GitHub Actions logs for the exact failing step.\n• Review the `.github/workflows/release.yml` script for errors.\n• Verify repository secrets and `GITHUB_TOKEN` permissions."
+        "text": "• *Check GitHub Actions logs for the exact failing step.*\n• Review the `.github/workflows/release.yml` script for errors.\n• Verify repository secrets and `GITHUB_TOKEN` permissions."
       }
     },
     {
