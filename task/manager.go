@@ -284,9 +284,7 @@ func newManagerWithConcurrency(maxConcurrent int) *Manager {
 		if isInteractive {
 			tm.startProgram()
 		} else {
-			// Non-interactive mode: initialize channels and start a plain render loop
-			tm.stopPlainRender = make(chan struct{})
-			tm.plainRenderDone = make(chan struct{})
+			// Non-interactive mode: start a plain render loop
 			go tm.plainRenderLoop()
 		}
 	}
@@ -384,6 +382,8 @@ func (tm *Manager) stopProgram() {
 
 // plainRenderLoop runs a simple render loop for non-interactive mode
 func (tm *Manager) plainRenderLoop() {
+	tm.stopPlainRender = make(chan struct{})
+	tm.plainRenderDone = make(chan struct{})
 	defer close(tm.plainRenderDone)
 
 	ticker := time.NewTicker(250 * time.Millisecond)
