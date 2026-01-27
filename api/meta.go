@@ -41,14 +41,7 @@ func (pd *PrettyData) IsEmpty() bool {
 	if pd == nil {
 		return true
 	}
-	return pd.Schema == nil &&
-		pd.Textable == nil &&
-		pd.Slice == nil &&
-		pd.Map == nil &&
-		pd.TypedMap == nil &&
-		pd.TypedList == nil &&
-		pd.Table == nil &&
-		pd.Tree == nil
+	return pd.Schema == nil && pd.Table == nil && pd.Tree == nil && pd.TypedMap == nil
 }
 
 // GetValue retrieves a typed value by field name from the TypedMap
@@ -495,15 +488,8 @@ func TryTypedValue(o any) *TypedValue {
 
 	// Use reflection to check slices of interface implementations
 	val := reflect.ValueOf(o)
-	if val.Kind() == reflect.Slice {
+	if val.Kind() == reflect.Slice && val.Len() > 0 {
 		elemType := val.Type().Elem()
-
-		// Handle empty slices - still check the element type for interface implementations
-		if val.Len() == 0 {
-			// For empty slices, we can only check pointer-to-interface types
-			// since we don't have concrete elements to inspect
-			return nil
-		}
 
 		// Check TableProvider first (most specific table interface)
 		if elemType.Implements(tableProviderType) {

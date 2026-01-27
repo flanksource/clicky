@@ -571,7 +571,7 @@ func (EmployeeTable) Columns() []api.ColumnDef {
 }
 
 // Rows implements api.TableProvider - returns raw data for this item
-func (e EmployeeTable) Row() map[string]any {
+func (e EmployeeTable) Rows() map[string]any {
 	statusIcon := icons.Cross.WithStyle("text-red-500")
 	statusText := "Inactive"
 	statusStyle := "text-red-600"
@@ -722,6 +722,9 @@ func showTables(opts TablesOptions) (any, error) {
 		Sales:     sales,
 	}
 
+	// Demonstrate new TableProvider interface using NewTableFrom
+	employeeTable := api.NewTableFrom(employees)
+	clicky.MustPrint(employeeTable)
 	return result, nil
 }
 

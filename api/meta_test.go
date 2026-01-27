@@ -21,7 +21,7 @@ func (testTableProvider) Columns() []ColumnDef {
 	}
 }
 
-func (t testTableProvider) Row() map[string]any {
+func (t testTableProvider) Rows() map[string]any {
 	return map[string]any{"id": t.ID, "name": t.Name}
 }
 

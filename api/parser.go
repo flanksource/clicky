@@ -348,14 +348,6 @@ func (p *StructParser) ParseDataWithSchema(data interface{}, schema *PrettyObjec
 		// Try TryTypedValue first - handles TableProvider, TreeNode, Textable, etc.
 		if fieldVal.CanInterface() {
 			if tv := TryTypedValue(fieldVal.Interface()); tv != nil {
-				// Preserve FieldMeta from schema if format/compactItems is specified
-				if field.Format != "" || field.CompactItems {
-					tv.FieldMeta = &FieldMeta{
-						Name:         field.Name,
-						CompactItems: field.CompactItems,
-						Format:       field.Format,
-					}
-				}
 				values[field.Name] = *tv
 				continue
 			}
