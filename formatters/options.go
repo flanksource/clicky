@@ -46,11 +46,11 @@ type FormatOptions struct {
 }
 
 func (o FormatOptions) SkipTable() bool {
-	return !o.Table || o.Tree
+	return !o.Table
 }
 
 func (o FormatOptions) SkipTree() bool {
-	return !o.Tree || o.Table
+	return !o.Tree
 }
 
 func MergeOptions(opts ...FormatOptions) FormatOptions {

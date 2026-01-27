@@ -125,7 +125,7 @@ func TestASCIITreeOptions(t *testing.T) {
 	t.Logf("ASCII tree output:\n%s", output)
 }
 
-func XTestCustomRenderFunction(t *testing.T) {
+func TestCustomRenderFunction(t *testing.T) {
 	// Register a test render function
 	api.RegisterRenderFunc("test_render", func(value interface{}, field api.PrettyField, theme api.Theme) string {
 		return "CUSTOM:" + RenderComplexityColored(value, field, theme)

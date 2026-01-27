@@ -47,6 +47,13 @@ func TestRenderLineCount_NTasksProduceNLines(t *testing.T) {
 				t.Fatalf("failed to create pipe: %v", err)
 			}
 
+			// Ensure cleanup happens even on test failure
+			t.Cleanup(func() {
+				os.Stderr = originalStderr
+				_ = w.Close()
+				_ = r.Close()
+			})
+
 			// Redirect stderr to our pipe
 			os.Stderr = w
 

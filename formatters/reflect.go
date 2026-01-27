@@ -56,9 +56,10 @@ func FlattenSlice(val reflect.Value) reflect.Value {
 		}
 	}
 
-	// If no elements were collected, return empty slice of same type as input
+	// If no elements were collected, return empty slice with inner element type
 	if len(flattened) == 0 {
-		return reflect.MakeSlice(val.Type(), 0, 0)
+		innerType := firstElem.Type().Elem()
+		return reflect.MakeSlice(reflect.SliceOf(innerType), 0, 0)
 	}
 
 	// Create a new slice with the flattened elements
@@ -205,10 +206,9 @@ func GetFieldValueCaseInsensitive(val reflect.Value, name string) reflect.Value 
 	}
 
 	// Try case-insensitive match
-	lowerName := strings.ToLower(name)
 	for i := 0; i < typ.NumField(); i++ {
 		field := typ.Field(i)
-		if strings.EqualFold(field.Name, lowerName) {
+		if strings.EqualFold(field.Name, name) {
 			return val.Field(i)
 		}
 	}
