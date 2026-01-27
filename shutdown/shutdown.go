@@ -7,7 +7,9 @@ import (
 	"os/signal"
 	"sync"
 	"syscall"
+	"time"
 
+	"github.com/charmbracelet/lipgloss"
 	"github.com/flanksource/commons/logger"
 )
 
@@ -58,6 +60,15 @@ var (
 	hooksMux sync.Mutex
 	once     sync.Once
 )
+
+// restoreTerminal ensures terminal is in a clean state before exit
+func restoreTerminal() {
+	renderer := lipgloss.NewRenderer(os.Stderr)
+	output := renderer.Output()
+	output.ExitAltScreen()
+	output.ShowCursor()
+	output.Reset()
+}
 
 // AddHook registers a shutdown hook with default priority
 func AddHook(label string, fn func()) {
@@ -118,9 +129,14 @@ func WaitForSignal() {
 
 		// Set up force exit on second signal
 		go func() {
-			<-sigChan
-			fmt.Fprintf(os.Stderr, "\n⚠️  Force exit\n")
-			// os.Exit(1)
+			select {
+			case <-sigChan:
+				fmt.Fprintf(os.Stderr, "\n⚠️  Force exit\n")
+				restoreTerminal()
+				os.Exit(1)
+			case <-time.After(30 * time.Second):
+				return
+			}
 		}()
 
 		Shutdown()
