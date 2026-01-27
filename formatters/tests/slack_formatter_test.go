@@ -31,7 +31,7 @@ func TestSlackFormatter(t *testing.T) {
 		Fixes: api.List{
 			Bullet: clicky.Text("• "),
 			Items: []api.Textable{
-				clicky.Text("Check GitHub Actions logs for the exact failing step."),
+				clicky.Text("Check GitHub Actions logs for the exact failing step.", "font-semibold"),
 				clicky.Text("Review the `.github/workflows/release.yml` script for errors."),
 				clicky.Text("Verify repository secrets and `GITHUB_TOKEN` permissions."),
 			},
