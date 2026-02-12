@@ -99,11 +99,9 @@ func (f *FormatManager) HTML(data interface{}) (string, error) {
 }
 
 // HTMLStatic returns static HTML without JavaScript dependencies.
-func (f *FormatManager) HTMLStatic(data interface{}) (string, error) {
-	if f.htmlStaticFormatter == nil {
-		f.htmlStaticFormatter = NewStaticHTMLFormatter()
-	}
-	return f.htmlStaticFormatter.Format(data, FormatOptions{})
+func (f FormatManager) HTMLStatic(data interface{}) (string, error) {
+	formatter := NewStaticHTMLFormatter()
+	return formatter.Format(data, FormatOptions{})
 }
 
 // HTMLPDF implements api.FormatManager.
