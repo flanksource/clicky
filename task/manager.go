@@ -10,7 +10,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/flanksource/clicky/shutdown"
 	"github.com/flanksource/commons/collections"
@@ -19,13 +18,6 @@ import (
 	"golang.org/x/sync/semaphore"
 	"golang.org/x/term"
 )
-
-// OutputEntry represents a captured stdout/stderr line with metadata
-type OutputEntry struct {
-	Timestamp time.Time
-	Stream    string // "stdout" or "stderr"
-	Line      string
-}
 
 // Manager manages and displays multiple tasks with progress bars
 type Manager struct {
@@ -55,13 +47,13 @@ type Manager struct {
 	// Task identity tracking for deduplication
 	tasksByIdentity sync.Map // map[string]*Task
 
-	// Bubbletea program for interactive rendering
-	program *tea.Program
+	// Render loop control
+	stopRenderCh  chan struct{}
+	renderDone    chan struct{}
+	renderStopped sync.Once
 
-	// Plain render loop control
-	stopPlainRender chan struct{}
-	plainRenderDone chan struct{}
-	programStopped  sync.Once // ensures stopProgram runs only once
+	// Terminal state
+	originalTermState *term.State
 
 	// Output buffering
 	outputBuffer    []OutputEntry
@@ -69,6 +61,10 @@ type Manager struct {
 	originalStdout  *os.File
 	originalStderr  *os.File
 	capturingOutput bool
+	stdoutReader    *os.File
+	stdoutWriter    *os.File
+	stderrReader    *os.File
+	stderrWriter    *os.File
 }
 
 var global *Manager
@@ -88,75 +84,61 @@ type styleSet struct {
 func init() {
 	global = newManager()
 
-	// Automatically disable progress and color output during tests
-	// testing.Testing() only works within test execution, not when library is used by test binaries
-	// So we also check for common test environment indicators
 	if isTestEnvironment() {
 		SetNoProgress(true)
 		SetNoColor(true)
 	}
 }
 
-// isTestEnvironment checks for common test environment indicators
 func isTestEnvironment() bool {
-	// Check if running under go test
 	if os.Getenv("GO_TEST") != "" {
 		return true
 	}
-
-	// Check if running with -test. flags (when go test compiles and runs binaries)
 	for _, arg := range os.Args {
 		if strings.HasPrefix(arg, "-test.") {
 			return true
 		}
 	}
-
-	// Check common CI/test environment variables
 	testEnvVars := []string{
 		"CI", "GITHUB_ACTIONS", "GITLAB_CI", "JENKINS_URL", "TRAVIS", "CIRCLECI",
 		"DEPS_TEST", "NO_PROGRESS", "TEST_ENV",
 	}
-
 	for _, envVar := range testEnvVars {
 		if os.Getenv(envVar) != "" {
 			return true
 		}
 	}
-
 	return false
 }
 
-// NewManager creates a new TaskManager instance
 func newManager() *Manager {
-	return newManagerWithConcurrency(0) // 0 means unlimited
+	return newManagerWithConcurrency(0)
 }
 
-// NewManagerWithConcurrency creates a new TaskManager with concurrency limit
 func newManagerWithConcurrency(maxConcurrent int) *Manager {
-	// Check stderr for terminal size since we output there
 	width, _, err := term.GetSize(int(os.Stderr.Fd()))
-	if err != nil {
-		width = 120
-	}
-	if width == 0 {
+	if err != nil || width == 0 {
 		width = 120
 	}
 
-	// Check if stderr is a terminal (for interactive mode)
 	isInteractive := term.IsTerminal(int(os.Stderr.Fd()))
 
-	// Create a renderer that outputs to stderr for proper color detection
+	// Save original terminal state for restoration on exit
+	var originalTermState *term.State
+	if isInteractive {
+		if state, err := term.GetState(int(os.Stderr.Fd())); err == nil {
+			originalTermState = state
+		}
+	}
+
 	renderer := lipgloss.NewRenderer(os.Stderr)
 
-	// Default to 4 workers if not specified to prevent deadlock in nested task execution
 	if maxConcurrent <= 0 {
 		maxConcurrent = 4
 	}
 
-	// Create priority queue for tasks
 	taskQueue, err := collections.NewQueue(collections.QueueOpts[*Task]{
 		Comparator: func(a, b *Task) int {
-			// Compare by priority first (lower priority value = higher priority)
 			if a.priority != b.priority {
 				if a.priority < b.priority {
 					return -1
@@ -165,7 +147,6 @@ func newManagerWithConcurrency(maxConcurrent int) *Manager {
 				}
 				return 0
 			}
-			// Then by enqueue time (earlier = higher priority)
 			if !a.enqueuedAt.Equal(b.enqueuedAt) {
 				if a.enqueuedAt.Before(b.enqueuedAt) {
 					return -1
@@ -175,14 +156,12 @@ func newManagerWithConcurrency(maxConcurrent int) *Manager {
 			return 0
 		},
 		Equals: func(a, b *Task) bool {
-			// Two tasks are equal if they have the same non-empty identity
 			if a.identity != "" && b.identity != "" {
 				return a.identity == b.identity
 			}
-			// Otherwise, they're only equal if they're the same pointer
 			return a == b
 		},
-		Dedupe: true, // Enable deduplication based on Equals function
+		Dedupe: true,
 		Metrics: collections.MetricsOpts[*Task]{
 			Disable: true,
 		},
@@ -191,29 +170,26 @@ func newManagerWithConcurrency(maxConcurrent int) *Manager {
 		panic(fmt.Sprintf("failed to create task queue: %v", err))
 	}
 
-	// Check if task logger is at debug level for verbosity
 	taskLogger := logger.GetLogger("task")
 	verbose := taskLogger.IsLevelEnabled(3) || os.Getenv("VERBOSE") != "" || os.Getenv("DEBUG") != ""
 
 	tm := &Manager{
-		tasks:           make([]*Task, 0),
-		groups:          make([]*Group, 0),
-		width:           width,
-		maxConcurrent:   maxConcurrent,
-		retryConfig:     DefaultRetryConfig(),
-		isInteractive:   isInteractive,
-		renderer:        renderer,
-		gracefulTimeout: 10 * time.Second, // Default 10 second graceful shutdown
-		taskQueue:       taskQueue,
-		workers:         make([]*worker, 0, maxConcurrent),
-		shutdown:        make(chan struct{}),
-		semaphore:       make(chan struct{}, maxConcurrent),
+		tasks:             make([]*Task, 0),
+		groups:            make([]*Group, 0),
+		width:             width,
+		maxConcurrent:     maxConcurrent,
+		retryConfig:       DefaultRetryConfig(),
+		isInteractive:     isInteractive,
+		renderer:          renderer,
+		originalTermState: originalTermState,
+		gracefulTimeout:   10 * time.Second,
+		taskQueue:         taskQueue,
+		workers:           make([]*worker, 0, maxConcurrent),
+		shutdown:          make(chan struct{}),
+		semaphore:         make(chan struct{}, maxConcurrent),
 	}
-
-	// Initialize atomic bool fields
 	tm.verbose.Store(verbose)
 
-	// Use the stderr renderer for creating styles
 	tm.styles.success = renderer.NewStyle().Foreground(lipgloss.Color("10"))
 	tm.styles.failed = renderer.NewStyle().Foreground(lipgloss.Color("9"))
 	tm.styles.warning = renderer.NewStyle().Foreground(lipgloss.Color("11"))
@@ -224,28 +200,20 @@ func newManagerWithConcurrency(maxConcurrent int) *Manager {
 	tm.styles.canceled = renderer.NewStyle().Foreground(lipgloss.Color("13"))
 	tm.styles.pending = renderer.NewStyle().Foreground(lipgloss.Color("7"))
 
-	// Start worker goroutines
+	shutdown.SetTerminalRestoreFunc(tm.cleanupTerminal)
+
 	for i := 0; i < maxConcurrent; i++ {
-		w := &worker{
-			id:      i,
-			manager: tm,
-		}
+		w := &worker{id: i, manager: tm}
 		tm.workers = append(tm.workers, w)
 		go w.run()
 	}
 
-	// Register shutdown hook to cancel all tasks on interrupt
 	shutdown.AddHookWithPriority("TaskManager", shutdown.PriorityWorkers, func() {
-		// Signal workers to stop
 		close(tm.shutdown)
-
-		// Cancel all running tasks
 		CancelAll()
 
-		// Wait for tasks to complete with timeout
 		done := make(chan bool, 1)
 		go func() {
-			// Wait for all workers to become idle
 			timeout := time.After(tm.gracefulTimeout)
 			ticker := time.NewTicker(10 * time.Millisecond)
 			defer ticker.Stop()
@@ -267,29 +235,20 @@ func newManagerWithConcurrency(maxConcurrent int) *Manager {
 		select {
 		case success := <-done:
 			if success {
-				fmt.Fprintf(os.Stderr, "✅ All tasks completed gracefully\n")
+				fmt.Fprintf(os.Stderr, "All tasks completed gracefully\n")
 			} else {
-				fmt.Fprintf(os.Stderr, "⏰ Task shutdown timeout reached\n")
+				fmt.Fprintf(os.Stderr, "Task shutdown timeout reached\n")
 			}
 		case <-time.After(tm.gracefulTimeout + time.Second):
-			fmt.Fprintf(os.Stderr, "⏰ Task shutdown timeout exceeded\n")
+			fmt.Fprintf(os.Stderr, "Task shutdown timeout exceeded\n")
 		}
 
-		// Stop the Bubbletea program if running
-		tm.stopProgram()
+		tm.stopRender()
 		tm.StopCapturingOutput()
 	})
 
-	// Start appropriate rendering based on mode
 	if !tm.noProgress.Load() {
-		if isInteractive {
-			tm.startProgram()
-		} else {
-			// Non-interactive mode: initialize channels and start a plain render loop
-			tm.stopPlainRender = make(chan struct{})
-			tm.plainRenderDone = make(chan struct{})
-			go tm.plainRenderLoop()
-		}
+		tm.startRenderLoop()
 	}
 
 	return tm
@@ -321,15 +280,12 @@ func SetMaxConcurrent(max int) {
 
 	global.maxConcurrent = max
 	if max > 0 {
-		// Create new semaphore with new size
 		newSem := make(chan struct{}, max)
-		// Transfer existing permits if any
 		if global.semaphore != nil {
 			close(global.semaphore)
 		}
 		global.semaphore = newSem
 	} else {
-		// Unlimited concurrency
 		if global.semaphore != nil {
 			close(global.semaphore)
 			global.semaphore = nil
@@ -345,76 +301,6 @@ func SetRetryConfig(config RetryConfig) {
 // SetGracefulTimeout sets the timeout for graceful shutdown
 func SetGracefulTimeout(timeout time.Duration) {
 	global.gracefulTimeout = timeout
-}
-
-// startProgram initializes and starts the Bubbletea program
-func (tm *Manager) startProgram() {
-	if tm.program != nil {
-		return
-	}
-
-	model := newTaskModel(tm)
-	tm.program = tea.NewProgram(model, tea.WithOutput(os.Stderr))
-	go func() {
-		if _, err := tm.program.Run(); err != nil {
-			logger.Errorf("bubbletea program error: %v", err)
-		}
-	}()
-}
-
-// stopProgram signals the Bubbletea program to stop and waits for cleanup
-func (tm *Manager) stopProgram() {
-	tm.programStopped.Do(func() {
-		// Stop plain render loop if running
-		if tm.stopPlainRender != nil {
-			close(tm.stopPlainRender)
-			<-tm.plainRenderDone
-			tm.stopPlainRender = nil
-		}
-
-		if tm.program == nil {
-			return
-		}
-
-		tm.program.Send(shutdownMsg{})
-		tm.program.Wait()
-		tm.program = nil
-
-		// Render final task status
-		tm.renderFinal()
-	})
-}
-
-// plainRenderLoop runs a simple render loop for non-interactive mode
-func (tm *Manager) plainRenderLoop() {
-	defer close(tm.plainRenderDone)
-	defer func() {
-		if r := recover(); r != nil {
-			tm.cleanupTerminal()
-			panic(r) // re-panic after cleanup
-		}
-	}()
-
-	ticker := time.NewTicker(250 * time.Millisecond)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-tm.stopPlainRender:
-			tm.PlainRender()
-			return
-		case <-ticker.C:
-			tm.PlainRender()
-		}
-	}
-}
-
-// cleanupTerminal ensures terminal is restored to a clean state
-func (tm *Manager) cleanupTerminal() {
-	output := tm.renderer.Output()
-	output.ExitAltScreen()
-	output.ShowCursor()
-	output.Reset()
 }
 
 // SetInterruptHandler sets a custom callback to be called on interrupt
@@ -449,7 +335,6 @@ func (tm *Manager) newTask(name string, opts ...Option) *Task {
 		opt(task)
 	}
 
-	// Set up timeout if specified
 	if task.timeout > 0 {
 		timeoutCtx, timeoutCancel := flanksourceCtx.WithTimeout(task.timeout)
 		task.ctx = timeoutCtx
@@ -462,38 +347,31 @@ func (tm *Manager) newTask(name string, opts ...Option) *Task {
 		}
 	}
 
-	// Calculate priority based on dependencies
 	if len(task.dependencies) == 0 {
-		task.priority = 0 // No dependencies = highest priority
+		task.priority = 0
 	} else {
-		task.priority = 1 // Has dependencies = lower priority
+		task.priority = 1
 	}
 
 	task.enqueuedAt = time.Now()
-
 	return task
 }
 
 func (tm *Manager) enqueue(task *Task) *Task {
-	// Check if a task with this identity already exists
 	if task.identity != "" {
 		if existing, ok := tm.tasksByIdentity.Load(task.identity); ok {
-			// Return the existing task instead of creating a duplicate
 			return existing.(*Task)
 		}
-		// Store this task for future deduplication
 		tm.tasksByIdentity.Store(task.identity, task)
 	}
 
 	task.enqueuedAt = time.Now()
 
-	// Protect tasks slice modification
 	tm.mu.Lock()
 	tm.tasks = append(tm.tasks, task)
 	tm.mu.Unlock()
 
 	tm.taskQueue.Enqueue(task)
-
 	return task
 }
 
@@ -503,7 +381,6 @@ func (tm *Manager) Start(name string, opts ...Option) *Task {
 }
 
 func StartTask[T any](name string, taskFunc func(flanksourceContext.Context, *Task) (T, error), opts ...Option) TypedTask[T] {
-	// Wrap the typed function to work with the existing interface{} system
 	wrappedFunc := func(ctx flanksourceContext.Context, t *Task) (interface{}, error) {
 		result, err := taskFunc(ctx, t)
 		return result, err
@@ -516,11 +393,9 @@ func StartTask[T any](name string, taskFunc func(flanksourceContext.Context, *Ta
 func (tm *Manager) StartWithResult(name string, taskFunc func(flanksourceContext.Context, *Task) (interface{}, error), opts ...Option) *Task {
 	task := tm.newTask(name, opts...)
 
-	// Wrap the result function in a regular func(flanksourceContext.Context, *Task) error
 	task.runFunc = func(ctx flanksourceContext.Context, t *Task) error {
 		result, err := taskFunc(ctx, t)
 
-		// Store the result regardless of error
 		t.mu.Lock()
 		t.result = result
 		if result != nil {
@@ -549,347 +424,15 @@ func StartGroup[T any](name string, opts ...TaskGroupOption) TypedGroup[T] {
 		cancel:  cancel,
 	}
 
-	// Add to groups list for tracking
 	global.groups = append(global.groups, group)
 
-	// Apply options first
 	for _, opt := range opts {
 		opt(group)
 	}
 
-	// Initialize semaphore if concurrency limit is set
 	if group.concurrency > 0 {
 		group.sem = semaphore.NewWeighted(int64(group.concurrency))
 	}
 
 	return TypedGroup[T]{group}
-}
-
-// Run starts all tasks and waits for completion
-func (tm *Manager) Run() error {
-	Wait()
-
-	// Check if any tasks failed
-	global.mu.RLock()
-	defer global.mu.RUnlock()
-
-	for _, task := range tm.tasks {
-		if task.err != nil {
-			return fmt.Errorf("task %s failed: %w", task.name, task.err)
-		}
-	}
-	return nil
-}
-
-// CancelAll cancels all running tasks and groups
-func CancelAll() {
-	// Cancel all tasks
-	for _, task := range global.tasks {
-		task.Cancel()
-	}
-
-	// Cancel all groups
-	for _, group := range global.groups {
-		group.Cancel()
-	}
-}
-
-// ClearTasks removes all completed tasks from the task list
-func ClearTasks() {
-	global.mu.Lock()
-	defer global.mu.Unlock()
-	// Only keep running or pending tasks
-	var activeTasks []*Task
-	for _, task := range global.tasks {
-		task.mu.Lock()
-		status := task.status
-		task.mu.Unlock()
-
-		if status == StatusPending || status == StatusRunning {
-			activeTasks = append(activeTasks, task)
-		}
-	}
-
-	global.tasks = activeTasks
-}
-
-// WaitSilent waits for all tasks to complete without displaying results
-func WaitSilent() int {
-	// Wait for queue to be empty and all workers to be idle
-	ticker := time.NewTicker(10 * time.Millisecond)
-	defer ticker.Stop()
-
-	for {
-		// Check if queue is empty and no workers are active
-		if global.taskQueue.Empty() && global.workersActive.Load() == 0 {
-			// Also check all tasks are completed
-			allComplete := true
-			global.mu.RLock()
-			for _, task := range global.tasks {
-				if !task.completed.Load() {
-					allComplete = false
-					break
-				}
-			}
-			global.mu.RUnlock()
-
-			if allComplete {
-				break
-			}
-		}
-
-		<-ticker.C
-	}
-
-	global.stopProgram()
-
-	global.mu.RLock()
-	tasks := global.tasks
-	global.mu.RUnlock()
-
-	// Calculate exit code based on task status
-	for _, task := range tasks {
-		task.mu.Lock()
-		status := task.status
-		task.mu.Unlock()
-
-		switch status {
-		case StatusFailed, StatusCancelled:
-			return 1
-		}
-	}
-
-	return 0
-}
-
-// Wait waits for all tasks to complete and returns the appropriate exit code
-func Wait() int {
-	// Wait for queue to be empty and all workers to be idle
-	ticker := time.NewTicker(10 * time.Millisecond)
-	defer ticker.Stop()
-
-	for {
-		// Check if queue is empty and no workers are active
-		if global.taskQueue.Empty() && global.workersActive.Load() == 0 {
-			// Also check all tasks are completed
-			allComplete := true
-			global.mu.RLock()
-			for _, task := range global.tasks {
-				if !task.completed.Load() {
-					allComplete = false
-					break
-				}
-			}
-			global.mu.RUnlock()
-
-			if allComplete {
-				break
-			}
-		}
-
-		<-ticker.C
-	}
-
-	global.stopProgram()
-
-	var failed, canceled int
-
-	for _, task := range global.tasks {
-		task.mu.Lock()
-		status := task.status
-		task.mu.Unlock()
-
-		switch status {
-		case StatusFailed:
-			failed++
-		case StatusCancelled:
-			canceled++
-		}
-	}
-
-	if failed+canceled > 0 {
-		return 1
-	}
-	return 0
-}
-
-// Debug returns debug information about the task manager
-func Debug() string {
-	var result string
-	result += fmt.Sprintf("Task Manager: {no-color=%v, no-progress=%v, workers=%v}\n", global.noColor.Load(), global.noProgress.Load(), global.workersActive.Load())
-	result += fmt.Sprintf("  Total Tasks: %d\n", len(global.tasks))
-	result += fmt.Sprintf("  Active Workers: %d\n", global.workersActive.Load())
-	result += "  Task Details:\n"
-	for _, task := range global.tasks {
-		task.mu.Lock()
-		result += fmt.Sprintf("    - %s: %v\n", task.name, task.status)
-		task.mu.Unlock()
-	}
-	return result
-}
-
-// WaitForAllTasks waits for all global tasks to complete and forces a final render
-func WaitForAllTasks() {
-	// Wait for queue to be empty and all workers to be idle
-	timeout := time.Second * 10
-	start := time.Now()
-	ticker := time.NewTicker(10 * time.Millisecond)
-	defer ticker.Stop()
-
-	for {
-		if time.Since(start) > timeout {
-			logger.Warnf("Still waiting for all tasks to complete after %v", time.Since(start))
-			timeout *= 2 // Exponential backoff for next warning
-		}
-		// Check if queue is empty and no workers are active
-		if global.taskQueue.Empty() && global.workersActive.Load() == 0 {
-			// Also check all tasks are completed
-			allComplete := true
-			global.mu.RLock()
-			for _, task := range global.tasks {
-				if !task.completed.Load() {
-					allComplete = false
-					break
-				}
-			}
-			global.mu.RUnlock()
-
-			if allComplete {
-				break
-			}
-		}
-
-		<-ticker.C
-	}
-
-	// For plain render mode, force a final render
-	if global.noProgress.Load() {
-		global.PlainRender()
-	}
-}
-
-// bufferingWriter captures writes to a buffer with timestamps
-type bufferingWriter struct {
-	stream  string
-	manager *Manager
-}
-
-func (w *bufferingWriter) Write(p []byte) (n int, err error) {
-	w.manager.bufferMutex.Lock()
-	defer w.manager.bufferMutex.Unlock()
-
-	// Split by newlines and add each line to buffer
-	lines := strings.Split(string(p), "\n")
-	for i, line := range lines {
-		// Skip empty lines except the last one (which might be incomplete)
-		if line == "" && i < len(lines)-1 {
-			continue
-		}
-		if line != "" {
-			w.manager.outputBuffer = append(w.manager.outputBuffer, OutputEntry{
-				Timestamp: time.Now(),
-				Stream:    w.stream,
-				Line:      line,
-			})
-		}
-	}
-
-	return len(p), nil
-}
-
-// StartCapturingOutput redirects stdout/stderr to internal buffer
-func (tm *Manager) StartCapturingOutput() {
-	tm.bufferMutex.Lock()
-	defer tm.bufferMutex.Unlock()
-
-	if tm.capturingOutput {
-		return
-	}
-
-	tm.originalStdout = os.Stdout
-	tm.originalStderr = os.Stderr
-	tm.outputBuffer = []OutputEntry{}
-
-	// Create pipes for stdout and stderr
-	stdoutReader, stdoutWriter, _ := os.Pipe()
-	stderrReader, stderrWriter, _ := os.Pipe()
-
-	os.Stdout = stdoutWriter
-	os.Stderr = stderrWriter
-
-	// Start goroutines to read from pipes and buffer output
-	go func() {
-		scanner := make([]byte, 4096)
-		for {
-			n, err := stdoutReader.Read(scanner)
-			if err != nil {
-				return
-			}
-			_, _ = (&bufferingWriter{stream: "stdout", manager: tm}).Write(scanner[:n])
-		}
-	}()
-
-	go func() {
-		scanner := make([]byte, 4096)
-		for {
-			n, err := stderrReader.Read(scanner)
-			if err != nil {
-				return
-			}
-			_, _ = (&bufferingWriter{stream: "stderr", manager: tm}).Write(scanner[:n])
-		}
-	}()
-
-	tm.capturingOutput = true
-}
-
-// StopCapturingOutput restores stdout/stderr and prints buffered output
-func (tm *Manager) StopCapturingOutput() {
-	tm.bufferMutex.Lock()
-	capturing := tm.capturingOutput
-	tm.capturingOutput = false
-	tm.bufferMutex.Unlock()
-
-	if !capturing {
-		return
-	}
-
-	// Restore original stdout/stderr
-	os.Stdout = tm.originalStdout
-	os.Stderr = tm.originalStderr
-
-	// Print all buffered output
-	tm.bufferMutex.Lock()
-	buffer := make([]OutputEntry, len(tm.outputBuffer))
-	copy(buffer, tm.outputBuffer)
-	tm.bufferMutex.Unlock()
-
-	for _, entry := range buffer {
-		if entry.Stream == "stdout" {
-			_, _ = fmt.Fprintln(os.Stdout, entry.Line)
-		} else {
-			_, _ = fmt.Fprintln(os.Stderr, entry.Line)
-		}
-	}
-}
-
-// renderFinal renders task status to primary screen without using alternate screen
-func (tm *Manager) renderFinal() {
-	// Create a snapshot of tasks
-	tm.mu.RLock()
-	if len(tm.tasks) == 0 {
-		tm.mu.RUnlock()
-		return
-	}
-	taskSnapshot := make([]*Task, len(tm.tasks))
-	copy(taskSnapshot, tm.tasks)
-	tm.mu.RUnlock()
-
-	// Render to stderr without markers or alternate screen
-	rendered := tm.prettyFromTasks(taskSnapshot)
-	if tm.noColor.Load() {
-		fmt.Fprintln(os.Stderr, rendered.String())
-	} else {
-		fmt.Fprintln(os.Stderr, rendered.ANSI())
-	}
 }

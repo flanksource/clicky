@@ -9,10 +9,22 @@ import (
 	"testing"
 	"time"
 
+	"github.com/charmbracelet/lipgloss"
 	flanksourceContext "github.com/flanksource/commons/context"
 
 	"github.com/flanksource/clicky/text"
 )
+
+// newTestManager creates a manager suitable for testing: no progress display,
+// no color, and no background render loop. This prevents data races on
+// os.Stderr when tests redirect it for output capture.
+func newTestManager(concurrency int) *Manager {
+	tm := newManagerWithConcurrency(concurrency)
+	tm.stopRender()
+	tm.noProgress.Store(true)
+	tm.noColor.Store(true)
+	return tm
+}
 
 func countNonEmptyLines(s string) int {
 	lines := strings.Split(strings.TrimSpace(s), "\n")
@@ -65,10 +77,8 @@ func TestRenderLineCount_NTasksProduceNLines(t *testing.T) {
 				close(done)
 			}()
 
-			// Create a fresh manager for this test
-			testManager := newManagerWithConcurrency(4)
-			testManager.noProgress.Store(true)
-			testManager.noColor.Store(true)
+			// Create a fresh manager for this test (render loop already stopped)
+			testManager := newTestManager(4)
 
 			// Create tasks that complete immediately
 			for i := 0; i < tt.numTasks; i++ {
@@ -136,9 +146,7 @@ func TestRenderLineCount_NTasksProduceNLines(t *testing.T) {
 
 func TestRenderLineCount_PendingTaskLimit(t *testing.T) {
 	// Create a manager with pending tasks that exceed the limit (>5)
-	testManager := newManagerWithConcurrency(1)
-	testManager.noProgress.Store(true)
-	testManager.noColor.Store(true)
+	testManager := newTestManager(1)
 
 	// Create 10 pending tasks without running them
 	// We do this by creating tasks with dependencies that will never be met
@@ -174,9 +182,7 @@ func TestRenderLineCount_PendingTaskLimit(t *testing.T) {
 }
 
 func TestRenderLineCount_MixedStatus(t *testing.T) {
-	testManager := newManagerWithConcurrency(4)
-	testManager.noProgress.Store(true)
-	testManager.noColor.Store(true)
+	testManager := newTestManager(4)
 
 	// Create 2 completed tasks
 	for i := 0; i < 2; i++ {
@@ -217,9 +223,7 @@ func TestRenderLineCount_MixedStatus(t *testing.T) {
 }
 
 func TestViewHeightConstraint(t *testing.T) {
-	testManager := newManagerWithConcurrency(1)
-	testManager.noProgress.Store(true)
-	testManager.noColor.Store(true)
+	testManager := newTestManager(1)
 
 	// Create 15 completed tasks
 	for i := 0; i < 15; i++ {
@@ -233,12 +237,12 @@ func TestViewHeightConstraint(t *testing.T) {
 		testManager.mu.Unlock()
 	}
 
-	// Create model with height constraint
-	model := newTaskModel(testManager)
-	model.height = 5 // Limit to 5 lines
+	rendered := testManager.Pretty()
+	out := rendered.String()
 
-	view := model.View()
-	stripped := text.StripANSI(view)
+	// Apply MaxHeight constraint directly (same as interactiveRender)
+	constrained := lipgloss.NewStyle().MaxHeight(5).Render(out)
+	stripped := text.StripANSI(constrained)
 	lines := countNonEmptyLines(stripped)
 
 	if lines > 5 {
@@ -270,9 +274,8 @@ func TestPlainRenderOnlyDirtyTasks(t *testing.T) {
 		close(done)
 	}()
 
-	testManager := newManagerWithConcurrency(1)
-	testManager.noProgress.Store(true)
-	testManager.noColor.Store(true)
+	// Create a fresh manager for this test (render loop already stopped)
+	testManager := newTestManager(1)
 
 	// Create 3 tasks, mark only 1 as dirty
 	for i := 0; i < 3; i++ {
