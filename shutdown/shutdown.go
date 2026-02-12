@@ -90,6 +90,7 @@ func restoreTerminal() {
 func RecoverAndShutdown() {
 	if r := recover(); r != nil {
 		Shutdown()
+		restoreTerminal()
 		panic(r)
 	}
 }
@@ -143,6 +144,7 @@ func Shutdown() {
 	}
 
 	logger.Infof("All shutdown hooks executed")
+	restoreTerminal()
 }
 
 // WaitForSignal waits for interrupt signals and triggers shutdown
