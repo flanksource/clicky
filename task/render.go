@@ -3,7 +3,9 @@ package task
 import (
 	"fmt"
 	"os"
+	"strings"
 
+	"github.com/charmbracelet/lipgloss"
 	"github.com/flanksource/clicky/api"
 )
 
@@ -94,4 +96,24 @@ func (tm *Manager) prettyFromTasks(tasks []*Task) api.Text {
 	}
 
 	return text
+}
+
+// interactiveRender renders tasks in-place using ANSI clear lines.
+// Returns the number of lines rendered for the next cycle's ClearLines call.
+func (tm *Manager) interactiveRender(lastLines int) int {
+	rendered := tm.Pretty()
+	var out string
+	if tm.noColor.Load() {
+		out = rendered.String()
+	} else {
+		out = rendered.ANSI()
+	}
+
+	out = lipgloss.NewStyle().MaxHeight(api.GetTerminalLines()).Render(out)
+
+	output := tm.renderer.Output()
+	output.ClearLines(lastLines)
+	fmt.Fprint(os.Stderr, out)
+
+	return strings.Count(out, "\n")
 }

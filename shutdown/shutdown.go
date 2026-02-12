@@ -9,7 +9,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/charmbracelet/lipgloss"
 	"github.com/flanksource/commons/logger"
 )
 
@@ -56,18 +55,43 @@ func (h *HookHeap) Pop() interface{} {
 }
 
 var (
-	hooks    HookHeap
-	hooksMux sync.Mutex
-	once     sync.Once
+	hooks               HookHeap
+	hooksMux            sync.Mutex
+	once                sync.Once
+	terminalRestoreFunc func()
+	terminalRestoreMu   sync.Mutex
 )
 
-// restoreTerminal ensures terminal is in a clean state before exit
+// SetTerminalRestoreFunc registers a callback that performs full terminal
+// state restoration (e.g. term.Restore with saved state). Called automatically
+// during Shutdown, force-exit, and RecoverAndShutdown.
+func SetTerminalRestoreFunc(fn func()) {
+	terminalRestoreMu.Lock()
+	defer terminalRestoreMu.Unlock()
+	terminalRestoreFunc = fn
+}
+
+// restoreTerminal ensures terminal is in a clean state before exit.
+// Uses raw ANSI escapes as a safety net, then calls the registered
+// restore callback for full term.Restore if available.
 func restoreTerminal() {
-	renderer := lipgloss.NewRenderer(os.Stderr)
-	output := renderer.Output()
-	output.ExitAltScreen()
-	output.ShowCursor()
-	output.Reset()
+	fmt.Fprint(os.Stderr, "\x1b[?1049l\x1b[?25h\x1b[0m")
+	terminalRestoreMu.Lock()
+	fn := terminalRestoreFunc
+	terminalRestoreMu.Unlock()
+	if fn != nil {
+		fn()
+	}
+}
+
+// RecoverAndShutdown is intended to be deferred in main(). On panic it
+// runs all shutdown hooks and restores terminal state, then re-panics
+// so the stack trace is preserved.
+func RecoverAndShutdown() {
+	if r := recover(); r != nil {
+		Shutdown()
+		panic(r)
+	}
 }
 
 // AddHook registers a shutdown hook with default priority
@@ -93,6 +117,9 @@ func Shutdown() {
 	logger.Infof("Starting graceful shutdown with %d hooks", len(hooks))
 	hooksMux.Lock()
 	defer hooksMux.Unlock()
+
+	// Always restore terminal state, even if no hooks are registered.
+	defer restoreTerminal()
 
 	if len(hooks) == 0 {
 		return

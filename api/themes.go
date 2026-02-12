@@ -2,10 +2,9 @@ package api
 
 import (
 	"os"
-	"strings"
+	"sync/atomic"
 
 	"github.com/charmbracelet/lipgloss"
-	"github.com/flanksource/commons/logger"
 	"github.com/muesli/termenv"
 	"golang.org/x/term"
 )
@@ -212,47 +211,37 @@ func AutoTheme() Theme {
 	return LightTheme()
 }
 
-var terminalWidth = -1
-var terminalDimensionsLogged = false
+var terminalWidth atomic.Int32
+
+func init() {
+	terminalWidth.Store(-1)
+	terminalHeight.Store(-1)
+}
 
 func GetTerminalWidth() int {
-	if terminalWidth != -1 {
-		return terminalWidth
+	if w := terminalWidth.Load(); w != -1 {
+		return int(w)
 	}
-	width, height, err := term.GetSize(int(os.Stderr.Fd()))
+	width, _, err := term.GetSize(int(os.Stderr.Fd()))
 	if err != nil {
 		return 120 // Default width
 	}
-	terminalWidth = width
-
-	// Log terminal dimensions once at startup when trace logging is enabled
-	if !terminalDimensionsLogged && logger.V(4).Enabled() {
-		terminalDimensionsLogged = true
-
-		// Create test lines with box drawing character
-		halfWidth := width / 2
-		line50 := strings.Repeat("─", halfWidth)
-		line100 := strings.Repeat("─", width)
-
-		logger.V(4).Infof("Terminal dimensions: width=%d, height=%d", width, height)
-		_, _ = os.Stderr.WriteString(line50 + "\n")
-		_, _ = os.Stderr.WriteString(line100 + "\n")
-	}
+	terminalWidth.Store(int32(width))
 
 	return width
 }
 
-var terminalHeight = -1
+var terminalHeight atomic.Int32
 
 func GetTerminalLines() int {
-	if terminalHeight != -1 {
-		return terminalHeight
+	if h := terminalHeight.Load(); h != -1 {
+		return int(h)
 	}
 	_, height, err := term.GetSize(int(os.Stderr.Fd()))
 	if err != nil {
 		return 40 // Default height
 	}
-	terminalHeight = height
+	terminalHeight.Store(int32(height))
 	return height
 }
 

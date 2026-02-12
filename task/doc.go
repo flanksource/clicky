@@ -424,6 +424,26 @@ Handle interrupts gracefully:
 
 	// Manager will handle SIGINT/SIGTERM and allow running tasks to complete
 
+// Terminal Safety
+//
+// The task system saves and restores terminal state automatically:
+//
+//   - Normal exit: restored via shutdown hooks
+//   - SIGINT: restored during graceful shutdown
+//   - Double SIGINT: restored before forced os.Exit(1)
+//   - Panic in main: restored if main defers shutdown.RecoverAndShutdown()
+//   - Panic in task func: caught by worker, task marked as failed, process continues
+//
+// For panic protection in main, use:
+//
+//	func main() {
+//	    defer shutdown.RecoverAndShutdown()
+//	    // ... start tasks, wait, etc.
+//	}
+//
+// RecoverAndShutdown runs all shutdown hooks, restores the terminal, then
+// re-panics so the stack trace is preserved.
+
 The task package provides a complete solution for concurrent task execution with rich visual feedback,
 comprehensive error handling, and flexible configuration options suitable for CLI tools, servers,
 and batch processing applications.

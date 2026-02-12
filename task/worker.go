@@ -39,16 +39,22 @@ func (w *worker) run() {
 				continue
 			}
 
-			// Increment active workers count
 			w.manager.workersActive.Add(1)
 
-			// Execute the task
-			w.executeTask(task)
+			func() {
+				defer func() {
+					if r := recover(); r != nil {
+						task.mu.Lock()
+						task.status = StatusFailed
+						task.err = fmt.Errorf("panic: %v", r)
+						task.endTime = time.Now()
+						task.mu.Unlock()
+					}
+				}()
+				w.executeTask(task)
+			}()
 
-			// Decrement active workers count
 			w.manager.workersActive.Add(-1)
-
-			// Mark task as completed
 			task.completed.Store(true)
 
 			// Clean up identity tracking
