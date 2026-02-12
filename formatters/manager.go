@@ -13,16 +13,17 @@ import (
 )
 
 type FormatManager struct {
-	jsonFormatter     *JSONFormatter
-	yamlFormatter     *YAMLFormatter
-	csvFormatter      *CSVFormatter
-	markdownFormatter *MarkdownFormatter
-	prettyFormatter   *PrettyFormatter
-	treeFormatter     *TreeFormatter
-	excelFormatter    *ExcelFormatter
-	htmlFormatter     *HTMLFormatter
-	htmlPdf           *HTMLPDFFormatter
-	slackFormatter    *SlackFormatter
+	jsonFormatter       *JSONFormatter
+	yamlFormatter       *YAMLFormatter
+	csvFormatter        *CSVFormatter
+	markdownFormatter   *MarkdownFormatter
+	prettyFormatter     *PrettyFormatter
+	treeFormatter       *TreeFormatter
+	excelFormatter      *ExcelFormatter
+	htmlFormatter       *HTMLFormatter
+	htmlStaticFormatter *HTMLFormatter
+	htmlPdf             *HTMLPDFFormatter
+	slackFormatter      *SlackFormatter
 }
 
 // NewFormatManager creates a new format manager with all formatters initialized
@@ -40,17 +41,17 @@ func NewFormatManager() *FormatManager {
 }
 
 // ToPrettyData implements api.FormatManager.
-func (f FormatManager) ToPrettyData(data interface{}) (*api.PrettyData, error) {
+func (f *FormatManager) ToPrettyData(data interface{}) (*api.PrettyData, error) {
 	return ToPrettyData(data)
 }
 
 // ToPrettyDataWithOptions converts data to PrettyData using format options
-func (f FormatManager) ToPrettyDataWithOptions(data interface{}, opts FormatOptions) (*api.PrettyData, error) {
+func (f *FormatManager) ToPrettyDataWithOptions(data interface{}, opts FormatOptions) (*api.PrettyData, error) {
 	return ToPrettyDataWithOptions(data, opts)
 }
 
 // Pretty implements api.FormatManager.
-func (f FormatManager) Pretty(data interface{}) (string, error) {
+func (f *FormatManager) Pretty(data interface{}) (string, error) {
 	if f.prettyFormatter == nil {
 		f.prettyFormatter = NewPrettyFormatter()
 	}
@@ -58,7 +59,7 @@ func (f FormatManager) Pretty(data interface{}) (string, error) {
 }
 
 // JSON implements api.FormatManager.
-func (f FormatManager) JSON(data interface{}) (string, error) {
+func (f *FormatManager) JSON(data interface{}) (string, error) {
 	if f.jsonFormatter == nil {
 		f.jsonFormatter = NewJSONFormatter()
 	}
@@ -66,7 +67,7 @@ func (f FormatManager) JSON(data interface{}) (string, error) {
 }
 
 // YAML implements api.FormatManager.
-func (f FormatManager) YAML(data interface{}) (string, error) {
+func (f *FormatManager) YAML(data interface{}) (string, error) {
 	if f.yamlFormatter == nil {
 		f.yamlFormatter = NewYAMLFormatter()
 	}
@@ -74,7 +75,7 @@ func (f FormatManager) YAML(data interface{}) (string, error) {
 }
 
 // CSV implements api.FormatManager.
-func (f FormatManager) CSV(data interface{}) (string, error) {
+func (f *FormatManager) CSV(data interface{}) (string, error) {
 	if f.csvFormatter == nil {
 		f.csvFormatter = NewCSVFormatter()
 	}
@@ -82,7 +83,7 @@ func (f FormatManager) CSV(data interface{}) (string, error) {
 }
 
 // Markdown implements api.FormatManager.
-func (f FormatManager) Markdown(data interface{}) (string, error) {
+func (f *FormatManager) Markdown(data interface{}) (string, error) {
 	if f.markdownFormatter == nil {
 		f.markdownFormatter = NewMarkdownFormatter()
 	}
@@ -90,15 +91,23 @@ func (f FormatManager) Markdown(data interface{}) (string, error) {
 }
 
 // HTML implements api.FormatManager.
-func (f FormatManager) HTML(data interface{}) (string, error) {
+func (f *FormatManager) HTML(data interface{}) (string, error) {
 	if f.htmlFormatter == nil {
 		f.htmlFormatter = NewHTMLFormatter()
 	}
 	return f.htmlFormatter.Format(data, FormatOptions{})
 }
 
+// HTMLStatic returns static HTML without JavaScript dependencies.
+func (f *FormatManager) HTMLStatic(data interface{}) (string, error) {
+	if f.htmlStaticFormatter == nil {
+		f.htmlStaticFormatter = NewStaticHTMLFormatter()
+	}
+	return f.htmlStaticFormatter.Format(data, FormatOptions{})
+}
+
 // HTMLPDF implements api.FormatManager.
-func (f FormatManager) HTMLPDF(data interface{}) (string, error) {
+func (f *FormatManager) HTMLPDF(data interface{}) (string, error) {
 	if f.htmlPdf == nil {
 		f.htmlPdf = NewHTMLPDFFormatter()
 	}
@@ -106,7 +115,7 @@ func (f FormatManager) HTMLPDF(data interface{}) (string, error) {
 }
 
 // Slack formats data as Slack Block Kit JSON.
-func (f FormatManager) Slack(data interface{}) (string, error) {
+func (f *FormatManager) Slack(data interface{}) (string, error) {
 	if f.slackFormatter == nil {
 		f.slackFormatter = NewSlackFormatter()
 	}
@@ -114,7 +123,7 @@ func (f FormatManager) Slack(data interface{}) (string, error) {
 }
 
 // Tree formats data as a tree structure
-func (f FormatManager) Tree(data interface{}) (string, error) {
+func (f *FormatManager) Tree(data interface{}) (string, error) {
 	if f.treeFormatter == nil {
 		f.treeFormatter = NewTreeFormatter(api.DefaultTheme(), false, nil)
 	}
@@ -122,7 +131,7 @@ func (f FormatManager) Tree(data interface{}) (string, error) {
 }
 
 // Excel formats data as Excel file (requires file output)
-func (f FormatManager) Excel(data interface{}) (string, error) {
+func (f *FormatManager) Excel(data interface{}) (string, error) {
 	if f.excelFormatter == nil {
 		f.excelFormatter = NewExcelFormatter()
 	}
@@ -130,7 +139,7 @@ func (f FormatManager) Excel(data interface{}) (string, error) {
 }
 
 // ExcelToFile formats data as Excel file and saves to specified path
-func (f FormatManager) ExcelToFile(data interface{}, filename string) error {
+func (f *FormatManager) ExcelToFile(data interface{}, filename string) error {
 	if f.excelFormatter == nil {
 		f.excelFormatter = NewExcelFormatter()
 	}
@@ -138,7 +147,7 @@ func (f FormatManager) ExcelToFile(data interface{}, filename string) error {
 }
 
 // Format implements a generic format method that delegates to specific formatters
-func (f FormatManager) Format(format string, data interface{}) (string, error) {
+func (f *FormatManager) Format(format string, data interface{}) (string, error) {
 	format = strings.ToLower(format)
 	switch format {
 	case "json":
@@ -151,7 +160,9 @@ func (f FormatManager) Format(format string, data interface{}) (string, error) {
 		return f.Markdown(data)
 	case "html":
 		return f.HTML(data)
-	case "html-pdf":
+	case "html-static":
+		return f.HTMLStatic(data)
+	case "html-pdf", "pdf":
 		return f.HTMLPDF(data)
 	case "slack":
 		return f.Slack(data)
@@ -196,7 +207,7 @@ func formatTextable(data api.Textable, opts FormatOptions) (string, error) {
 	}
 }
 
-func (f FormatManager) FormatWithOptions(options FormatOptions, data ...any) (string, error) {
+func (f *FormatManager) FormatWithOptions(options FormatOptions, data ...any) (string, error) {
 
 	if len(data) == 0 {
 		return "", fmt.Errorf("no data provided for formatting")
@@ -298,7 +309,7 @@ func (f FormatManager) FormatWithOptions(options FormatOptions, data ...any) (st
 		}
 		return f.slackFormatter.FormatPrettyData(prettyData, options)
 
-	case "html", "html-pdf":
+	case "html", "html-static", "html-pdf", "pdf":
 		if formatter, ok := GetCustomFormatter(format); ok {
 			return formatter(data, options)
 		}
@@ -358,7 +369,7 @@ func (f FormatManager) FormatWithOptions(options FormatOptions, data ...any) (st
 }
 
 // FormatToFile formats data and writes to a file if output is specified
-func (f FormatManager) FormatToFile(options FormatOptions, data interface{}) error {
+func (f *FormatManager) FormatToFile(options FormatOptions, data interface{}) error {
 	// Format the data
 	output, err := f.FormatWithOptions(options, data)
 	if err != nil {
@@ -387,7 +398,7 @@ func (f FormatManager) FormatToFile(options FormatOptions, data interface{}) err
 }
 
 // ExcelExport exports data to Excel format using filename
-func (f FormatManager) ExcelExport(data interface{}, filename string) error {
+func (f *FormatManager) ExcelExport(data interface{}, filename string) error {
 	if f.excelFormatter == nil {
 		f.excelFormatter = NewExcelFormatter()
 	}
@@ -395,13 +406,13 @@ func (f FormatManager) ExcelExport(data interface{}, filename string) error {
 }
 
 // Pdf exports data to PDF format
-func (f FormatManager) Pdf(data interface{}, filename string) error {
+func (f *FormatManager) Pdf(data interface{}, filename string) error {
 	// PDF generation would require a library like gofpdf
 	// For now, we'll return an error indicating it's not implemented
 	return fmt.Errorf("PDF export is not yet implemented")
 }
 
-func (f FormatManager) ParseSchema(data interface{}) (*api.PrettyObject, error) {
+func (f *FormatManager) ParseSchema(data interface{}) (*api.PrettyObject, error) {
 	// This is a no-op for the FormatManager
 	d, err := f.ToPrettyData(data)
 	if err != nil {
@@ -411,7 +422,7 @@ func (f FormatManager) ParseSchema(data interface{}) (*api.PrettyObject, error) 
 }
 
 // FormatWithSchema handles schema-aware formatting using provided PrettyData
-func (f FormatManager) FormatWithSchema(prettyData *api.PrettyData, options FormatOptions) (string, error) {
+func (f *FormatManager) FormatWithSchema(prettyData *api.PrettyData, options FormatOptions) (string, error) {
 	// Handle different output formats for schema-aware data
 	format := strings.ToLower(options.Format)
 	switch format {
@@ -436,10 +447,10 @@ func (f FormatManager) FormatWithSchema(prettyData *api.PrettyData, options Form
 			f.slackFormatter = NewSlackFormatter()
 		}
 		return f.slackFormatter.FormatPrettyData(prettyData, options)
-	case "html", "html-pdf":
+	case "html", "html-static", "html-pdf", "pdf":
 		formatter, ok := GetCustomFormatter(options.Format)
 		if !ok {
-			return "", fmt.Errorf("%s formatter not registered, registing using 'import _ github.com/flanksource/clicky/formatters/html'", options.Format)
+			return "", fmt.Errorf("%s formatter not registered, register using 'import _ github.com/flanksource/clicky/formatters/html'", options.Format)
 		}
 		return formatter(prettyData, options)
 	default:

@@ -24,8 +24,20 @@ var tooltipsJS = assets.TooltipsJS
 func init() {
 	html := NewHTMLFormatter()
 	RegisterFormatter("html", html.Format)
+	htmlStatic := NewStaticHTMLFormatter()
+	RegisterFormatter("html-static", htmlStatic.Format)
 	email := NewEmailHTMLFormatter()
 	RegisterFormatter("email", email.Format)
+}
+
+// NewStaticHTMLFormatter creates an HTML formatter that uses static HTML
+// without JavaScript dependencies (Grid.js, Alpine.js). Suitable for PDF
+// generation or environments where JavaScript may not execute.
+func NewStaticHTMLFormatter() *HTMLFormatter {
+	return &HTMLFormatter{
+		IncludeCSS: true,
+		IsPDFMode:  true,
+	}
 }
 
 // HTMLFormatter handles HTML formatting
@@ -78,7 +90,10 @@ func (f *HTMLFormatter) getCSS() string {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Clicky Output</title>
+    <title>Clicky Output</title>`
+
+	if !f.IsPDFMode {
+		css += `
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://unpkg.com/gridjs/dist/theme/mermaid.min.css" rel="stylesheet" />
     <script src="https://unpkg.com/gridjs/dist/gridjs.umd.js"></script>
@@ -87,7 +102,10 @@ func (f *HTMLFormatter) getCSS() string {
     <script src="https://unpkg.com/tippy.js@6"></script>
     <link rel="stylesheet" href="https://unpkg.com/tippy.js@6/dist/tippy.css" />
     <script defer src="https://cdn.jsdelivr.net/npm/@alpinejs/collapse@3.x.x/dist/cdn.min.js"></script>
-    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>`
+	}
+
+	css += `
     <style>
         ` + gridjsThemeCSS + `
 
@@ -103,12 +121,18 @@ func (f *HTMLFormatter) getCSS() string {
 
 	css += `
 </head>
-<body class="bg-gray-100 min-h-screen p-6">
+<body class="bg-gray-100 min-h-screen p-6">`
+
+	if !f.IsPDFMode {
+		css += `
     <script>
         ` + tooltipsJS + `
 
         ` + treeJS + `
-    </script>
+    </script>`
+	}
+
+	css += `
     <div class="mx-auto px-4 space-y-8">
 `
 	return css
@@ -124,6 +148,16 @@ func (f *HTMLFormatter) getPDFCSS() string {
 
 // Format formats PrettyData into HTML output
 func (f *HTMLFormatter) Format(in interface{}, options FormatOptions) (string, error) {
+	// Use a local copy to avoid mutating the shared formatter instance
+	formatter := *f
+	if options.PDF {
+		formatter.IsPDFMode = true
+	}
+	return formatter.format(in, options)
+}
+
+// format is the internal implementation that performs the actual formatting.
+func (f *HTMLFormatter) format(in interface{}, options FormatOptions) (string, error) {
 	// Unwrap single-element slices from varargs
 	if slice, ok := in.([]interface{}); ok && len(slice) == 1 {
 		in = slice[0]
@@ -162,6 +196,22 @@ func (f *HTMLFormatter) Format(in interface{}, options FormatOptions) (string, e
 			return f.formatTextableForEmail(text), nil
 		}
 		return htmlContent, nil
+	}
+
+	// Handle TextTable directly for PDF mode
+	if table, ok := in.(api.TextTable); ok {
+		return f.renderTableAsHTML(&table, api.PrettyField{Name: "table"})
+	}
+	if table, ok := in.(*api.TextTable); ok {
+		return f.renderTableAsHTML(table, api.PrettyField{Name: "table"})
+	}
+
+	// Handle TextTree directly for PDF mode
+	if tree, ok := in.(api.TextTree); ok {
+		return f.renderTreeAsHTML(&tree, "Tree")
+	}
+	if tree, ok := in.(*api.TextTree); ok {
+		return f.renderTreeAsHTML(tree, "Tree")
 	}
 
 	// Handle Textable inputs directly (e.g., TextList)
@@ -236,9 +286,18 @@ func (f *HTMLFormatter) FormatPrettyData(data *api.PrettyData) (string, error) {
 		// Root level table (value type) - render directly
 		table := v
 		return f.renderTableAsHTML(&table, api.PrettyField{Name: "table"})
-	case *api.TypedMap:
+	case api.TypedMap:
 		// Complex structure with fields - iterate and render each
+		f.renderTypedMapAsHTML(&result, &v, data.Schema)
+	case *api.TypedMap:
+		// Complex structure with fields - iterate and render each (pointer variant)
 		f.renderTypedMapAsHTML(&result, v, data.Schema)
+	case api.TypedList:
+		// TypedList may contain tables - render with PDF awareness
+		f.renderTypedListAsHTML(&result, v)
+	case api.TextList:
+		// TextList may contain tables - render with PDF awareness
+		f.renderTextListAsHTML(&result, v)
 	case api.Textable:
 		// Simple textable content
 		if f.IncludeCSS {
@@ -289,6 +348,81 @@ func (f *HTMLFormatter) formatTextListForEmail(list api.TextList) string {
 		}
 	}
 	return strings.Join(parts, api.BR.HTML())
+}
+
+// renderTypedListAsHTML renders a TypedList with PDF-aware table rendering
+func (f *HTMLFormatter) renderTypedListAsHTML(result *strings.Builder, list api.TypedList) {
+	if f.IncludeCSS {
+		result.WriteString("        <div class=\"bg-white rounded-lg shadow p-6\">\n")
+		result.WriteString("            ")
+	}
+	for i, item := range list {
+		if i > 0 {
+			result.WriteString(api.BR.HTML())
+		}
+		if item.Table != nil {
+			if f.IsPDFMode {
+				result.WriteString(item.Table.StaticHTML())
+			} else {
+				result.WriteString(item.Table.HTML())
+			}
+		} else if item.Tree != nil {
+			if f.IsPDFMode {
+				result.WriteString(item.Tree.StaticHTML())
+			} else {
+				result.WriteString(item.Tree.HTML())
+			}
+		} else {
+			result.WriteString(item.HTML())
+		}
+	}
+	if f.IncludeCSS {
+		result.WriteString("\n        </div>\n")
+	}
+}
+
+// renderTextListAsHTML renders a TextList with PDF-aware table rendering
+func (f *HTMLFormatter) renderTextListAsHTML(result *strings.Builder, list api.TextList) {
+	if f.IncludeCSS {
+		result.WriteString("        <div class=\"bg-white rounded-lg shadow p-6\">\n")
+		result.WriteString("            ")
+	}
+	for i, item := range list {
+		if i > 0 {
+			result.WriteString(api.BR.HTML())
+		}
+		switch v := item.(type) {
+		case api.TextTable:
+			if f.IsPDFMode {
+				result.WriteString(v.StaticHTML())
+			} else {
+				result.WriteString(v.HTML())
+			}
+		case *api.TextTable:
+			if f.IsPDFMode {
+				result.WriteString(v.StaticHTML())
+			} else {
+				result.WriteString(v.HTML())
+			}
+		case api.TextTree:
+			if f.IsPDFMode {
+				result.WriteString(v.StaticHTML())
+			} else {
+				result.WriteString(v.HTML())
+			}
+		case *api.TextTree:
+			if f.IsPDFMode {
+				result.WriteString(v.StaticHTML())
+			} else {
+				result.WriteString(v.HTML())
+			}
+		default:
+			result.WriteString(item.HTML())
+		}
+	}
+	if f.IncludeCSS {
+		result.WriteString("\n        </div>\n")
+	}
 }
 
 // renderTypedMapAsHTML renders a TypedMap (complex structure with fields)
@@ -380,16 +514,24 @@ func (f *HTMLFormatter) renderTypedMapAsHTML(result *strings.Builder, typedMap *
 	// Render table sections
 	for _, field := range tableSections {
 		fieldValue := (*typedMap)[field.Name]
-		if table, ok := fieldValue.Value().(*api.TextTable); ok {
+		value := fieldValue.Value()
+		switch table := value.(type) {
+		case *api.TextTable:
 			f.renderTableSectionHTML(result, table, field)
+		case api.TextTable:
+			f.renderTableSectionHTML(result, &table, field)
 		}
 	}
 
 	// Render tree sections
 	for _, field := range treeSections {
 		fieldValue := (*typedMap)[field.Name]
-		if tree, ok := fieldValue.Value().(*api.TextTree); ok {
+		value := fieldValue.Value()
+		switch tree := value.(type) {
+		case *api.TextTree:
 			f.renderTreeSectionHTML(result, tree, field)
+		case api.TextTree:
+			f.renderTreeSectionHTML(result, &tree, field)
 		}
 	}
 
@@ -417,7 +559,7 @@ func (f *HTMLFormatter) renderTableSectionHTML(result *strings.Builder, table *a
 
 	var tableHTML string
 	if f.IsPDFMode {
-		tableHTML = table.PrintableHTML()
+		tableHTML = table.StaticHTML()
 	} else {
 		tableHTML = table.HTML()
 	}
@@ -455,11 +597,16 @@ func (f *HTMLFormatter) renderTreeAsHTML(tree *api.TextTree, title string) (stri
 
 	result.WriteString("        <div class=\"bg-white rounded-lg shadow\">\n")
 	result.WriteString("            <div class=\"px-6 py-4 border-b border-gray-200\">\n")
-	result.WriteString(fmt.Sprintf("                <h2 class=\"text-xl font-semibold text-gray-900\">%s</h2>\n", html.EscapeString(title)))
+	_, _ = fmt.Fprintf(&result, "                <h2 class=\"text-xl font-semibold text-gray-900\">%s</h2>\n", html.EscapeString(title))
 	result.WriteString("            </div>\n")
 	result.WriteString("            <div class=\"px-6 py-4\">\n")
 
-	treeHTML := f.formatTreeFieldHTML(api.TypedValue{Tree: tree}, api.PrettyField{Name: title})
+	var treeHTML string
+	if f.IsPDFMode {
+		treeHTML = tree.StaticHTML()
+	} else {
+		treeHTML = tree.HTML()
+	}
 	result.WriteString(treeHTML)
 
 	result.WriteString("            </div>\n")
@@ -490,7 +637,7 @@ func (f *HTMLFormatter) renderTableAsHTML(table *api.TextTable, field api.Pretty
 
 	var tableHTML string
 	if f.IsPDFMode {
-		tableHTML = table.PrintableHTML()
+		tableHTML = table.StaticHTML()
 	} else {
 		tableHTML = table.HTML()
 	}
@@ -525,37 +672,48 @@ func (f *HTMLFormatter) prettifyFieldName(name string) string {
 
 // formatFieldValueHTMLWithStyle formats a TypedValue with field styling for HTML output
 func (f *HTMLFormatter) formatFieldValueHTMLWithStyle(fieldValue api.TypedValue, field api.PrettyField) string {
-	// Check if this is an image field
 	valueStr := fieldValue.String()
 	if field.Format == "image" || f.isImageURL(valueStr) {
 		return f.formatImageHTML(fieldValue, field)
 	}
 
-	// Check if this TypedValue contains a nested table
-	if fieldValue.Table != nil && fieldValue.FieldMeta != nil {
+	// Handle tables - use static HTML in PDF mode
+	if fieldValue.Table != nil {
 		if len(fieldValue.Table.Columns) == 0 {
 			fieldValue.Table.Columns = field.TableOptions.Columns
 		}
-		// If compact, render inline
-		if fieldValue.FieldMeta.CompactItems {
+		if fieldValue.FieldMeta != nil && fieldValue.FieldMeta.CompactItems {
 			return fieldValue.Table.CompactHTML()
 		}
-		// Otherwise, return placeholder - table will be rendered after struct
-		return fmt.Sprintf(`<span class="text-gray-500 italic">See %s table below</span>`, html.EscapeString(fieldValue.FieldMeta.Name))
+		if fieldValue.FieldMeta != nil && !fieldValue.FieldMeta.CompactItems {
+			return fmt.Sprintf(`<span class="text-gray-500 italic">See %s table below</span>`, html.EscapeString(fieldValue.FieldMeta.Name))
+		}
+		if f.IsPDFMode {
+			return fieldValue.Table.StaticHTML()
+		}
+		return fieldValue.Table.HTML()
 	}
 
-	// Use HTML() method from TypedValue
+	// Handle trees - use static HTML in PDF mode
+	if fieldValue.Tree != nil {
+		if f.IsPDFMode {
+			return fieldValue.Tree.StaticHTML()
+		}
+		return fieldValue.Tree.HTML()
+	}
+
 	return fieldValue.HTML()
 }
 
 // formatTreeFieldHTML formats a tree field for HTML output
 func (f *HTMLFormatter) formatTreeFieldHTML(fieldValue api.TypedValue, _ api.PrettyField) string {
-	// Check if TypedValue has a tree
 	if fieldValue.Tree == nil {
 		return "<p class=\"text-gray-500\">No tree data available</p>"
 	}
 
-	// Render tree as interactive HTML
+	if f.IsPDFMode {
+		return fieldValue.Tree.StaticHTML()
+	}
 	return fieldValue.Tree.HTML()
 }
 
@@ -573,13 +731,16 @@ func (f *HTMLFormatter) formatSingleTreeNode(root api.TreeNode) string {
 		result.WriteString(f.getCSS())
 	}
 
-	// Wrap in card structure
 	result.WriteString("        <div class=\"bg-white rounded-lg shadow\">\n")
 	result.WriteString("            <div class=\"px-6 py-4\">\n")
 
-	// Convert TreeNode to TextTree and render as HTML
 	textTree := api.NewTree(root)
-	treeHTML := textTree.HTML()
+	var treeHTML string
+	if f.IsPDFMode {
+		treeHTML = textTree.StaticHTML()
+	} else {
+		treeHTML = textTree.HTML()
+	}
 	result.WriteString(treeHTML)
 
 	result.WriteString("            </div>\n")

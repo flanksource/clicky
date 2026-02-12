@@ -95,6 +95,34 @@
         display: none !important;
     }
 
+    /* Static tree styling for PDF */
+    .tree-static {
+        font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace !important;
+    }
+
+    .tree-static ul {
+        list-style: none !important;
+        padding-left: 0 !important;
+        margin: 0 !important;
+    }
+
+    .tree-node-static {
+        display: block !important;
+        white-space: pre !important;
+        margin: 2px 0 !important;
+    }
+
+    .tree-connector {
+        color: #9ca3af !important;
+        user-select: none !important;
+        white-space: pre !important;
+    }
+
+    .tree-children-static {
+        margin-left: 16px !important;
+        padding-left: 8px !important;
+    }
+
     /* Header adjustments */
     h2 {
         font-size: 14px !important;

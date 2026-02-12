@@ -382,9 +382,203 @@ func TestHTMLTableMixedLabels(t *testing.T) {
 	}
 
 	// Should use prettified Name where Label is not defined
-	// GridJS outputs column names in JavaScript format: { name: "Name", ... }
-	if !strings.Contains(htmlOutput, `"Name"`) {
+	// Static HTML table outputs column names in <th> tags
+	if !strings.Contains(htmlOutput, `>Name<`) {
 		t.Logf("HTML output: %s", htmlOutput)
 		t.Errorf("HTML should contain 'Name' prettified field name as header (no label defined)")
+	}
+}
+
+// TestHTMLStaticNoCDNScripts tests that PDF mode does not emit JS CDN script tags
+func TestHTMLStaticNoCDNScripts(t *testing.T) {
+	tableData := []map[string]any{
+		{"id": "PROD-001", "name": "Test Product"},
+	}
+
+	schema := &api.PrettyObject{
+		Fields: []api.PrettyField{
+			{
+				Name:   "items",
+				Type:   "array",
+				Format: api.FormatTable,
+				TableOptions: api.TableOptions{
+					Columns: []api.PrettyField{
+						{Name: "id", Label: "ID", Type: "string"},
+						{Name: "name", Label: "Name", Type: "string"},
+					},
+				},
+			},
+		},
+	}
+
+	parser := api.NewStructParser()
+	data := map[string]any{"items": tableData}
+
+	prettyData, err := parser.ParseDataWithSchema(data, schema)
+	if err != nil {
+		t.Fatalf("Failed to parse table data: %v", err)
+	}
+
+	// Test static/PDF formatter
+	staticFormatter := NewStaticHTMLFormatter()
+	staticHTML, err := staticFormatter.FormatPrettyData(prettyData)
+	if err != nil {
+		t.Fatalf("Failed to format html-static: %v", err)
+	}
+
+	// PDF mode should NOT contain any CDN script tags
+	cdnScripts := []string{
+		"cdn.tailwindcss.com",
+		"unpkg.com/gridjs",
+		"code.iconify.design",
+		"popperjs/core",
+		"unpkg.com/tippy.js",
+		"cdn.jsdelivr.net/npm/alpinejs",
+	}
+	for _, script := range cdnScripts {
+		if strings.Contains(staticHTML, script) {
+			t.Errorf("PDF mode output should not contain CDN script reference %q", script)
+		}
+	}
+
+	// PDF mode should NOT contain inline script blocks (tooltips/tree JS)
+	if strings.Contains(staticHTML, "<script>") || strings.Contains(staticHTML, "<script ") {
+		t.Errorf("PDF mode output should not contain any <script> tags")
+	}
+
+	// PDF mode should still contain CSS styles
+	if !strings.Contains(staticHTML, "<style>") {
+		t.Errorf("PDF mode output should still contain <style> tags for CSS")
+	}
+
+	// Regular HTML should contain CDN scripts
+	regularFormatter := NewHTMLFormatter()
+	regularHTML, err := regularFormatter.FormatPrettyData(prettyData)
+	if err != nil {
+		t.Fatalf("Failed to format html: %v", err)
+	}
+
+	if !strings.Contains(regularHTML, "cdn.tailwindcss.com") {
+		t.Errorf("regular HTML should contain Tailwind CDN script")
+	}
+	if !strings.Contains(regularHTML, "alpinejs") {
+		t.Errorf("regular HTML should contain Alpine.js CDN script")
+	}
+	if !strings.Contains(regularHTML, "<script>") {
+		t.Errorf("regular HTML should contain inline script block")
+	}
+}
+
+// TestHTMLStaticFormat tests that html-static format produces static HTML without JS
+func TestHTMLStaticFormat(t *testing.T) {
+	tableData := []map[string]any{
+		{"id": "PROD-001", "name": "Test Product"},
+		{"id": "PROD-002", "name": "Another Product"},
+	}
+
+	schema := &api.PrettyObject{
+		Fields: []api.PrettyField{
+			{
+				Name:   "items",
+				Type:   "array",
+				Format: api.FormatTable,
+				TableOptions: api.TableOptions{
+					Columns: []api.PrettyField{
+						{Name: "id", Label: "ID", Type: "string"},
+						{Name: "name", Label: "Name", Type: "string"},
+					},
+				},
+			},
+		},
+	}
+
+	parser := api.NewStructParser()
+	data := map[string]any{"items": tableData}
+
+	prettyData, err := parser.ParseDataWithSchema(data, schema)
+	if err != nil {
+		t.Fatalf("Failed to parse table data: %v", err)
+	}
+
+	// Test static HTML formatter directly
+	staticFormatter := NewStaticHTMLFormatter()
+	staticHTML, err := staticFormatter.FormatPrettyData(prettyData)
+	if err != nil {
+		t.Fatalf("Failed to format html-static: %v", err)
+	}
+
+	// Static HTML should NOT contain gridjs
+	if strings.Contains(staticHTML, "gridjs-table") {
+		t.Errorf("html-static should not contain gridjs-table")
+	}
+
+	// Static HTML should contain border-collapse (static table style)
+	if !strings.Contains(staticHTML, "border-collapse") {
+		t.Errorf("html-static should contain border-collapse for static tables")
+	}
+
+	// Test regular html format for comparison
+	regularFormatter := NewHTMLFormatter()
+	regularHTML, err := regularFormatter.FormatPrettyData(prettyData)
+	if err != nil {
+		t.Fatalf("Failed to format html: %v", err)
+	}
+
+	// Regular HTML should contain gridjs
+	if !strings.Contains(regularHTML, "gridjs") {
+		t.Errorf("regular html should contain gridjs")
+	}
+}
+
+// TestHTMLStaticTreeFormat tests that html-static format produces static trees
+func TestHTMLStaticTreeFormat(t *testing.T) {
+	tree := &api.TextTree{
+		Children: []api.TextTree{
+			{
+				Node: api.Text{Content: "Parent 1"},
+				Children: []api.TextTree{
+					{Node: api.Text{Content: "Child 1.1"}},
+					{Node: api.Text{Content: "Child 1.2"}},
+				},
+			},
+			{Node: api.Text{Content: "Parent 2"}},
+		},
+	}
+
+	staticFormatter := NewHTMLFormatter()
+	staticFormatter.IsPDFMode = true
+	staticHTML, err := staticFormatter.Format(tree, FormatOptions{})
+	if err != nil {
+		t.Fatalf("Failed to format tree: %v", err)
+	}
+
+	// Static tree should contain tree connectors
+	if !strings.Contains(staticHTML, "├──") && !strings.Contains(staticHTML, "└──") {
+		t.Errorf("static tree should contain tree connectors (├── or └──)")
+	}
+
+	// Static tree should have tree-static class
+	if !strings.Contains(staticHTML, "tree-static") {
+		t.Errorf("static tree should have tree-static class")
+	}
+
+	// Static tree should NOT contain Alpine.js directives
+	if strings.Contains(staticHTML, "x-data") {
+		t.Errorf("static tree should not contain Alpine.js x-data directive")
+	}
+	if strings.Contains(staticHTML, "@click") {
+		t.Errorf("static tree should not contain Alpine.js @click directive")
+	}
+
+	// Test regular html format for comparison
+	interactiveFormatter := NewHTMLFormatter()
+	interactiveHTML, err := interactiveFormatter.Format(tree, FormatOptions{})
+	if err != nil {
+		t.Fatalf("Failed to format interactive tree: %v", err)
+	}
+
+	// Interactive tree should contain Alpine.js directives
+	if !strings.Contains(interactiveHTML, "x-data") {
+		t.Errorf("interactive tree should contain Alpine.js x-data directive")
 	}
 }

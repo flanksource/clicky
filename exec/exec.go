@@ -423,6 +423,14 @@ func (p Process) GetStderr() string {
 	return p.captureOutput.GetStderr()
 }
 
+func (p *Process) Stream(stdout, stderr io.Writer) *Process {
+	if p.captureOutput == nil {
+		p.captureOutput = NewExecLogger()
+	}
+	p.captureOutput.Tee(stdout, stderr)
+	return p
+}
+
 func (p *Process) Debug() *Process {
 	if p.log == nil {
 		p.log = logger.GetLogger("exec")

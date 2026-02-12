@@ -21,6 +21,7 @@ var (
 	tableRowMixin2Type = reflect.TypeOf((*TableRowMixin2)(nil)).Elem()
 	treeNodeType       = reflect.TypeOf((*TreeNode)(nil)).Elem()
 	treeMixinType      = reflect.TypeOf((*TreeMixin)(nil)).Elem()
+	prettyRowType      = reflect.TypeOf((*PrettyRow)(nil)).Elem()
 	prettyType         = reflect.TypeOf((*Pretty)(nil)).Elem()
 	textableType       = reflect.TypeOf((*Textable)(nil)).Elem()
 )
@@ -319,6 +320,12 @@ func (tt TextTree) HTML() string {
 	return RenderTreeHTML(&tt, true)
 }
 
+// StaticHTML renders the tree as static HTML without JavaScript.
+// This is suitable for PDF output where JavaScript may not execute.
+func (tt TextTree) StaticHTML() string {
+	return RenderTreeHTML(&tt, false)
+}
+
 func (tt TextTree) ANSI() string {
 	if tt.Node == nil && len(tt.Children) == 0 {
 		return ""
@@ -457,6 +464,19 @@ func (tv TypedValue) Visit(visitor VisitorFunc) bool {
 	return true
 }
 
+func implementsOrDeref(t reflect.Type, iface reflect.Type) bool {
+	if t.Implements(iface) {
+		return true
+	}
+	for t.Kind() == reflect.Ptr {
+		t = t.Elem()
+		if t.Implements(iface) {
+			return true
+		}
+	}
+	return false
+}
+
 func TryTypedValue(o any) *TypedValue {
 	switch v := o.(type) {
 	case TypedValue:
@@ -548,6 +568,12 @@ func TryTypedValue(o any) *TypedValue {
 				nodes[i] = val.Index(i).Interface().(TreeMixin).Tree()
 			}
 			return &TypedValue{Tree: lo.ToPtr(NewTree(nodes...))}
+		}
+
+		// If elements implement PrettyRow, return nil to let the slice→table
+		// conversion in convertSliceToPrettyDataWithOptions handle it properly
+		if implementsOrDeref(elemType, prettyRowType) {
+			return nil
 		}
 
 		// Check Pretty

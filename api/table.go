@@ -59,6 +59,71 @@ func (table TextTable) CompactHTML() string {
 	return result.String()
 }
 
+// StaticHTML renders a pure HTML table without JavaScript (Grid.js).
+// This is suitable for PDF output where JavaScript may not execute.
+func (table TextTable) StaticHTML() string {
+	if len(table.Rows) == 0 {
+		return `<p class="text-gray-500 text-center py-8">No data available</p>`
+	}
+
+	columns := table.Columns
+	if len(columns) == 0 && len(table.Headers) > 0 {
+		columns = make([]PrettyField, 0, len(table.Headers))
+		for i, header := range table.Headers {
+			name := header.String()
+			if i < len(table.FieldNames) && table.FieldNames[i] != "" {
+				name = table.FieldNames[i]
+			}
+			columns = append(columns, PrettyField{
+				Name:  name,
+				Label: header.String(),
+			})
+		}
+	}
+
+	if len(columns) == 0 {
+		return `<p class="text-red-500 text-center py-8">Table has no columns defined</p>`
+	}
+
+	var result strings.Builder
+	result.WriteString(`<div class="overflow-x-auto px-6 py-4">`)
+	result.WriteString(`<table class="w-full border-collapse text-sm">`)
+
+	// Headers
+	result.WriteString(`<thead><tr class="bg-gray-100">`)
+	for _, col := range columns {
+		headerLabel := col.Label
+		if headerLabel == "" {
+			headerLabel = PrettifyFieldName(col.Name)
+		}
+		result.WriteString(fmt.Sprintf(`<th class="border border-gray-300 px-3 py-2 text-left font-semibold">%s</th>`,
+			html.EscapeString(headerLabel)))
+	}
+	result.WriteString("</tr></thead>")
+
+	// Rows
+	result.WriteString("<tbody>")
+	for i, row := range table.Rows {
+		rowClass := ""
+		if i%2 == 1 {
+			rowClass = ` class="bg-gray-50"`
+		}
+		result.WriteString(fmt.Sprintf("<tr%s>", rowClass))
+		for _, col := range columns {
+			fieldValue, exists := row[col.Name]
+			var cellContent string
+			if exists {
+				cellContent = fieldValue.HTML()
+			}
+			result.WriteString(fmt.Sprintf(`<td class="border border-gray-300 px-3 py-2">%s</td>`, cellContent))
+		}
+		result.WriteString("</tr>")
+	}
+	result.WriteString("</tbody></table></div>")
+
+	return result.String()
+}
+
 func (table TextTable) PrintableHTML() string {
 
 	return table.html(true)
