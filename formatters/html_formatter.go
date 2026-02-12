@@ -148,16 +148,10 @@ func (f *HTMLFormatter) getPDFCSS() string {
 
 // Format formats PrettyData into HTML output
 func (f *HTMLFormatter) Format(in interface{}, options FormatOptions) (string, error) {
-	// Use a local copy to avoid mutating the shared formatter instance
-	formatter := *f
+	// Check if PDF mode should be enabled based on options
 	if options.PDF {
-		formatter.IsPDFMode = true
+		f.IsPDFMode = true
 	}
-	return formatter.format(in, options)
-}
-
-// format is the internal implementation that performs the actual formatting.
-func (f *HTMLFormatter) format(in interface{}, options FormatOptions) (string, error) {
 	// Unwrap single-element slices from varargs
 	if slice, ok := in.([]interface{}); ok && len(slice) == 1 {
 		in = slice[0]
