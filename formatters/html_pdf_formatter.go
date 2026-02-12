@@ -15,6 +15,7 @@ import (
 func init() {
 	htmlPdf := NewHTMLPDFFormatter()
 	RegisterFormatter("html-pdf", htmlPdf.Format)
+	RegisterFormatter("pdf", htmlPdf.Format)
 }
 
 // HTMLPDFFormatter handles HTML-to-PDF conversion using ChromiumConverter
