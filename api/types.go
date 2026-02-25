@@ -451,10 +451,11 @@ func (f PrettyField) Parse(value interface{}) (FieldValue, error) {
 	// Dereference pointer values before processing
 	val := reflect.ValueOf(value)
 	for val.Kind() == reflect.Ptr {
-		if val.IsNil() {
+		var isNil bool
+		val, isNil = SafeDerefPointer(val)
+		if isNil {
 			return v, nil
 		}
-		val = val.Elem()
 		value = val.Interface()
 		v.Value = value
 	}
@@ -598,7 +599,7 @@ func (f PrettyField) Parse(value interface{}) (FieldValue, error) {
 	// Ensure ArrayValue and MapValue are always populated for arrays and maps,
 	// regardless of the actualType in the switch above
 	valType := reflect.ValueOf(value)
-	if valType.Kind() == reflect.Slice || valType.Kind() == reflect.Array {
+	if (valType.Kind() == reflect.Slice || valType.Kind() == reflect.Array) && actualType == FieldTypeArray {
 		if v.ArrayValue == nil {
 			v.ArrayValue = make([]interface{}, valType.Len())
 			for i := 0; i < valType.Len(); i++ {
@@ -631,6 +632,10 @@ func (v FieldValue) createText() Textable {
 			Content: "null",
 			Style:   "text-gray-400", // Muted color for null values
 		}
+	}
+
+	if IsEmpty(v.Value) {
+		return nil
 	}
 
 	// Handle nested PrettyData structures
@@ -741,52 +746,53 @@ func InferValueType(value interface{}) string {
 		return "nil"
 	}
 
-	// Use reflection to check for maps and slices
 	val := reflect.ValueOf(value)
+
+	// Dereference pointers
+	for val.Kind() == reflect.Ptr {
+		if val.IsNil() {
+			return "nil"
+		}
+		val = val.Elem()
+		value = val.Interface()
+	}
+
+	// Unwrap interfaces
+	if val.Kind() == reflect.Interface {
+		if val.IsNil() {
+			return "nil"
+		}
+		return InferValueType(val.Elem().Interface())
+	}
 
 	switch val.Kind() {
 	case reflect.Map:
 		return FieldTypeMap
 	case reflect.Struct:
-		// Check for time.Time
 		if _, ok := value.(time.Time); ok {
 			return FieldTypeDate
 		}
-		// Check for time.Duration
 		if _, ok := value.(time.Duration); ok {
 			return FieldTypeDuration
 		}
 		return FieldTypeStruct
 	case reflect.Slice, reflect.Array:
+		if _, ok := value.(fmt.Stringer); ok {
+			return FieldTypeString
+		}
 		return FieldTypeArray
 	case reflect.String:
 		return FieldTypeString
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return FieldTypeInt
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
 		return FieldTypeInt
 	case reflect.Float32, reflect.Float64:
 		return FieldTypeFloat
 	case reflect.Bool:
 		return FieldTypeBoolean
 	default:
-		// Also check concrete types
-		switch value.(type) {
-		case string:
-			return FieldTypeString
-		case int, int64:
-			return FieldTypeInt
-		case float64, float32:
-			return FieldTypeFloat
-		case bool:
-			return FieldTypeBoolean
-		case time.Time:
-			return FieldTypeDate
-		case time.Duration:
-			return FieldTypeDuration
-		case map[string]interface{}:
-			return FieldTypeMap
-		default:
-			return "unknown"
-		}
+		return "unknown"
 	}
 }
 

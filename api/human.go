@@ -7,6 +7,7 @@ import (
 
 	"github.com/flanksource/clicky/api/icons"
 	commonsText "github.com/flanksource/commons/text"
+	"github.com/google/uuid"
 )
 
 var K = int64(1000)
@@ -45,7 +46,7 @@ func HumanDate(d any, format string) Text {
 }
 
 func Human(content any, styles ...string) Text {
-	if content == nil {
+	if content == nil || IsEmpty(content) {
 		return Text{}
 	}
 	switch t := content.(type) {
@@ -74,6 +75,16 @@ func Human(content any, styles ...string) Text {
 		}
 	case *time.Time:
 		if t == nil {
+			return Text{}
+		}
+		return Human(*t, styles...)
+	case uuid.UUID:
+		if t == uuid.Nil {
+			return Text{}
+		}
+		return Text{Content: t.String(), Style: strings.Join(styles, " ")}
+	case *uuid.UUID:
+		if t == nil || *t == uuid.Nil {
 			return Text{}
 		}
 		return Human(*t, styles...)

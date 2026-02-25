@@ -62,8 +62,8 @@ func (r *treeHTMLRenderer) renderInteractiveNode(tree *TextTree, depth int) stri
 
 	result.WriteString(`<li class="flex items-start tree-node-wrapper">`)
 
+	nodeID := r.generateNodeID()
 	if len(children) > 0 {
-		nodeID := r.generateNodeID()
 		result.WriteString(fmt.Sprintf(`<span class="tree-toggle" @click.stop="toggleNode('%s')" data-node-id="%s">`, nodeID, nodeID))
 		result.WriteString(fmt.Sprintf(`<iconify-icon icon="ion:chevron-forward" x-show="!isExpanded('%s')"></iconify-icon>`, nodeID))
 		result.WriteString(fmt.Sprintf(`<iconify-icon icon="ion:chevron-down" x-show="isExpanded('%s')"></iconify-icon>`, nodeID))
@@ -74,7 +74,6 @@ func (r *treeHTMLRenderer) renderInteractiveNode(tree *TextTree, depth int) stri
 
 	result.WriteString(`<div class="flex-1">`)
 	if len(children) > 0 {
-		nodeID := fmt.Sprintf("node-%d", r.nodeCounter)
 		result.WriteString(fmt.Sprintf(`<span class="tree-node cursor-pointer" @click="toggleNode('%s')">`, nodeID))
 	} else {
 		result.WriteString(`<span class="tree-node">`)
@@ -83,7 +82,6 @@ func (r *treeHTMLRenderer) renderInteractiveNode(tree *TextTree, depth int) stri
 	result.WriteString(`</span>`)
 
 	if len(children) > 0 {
-		nodeID := fmt.Sprintf("node-%d", r.nodeCounter)
 		result.WriteString(fmt.Sprintf(`<ul class="tree-children ml-4 mt-1 space-y-1" x-show="isExpanded('%s')">`, nodeID))
 		for i := range children {
 			childHTML := r.renderInteractiveNode(&children[i], depth+1)
@@ -109,8 +107,8 @@ func (r *treeHTMLRenderer) renderStaticNode(result *strings.Builder, tree *TextT
 		connector = "└── "
 	}
 
-	result.WriteString(`<div style="white-space: pre;">`)
-	fmt.Fprintf(result, `<span style="color: #9ca3af;">%s%s</span>`, prefix, connector)
+	result.WriteString(`<div class="tree-node-static">`)
+	fmt.Fprintf(result, `<span class="tree-connector">%s%s</span>`, prefix, connector)
 	result.WriteString(tree.Node.HTML())
 	result.WriteString(`</div>`)
 

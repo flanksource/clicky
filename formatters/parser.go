@@ -120,7 +120,7 @@ func GetFieldValueWithAliases(val reflect.Value, field api.PrettyField) reflect.
 	if len(field.Aliases) > 0 {
 		for _, alias := range field.Aliases {
 			fieldVal := GetFieldValue(val, alias)
-			if fieldVal.IsValid() && !isEmptyValue(fieldVal) {
+			if fieldVal.IsValid() && !api.IsEmpty(fieldVal) {
 				return fieldVal
 			}
 		}
@@ -185,6 +185,14 @@ func ToPrettyDataWithOptions(data interface{}, opts FormatOptions) (*api.PrettyD
 	// Get reflect value
 	val := reflect.ValueOf(data)
 
+	// Handle nil pointer at root level
+	if val.Kind() == reflect.Ptr && val.IsNil() {
+		return &api.PrettyData{
+			Schema:   &api.PrettyObject{Fields: []api.PrettyField{}},
+			Original: data,
+		}, nil
+	}
+
 	// Check if it's a slice/array
 	if val.Kind() == reflect.Slice || val.Kind() == reflect.Array {
 		return parseSliceDataWithOptions(val, opts)
@@ -197,7 +205,13 @@ func ToPrettyDataWithOptions(data interface{}, opts FormatOptions) (*api.PrettyD
 // parseSliceDataWithOptions handles slice/array data with format options
 func parseSliceDataWithOptions(val reflect.Value, opts FormatOptions) (*api.PrettyData, error) {
 	// Safely dereference root level pointer
-	val, _ = safeDerefPointer(val)
+	var isNil bool
+	val, isNil = api.SafeDerefPointer(val)
+	if isNil {
+		return &api.PrettyData{
+			Schema: &api.PrettyObject{Fields: []api.PrettyField{}},
+		}, nil
+	}
 	val = FlattenSlice(val)
 
 	// Handle slices/arrays - default to table format unless items have tree structure
@@ -220,7 +234,13 @@ func parseSliceDataWithOptions(val reflect.Value, opts FormatOptions) (*api.Pret
 // parseStructDataWithOptions handles struct/map data with format options
 func parseStructDataWithOptions(val reflect.Value, opts FormatOptions) (*api.PrettyData, error) {
 	// Safely dereference root level pointer
-	val, _ = safeDerefPointer(val)
+	var isNil bool
+	val, isNil = api.SafeDerefPointer(val)
+	if isNil {
+		return &api.PrettyData{
+			Schema: &api.PrettyObject{Fields: []api.PrettyField{}},
+		}, nil
+	}
 
 	// Check dereferenced value for Pretty interface
 	if val.CanInterface() {
@@ -283,22 +303,10 @@ func parseStructDataWithOptions(val reflect.Value, opts FormatOptions) (*api.Pre
 									if mapVal.Kind() == reflect.Interface && !mapVal.IsNil() {
 										mapVal = mapVal.Elem()
 									}
-									// Infer type from the value
-									inferredType := "string" // default
-									switch mapVal.Kind() {
-									case reflect.Bool:
-										inferredType = "bool"
-									case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-										inferredType = "int"
-									case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-										inferredType = "int"
-									case reflect.Float32, reflect.Float64:
-										inferredType = "float"
-									}
 									tableFields = append(tableFields, api.PrettyField{
 										Name:  keyStr,
 										Label: keyStr,
-										Type:  inferredType,
+										Type:  api.InferValueType(mapVal.Interface()),
 									})
 								}
 							}
@@ -348,21 +356,10 @@ func convertSliceToPrettyDataWithOptions(val reflect.Value, opts FormatOptions) 
 		}, nil
 	}
 
-	// Get the first element to check the type
-	firstElem := val.Index(0)
-	firstElem, _ = safeDerefPointer(firstElem)
-
-	// Dereference interface to get underlying concrete type
-	if firstElem.Kind() == reflect.Interface && !firstElem.IsNil() {
-		firstElem = firstElem.Elem()
-	}
-
-	// Recursively dereference all pointer layers until we reach a non-pointer type
-	for firstElem.Kind() == reflect.Ptr {
-		if firstElem.IsNil() {
-			return nil, fmt.Errorf("cannot convert slice with nil pointer element")
-		}
-		firstElem = firstElem.Elem()
+	// Get the first element and unwrap pointers/interfaces
+	firstElem, err := unwrapElement(val.Index(0))
+	if err != nil {
+		return nil, err
 	}
 
 	// Handle slices of structs or maps
@@ -381,7 +378,7 @@ func convertSliceToPrettyDataWithOptions(val reflect.Value, opts FormatOptions) 
 		keysSet := make(map[string]bool)
 		for i := 0; i < val.Len(); i++ {
 			elem := val.Index(i)
-			elem, isNil := safeDerefPointer(elem)
+			elem, isNil := api.SafeDerefPointer(elem)
 			if isNil {
 				continue
 			}
@@ -429,7 +426,7 @@ func convertSliceToPrettyDataWithOptions(val reflect.Value, opts FormatOptions) 
 
 	for i := 0; i < val.Len(); i++ {
 		elem := val.Index(i)
-		elem, isNil := safeDerefPointer(elem)
+		elem, isNil := api.SafeDerefPointer(elem)
 		if isNil {
 			continue // Skip nil elements
 		}
@@ -608,7 +605,7 @@ func ToPrettyData(data interface{}, opts ...TypeOptions) (*api.PrettyData, error
 	}
 
 	// Safely dereference root level pointer
-	val, _ = safeDerefPointer(val)
+	val, _ = api.SafeDerefPointer(val)
 
 	// Check dereferenced value for Pretty interface
 	if val.CanInterface() {
@@ -672,7 +669,7 @@ func ToPrettyData(data interface{}, opts ...TypeOptions) (*api.PrettyData, error
 				elem := fieldVal.Index(i)
 
 				// Handle nil elements in slice
-				processedElem, isNil := processSliceElement(elem)
+				processedElem, isNil := api.SafeDerefPointer(elem)
 				if isNil {
 					// Skip nil elements in table - they don't contribute to rows
 					continue
@@ -764,7 +761,7 @@ func hasTreeStructure(val reflect.Value) bool {
 
 	// Get the first element to check the type
 	firstElem := val.Index(0)
-	firstElem, _ = safeDerefPointer(firstElem)
+	firstElem, _ = api.SafeDerefPointer(firstElem)
 
 	if firstElem.Kind() != reflect.Struct {
 		return false
@@ -873,21 +870,10 @@ func convertSliceToPrettyData(val reflect.Value) (*api.PrettyData, error) {
 		}, nil
 	}
 
-	// Get the first element to check the type
-	firstElem := val.Index(0)
-	firstElem, _ = safeDerefPointer(firstElem)
-
-	// Dereference interface to get underlying concrete type
-	if firstElem.Kind() == reflect.Interface && !firstElem.IsNil() {
-		firstElem = firstElem.Elem()
-	}
-
-	// Recursively dereference all pointer layers until we reach a non-pointer type
-	for firstElem.Kind() == reflect.Ptr {
-		if firstElem.IsNil() {
-			return nil, fmt.Errorf("cannot convert slice with nil pointer element")
-		}
-		firstElem = firstElem.Elem()
+	// Get the first element and unwrap pointers/interfaces
+	firstElem, err := unwrapElement(val.Index(0))
+	if err != nil {
+		return nil, err
 	}
 
 	// Handle slices of structs or maps
@@ -896,14 +882,13 @@ func convertSliceToPrettyData(val reflect.Value) (*api.PrettyData, error) {
 	}
 
 	var tableFields []api.PrettyField
-	var err error
 
 	// For slices of maps, extract all distinct keys from all maps
 	if firstElem.Kind() == reflect.Map {
 		keysSet := make(map[string]bool)
 		for i := 0; i < val.Len(); i++ {
 			elem := val.Index(i)
-			elem, isNil := safeDerefPointer(elem)
+			elem, isNil := api.SafeDerefPointer(elem)
 			if isNil {
 				continue
 			}
@@ -940,7 +925,7 @@ func convertSliceToPrettyData(val reflect.Value) (*api.PrettyData, error) {
 	var rows []api.PrettyDataRow
 	for i := 0; i < val.Len(); i++ {
 		elem := val.Index(i)
-		elem, isNil := safeDerefPointer(elem)
+		elem, isNil := api.SafeDerefPointer(elem)
 		if isNil {
 			continue // Skip nil elements
 		}
