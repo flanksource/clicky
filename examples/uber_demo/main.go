@@ -10,6 +10,7 @@ import (
 	"github.com/flanksource/clicky/api/icons"
 	"github.com/flanksource/clicky/task"
 	flanksourceContext "github.com/flanksource/commons/context"
+	"github.com/google/uuid"
 	"github.com/spf13/cobra"
 )
 
@@ -20,6 +21,7 @@ func int64Ptr(i int64) *int64        { return &i }
 func float64Ptr(f float64) *float64  { return &f }
 func boolPtr(b bool) *bool           { return &b }
 func timePtr(t time.Time) *time.Time { return &t }
+func uuidPtr(u uuid.UUID) *uuid.UUID { return &u }
 
 // IconShowcase demonstrates all available icons
 type IconShowcase struct {
@@ -507,6 +509,78 @@ func createTextStylesShowcase() []TextStyleExample {
 
 }
 
+// NilHandlingExample demonstrates how zero/nil/empty values are rendered
+type NilHandlingExample struct {
+	Label       string     `json:"label" pretty:"label=Field"`
+	UUID        uuid.UUID  `json:"uuid" pretty:"label=uuid.UUID"`
+	UUIDPtr     *uuid.UUID `json:"uuid_ptr,omitempty" pretty:"label=*uuid.UUID,omitempty"`
+	TimeVal     time.Time  `json:"time_val" pretty:"label=time.Time"`
+	TimePtr     *time.Time `json:"time_ptr,omitempty" pretty:"label=*time.Time,omitempty"`
+	DateStr     string     `json:"date_str" pretty:"label=Date String,format=date"`
+	DateInt     int64      `json:"date_int" pretty:"label=Date Unix,format=date"`
+	StringPtr   *string    `json:"string_ptr,omitempty" pretty:"label=*string,omitempty"`
+	IntPtr      *int       `json:"int_ptr,omitempty" pretty:"label=*int,omitempty"`
+	EmptyStruct zeroImpl   `json:"empty_struct" pretty:"label=IsZero() struct"`
+	NilStruct   nilImpl    `json:"nil_struct" pretty:"label=IsNil() struct"`
+}
+
+type zeroImpl struct{ zero bool }
+
+func (z zeroImpl) IsZero() bool { return z.zero }
+
+type nilImpl struct{ isNil bool }
+
+func (n nilImpl) IsNil() bool { return n.isNil }
+
+func createNilHandlingShowcase() []NilHandlingExample {
+	now := time.Now()
+	id := uuid.New()
+	return []NilHandlingExample{
+		{
+			Label:       "All populated",
+			UUID:        id,
+			UUIDPtr:     uuidPtr(id),
+			TimeVal:     now,
+			TimePtr:     timePtr(now),
+			DateStr:     now.Format(time.RFC3339),
+			DateInt:     now.Unix(),
+			StringPtr:   stringPtr("world"),
+			IntPtr:      intPtr(99),
+			EmptyStruct: zeroImpl{zero: false},
+			NilStruct:   nilImpl{isNil: false},
+		},
+		{
+			Label:       "All zero/nil/empty",
+			UUID:        uuid.UUID{},
+			UUIDPtr:     nil,
+			TimeVal:     time.Time{},
+			TimePtr:     nil,
+			DateStr:     "",
+			DateInt:     0,
+			StringPtr:   nil,
+			IntPtr:      nil,
+			EmptyStruct: zeroImpl{zero: true},
+			NilStruct:   nilImpl{isNil: true},
+		},
+		{
+			Label:       "Mixed",
+			UUID:        id,
+			UUIDPtr:     nil,
+			TimeVal:     now,
+			TimePtr:     nil,
+			DateStr:     now.Format(time.RFC3339),
+			DateInt:     0,
+			StringPtr:   nil,
+			IntPtr:      nil,
+			EmptyStruct: zeroImpl{zero: true},
+			NilStruct:   nilImpl{isNil: false},
+		},
+	}
+}
+
+// NilHandlingOptions for showing nil handling showcase
+type NilHandlingOptions struct{}
+
 // AllOptions are options for showcase commands
 type AllOptions struct {
 	IncludeIcons  bool `flag:"icons" help:"Include icons showcase" default:"true"`
@@ -866,6 +940,10 @@ func runDependencyTasks(sleep func(time.Duration)) {
 	}, task.WithDependencies(build.GetTask()))
 }
 
+func showNilHandling(opts NilHandlingOptions) (any, error) {
+	return createNilHandlingShowcase(), nil
+}
+
 func main() {
 	rootCmd := &cobra.Command{
 		Use:   "uber-demo",
@@ -891,6 +969,7 @@ func main() {
 	clicky.AddNamedCommand("table-provider", rootCmd, TableProviderOptions{}, showTableProvider)
 	clicky.AddNamedCommand("trees", rootCmd, clicky.FileTreeOptions{}, showTrees)
 	clicky.AddNamedCommand("tasks", rootCmd, TasksOptions{}, showTasks)
+	clicky.AddNamedCommand("nil-handling", rootCmd, NilHandlingOptions{}, showNilHandling)
 
 	clicky.BindAllFlags(rootCmd.PersistentFlags())
 

@@ -1,9 +1,33 @@
 package formatters
 
 import (
+	"fmt"
 	"reflect"
 	"strings"
+
+	"github.com/flanksource/clicky/api"
 )
+
+// unwrapElement dereferences pointers and interfaces to get the underlying concrete value.
+// Returns an error if a nil pointer is encountered during unwrapping.
+func unwrapElement(val reflect.Value) (reflect.Value, error) {
+	val, isNil := api.SafeDerefPointer(val)
+	if isNil {
+		return reflect.Value{}, fmt.Errorf("cannot convert slice with nil pointer element")
+	}
+
+	if val.Kind() == reflect.Interface && !val.IsNil() {
+		val = val.Elem()
+	}
+
+	for val.Kind() == reflect.Ptr {
+		if val.IsNil() {
+			return reflect.Value{}, fmt.Errorf("cannot convert slice with nil pointer element")
+		}
+		val = val.Elem()
+	}
+	return val, nil
+}
 
 // FlattenSlice flattens a slice of slices into a single-level slice.
 // If the input is not a slice of slices, it returns the input unchanged.
@@ -21,7 +45,7 @@ func FlattenSlice(val reflect.Value) reflect.Value {
 
 	// Get the first element to check if this is a slice of slices
 	firstElem := val.Index(0)
-	firstElem, _ = safeDerefPointer(firstElem)
+	firstElem, _ = api.SafeDerefPointer(firstElem)
 
 	// Dereference interface to get underlying concrete type
 	if firstElem.Kind() == reflect.Interface && !firstElem.IsNil() {
@@ -37,7 +61,7 @@ func FlattenSlice(val reflect.Value) reflect.Value {
 	var flattened []reflect.Value
 	for i := 0; i < val.Len(); i++ {
 		elem := val.Index(i)
-		elem, isNil := safeDerefPointer(elem)
+		elem, isNil := api.SafeDerefPointer(elem)
 		if isNil {
 			continue // Skip nil outer elements
 		}
@@ -138,56 +162,6 @@ func ToSlice[T any](data ...any) ([]T, bool) {
 	}
 
 	return result, len(result) > 0
-}
-
-// processSliceElement handles slice elements that might be nil pointers
-func processSliceElement(elem reflect.Value) (reflect.Value, bool) {
-	// If it's a pointer, dereference it safely
-	if elem.Kind() == reflect.Ptr {
-		if elem.IsNil() {
-			return reflect.Value{}, true // Nil element
-		}
-		return elem.Elem(), false
-	}
-
-	return elem, false // Not a pointer
-}
-
-// safeDerefPointer safely dereferences a pointer value, returning the dereferenced value and whether it was nil
-func safeDerefPointer(val reflect.Value) (reflect.Value, bool) {
-	if val.Kind() != reflect.Ptr {
-		return val, false // Not a pointer, return as-is
-	}
-
-	if val.IsNil() {
-		return reflect.Value{}, true // Nil pointer
-	}
-
-	return val.Elem(), false // Dereferenced value
-}
-
-// isEmptyValue checks if a reflect.Value is considered empty
-func isEmptyValue(v reflect.Value) bool {
-	if !v.IsValid() {
-		return true
-	}
-
-	switch v.Kind() {
-	case reflect.String:
-		return v.String() == ""
-	case reflect.Slice, reflect.Array, reflect.Map, reflect.Chan:
-		return v.Len() == 0
-	case reflect.Interface:
-		if v.IsNil() {
-			return true
-		}
-		// For interface{}, check the underlying value
-		return isEmptyValue(v.Elem())
-	case reflect.Ptr:
-		return v.IsNil()
-	default:
-		return false
-	}
 }
 
 // GetFieldValueCaseInsensitive tries to find a field by name with different casing

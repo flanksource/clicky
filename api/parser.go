@@ -11,6 +11,29 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+// SafeDerefPointer safely dereferences a pointer value, returning the
+// dereferenced value and whether it was nil.
+func SafeDerefPointer(val reflect.Value) (reflect.Value, bool) {
+	if val.Kind() != reflect.Ptr {
+		return val, false
+	}
+	if val.IsNil() {
+		return reflect.Value{}, true
+	}
+	return val.Elem(), false
+}
+
+// jsonFieldName returns the JSON field name from a struct field's tag,
+// falling back to the struct field name if no valid json tag is present.
+func jsonFieldName(f reflect.StructField) string {
+	if tag := f.Tag.Get("json"); tag != "" && tag != "-" {
+		if name, _, _ := strings.Cut(tag, ","); name != "" {
+			return name
+		}
+	}
+	return f.Name
+}
+
 // StructParser handles parsing of structs into PrettyObject
 type StructParser struct{}
 
@@ -51,22 +74,14 @@ func (p *StructParser) parseStruct(val reflect.Value) (*PrettyObject, error) {
 		}
 
 		prettyTag := field.Tag.Get("pretty")
-		jsonTag := field.Tag.Get("json")
 
 		// Skip hidden fields
 		if prettyTag == FormatHide {
 			continue
 		}
 
-		fieldName := field.Name
-		if jsonTag != "" && jsonTag != "-" {
-			if parts := strings.Split(jsonTag, ","); parts[0] != "" {
-				fieldName = parts[0]
-			}
-		}
-
 		prettyField := p.parsePrettyTag(prettyTag)
-		prettyField.Name = fieldName
+		prettyField.Name = jsonFieldName(field)
 		prettyField.Type = p.inferType(fieldVal)
 
 		// Handle table formatting for slices
@@ -90,48 +105,19 @@ func (p *StructParser) parsePrettyTag(tag string) PrettyField {
 	return ParsePrettyTag(tag)
 }
 
-// inferType infers the type of a field value
+// inferType infers the type of a field value, delegating to InferValueType
+// after safely handling invalid/nil values.
 func (p *StructParser) inferType(val reflect.Value) string {
+	if !val.IsValid() {
+		return "nil"
+	}
 	if val.Kind() == reflect.Ptr && val.IsNil() {
 		return "nil"
 	}
-	if val.Kind() == reflect.Ptr {
-		val = val.Elem()
+	if val.CanInterface() {
+		return InferValueType(val.Interface())
 	}
-
-	switch val.Kind() {
-	case reflect.String:
-		return "string"
-	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
-		return "int"
-	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-		return "uint"
-	case reflect.Float32, reflect.Float64:
-		return "float"
-	case reflect.Bool:
-		return "boolean"
-	case reflect.Slice, reflect.Array:
-		return "array"
-	case reflect.Map:
-		return "map"
-	case reflect.Struct:
-		// Check if it's a time.Time
-		if val.Type() == reflect.TypeOf(time.Time{}) {
-			return "date"
-		}
-		// Check if it's a time.Duration
-		if val.Type() == reflect.TypeOf(time.Duration(0)) {
-			return "duration"
-		}
-		return "struct"
-	case reflect.Interface:
-		if val.IsNil() {
-			return "nil"
-		}
-		return p.inferType(val.Elem())
-	default:
-		return "unknown"
-	}
+	return "unknown"
 }
 
 // parseTableField parses a slice field for table formatting
@@ -207,22 +193,14 @@ func (p *StructParser) getTableFields(val reflect.Value) ([]PrettyField, error) 
 		}
 
 		prettyTag := field.Tag.Get("pretty")
-		jsonTag := field.Tag.Get("json")
 
 		// Skip hidden fields
 		if prettyTag == FormatHide {
 			continue
 		}
 
-		fieldName := field.Name
-		if jsonTag != "" && jsonTag != "-" {
-			if parts := strings.Split(jsonTag, ","); parts[0] != "" {
-				fieldName = parts[0]
-			}
-		}
-
 		prettyField := p.parsePrettyTag(prettyTag)
-		prettyField.Name = fieldName
+		prettyField.Name = jsonFieldName(field)
 		prettyField.Type = p.inferType(fieldVal)
 
 		fields = append(fields, prettyField)
@@ -245,21 +223,13 @@ func (p *StructParser) structToRow(val reflect.Value) (map[string]interface{}, e
 		}
 
 		prettyTag := field.Tag.Get("pretty")
-		jsonTag := field.Tag.Get("json")
 
 		// Skip hidden fields
 		if prettyTag == FormatHide {
 			continue
 		}
 
-		fieldName := field.Name
-		if jsonTag != "" && jsonTag != "-" {
-			if parts := strings.Split(jsonTag, ","); parts[0] != "" {
-				fieldName = parts[0]
-			}
-		}
-
-		row[fieldName] = p.ProcessFieldValue(fieldVal)
+		row[jsonFieldName(field)] = p.ProcessFieldValue(fieldVal)
 	}
 
 	return row, nil
@@ -563,18 +533,8 @@ func (p *StructParser) getFieldValueByName(val reflect.Value, fieldName string) 
 
 	for i := 0; i < val.NumField(); i++ {
 		field := typ.Field(i)
-
-		// Check field name
-		if field.Name == fieldName {
+		if field.Name == fieldName || jsonFieldName(field) == fieldName {
 			return val.Field(i)
-		}
-
-		// Check json tag
-		jsonTag := field.Tag.Get("json")
-		if jsonTag != "" && jsonTag != "-" {
-			if parts := strings.Split(jsonTag, ","); parts[0] == fieldName {
-				return val.Field(i)
-			}
 		}
 	}
 
@@ -706,16 +666,7 @@ func (p *StructParser) GetTableFields(val reflect.Value) ([]PrettyField, error) 
 			continue
 		}
 
-		// Get field name from json tag or use field name
-		fieldName := field.Name
-		jsonTag := field.Tag.Get("json")
-		if jsonTag != "" && jsonTag != "-" {
-			if parts := strings.Split(jsonTag, ","); parts[0] != "" {
-				fieldName = parts[0]
-			}
-		}
-
-		prettyField := ParsePrettyTagWithName(fieldName, prettyTag)
+		prettyField := ParsePrettyTagWithName(jsonFieldName(field), prettyTag)
 		fields = append(fields, prettyField)
 	}
 
@@ -863,20 +814,8 @@ func (p *StructParser) StructToRow(val reflect.Value) (PrettyDataRow, error) {
 			continue
 		}
 
-		// Get field name from json tag or use field name
-		fieldName := field.Name
-		jsonTag := field.Tag.Get("json")
-		if jsonTag != "" && jsonTag != "-" {
-			if parts := strings.Split(jsonTag, ","); parts[0] != "" {
-				fieldName = parts[0]
-			}
-		}
-
 		fieldVal := val.Field(i)
-		// prettyField := ParsePrettyTagWithName(fieldName, prettyTag)
-		// prettyField.
-
-		row[fieldName] = p.ProcessFieldValue(fieldVal)
+		row[jsonFieldName(field)] = p.ProcessFieldValue(fieldVal)
 	}
 
 	return row, nil
@@ -905,18 +844,8 @@ func (p *StructParser) getStructFieldValue(val reflect.Value, fieldName string) 
 
 	for i := 0; i < val.NumField(); i++ {
 		field := typ.Field(i)
-
-		// Check field name
-		if field.Name == fieldName {
+		if field.Name == fieldName || jsonFieldName(field) == fieldName {
 			return val.Field(i)
-		}
-
-		// Check json tag
-		jsonTag := field.Tag.Get("json")
-		if jsonTag != "" && jsonTag != "-" {
-			if parts := strings.Split(jsonTag, ","); parts[0] == fieldName {
-				return val.Field(i)
-			}
 		}
 	}
 
@@ -982,6 +911,32 @@ func (p *StructParser) processFieldValueWithVisited(fieldVal reflect.Value, visi
 	if fieldVal.IsValid() && fieldVal.CanInterface() {
 		if pretty, ok := fieldVal.Interface().(Pretty); ok {
 			return TypedValue{Textable: pretty.Pretty()}
+		}
+	}
+
+	// Check if the value is empty/nil/zero via interfaces — skip rendering
+	if fieldVal.CanInterface() {
+		iface := fieldVal.Interface()
+		if e, ok := iface.(interface{ IsEmpty() bool }); ok && e.IsEmpty() {
+			return TypedValue{}
+		}
+		if e, ok := iface.(interface{ IsNil() bool }); ok && e.IsNil() {
+			return TypedValue{}
+		}
+		if e, ok := iface.(interface{ IsZero() bool }); ok && e.IsZero() {
+			return TypedValue{}
+		}
+	}
+
+	// For types implementing fmt.Stringer (time.Time, uuid.UUID, custom structs),
+	// use Human() for known types or String() for others, instead of recursing into
+	// unexported fields or falling through to the generic handler.
+	if fieldVal.CanInterface() {
+		if _, ok := fieldVal.Interface().(fmt.Stringer); ok {
+			if IsEmpty(fieldVal) {
+				return TypedValue{}
+			}
+			return TypedValue{Textable: Human(fieldVal.Interface())}
 		}
 	}
 
@@ -1055,21 +1010,13 @@ func (p *StructParser) processFieldValueWithVisited(fieldVal reflect.Value, visi
 
 			// Skip omitempty fields if empty
 			if jsonTag != "" && strings.Contains(jsonTag, "omitempty") {
-				if p.isEmptyValue(fVal) {
+				if IsEmpty(fVal) {
 					continue
 				}
 			}
 
-			// Get field name from json tag, fallback to field name
-			fieldName := field.Name
-			if jsonTag != "" && jsonTag != "-" {
-				if parts := strings.Split(jsonTag, ","); parts[0] != "" {
-					fieldName = parts[0]
-				}
-			}
-
 			// Recursively process the field value
-			result[fieldName] = p.processFieldValueWithVisited(fVal, visited)
+			result[jsonFieldName(field)] = p.processFieldValueWithVisited(fVal, visited)
 		}
 		return TypedValue{TypedMap: &result}
 	}
@@ -1092,7 +1039,7 @@ func (p *StructParser) getMapValueWithAliases(val reflect.Value, field PrettyFie
 	if len(field.Aliases) > 0 {
 		for _, alias := range field.Aliases {
 			fieldVal := p.getMapValue(val, alias)
-			if fieldVal.IsValid() && !p.isEmptyValue(fieldVal) {
+			if fieldVal.IsValid() && !IsEmpty(fieldVal) {
 				return fieldVal
 			}
 		}
@@ -1108,7 +1055,7 @@ func (p *StructParser) getFieldValueByNameWithAliases(val reflect.Value, field P
 	if len(field.Aliases) > 0 {
 		for _, alias := range field.Aliases {
 			fieldVal := p.getFieldValueByName(val, alias)
-			if fieldVal.IsValid() && !p.isEmptyValue(fieldVal) {
+			if fieldVal.IsValid() && !IsEmpty(fieldVal) {
 				return fieldVal
 			}
 		}
@@ -1118,20 +1065,100 @@ func (p *StructParser) getFieldValueByNameWithAliases(val reflect.Value, field P
 	return p.getFieldValueByName(val, field.Name)
 }
 
-// isEmptyValue checks if a reflect.Value is considered empty
-func (p *StructParser) isEmptyValue(v reflect.Value) bool {
+// IsEmpty checks if a value is considered empty.
+// It accepts any type: nil, common Go types get fast-path checks,
+// and everything else falls back to reflection.
+func IsEmpty(v any) bool {
+	if v == nil {
+		return true
+	}
+
+	// Handle reflect.Value passed directly by internal callers
+	if rv, ok := v.(reflect.Value); ok {
+		if !rv.IsValid() {
+			return true
+		}
+		if rv.CanInterface() {
+			return IsEmpty(rv.Interface())
+		}
+		return isEmptyReflect(rv)
+	}
+
+	// Guard: nil pointers boxed in an interface satisfy method-set checks
+	// (e.g. (*time.Time)(nil) matches interface{ IsZero() bool }) but will
+	// panic when the method is called. Detect and short-circuit.
+	if rv := reflect.ValueOf(v); rv.Kind() == reflect.Ptr && rv.IsNil() {
+		return true
+	}
+
+	// Fast-path type switch for common types
+	switch val := v.(type) {
+	case string:
+		return val == ""
+	case bool:
+		return !val
+	case int:
+		return val == 0
+	case int8:
+		return val == 0
+	case int16:
+		return val == 0
+	case int32:
+		return val == 0
+	case int64:
+		return val == 0
+	case uint:
+		return val == 0
+	case uint8:
+		return val == 0
+	case uint16:
+		return val == 0
+	case uint32:
+		return val == 0
+	case uint64:
+		return val == 0
+	case float32:
+		return val == 0
+	case float64:
+		return val == 0
+	case time.Time:
+		return val.IsZero()
+	case time.Duration:
+		return val == 0
+	case interface{ IsEmpty() bool }:
+		return val.IsEmpty()
+	case interface{ IsNil() bool }:
+		return val.IsNil()
+	case interface{ IsZero() bool }:
+		return val.IsZero()
+	}
+
+	return isEmptyReflect(reflect.ValueOf(v))
+}
+
+// isEmptyReflect is the reflection fallback for IsEmpty.
+func isEmptyReflect(v reflect.Value) bool {
 	if !v.IsValid() {
 		return true
 	}
 
 	switch v.Kind() {
-	case reflect.String:
-		return v.String() == ""
-	case reflect.Slice, reflect.Array, reflect.Map, reflect.Chan:
+	case reflect.Slice, reflect.Map, reflect.Chan:
 		return v.Len() == 0
-	case reflect.Interface, reflect.Ptr:
-		return v.IsNil()
+	case reflect.Interface:
+		if v.IsNil() {
+			return true
+		}
+		if v.Elem().CanInterface() {
+			return IsEmpty(v.Elem().Interface())
+		}
+		return isEmptyReflect(v.Elem())
+	case reflect.Ptr:
+		if v.IsNil() {
+			return true
+		}
+		return isEmptyReflect(v.Elem())
 	default:
-		return false
+		return v.IsZero()
 	}
 }

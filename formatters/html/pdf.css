@@ -108,10 +108,12 @@
 
     .tree-node-static {
         display: block !important;
+        white-space: pre !important;
         margin: 2px 0 !important;
     }
 
     .tree-connector {
+        color: #9ca3af !important;
         user-select: none !important;
         white-space: pre !important;
     }
