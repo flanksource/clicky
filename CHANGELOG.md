@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.18.0](https://github.com/flanksource/clicky/compare/v1.17.0...v1.18.0) (2026-02-25)
+
+
+### ♻️ Code Refactoring
+
+* **task:** split manager.go and improve terminal safety ([a5d87ef](https://github.com/flanksource/clicky/commit/a5d87efeb0744072012a9de59b2a5ef8d9829f7e))
+
+
+### ✨ Features
+
+* **formatters:** add static HTML rendering for PDF output ([030d916](https://github.com/flanksource/clicky/commit/030d91654b772f1bf607ddfa679ecfdd7e12cf06))
+
+
+### 🐛 Bug Fixes
+
+* nil handling in pretty printers ([ec8f949](https://github.com/flanksource/clicky/commit/ec8f949ba6e3ab9924f1d19b5b25ccbf4b25c08e))
+
+
+### 🔧 Maintenance
+
+* go mod tidy ([c4206b6](https://github.com/flanksource/clicky/commit/c4206b6301546858d106a8e5c6122cbf6d2044df))
+
 ## [1.17.0](https://github.com/flanksource/clicky/compare/v1.16.2...v1.17.0) (2026-02-23)
 
 
