@@ -20,6 +20,61 @@ import (
 
 var tableIDCounter = atomic.Int64{}
 
+// WithoutEmptyColumns returns a copy of the table with columns removed where
+// every row has an empty value. Used by display renderers (ANSI, HTML, PDF)
+// but not by data formats (CSV, Excel, JSON, YAML).
+func (t TextTable) WithoutEmptyColumns() TextTable {
+	if len(t.Headers) == 0 || len(t.Rows) == 0 {
+		return t
+	}
+
+	nonEmpty := make([]bool, len(t.Headers))
+	for _, row := range t.Rows {
+		for i := range t.Headers {
+			if nonEmpty[i] {
+				continue
+			}
+			cell := t.getCellValue(row, i)
+			if strings.TrimSpace(cell.String()) != "" {
+				nonEmpty[i] = true
+			}
+		}
+	}
+
+	out := TextTable{Interactive: t.Interactive}
+	for i, keep := range nonEmpty {
+		if !keep {
+			continue
+		}
+		out.Headers = append(out.Headers, t.Headers[i])
+		if i < len(t.FieldNames) {
+			out.FieldNames = append(out.FieldNames, t.FieldNames[i])
+		}
+		if i < len(t.Columns) {
+			out.Columns = append(out.Columns, t.Columns[i])
+		}
+	}
+	for _, row := range t.Rows {
+		newRow := TableRow{}
+		for i, keep := range nonEmpty {
+			if !keep {
+				continue
+			}
+			var fieldName string
+			if i < len(t.FieldNames) && t.FieldNames[i] != "" {
+				fieldName = t.FieldNames[i]
+			} else {
+				fieldName = t.Headers[i].String()
+			}
+			if val, ok := row[fieldName]; ok {
+				newRow[fieldName] = val
+			}
+		}
+		out.Rows = append(out.Rows, newRow)
+	}
+	return out
+}
+
 // jsonEscape properly escapes a string for use in JSON
 func jsonEscape(s string) string {
 	// Use Go's JSON marshaling to properly escape the string
@@ -31,6 +86,7 @@ func (table TextTable) CompactHTML() string {
 	if len(table.Rows) == 0 {
 		return `<span class="text-gray-400">Empty</span>`
 	}
+	table = table.WithoutEmptyColumns()
 
 	var result strings.Builder
 	result.WriteString(`<table class="inline-table text-xs border-collapse border border-gray-300">`)
@@ -65,6 +121,7 @@ func (table TextTable) StaticHTML() string {
 	if len(table.Rows) == 0 {
 		return `<p class="text-gray-500 text-center py-8">No data available</p>`
 	}
+	table = table.WithoutEmptyColumns()
 
 	columns := table.Columns
 	if len(columns) == 0 && len(table.Headers) > 0 {
@@ -136,6 +193,7 @@ func (table TextTable) html(interactive bool) string {
 	if len(table.Rows) == 0 {
 		return "            <p class=\"text-gray-500 text-center py-8\">No data available</p>"
 	}
+	table = table.WithoutEmptyColumns()
 
 	// Use table's embedded Columns if available, otherwise derive from headers.
 	columns := table.Columns
@@ -334,6 +392,8 @@ func (t *TextTable) renderLipgloss(withColors bool) string {
 	if len(t.Headers) == 0 {
 		return ""
 	}
+	filtered := t.WithoutEmptyColumns()
+	t = &filtered
 
 	// Calculate max width per column using .String() for accurate measurement
 	columnWidths := make([]int, len(t.Headers))
