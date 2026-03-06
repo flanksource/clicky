@@ -41,7 +41,7 @@ func (t TextTable) WithoutEmptyColumns() TextTable {
 		}
 	}
 
-	out := TextTable{Interactive: t.Interactive}
+	out := TextTable{Interactive: t.Interactive, RowDetail: t.RowDetail}
 	for i, keep := range nonEmpty {
 		if !keep {
 			continue
@@ -75,6 +75,24 @@ func (t TextTable) WithoutEmptyColumns() TextTable {
 	return out
 }
 
+// hasAnyRowDetail returns true if any row has non-nil detail content.
+func (t TextTable) hasAnyRowDetail() bool {
+	for _, d := range t.RowDetail {
+		if d != nil {
+			return true
+		}
+	}
+	return false
+}
+
+// getRowDetail returns the detail content for a row, or nil.
+func (t TextTable) getRowDetail(rowIdx int) Textable {
+	if rowIdx < len(t.RowDetail) {
+		return t.RowDetail[rowIdx]
+	}
+	return nil
+}
+
 // jsonEscape properly escapes a string for use in JSON
 func jsonEscape(s string) string {
 	// Use Go's JSON marshaling to properly escape the string
@@ -88,11 +106,20 @@ func (table TextTable) CompactHTML() string {
 	}
 	table = table.WithoutEmptyColumns()
 
+	hasDetail := table.hasAnyRowDetail()
+	colCount := len(table.Headers)
+	if hasDetail {
+		colCount++
+	}
+
 	var result strings.Builder
 	result.WriteString(`<table class="inline-table text-xs border-collapse border border-gray-300">`)
 
 	// Headers
 	result.WriteString("<thead><tr>")
+	if hasDetail {
+		result.WriteString(`<th class="border border-gray-300 px-2 py-1 bg-gray-100 w-6"></th>`)
+	}
 	for _, header := range table.Headers {
 		result.WriteString(fmt.Sprintf(`<th class="border border-gray-300 px-2 py-1 bg-gray-100 font-semibold">%s</th>`,
 			html.EscapeString(header.String())))
@@ -100,17 +127,40 @@ func (table TextTable) CompactHTML() string {
 	result.WriteString("</tr></thead>")
 
 	// Rows
-	result.WriteString("<tbody>")
-	for _, row := range table.Rows {
-		result.WriteString("<tr>")
+	for i, row := range table.Rows {
+		detail := table.getRowDetail(i)
+
+		if detail != nil {
+			result.WriteString(`<tbody x-data="{ open: false }">`)
+			result.WriteString(`<tr class="cursor-pointer" @click="open = !open">`)
+			result.WriteString(`<td class="border border-gray-300 px-2 py-1 text-center">`)
+			result.WriteString(`<iconify-icon x-show="!open" icon="codicon:chevron-right"></iconify-icon>`)
+			result.WriteString(`<iconify-icon x-show="open" icon="codicon:chevron-down"></iconify-icon>`)
+			result.WriteString(`</td>`)
+		} else {
+			result.WriteString(`<tbody>`)
+			result.WriteString("<tr>")
+			if hasDetail {
+				result.WriteString(`<td class="border border-gray-300 px-2 py-1"></td>`)
+			}
+		}
+
 		for _, header := range table.Headers {
 			cellValue := row[header.String()]
 			result.WriteString(fmt.Sprintf(`<td class="border border-gray-300 px-2 py-1">%s</td>`,
 				cellValue.HTML()))
 		}
 		result.WriteString("</tr>")
+
+		if detail != nil {
+			result.WriteString(`<tr x-show="open" x-collapse>`)
+			result.WriteString(fmt.Sprintf(`<td colspan="%d" class="border border-gray-300 px-3 py-2 bg-gray-50">`, colCount))
+			result.WriteString(detail.HTML())
+			result.WriteString(`</td></tr>`)
+		}
+		result.WriteString(`</tbody>`)
 	}
-	result.WriteString("</tbody></table>")
+	result.WriteString("</table>")
 
 	return result.String()
 }
@@ -142,12 +192,21 @@ func (table TextTable) StaticHTML() string {
 		return `<p class="text-red-500 text-center py-8">Table has no columns defined</p>`
 	}
 
+	hasDetail := table.hasAnyRowDetail()
+	colCount := len(columns)
+	if hasDetail {
+		colCount++ // extra column for chevron
+	}
+
 	var result strings.Builder
 	result.WriteString(`<div class="overflow-x-auto px-6 py-4">`)
 	result.WriteString(`<table class="w-full border-collapse text-sm">`)
 
 	// Headers
 	result.WriteString(`<thead><tr class="bg-gray-100">`)
+	if hasDetail {
+		result.WriteString(`<th class="border border-gray-300 px-3 py-2 w-8"></th>`)
+	}
 	for _, col := range columns {
 		headerLabel := col.Label
 		if headerLabel == "" {
@@ -158,14 +217,31 @@ func (table TextTable) StaticHTML() string {
 	}
 	result.WriteString("</tr></thead>")
 
-	// Rows
-	result.WriteString("<tbody>")
+	// Rows - use separate <tbody> per expandable row pair for Alpine.js scoping
 	for i, row := range table.Rows {
+		detail := table.getRowDetail(i)
 		rowClass := ""
 		if i%2 == 1 {
-			rowClass = ` class="bg-gray-50"`
+			rowClass = " bg-gray-50"
 		}
-		result.WriteString(fmt.Sprintf("<tr%s>", rowClass))
+
+		if detail != nil {
+			result.WriteString(`<tbody x-data="{ open: false }">`)
+			result.WriteString(fmt.Sprintf(`<tr class="cursor-pointer hover:bg-gray-100%s" @click="open = !open">`, rowClass))
+			result.WriteString(`<td class="border border-gray-300 px-3 py-2 text-center">`)
+			result.WriteString(`<iconify-icon x-show="!open" icon="codicon:chevron-right"></iconify-icon>`)
+			result.WriteString(`<iconify-icon x-show="open" icon="codicon:chevron-down"></iconify-icon>`)
+			result.WriteString(`</td>`)
+		} else {
+			result.WriteString(`<tbody>`)
+			if hasDetail {
+				result.WriteString(fmt.Sprintf(`<tr class="%s">`, rowClass))
+				result.WriteString(`<td class="border border-gray-300 px-3 py-2"></td>`)
+			} else {
+				result.WriteString(fmt.Sprintf(`<tr class="%s">`, rowClass))
+			}
+		}
+
 		for _, col := range columns {
 			fieldValue, exists := row[col.Name]
 			var cellContent string
@@ -175,8 +251,17 @@ func (table TextTable) StaticHTML() string {
 			result.WriteString(fmt.Sprintf(`<td class="border border-gray-300 px-3 py-2">%s</td>`, cellContent))
 		}
 		result.WriteString("</tr>")
+
+		// Detail row
+		if detail != nil {
+			result.WriteString(`<tr x-show="open" x-collapse>`)
+			result.WriteString(fmt.Sprintf(`<td colspan="%d" class="border border-gray-300 px-6 py-4 bg-gray-50">`, colCount))
+			result.WriteString(detail.HTML())
+			result.WriteString(`</td></tr>`)
+		}
+		result.WriteString(`</tbody>`)
 	}
-	result.WriteString("</tbody></table></div>")
+	result.WriteString("</table></div>")
 
 	return result.String()
 }
@@ -213,6 +298,12 @@ func (table TextTable) html(interactive bool) string {
 
 	if len(columns) == 0 {
 		return "            <p class=\"text-red-500 text-center py-8\">Table has no columns defined</p>"
+	}
+
+	// When rows have detail content, use a custom HTML table with Alpine.js
+	// instead of Grid.js (which doesn't support expandable rows)
+	if table.hasAnyRowDetail() {
+		return table.htmlWithDetail(columns)
 	}
 
 	var result strings.Builder
@@ -289,6 +380,71 @@ func (table TextTable) html(interactive bool) string {
 	result.WriteString("                    });\n")
 	result.WriteString("                });\n")
 	result.WriteString("            </script>\n")
+
+	return result.String()
+}
+
+// htmlWithDetail renders an HTML table with expandable row details using Alpine.js.
+func (table TextTable) htmlWithDetail(columns []PrettyField) string {
+	colCount := len(columns) + 1 // +1 for chevron column
+
+	var result strings.Builder
+	result.WriteString(`<div class="overflow-x-auto px-6 py-4">`)
+	result.WriteString(`<table class="w-full border-collapse text-sm">`)
+
+	// Headers
+	result.WriteString(`<thead><tr class="bg-gray-100">`)
+	result.WriteString(`<th class="border border-gray-300 px-3 py-2 w-8"></th>`)
+	for _, col := range columns {
+		headerLabel := col.Label
+		if headerLabel == "" {
+			headerLabel = PrettifyFieldName(col.Name)
+		}
+		result.WriteString(fmt.Sprintf(`<th class="border border-gray-300 px-3 py-2 text-left font-semibold">%s</th>`,
+			html.EscapeString(headerLabel)))
+	}
+	result.WriteString("</tr></thead>")
+
+	// Rows
+	for i, row := range table.Rows {
+		detail := table.getRowDetail(i)
+		rowClass := ""
+		if i%2 == 1 {
+			rowClass = " bg-gray-50"
+		}
+
+		if detail != nil {
+			result.WriteString(`<tbody x-data="{ open: false }">`)
+			result.WriteString(fmt.Sprintf(`<tr class="cursor-pointer hover:bg-gray-100%s" @click="open = !open">`, rowClass))
+			result.WriteString(`<td class="border border-gray-300 px-3 py-2 text-center">`)
+			result.WriteString(`<iconify-icon x-show="!open" icon="codicon:chevron-right"></iconify-icon>`)
+			result.WriteString(`<iconify-icon x-show="open" icon="codicon:chevron-down"></iconify-icon>`)
+			result.WriteString(`</td>`)
+		} else {
+			result.WriteString(`<tbody>`)
+			result.WriteString(fmt.Sprintf(`<tr class="%s">`, rowClass))
+			result.WriteString(`<td class="border border-gray-300 px-3 py-2"></td>`)
+		}
+
+		for _, col := range columns {
+			fieldValue, exists := row[col.Name]
+			var cellContent string
+			if exists {
+				cellContent = fieldValue.HTML()
+			}
+			result.WriteString(fmt.Sprintf(`<td class="border border-gray-300 px-3 py-2">%s</td>`, cellContent))
+		}
+		result.WriteString("</tr>")
+
+		if detail != nil {
+			result.WriteString(`<tr x-show="open" x-collapse>`)
+			result.WriteString(fmt.Sprintf(`<td colspan="%d" class="border border-gray-300 px-6 py-4 bg-gray-50">`, colCount))
+			result.WriteString(detail.HTML())
+			result.WriteString(`</td></tr>`)
+		}
+		result.WriteString(`</tbody>`)
+	}
+	result.WriteString("</table></div>")
 
 	return result.String()
 }

@@ -203,6 +203,7 @@ type TextTable struct {
 	FieldNames  []string // Maps header index to field name for row lookups
 	Columns     []PrettyField
 	Rows        []TableRow
+	RowDetail   []Textable // Per-row detail content shown on expand (nil entry = no detail)
 	Interactive bool
 }
 
