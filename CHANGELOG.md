@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.19.0](https://github.com/flanksource/clicky/compare/v1.18.1...v1.19.0) (2026-03-06)
+
+
+### ✨ Features
+
+* add support for collapsible row detail in table ([#85](https://github.com/flanksource/clicky/issues/85)) ([4b57695](https://github.com/flanksource/clicky/commit/4b5769553343b155c9f773432cce4c398cae47ab))
+
 ## [1.18.0](https://github.com/flanksource/clicky/compare/v1.17.0...v1.18.0) (2026-02-25)
 
 
