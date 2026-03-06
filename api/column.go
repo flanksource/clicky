@@ -99,6 +99,12 @@ type TableProvider interface {
 	Row() map[string]any
 }
 
+// DetailProvider is an optional interface for TableProvider types that supply
+// expandable detail content per row. Return nil to indicate no detail.
+type DetailProvider interface {
+	RowDetail() Textable
+}
+
 // NewTableFrom creates a TextTable from a slice of TableProvider items.
 func NewTableFrom[T TableProvider](items []T) TextTable {
 	table := TextTable{}
@@ -129,7 +135,8 @@ func NewTableFrom[T TableProvider](items []T) TextTable {
 		})
 	}
 
-	// Build rows
+	// Build rows and collect detail content
+	var hasDetail bool
 	for _, item := range items {
 		rowData := item.Row()
 		row := TableRow{}
@@ -148,6 +155,19 @@ func NewTableFrom[T TableProvider](items []T) TextTable {
 		}
 
 		table.Rows = append(table.Rows, row)
+
+		if dp, ok := any(item).(DetailProvider); ok {
+			detail := dp.RowDetail()
+			table.RowDetail = append(table.RowDetail, detail)
+			if detail != nil {
+				hasDetail = true
+			}
+		}
+	}
+
+	// Clear RowDetail if no items actually provided detail content
+	if !hasDetail {
+		table.RowDetail = nil
 	}
 
 	return table
