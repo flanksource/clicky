@@ -408,7 +408,7 @@ func convertSliceToPrettyDataWithOptions(val reflect.Value, opts FormatOptions) 
 		if firstElem.CanInterface() {
 			if _, ok := firstElem.Interface().(api.PrettyRow); ok {
 				// PrettyRow is implemented - skip reflection, columns will come from PrettyRow output
-				logger.V(4).Infof("Struct implements PrettyRow - skipping reflection-based field extraction")
+				// logger.V(4).Infof("Struct implements PrettyRow - skipping reflection-based field extraction")
 			} else {
 				// No PrettyRow - extract fields from struct tags for proper labels
 				var err error
@@ -471,7 +471,6 @@ func convertSliceToPrettyDataWithOptions(val reflect.Value, opts FormatOptions) 
 				if textable := typedValue.Value(); textable != nil {
 					if text, ok := textable.(api.Text); ok {
 						orderValue = api.ExtractOrderValue(text.Style)
-						logger.V(5).Infof("Column %s has order value %d (style: %s)", columnName, orderValue, text.Style)
 					}
 				}
 
@@ -489,7 +488,6 @@ func convertSliceToPrettyDataWithOptions(val reflect.Value, opts FormatOptions) 
 			// Extract sorted fields
 			for _, col := range columnsToSort {
 				tableFields = append(tableFields, col.field)
-				logger.V(5).Infof("Sorted column: %s (order=%d)", col.field.Name, col.orderValue)
 			}
 		}
 

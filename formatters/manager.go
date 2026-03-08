@@ -6,7 +6,6 @@ import (
 	"os"
 	"strings"
 
-	"github.com/flanksource/commons/logger"
 	"gopkg.in/yaml.v3"
 
 	"github.com/flanksource/clicky/api"
@@ -214,7 +213,6 @@ func (f *FormatManager) FormatWithOptions(options FormatOptions, data ...any) (s
 	}
 	// Resolve format from boolean flags first to check for custom formatters
 	format := strings.ToLower(options.ResolveFormat())
-	logger.V(4).Infof("FormatWithOptions called with %d data items, format=%s", len(data), format)
 
 	// Check for custom formatters BEFORE the string shortcut
 	// This allows custom formatters to process strings
@@ -239,7 +237,6 @@ func (f *FormatManager) FormatWithOptions(options FormatOptions, data ...any) (s
 	if options.Tree {
 		return f.treeFormatter.Format(data...)
 	} else if options.Table {
-		logger.V(4).Infof("Applying table structure transformation before %s formatting", format)
 		// Convert data to table structure first, then apply the format
 		// For text-based formats, apply table formatting directly
 		if format == "pretty" || format == "table" || format == "" {
@@ -272,7 +269,6 @@ func (f *FormatManager) FormatWithOptions(options FormatOptions, data ...any) (s
 	} else {
 		d = data
 	}
-	logger.V(4).Infof("Extracted data type: %T", d)
 
 	// Handle format-specific options
 	switch format {
