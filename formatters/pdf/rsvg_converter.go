@@ -45,7 +45,7 @@ func (c *RSVGConverter) Convert(ctx context.Context, svgPath, outputPath string,
 		options = DefaultConvertOptions()
 	}
 
-	logger.Infof("[%s] converting %s to %s", c.Name(), svgPath, options.Format)
+	logger.Debugf("[%s] converting %s to %s", c.Name(), svgPath, options.Format)
 
 	args := []string{}
 

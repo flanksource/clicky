@@ -6,7 +6,6 @@ import (
 	"github.com/spf13/pflag"
 
 	"github.com/flanksource/clicky/api"
-	"github.com/flanksource/commons/logger"
 )
 
 type PrettyMixin interface {
@@ -176,7 +175,7 @@ func BindPFlags(flags *pflag.FlagSet, options *FormatOptions) {
 
 // ResolveFormat resolves the output format from format-specific flags
 func (options *FormatOptions) ResolveFormat() string {
-	logger.V(4).Infof("%+v", *options)
+	// logger.V(4).Infof("%+v", *options)
 	// Count how many format flags are set
 	selectedFormat := []string{}
 
