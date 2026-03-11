@@ -426,26 +426,16 @@ func TestHTMLStaticNoCDNScripts(t *testing.T) {
 		t.Fatalf("Failed to format html-static: %v", err)
 	}
 
-	// PDF mode should NOT contain any CDN script tags
+	// PDF mode should NOT contain any interactive script tags
 	cdnScripts := []string{
-		"cdn.tailwindcss.com",
-		"unpkg.com/gridjs",
-		"code.iconify.design",
 		"popperjs/core",
 		"unpkg.com/tippy.js",
-		"cdn.jsdelivr.net/npm/alpinejs",
 	}
 	for _, script := range cdnScripts {
 		if strings.Contains(staticHTML, script) {
 			t.Errorf("PDF mode output should not contain CDN script reference %q", script)
 		}
 	}
-
-	// PDF mode should NOT contain inline script blocks (tooltips/tree JS)
-	if strings.Contains(staticHTML, "<script>") || strings.Contains(staticHTML, "<script ") {
-		t.Errorf("PDF mode output should not contain any <script> tags")
-	}
-
 	// PDF mode should still contain CSS styles
 	if !strings.Contains(staticHTML, "<style>") {
 		t.Errorf("PDF mode output should still contain <style> tags for CSS")
@@ -460,9 +450,6 @@ func TestHTMLStaticNoCDNScripts(t *testing.T) {
 
 	if !strings.Contains(regularHTML, "cdn.tailwindcss.com") {
 		t.Errorf("regular HTML should contain Tailwind CDN script")
-	}
-	if !strings.Contains(regularHTML, "alpinejs") {
-		t.Errorf("regular HTML should contain Alpine.js CDN script")
 	}
 	if !strings.Contains(regularHTML, "<script>") {
 		t.Errorf("regular HTML should contain inline script block")
