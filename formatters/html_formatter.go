@@ -90,14 +90,14 @@ func (f *HTMLFormatter) getCSS() string {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Clicky Output</title>`
-
-	if !f.IsPDFMode {
-		css += `
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://unpkg.com/gridjs/dist/theme/mermaid.min.css" rel="stylesheet" />
     <script src="https://unpkg.com/gridjs/dist/gridjs.umd.js"></script>
     <script src="https://code.iconify.design/iconify-icon/2.0.0/iconify-icon.min.js"></script>
+		`
+
+	if !f.IsPDFMode {
+		css += `
     <script src="https://unpkg.com/@popperjs/core@2"></script>
     <script src="https://unpkg.com/tippy.js@6"></script>
     <link rel="stylesheet" href="https://unpkg.com/tippy.js@6/dist/tippy.css" />
@@ -214,7 +214,20 @@ func (f *HTMLFormatter) format(in interface{}, options FormatOptions) (string, e
 		return f.renderTreeAsHTML(tree, "Tree")
 	}
 
-	// Handle Textable inputs directly (e.g., TextList)
+	// Handle TextList with PDF-aware rendering before generic Textable
+	if list, ok := in.(api.TextList); ok {
+		var result strings.Builder
+		if f.IncludeCSS {
+			result.WriteString(f.getCSS())
+		}
+		f.renderTextListAsHTML(&result, list)
+		if f.IncludeCSS {
+			result.WriteString("    </div>\n</body>\n</html>")
+		}
+		return result.String(), nil
+	}
+
+	// Handle Textable inputs directly
 	if textable, ok := in.(api.Textable); ok {
 		htmlContent := textable.HTML()
 		if f.IncludeCSS {
