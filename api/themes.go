@@ -233,6 +233,10 @@ func GetTerminalWidth() int {
 
 var terminalHeight atomic.Int32
 
+func SetTerminalLines(height int) {
+	terminalHeight.Store(int32(height))
+}
+
 func GetTerminalLines() int {
 	if h := terminalHeight.Load(); h != -1 {
 		return int(h)
