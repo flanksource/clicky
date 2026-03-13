@@ -12,6 +12,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	flanksourceContext "github.com/flanksource/commons/context"
 
+	"github.com/flanksource/clicky/api"
 	"github.com/flanksource/clicky/text"
 )
 
@@ -219,6 +220,98 @@ func TestRenderLineCount_MixedStatus(t *testing.T) {
 	}
 
 	// Cleanup
+	close(testManager.shutdown)
+}
+
+func TestRenderLineCount_CompletedTaskCollapse(t *testing.T) {
+	// Set terminal height to 10 lines so 15 completed tasks must collapse
+	api.SetTerminalLines(10)
+	t.Cleanup(func() { api.SetTerminalLines(-1) })
+
+	testManager := newTestManager(1)
+
+	for i := 0; i < 15; i++ {
+		task := testManager.newTask(fmt.Sprintf("completed-%d", i))
+		task.SetStatus(StatusSuccess)
+		task.completed.Store(true)
+		task.dirty.Store(true)
+		testManager.mu.Lock()
+		testManager.tasks = append(testManager.tasks, task)
+		testManager.mu.Unlock()
+	}
+
+	output := testManager.Pretty()
+	rendered := output.String()
+	stripped := text.StripANSI(rendered)
+	lines := countNonEmptyLines(stripped)
+
+	// Should show first + summary + last = 3 lines
+	if lines != 3 {
+		t.Errorf("expected 3 lines (first + summary + last), got %d\nOutput:\n%s", lines, stripped)
+	}
+
+	// First and last tasks should be visible
+	if !strings.Contains(stripped, "completed-0") {
+		t.Errorf("expected first task 'completed-0' in output, got:\n%s", stripped)
+	}
+	if !strings.Contains(stripped, "completed-14") {
+		t.Errorf("expected last task 'completed-14' in output, got:\n%s", stripped)
+	}
+	// Summary should show 13 collapsed
+	if !strings.Contains(stripped, "13 more") {
+		t.Errorf("expected '13 more' in output, got:\n%s", stripped)
+	}
+
+	close(testManager.shutdown)
+}
+
+func TestRenderLineCount_CompletedCollapseWithPending(t *testing.T) {
+	// Terminal height 10, with 3 pending tasks leaves 7 for completed
+	api.SetTerminalLines(10)
+	t.Cleanup(func() { api.SetTerminalLines(-1) })
+
+	testManager := newTestManager(1)
+
+	// 12 completed tasks (exceeds 7 available)
+	for i := 0; i < 12; i++ {
+		task := testManager.newTask(fmt.Sprintf("done-%d", i))
+		task.SetStatus(StatusSuccess)
+		task.completed.Store(true)
+		task.dirty.Store(true)
+		testManager.mu.Lock()
+		testManager.tasks = append(testManager.tasks, task)
+		testManager.mu.Unlock()
+	}
+
+	// 3 pending tasks
+	for i := 0; i < 3; i++ {
+		task := testManager.newTask(fmt.Sprintf("pending-%d", i))
+		task.dirty.Store(true)
+		testManager.mu.Lock()
+		testManager.tasks = append(testManager.tasks, task)
+		testManager.mu.Unlock()
+	}
+
+	output := testManager.Pretty()
+	rendered := output.String()
+	stripped := text.StripANSI(rendered)
+	lines := countNonEmptyLines(stripped)
+
+	// 3 completed (first+summary+last) + 3 pending = 6 lines
+	if lines != 6 {
+		t.Errorf("expected 6 lines (3 collapsed completed + 3 pending), got %d\nOutput:\n%s", lines, stripped)
+	}
+
+	if !strings.Contains(stripped, "done-0") {
+		t.Errorf("expected first completed task in output, got:\n%s", stripped)
+	}
+	if !strings.Contains(stripped, "done-11") {
+		t.Errorf("expected last completed task in output, got:\n%s", stripped)
+	}
+	if !strings.Contains(stripped, "10 more") {
+		t.Errorf("expected '10 more' in output, got:\n%s", stripped)
+	}
+
 	close(testManager.shutdown)
 }
 
