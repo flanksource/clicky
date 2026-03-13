@@ -73,15 +73,40 @@ func (tm *Manager) prettyFromTasks(tasks []*Task) api.Text {
 
 	text := api.Text{Content: ""}
 
-	// Show all non-pending tasks
-	for _, task := range nonPendingTasks {
-		text.Children = append(text.Children, task.Pretty().Append("\n", "").Indent(2))
+	// Calculate how many pending lines will be shown
+	maxPending := 5
+	pendingLines := len(pendingTasks)
+	if pendingLines > maxPending {
+		pendingLines = maxPending + 1 // visible tasks + summary line
 	}
 
-	// Show only first 5 pending tasks if there are more than 5
-	maxPending := 5
+	// Calculate available lines for completed tasks
+	// Reserve space for pending tasks, use remaining terminal height for completed
+	termHeight := api.GetTerminalLines()
+	maxCompleted := termHeight - pendingLines
+	maxCompleted = max(maxCompleted, 3) // always show at least first, summary, and last
+
+	// Show completed tasks, collapsing if they exceed available space
+	if len(nonPendingTasks) > maxCompleted {
+		// Show first task
+		text.Children = append(text.Children, nonPendingTasks[0].Pretty().Append("\n", "").Indent(2))
+		// Show collapsed summary
+		remaining := len(nonPendingTasks) - 2
+		text.Children = append(text.Children, api.Text{
+			Content: fmt.Sprintf("... and %d more\n", remaining),
+			Style:   "text-gray-400",
+		}.Indent(2))
+		// Show last task
+		text.Children = append(text.Children, nonPendingTasks[len(nonPendingTasks)-1].Pretty().Append("\n", "").Indent(2))
+	} else {
+		for _, task := range nonPendingTasks {
+			text.Children = append(text.Children, task.Pretty().Append("\n", "").Indent(2))
+		}
+	}
+
+	// Show only first maxPending pending tasks if there are more
 	if len(pendingTasks) > maxPending {
-		for i := 0; i < maxPending; i++ {
+		for i := range maxPending {
 			text.Children = append(text.Children, pendingTasks[i].Pretty().Append("\n", "").Indent(2))
 		}
 		remaining := len(pendingTasks) - maxPending
