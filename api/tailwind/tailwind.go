@@ -257,7 +257,7 @@ type Style struct {
 
 	// Text transformation (not in lipgloss, but handled separately)
 	TextTransform string
-	TruncateMode  string // "suffix" (ellipsis at end), "prefix" (ellipsis at start), or "" (no truncation)
+	TruncateMode  string // "suffix" (ellipsis at end), "prefix" (ellipsis at start), "headtail" (first N + last N lines), or "" (no truncation)
 }
 
 // ParseStyle parses a Tailwind style string and returns a Style struct
@@ -352,6 +352,8 @@ func ParseStyle(styleStr string) Style {
 			style.TruncateMode = "suffix"
 		case "truncate-prefix":
 			style.TruncateMode = "prefix"
+		case "truncate-headtail":
+			style.TruncateMode = "headtail"
 		}
 
 		// Parse max-lines-[N] arbitrary values
@@ -407,19 +409,21 @@ func isTextUtilityClass(class string) bool {
 // TruncateText truncates text based on line and width constraints
 // maxLines: maximum number of lines (0 = no limit)
 // maxWidth: maximum character width (0 = no limit)
-// mode: "suffix" (ellipsis at end), "prefix" (ellipsis at start), or "" (no truncation)
+// mode: "suffix" (ellipsis at end), "prefix" (ellipsis at start), "headtail" (first N + last N lines), or "" (no truncation)
 // Returns truncated text with ellipsis if constraints exceeded
 func TruncateText(text string, maxLines, maxWidth int, mode string) string {
-	// No truncation if mode is empty or no constraints
 	if mode == "" || (maxLines <= 0 && maxWidth <= 0) {
 		return text
+	}
+
+	if mode == "headtail" {
+		return truncateHeadTail(text, maxLines)
 	}
 
 	const ellipsis = "…"
 	truncated := text
 	needsTruncation := false
 
-	// Check line constraint
 	if maxLines > 0 {
 		lines := strings.Split(text, "\n")
 		if len(lines) > maxLines {
@@ -429,23 +433,19 @@ func TruncateText(text string, maxLines, maxWidth int, mode string) string {
 		}
 	}
 
-	// Check width constraint on the (possibly line-truncated) text
 	if maxWidth > 0 {
 		runes := []rune(truncated)
 		if len(runes) > maxWidth {
 			if mode == "prefix" {
-				// For prefix mode, take the last maxWidth characters
 				start := len(runes) - maxWidth
 				truncated = string(runes[start:])
 			} else {
-				// For suffix mode, take the first maxWidth characters
 				truncated = string(runes[:maxWidth])
 			}
 			needsTruncation = true
 		}
 	}
 
-	// Add ellipsis if text was truncated
 	if needsTruncation {
 		if mode == "prefix" {
 			return ellipsis + truncated
@@ -454,6 +454,33 @@ func TruncateText(text string, maxLines, maxWidth int, mode string) string {
 	}
 
 	return truncated
+}
+
+func TruncateForAppend(text, styleStr string) string {
+	parsed := ParseStyle(styleStr)
+	mode := parsed.TruncateMode
+	if mode == "" && (parsed.MaxWidth > 0 || parsed.MaxLines > 0) {
+		mode = "suffix"
+	}
+	if mode != "" {
+		return TruncateText(text, parsed.MaxLines, parsed.MaxWidth, mode)
+	}
+	return text
+}
+
+// truncateHeadTail shows first n + last n lines with a separator indicating omitted lines.
+// n is derived from maxLines: each half gets maxLines lines, so up to 2*maxLines lines are shown.
+func truncateHeadTail(text string, n int) string {
+	lines := strings.Split(strings.TrimRight(text, "\n"), "\n")
+	if len(lines) <= n*2 {
+		return text
+	}
+	head := lines[:n]
+	tail := lines[len(lines)-n:]
+	omitted := len(lines) - n*2
+	return strings.Join(head, "\n") +
+		fmt.Sprintf("\n\n... (%d lines omitted) ...\n\n", omitted) +
+		strings.Join(tail, "\n")
 }
 
 // TransformText applies text transformation based on the transform type

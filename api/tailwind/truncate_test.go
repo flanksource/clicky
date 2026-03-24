@@ -234,6 +234,67 @@ func TestTruncateText_CombinedConstraints(t *testing.T) {
 	}
 }
 
+func TestTruncateText_HeadTail(t *testing.T) {
+	tests := []struct {
+		name     string
+		text     string
+		style    string
+		expected string
+	}{
+		{
+			name:     "fewer lines than 2*n returns original",
+			text:     "L1\nL2\nL3\nL4\nL5",
+			style:    "max-lines-[3] truncate-headtail",
+			expected: "L1\nL2\nL3\nL4\nL5",
+		},
+		{
+			name:     "exactly 2*n lines returns original",
+			text:     "L1\nL2\nL3\nL4\nL5\nL6",
+			style:    "max-lines-[3] truncate-headtail",
+			expected: "L1\nL2\nL3\nL4\nL5\nL6",
+		},
+		{
+			name:     "more than 2*n lines shows head and tail",
+			text:     "L1\nL2\nL3\nL4\nL5\nL6\nL7\nL8\nL9\nL10\nL11",
+			style:    "max-lines-[3] truncate-headtail",
+			expected: "L1\nL2\nL3\n\n... (5 lines omitted) ...\n\nL9\nL10\nL11",
+		},
+		{
+			name:     "20 lines with max-lines-[5]",
+			text:     "L1\nL2\nL3\nL4\nL5\nL6\nL7\nL8\nL9\nL10\nL11\nL12\nL13\nL14\nL15\nL16\nL17\nL18\nL19\nL20",
+			style:    "max-lines-[5] truncate-headtail",
+			expected: "L1\nL2\nL3\nL4\nL5\n\n... (10 lines omitted) ...\n\nL16\nL17\nL18\nL19\nL20",
+		},
+		{
+			name:     "trailing newlines are trimmed before counting",
+			text:     "L1\nL2\nL3\nL4\nL5\nL6\nL7\nL8\nL9\nL10\nL11\n\n",
+			style:    "max-lines-[3] truncate-headtail",
+			expected: "L1\nL2\nL3\n\n... (5 lines omitted) ...\n\nL9\nL10\nL11",
+		},
+		{
+			name:     "empty text returns empty",
+			text:     "",
+			style:    "max-lines-[5] truncate-headtail",
+			expected: "",
+		},
+		{
+			name:     "single line returns original",
+			text:     "only line",
+			style:    "max-lines-[5] truncate-headtail",
+			expected: "only line",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := api.Text{Content: tt.text, Style: tt.style}.String()
+			if result != tt.expected {
+				t.Errorf("api.Text{Content: %q, Style: %q}.String() = %q, want %q", tt.text, tt.style, result, tt.expected)
+			}
+		})
+	}
+}
+
 func TestParseStyle_TruncationClasses(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -269,6 +330,13 @@ func TestParseStyle_TruncationClasses(t *testing.T) {
 			expectLines: 0,
 			expectWidth: 0,
 			expectMode:  "prefix",
+		},
+		{
+			name:        "parse truncate-headtail",
+			styleStr:    "truncate-headtail",
+			expectLines: 0,
+			expectWidth: 0,
+			expectMode:  "headtail",
 		},
 		{
 			name:        "parse combined classes",
