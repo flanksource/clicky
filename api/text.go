@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/flanksource/clicky/api/tailwind"
 	"github.com/samber/lo"
 )
 
@@ -306,11 +307,13 @@ func (t Text) Append(text any, styles ...string) Text {
 	case Textable:
 		t.Children = append(t.Children, v)
 	case string:
+		style := strings.Join(styles, " ")
+		v = tailwind.TruncateForAppend(v, style)
 		for i, line := range strings.Split(v, "\n") {
 			if i > 0 {
 				t.Children = append(t.Children, BR)
 			}
-			t.Children = append(t.Children, Text{Content: line, Style: strings.Join(styles, " ")})
+			t.Children = append(t.Children, Text{Content: line, Style: style})
 		}
 	case time.Time, *time.Time, *time.Duration, time.Duration, float64, float32:
 		t.Children = append(t.Children, Human(v, styles...))

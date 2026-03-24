@@ -136,6 +136,14 @@ func (tm *Manager) interactiveRender(lastLines int) int {
 
 	out = lipgloss.NewStyle().MaxHeight(api.GetTerminalLines()).Render(out)
 
+	// Strip trailing whitespace that lipgloss adds for line normalization.
+	// This prevents bloated output in .cast recordings and piped output.
+	lines := strings.Split(out, "\n")
+	for i, line := range lines {
+		lines[i] = strings.TrimRight(line, " ")
+	}
+	out = strings.Join(lines, "\n")
+
 	output := tm.renderer.Output()
 	output.ClearLines(lastLines)
 	fmt.Fprint(os.Stderr, out)

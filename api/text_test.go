@@ -654,3 +654,31 @@ func TestClassPrecedence(t *testing.T) {
 		t.Error("Expected Markdown to not contain blue color")
 	}
 }
+
+func TestAppendTruncatesMultilineStrings(t *testing.T) {
+	input := "line1\nline2\nline3\nline4\nline5\nline6\nline7\nline8\nline9\nline10"
+	text := Text{}.Append(input, "max-lines-[3]")
+
+	plain := text.String()
+	if strings.Count(plain, "\n") > 3 {
+		t.Errorf("expected at most 3 newlines, got %d in: %q", strings.Count(plain, "\n"), plain)
+	}
+	if !strings.Contains(plain, "line1") {
+		t.Error("expected truncated output to contain line1")
+	}
+	if strings.Contains(plain, "line10") {
+		t.Error("expected truncated output to not contain line10")
+	}
+
+	headtail := Text{}.Append(input, "max-lines-[2] truncate-headtail")
+	ht := headtail.String()
+	if !strings.Contains(ht, "line1") {
+		t.Error("expected headtail output to contain line1")
+	}
+	if !strings.Contains(ht, "line10") {
+		t.Error("expected headtail output to contain line10")
+	}
+	if strings.Contains(ht, "line5") {
+		t.Error("expected headtail output to not contain middle lines")
+	}
+}
