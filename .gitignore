@@ -75,3 +75,4 @@ __debug*
 ginkgo.report
 *.bak
 examples/uber_demo/uber_demo
+*.ttf

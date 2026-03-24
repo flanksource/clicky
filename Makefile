@@ -67,5 +67,8 @@ docker-run:
 # Default target
 all: install fmt test build
 
+formatters/fonts/DejaVuSansMono.ttf:
+	curl -sSfL -o $@ https://github.com/dejavu-fonts/dejavu-fonts/raw/master/ttf/DejaVuSansMono.ttf
+
 $(LOCALBIN):
 	mkdir -p $(LOCALBIN)
