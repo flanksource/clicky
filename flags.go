@@ -78,6 +78,7 @@ func (a *AllFlags) String() string {
 }
 
 func (a *AllFlags) UseFlags() {
+	a.ResolveNoColor()
 	if a.NoColor {
 		a.Color = false
 	} else {
@@ -85,5 +86,5 @@ func (a *AllFlags) UseFlags() {
 	}
 	logger.Configure(a.Flags)
 	UseFormatter(a.FormatOptions)
-
+	a.Apply()
 }

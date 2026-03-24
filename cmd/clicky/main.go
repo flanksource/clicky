@@ -66,6 +66,7 @@ For backward compatibility, you can use the root command directly, or use the
 				return fmt.Errorf("--schema flag is required when using data files")
 			}
 
+			options.ResolveNoColor()
 			options.Format = options.ResolveFormat()
 
 			// Load schema directly into options
@@ -128,6 +129,7 @@ raw data into beautifully formatted output using customizable schemas.`,
 				return fmt.Errorf("--schema flag is required")
 			}
 
+			options.ResolveNoColor()
 			options.Format = options.ResolveFormat()
 
 			// Load schema directly into options

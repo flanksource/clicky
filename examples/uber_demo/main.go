@@ -606,9 +606,10 @@ type TablesOptions struct{}
 
 // TasksOptions for showing task progress tracking
 type TasksOptions struct {
-	Scenario string `flag:"scenario" help:"Task scenario to run (basic, concurrent, dependencies, all)" default:"basic"`
-	NumTasks int    `flag:"tasks" help:"Number of tasks for concurrent scenario" default:"5"`
-	NoSleep  bool   `flag:"no-sleep" help:"Skip simulated delays" default:"false"`
+	Scenario string        `flag:"scenario" help:"Task scenario to run (basic, concurrent, dependencies, all)" default:"basic"`
+	NumTasks int           `flag:"tasks" help:"Number of tasks for concurrent scenario" default:"5"`
+	NoSleep  bool          `flag:"no-sleep" help:"Skip simulated delays" default:"false"`
+	Timeout  time.Duration `flag:"timeout" help:"Overall timeout for all tasks" default:"0"`
 }
 
 // ProductTable demonstrates basic table formatting
@@ -834,22 +835,27 @@ func showTasks(opts TasksOptions) (any, error) {
 		}
 	}
 
+	var taskOpts []task.Option
+	if opts.Timeout > 0 {
+		taskOpts = append(taskOpts, task.WithTimeout(opts.Timeout))
+	}
+
 	fmt.Fprintln(os.Stderr, "[stderr] starting")
 	fmt.Fprintln(os.Stdout, "[stdout] starting")
 
 	switch opts.Scenario {
 	case "basic":
-		runBasicTasks(sleep)
+		runBasicTasks(sleep, taskOpts...)
 	case "concurrent":
-		runConcurrentTasks(opts.NumTasks, sleep)
+		runConcurrentTasks(opts.NumTasks, sleep, taskOpts...)
 	case "dependencies":
-		runDependencyTasks(sleep)
+		runDependencyTasks(sleep, taskOpts...)
 	case "all":
-		runBasicTasks(sleep)
-		runConcurrentTasks(opts.NumTasks, sleep)
-		runDependencyTasks(sleep)
+		runBasicTasks(sleep, taskOpts...)
+		runConcurrentTasks(opts.NumTasks, sleep, taskOpts...)
+		runDependencyTasks(sleep, taskOpts...)
 	default:
-		runBasicTasks(sleep)
+		runBasicTasks(sleep, taskOpts...)
 	}
 
 	task.Wait()
@@ -860,84 +866,133 @@ func showTasks(opts TasksOptions) (any, error) {
 	return nil, nil
 }
 
-func runBasicTasks(sleep func(time.Duration)) {
-	task.StartTask("Download dependencies", func(ctx flanksourceContext.Context, t *task.Task) (any, error) {
+func runBasicTasks(sleep func(time.Duration), opts ...task.Option) {
+	// Task that succeeds and returns a string result
+	task.StartTask("Download dependencies", func(ctx flanksourceContext.Context, t *task.Task) (string, error) {
+		t.Tracef("Resolving dependency graph")
+		t.Debugf("Cache directory: /tmp/deps-cache")
 		t.Infof("Starting dependency download")
 		for i := 1; i <= 5; i++ {
 			sleep(150 * time.Millisecond)
 			t.SetProgress(i, 5)
 			t.Infof("Downloaded package %d of 5", i)
 		}
+		t.Tracef("Verifying checksums")
+		t.Debugf("All checksums valid")
 		t.Success()
-		return nil, nil
-	})
+		return "5 packages downloaded", nil
+	}, opts...)
 
-	task.StartTask("Build project", func(ctx flanksourceContext.Context, t *task.Task) (any, error) {
+	// Task that ends with a warning and returns a map
+	task.StartTask("Build project", func(ctx flanksourceContext.Context, t *task.Task) (map[string]any, error) {
 		steps := []string{"Parsing", "Type checking", "Compiling", "Linking"}
 		for i, step := range steps {
 			sleep(200 * time.Millisecond)
 			t.SetProgress(i+1, len(steps))
+			t.Debugf("Step %d: %s", i+1, step)
 			t.Infof("%s...", step)
 		}
 		t.Warnf("Found 2 deprecated API calls")
+		t.Warnf("Build artifact is 15%% larger than previous")
 		t.Warning()
-		return nil, nil
-	})
+		return map[string]any{"warnings": 2, "artifact_size": "48MB"}, nil
+	}, opts...)
 
-	task.StartTask("Run tests", func(ctx flanksourceContext.Context, t *task.Task) (any, error) {
+	// Task that succeeds and returns an int
+	task.StartTask("Run tests", func(ctx flanksourceContext.Context, t *task.Task) (int, error) {
+		t.Debugf("Discovering test files")
 		for i := 1; i <= 8; i++ {
 			sleep(100 * time.Millisecond)
 			t.SetProgress(i, 8)
+			if i == 5 {
+				t.Warnf("Test %d was slow (2.3s)", i)
+			}
 			t.Infof("Test %d passed", i)
 		}
+		t.Tracef("Generating coverage report")
 		t.Success()
-		return nil, nil
-	})
+		return 8, nil
+	}, opts...)
+
+	// Task that fails with an error
+	task.StartTask("Publish artifacts", func(ctx flanksourceContext.Context, t *task.Task) (any, error) {
+		t.Infof("Authenticating with registry")
+		sleep(200 * time.Millisecond)
+		t.SetProgress(1, 3)
+		t.Infof("Uploading artifact...")
+		sleep(300 * time.Millisecond)
+		t.SetProgress(2, 3)
+		t.Errorf("Connection reset by peer")
+		t.Warnf("Retrying upload...")
+		sleep(200 * time.Millisecond)
+		t.Errorf("Registry returned 503 Service Unavailable")
+		return t.FailedWithError(fmt.Errorf("failed to publish after 2 attempts"))
+	}, opts...)
 }
 
-func runConcurrentTasks(numTasks int, sleep func(time.Duration)) {
+func runConcurrentTasks(numTasks int, sleep func(time.Duration), opts ...task.Option) {
 	for i := 1; i <= numTasks; i++ {
 		taskNum := i
-		task.StartTask(fmt.Sprintf("Process batch %d", taskNum), func(ctx flanksourceContext.Context, t *task.Task) (any, error) {
+		task.StartTask(fmt.Sprintf("Process batch %d", taskNum), func(ctx flanksourceContext.Context, t *task.Task) ([]string, error) {
 			items := 10
+			processed := make([]string, 0, items)
 			for j := 1; j <= items; j++ {
 				sleep(50 * time.Millisecond)
 				t.SetProgress(j, items)
+				t.Tracef("Processing item %d/%d", j, items)
+				if j%3 == 0 {
+					t.Debugf("Checkpoint at item %d", j)
+				}
+				processed = append(processed, fmt.Sprintf("item-%d", j))
 			}
 			t.Infof("Processed %d items", items)
-			t.Success()
-			return nil, nil
-		})
+			if taskNum%3 == 0 {
+				t.Warnf("Batch %d had slow items", taskNum)
+				t.Warning()
+			} else {
+				t.Success()
+			}
+			return processed, nil
+		}, opts...)
 	}
 }
 
-func runDependencyTasks(sleep func(time.Duration)) {
-	setup := task.StartTask("Setup environment", func(ctx flanksourceContext.Context, t *task.Task) (any, error) {
-		sleep(300 * time.Millisecond)
+func runDependencyTasks(sleep func(time.Duration), opts ...task.Option) {
+	setup := task.StartTask("Setup environment", func(ctx flanksourceContext.Context, t *task.Task) (bool, error) {
+		t.Debugf("Checking prerequisites")
+		t.Infof("Installing toolchain")
+		sleep(200 * time.Millisecond)
+		t.Infof("Configuring network")
+		sleep(100 * time.Millisecond)
 		t.Infof("Environment ready")
 		t.Success()
-		return nil, nil
-	})
+		return true, nil
+	}, opts...)
 
-	build := task.StartTask("Build application", func(ctx flanksourceContext.Context, t *task.Task) (any, error) {
+	build := task.StartTask("Build application", func(ctx flanksourceContext.Context, t *task.Task) (string, error) {
 		for i := 1; i <= 4; i++ {
 			sleep(150 * time.Millisecond)
 			t.SetProgress(i, 4)
+			t.Debugf("Compiling module %d", i)
 		}
+		t.Tracef("Binary size: 24MB")
 		t.Success()
-		return nil, nil
-	}, task.WithDependencies(setup.GetTask()))
+		return "app-v1.2.3", nil
+	}, append(opts, task.WithDependencies(setup.GetTask()))...)
 
-	task.StartTask("Deploy application", func(ctx flanksourceContext.Context, t *task.Task) (any, error) {
+	task.StartTask("Deploy application", func(ctx flanksourceContext.Context, t *task.Task) (map[string]string, error) {
 		stages := []string{"Upload", "Configure", "Start", "Verify"}
 		for i, stage := range stages {
 			sleep(200 * time.Millisecond)
 			t.SetProgress(i+1, len(stages))
 			t.Infof("%s complete", stage)
+			if stage == "Configure" {
+				t.Debugf("Applied 3 config patches")
+			}
 		}
 		t.Success()
-		return nil, nil
-	}, task.WithDependencies(build.GetTask()))
+		return map[string]string{"url": "https://app.example.com", "version": "v1.2.3"}, nil
+	}, append(opts, task.WithDependencies(build.GetTask()))...)
 }
 
 func showNilHandling(opts NilHandlingOptions) (any, error) {

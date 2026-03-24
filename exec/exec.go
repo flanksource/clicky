@@ -145,10 +145,10 @@ func (r ExecResult) PrettyFull() api.Textable {
 	t := r.Pretty()
 
 	if r.Stdout != "" {
-		t = t.NewLine().Append(api.Text{}.Append(r.Stdout, "max-lines-20"))
+		t = t.NewLine().Append(r.Stdout, "max-lines-[20] truncate-headtail")
 	}
 	if r.Stderr != "" {
-		t = t.NewLine().Append(api.Text{}.Append(r.Stderr, "text-red-500"))
+		t = t.NewLine().Append(r.Stderr, "text-red-500 max-lines-[20] truncate-headtail")
 	}
 	return t
 }
