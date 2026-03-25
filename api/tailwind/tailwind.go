@@ -11,6 +11,47 @@ import (
 	"github.com/muesli/termenv"
 )
 
+// TerminalWidthFunc returns the current terminal width in characters.
+// Set by the api package to avoid circular imports.
+var TerminalWidthFunc = func() int { return 120 }
+
+// TerminalHeightFunc returns the current terminal height in lines.
+var TerminalHeightFunc = func() int { return 40 }
+
+// parseArbitraryDimension parses values like "80ch", "tw-20ch", "th-5" from
+// a max-w-[...] or max-h-[...] class.
+func parseArbitraryDimension(class, prefix string, termDimFunc func() int) int {
+	valueStr := strings.TrimPrefix(class, prefix)
+	valueStr = strings.TrimSuffix(valueStr, "]")
+
+	// Check for terminal-relative: tw-N or th-N
+	if strings.HasPrefix(valueStr, "tw-") || strings.HasPrefix(valueStr, "th-") {
+		offsetStr := valueStr[3:]
+		offsetStr = stripUnitSuffix(offsetStr)
+		if offset, err := strconv.Atoi(offsetStr); err == nil {
+			result := termDimFunc() - offset
+			if result > 0 {
+				return result
+			}
+		}
+		return 0
+	}
+
+	// Fixed value: 80ch, 50px, etc.
+	valueStr = stripUnitSuffix(valueStr)
+	if value, err := strconv.Atoi(valueStr); err == nil && value > 0 {
+		return value
+	}
+	return 0
+}
+
+func stripUnitSuffix(s string) string {
+	for _, suffix := range []string{"ch", "px", "rem", "em"} {
+		s = strings.TrimSuffix(s, suffix)
+	}
+	return s
+}
+
 // Slice-based lookups for efficient parsing (sorted for binary search if needed)
 var (
 	// Font weight classes that make text bold
@@ -365,17 +406,15 @@ func ParseStyle(styleStr string) Style {
 			}
 		}
 
-		// Parse max-w-[N] arbitrary values
-		if strings.HasPrefix(class, "max-w-[") && strings.HasSuffix(class, "]") {
-			valueStr := strings.TrimPrefix(class, "max-w-[")
-			valueStr = strings.TrimSuffix(valueStr, "]")
-			// Strip unit suffixes like "ch", "px", "rem", etc.
-			valueStr = strings.TrimSuffix(valueStr, "ch")
-			valueStr = strings.TrimSuffix(valueStr, "px")
-			valueStr = strings.TrimSuffix(valueStr, "rem")
-			valueStr = strings.TrimSuffix(valueStr, "em")
-			if value, err := strconv.Atoi(valueStr); err == nil && value > 0 {
-				style.MaxWidth = value
+		// Parse max-w-[N] arbitrary values, including tw/th-relative:
+		//   max-w-[80ch]      → 80 characters
+		//   max-w-[tw-20ch]   → terminal width minus 20
+		//   max-h-[th-5]      → terminal height minus 5
+		if strings.HasSuffix(class, "]") {
+			if strings.HasPrefix(class, "max-w-[") {
+				style.MaxWidth = parseArbitraryDimension(class, "max-w-[", TerminalWidthFunc)
+			} else if strings.HasPrefix(class, "max-h-[") {
+				style.MaxLines = parseArbitraryDimension(class, "max-h-[", TerminalHeightFunc)
 			}
 		}
 	}

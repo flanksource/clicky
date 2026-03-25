@@ -5,6 +5,7 @@ import (
 	"sync/atomic"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/flanksource/clicky/api/tailwind"
 	"github.com/muesli/termenv"
 	"golang.org/x/term"
 )
@@ -216,6 +217,8 @@ var terminalWidth atomic.Int32
 func init() {
 	terminalWidth.Store(-1)
 	terminalHeight.Store(-1)
+	tailwind.TerminalWidthFunc = GetTerminalWidth
+	tailwind.TerminalHeightFunc = GetTerminalLines
 }
 
 func GetTerminalWidth() int {
