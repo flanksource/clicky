@@ -528,3 +528,34 @@ func TestColorVsRawColor(t *testing.T) {
 		})
 	}
 }
+
+func TestParseStyle_MaxWidth(t *testing.T) {
+	tests := []struct {
+		name     string
+		style    string
+		maxWidth int
+	}{
+		{"fixed chars", "max-w-[80ch]", 80},
+		{"fixed no unit", "max-w-[50]", 50},
+		{"tw relative", "max-w-[tw-20ch]", 100}, // 120 default - 20
+		{"zero offset", "max-w-[tw-0ch]", 120},
+		{"no value", "max-w-[abc]", 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			TerminalWidthFunc = func() int { return 120 }
+			s := ParseStyle(tt.style)
+			if s.MaxWidth != tt.maxWidth {
+				t.Errorf("ParseStyle(%q).MaxWidth = %d, want %d", tt.style, s.MaxWidth, tt.maxWidth)
+			}
+		})
+	}
+}
+
+func TestParseStyle_MaxHeight(t *testing.T) {
+	TerminalHeightFunc = func() int { return 40 }
+	s := ParseStyle("max-h-[th-5]")
+	if s.MaxLines != 35 {
+		t.Errorf("ParseStyle(max-h-[th-5]).MaxLines = %d, want 35", s.MaxLines)
+	}
+}
