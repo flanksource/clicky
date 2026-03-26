@@ -67,13 +67,13 @@ func TestTruncateText_WidthConstraint(t *testing.T) {
 			name:     "text over limit with suffix",
 			text:     "This is a very long text that exceeds the limit",
 			style:    "max-w-[20] truncate-suffix",
-			expected: "This is a very long …",
+			expected: "This is a very long…", // 19 chars + ellipsis = 20
 		},
 		{
 			name:     "text over limit with prefix",
 			text:     "/very/long/path/to/some/deeply/nested/file.txt",
 			style:    "max-w-[30] truncate-prefix",
-			expected: "…to/some/deeply/nested/file.txt",
+			expected: "…o/some/deeply/nested/file.txt", // ellipsis + 29 chars = 30
 		},
 		{
 			name:     "single character",
@@ -85,7 +85,7 @@ func TestTruncateText_WidthConstraint(t *testing.T) {
 			name:     "truncate to one char",
 			text:     "hello",
 			style:    "max-w-[1] truncate-suffix",
-			expected: "h…",
+			expected: "…", // maxWidth=1, cutAt=0, just ellipsis
 		},
 	}
 
@@ -110,19 +110,19 @@ func TestTruncateText_MultibyteUTF8(t *testing.T) {
 			name:     "CJK characters",
 			text:     "これは日本語のテキストです",
 			style:    "max-w-[5] truncate-suffix",
-			expected: "これは日本…",
+			expected: "これは日…", // 4 chars + ellipsis = 5
 		},
 		{
 			name:     "emoji truncation",
 			text:     "Hello 👋 World 🌍 Test 🎉",
 			style:    "max-w-[15] truncate-suffix",
-			expected: "Hello 👋 World 🌍…",
+			expected: "Hello 👋 World …", // 14 chars + ellipsis = 15
 		},
 		{
 			name:     "mixed ASCII and multibyte",
 			text:     "Hello こんにちは World",
 			style:    "max-w-[10] truncate-prefix",
-			expected: "…んにちは World",
+			expected: "…にちは World", // ellipsis + 9 chars = 10
 		},
 	}
 
@@ -202,7 +202,7 @@ func TestTruncateText_CombinedConstraints(t *testing.T) {
 			name:     "width exceeded first",
 			text:     "This is a very long single line of text",
 			style:    "max-lines-[5] max-w-[20] truncate-suffix",
-			expected: "This is a very long …",
+			expected: "This is a very long…", // 19 + ellipsis = 20
 		},
 		{
 			name:     "lines exceeded first",
@@ -220,7 +220,7 @@ func TestTruncateText_CombinedConstraints(t *testing.T) {
 			name:     "lines truncated then width truncated",
 			text:     "Line 1 is very long\nLine 2 is also long\nLine 3\nLine 4",
 			style:    "max-lines-[2] max-w-[30] truncate-suffix",
-			expected: "Line 1 is very long\nLine 2 is …",
+			expected: "Line 1 is very long\nLine 2 is…", // 29 chars + ellipsis = 30
 		},
 	}
 

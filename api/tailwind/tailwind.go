@@ -475,11 +475,16 @@ func TruncateText(text string, maxLines, maxWidth int, mode string) string {
 	if maxWidth > 0 {
 		runes := []rune(truncated)
 		if len(runes) > maxWidth {
+			// Reserve 1 char for the ellipsis so total fits within maxWidth
+			cutAt := maxWidth - 1
+			if cutAt < 0 {
+				cutAt = 0
+			}
 			if mode == "prefix" {
-				start := len(runes) - maxWidth
+				start := len(runes) - cutAt
 				truncated = string(runes[start:])
 			} else {
-				truncated = string(runes[:maxWidth])
+				truncated = string(runes[:cutAt])
 			}
 			needsTruncation = true
 		}
