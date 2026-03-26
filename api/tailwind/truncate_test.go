@@ -388,7 +388,7 @@ func TestApplyStyle_WithTruncation(t *testing.T) {
 			name:     "truncate with width constraint",
 			text:     "This is a very long text that needs truncation",
 			style:    "max-w-[20] truncate-suffix",
-			expected: "This is a very long …",
+			expected: "This is a very long…",
 		},
 		{
 			name:     "truncate with line constraint",
@@ -400,25 +400,25 @@ func TestApplyStyle_WithTruncation(t *testing.T) {
 			name:     "uppercase then truncate",
 			text:     "hello world this is a test",
 			style:    "uppercase max-w-[15] truncate-suffix",
-			expected: "HELLO WORLD THI…",
+			expected: "HELLO WORLD TH…",
 		},
 		{
 			name:     "uppercase then truncate",
 			text:     "hello world this is a test",
 			style:    "uppercase max-w-[15ch] truncate-suffix",
-			expected: "HELLO WORLD THI…",
+			expected: "HELLO WORLD TH…",
 		},
 		{
 			name:     "uppercase then truncate",
 			text:     "hello world this is a test",
 			style:    "uppercase max-w-[15ch]",
-			expected: "HELLO WORLD THI…",
+			expected: "HELLO WORLD TH…",
 		},
 		{
 			name:     "default truncate-suffix with constraint",
 			text:     "This is a very long text",
 			style:    "max-w-[10]",
-			expected: "This is a …",
+			expected: "This is a…",
 		},
 		{
 			name:     "no truncation without constraint",
