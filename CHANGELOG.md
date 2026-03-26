@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0](https://github.com/flanksource/clicky/compare/v1.20.0...v2.0.0) (2026-03-26)
+
+
+### ⚠ BREAKING CHANGES
+
+* **rpc:** extract route registration into separate method
+
+### ♻️ Code Refactoring
+
+* **rpc:** extract route registration into separate method ([5cf76c5](https://github.com/flanksource/clicky/commit/5cf76c5d09db34c31c6f6c96715b83c436b0424e))
+
+
+### ✅ Tests
+
+* **uber_demo:** add gavel fixture for --no-progress ANSI layout tests ([0f30bef](https://github.com/flanksource/clicky/commit/0f30befd4e7beedd8ac74c076a7f3544eb12b270))
+
+
+### 🐛 Bug Fixes
+
+* **tailwind:** fix text truncation to respect max width including ellipsis ([438bb96](https://github.com/flanksource/clicky/commit/438bb9626656d413b62cb468ff320358b6ee1aac))
+* **task:** defer render loop start until first task is enqueued ([54b35fc](https://github.com/flanksource/clicky/commit/54b35fce7d45423e62d999bb7c412dce7a8d16e9))
+* **task:** prevent deadlock when FailedWithError result is rendered ([7ad88b8](https://github.com/flanksource/clicky/commit/7ad88b8afe97e51b02f1168eb0bbe940e32180c7))
+
 ## [1.20.0](https://github.com/flanksource/clicky/compare/v1.19.0...v1.20.0) (2026-03-26)
 
 
