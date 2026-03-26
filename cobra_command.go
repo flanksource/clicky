@@ -5,12 +5,26 @@ import (
 	"os"
 	"reflect"
 	"strings"
+	"sync"
 
 	"github.com/flanksource/clicky/flags"
 	"github.com/flanksource/commons/logger"
 	"github.com/samber/lo"
 	"github.com/spf13/cobra"
 )
+
+// dataFuncRegistry maps cobra commands created by AddCommand to closures
+// that can invoke the user function directly with flag values.
+var dataFuncRegistry sync.Map // map[*cobra.Command]func(flags map[string]string, args []string) (any, error)
+
+// GetDataFunc returns the direct data function registered for a command, if any.
+// Used by the RPC converter to wire DataFunc on RPCOperation.
+func GetDataFunc(cmd *cobra.Command) func(flags map[string]string, args []string) (any, error) {
+	if v, ok := dataFuncRegistry.Load(cmd); ok {
+		return v.(func(flags map[string]string, args []string) (any, error))
+	}
+	return nil
+}
 
 // AddCommand creates a Cobra command with automatic flag parsing from struct tags,
 // execution, and result formatting.
@@ -142,6 +156,30 @@ func AddNamedCommand[T any](name string, parent *cobra.Command, opts T, fn func(
 	} else {
 		cmd.Args = cobra.NoArgs
 	}
+
+	// Register data func for RPC direct invocation (bypasses stdout capture)
+	dataFuncRegistry.Store(cmd, func(flagMap map[string]string, args []string) (any, error) {
+		// Set cobra flags from the map (same as executor.ExecuteCommand does)
+		for k, v := range flagMap {
+			if flag := cmd.Flags().Lookup(k); flag != nil {
+				_ = flag.Value.Set(v)
+				flag.Changed = true
+			}
+		}
+
+		// Build opts struct from the now-set flags (same as RunE does)
+		optsValue := reflect.New(optsType).Elem()
+		for _, fv := range flagValues {
+			argsToPass := []string(nil)
+			if fv.IsArgs {
+				argsToPass = args
+			}
+			if err := flags.AssignFieldValue(optsValue, fv, argsToPass, false); err != nil {
+				return nil, err
+			}
+		}
+		return fn(optsValue.Interface().(T))
+	})
 
 	// Set RunE function
 	cmd.RunE = func(c *cobra.Command, args []string) error {

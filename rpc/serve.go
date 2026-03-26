@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/flanksource/clicky/formatters"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 )
@@ -268,7 +269,7 @@ func (s *SwaggerServer) handleHealth(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// openBrowser opens the default browser to the specified URL
+// OpenBrowser opens the default browser to the specified URL
 func OpenBrowser(url string) error {
 	var cmd string
 	var args []string
@@ -401,64 +402,21 @@ func (s *SwaggerServer) registerExecutionRoutes(mux *http.ServeMux) {
 		path := op.Path
 		method := strings.ToUpper(op.Method)
 
-		// Check for duplicate path
-		if existingOp, found := registered[path]; found {
+		// Check for duplicate method+path
+		key := method + " " + path
+		if existingOp, found := registered[key]; found {
 			fmt.Printf("⚠️  Warning: Duplicate endpoint detected\n")
 			fmt.Printf("    Path: %s %s\n", method, path)
 			fmt.Printf("    Already registered by: %s\n", existingOp)
 			fmt.Printf("    Skipping: %s\n", op.Name)
 			continue
 		}
-		registered[path] = op.Name
+		registered[key] = op.Name
 
-		// Register the route with a method-specific handler
-		switch method {
-		case "GET":
-			mux.HandleFunc(path, s.handleExecuteGET)
-		case "POST":
-			mux.HandleFunc(path, s.handleExecutePOST)
-		case "PUT":
-			mux.HandleFunc(path, s.handleExecutePUT)
-		case "DELETE":
-			mux.HandleFunc(path, s.handleExecuteDELETE)
-		}
+		// Register the route with method prefix (Go 1.22+ ServeMux)
+		pattern := method + " " + path
+		mux.HandleFunc(pattern, s.handleExecuteCommand)
 	}
-}
-
-// handleExecuteGET handles GET requests for command execution
-func (s *SwaggerServer) handleExecuteGET(w http.ResponseWriter, r *http.Request) {
-	if r.Method != "GET" {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	s.handleExecuteCommand(w, r)
-}
-
-// handleExecutePOST handles POST requests for command execution
-func (s *SwaggerServer) handleExecutePOST(w http.ResponseWriter, r *http.Request) {
-	if r.Method != "POST" {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	s.handleExecuteCommand(w, r)
-}
-
-// handleExecutePUT handles PUT requests for command execution
-func (s *SwaggerServer) handleExecutePUT(w http.ResponseWriter, r *http.Request) {
-	if r.Method != "PUT" {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	s.handleExecuteCommand(w, r)
-}
-
-// handleExecuteDELETE handles DELETE requests for command execution
-func (s *SwaggerServer) handleExecuteDELETE(w http.ResponseWriter, r *http.Request) {
-	if r.Method != "DELETE" {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	s.handleExecuteCommand(w, r)
 }
 
 // executeCommandCore contains the core execution logic without HTTP handling
@@ -511,7 +469,7 @@ func (s *SwaggerServer) handleExecuteCommand(w http.ResponseWriter, r *http.Requ
 	// Set CORS headers
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Accept")
 
 	if r.Method == "OPTIONS" {
 		w.WriteHeader(http.StatusOK)
@@ -526,19 +484,110 @@ func (s *SwaggerServer) handleExecuteCommand(w http.ResponseWriter, r *http.Requ
 		w.Header().Set("X-CLI-Command", metadata.CLI)
 		w.Header().Set("X-Exit-Code", strconv.Itoa(metadata.ExitCode))
 		w.Header().Set("X-Execution-Success", strconv.FormatBool(metadata.Success))
+		if metadata.Error != "" {
+			w.Header().Set("X-Error", metadata.Error)
+		}
+		if metadata.Stderr != "" {
+			w.Header().Set("X-Stderr", metadata.Stderr)
+		}
 	}
 
-	// Set content type
-	w.Header().Set("Content-Type", "application/json")
+	// Format and write response body using FormatManager (defaults to json)
+	opts := extractFormatOpts(r)
+	s.writeFormattedResponse(w, data, opts, statusCode)
+}
+
+// writeFormattedResponse formats data using the FormatManager and writes it as
+// the raw response body with the appropriate Content-Type.
+func (s *SwaggerServer) writeFormattedResponse(w http.ResponseWriter, data any, opts formatOptions, statusCode int) {
+	manager := formatters.NewFormatManager()
+	output, err := manager.FormatWithOptions(formatters.FormatOptions{
+		Format: opts.Format,
+		Page:   opts.Page,
+		Limit:  opts.Limit,
+	}, data)
+	if err != nil {
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(fmt.Sprintf("format error: %v", err))) //nolint:errcheck
+		return
+	}
+
+	w.Header().Set("Content-Type", formatToContentType(opts.Format))
 	w.WriteHeader(statusCode)
+	w.Write([]byte(output)) //nolint:errcheck
+}
 
-	// Encode response as JSON
-	encoder := json.NewEncoder(w)
-	encoder.SetIndent("", "  ")
+type formatOptions struct {
+	Format string
+	Page   int
+	Limit  int
+}
 
-	// Encode and return the response data (ExecutionResponse)
-	// Always return 'data' which contains the ExecutionResponse with all fields
-	if encErr := encoder.Encode(data); encErr != nil {
-		http.Error(w, fmt.Sprintf("Failed to encode response: %v", encErr), http.StatusInternalServerError)
+func extractFormatOpts(r *http.Request) formatOptions {
+	opts := formatOptions{}
+
+	if p := r.URL.Query().Get("page"); p != "" {
+		opts.Page, _ = strconv.Atoi(p)
+	}
+	if l := r.URL.Query().Get("limit"); l != "" {
+		opts.Limit, _ = strconv.Atoi(l)
+	}
+
+	if f := r.URL.Query().Get("format"); f != "" {
+		opts.Format = f
+		return opts
+	}
+
+	accept := r.Header.Get("Accept")
+	if accept != "" {
+		for _, part := range strings.Split(accept, ",") {
+			ct := strings.TrimSpace(strings.Split(part, ";")[0])
+			switch strings.ToLower(ct) {
+			case "application/json":
+				opts.Format = "json"
+				return opts
+			case "application/yaml", "text/yaml", "application/x-yaml":
+				opts.Format = "yaml"
+				return opts
+			case "text/csv", "application/csv":
+				opts.Format = "csv"
+				return opts
+			case "text/html", "application/xhtml+xml":
+				opts.Format = "html"
+				return opts
+			case "text/markdown":
+				opts.Format = "markdown"
+				return opts
+			case "application/pdf":
+				opts.Format = "pdf"
+				return opts
+			case "text/plain":
+				opts.Format = "pretty"
+				return opts
+			}
+		}
+	}
+
+	opts.Format = "json"
+	return opts
+}
+
+func formatToContentType(format string) string {
+	switch format {
+	case "yaml", "yml":
+		return "application/yaml"
+	case "csv":
+		return "text/csv; charset=utf-8"
+	case "html":
+		return "text/html; charset=utf-8"
+	case "markdown", "md":
+		return "text/markdown; charset=utf-8"
+	case "pdf":
+		return "application/pdf"
+	case "pretty", "tree":
+		return "text/plain; charset=utf-8"
+	default:
+		return "application/json"
 	}
 }

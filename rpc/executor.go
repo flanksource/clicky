@@ -93,6 +93,23 @@ func (e *CommandExecutor) ExecuteCommand(op *RPCOperation, req *ExecutionRequest
 		return resp, resp, fmt.Errorf("command execution is disabled")
 	}
 
+	// If the operation has a DataFunc (registered via AddCommand), call it directly
+	// to get structured data without stdout capture.
+	if op.DataFunc != nil {
+		data, err := op.DataFunc(req.Flags, req.Args)
+		response := &ExecutionResponse{
+			Success:  err == nil,
+			ExitCode: 0,
+			CLI:      buildCLICommand(op, req),
+		}
+		if err != nil {
+			response.Error = err.Error()
+			response.ExitCode = 1
+			return response, response, err
+		}
+		return data, response, nil
+	}
+
 	cmd := op.Command
 	if cmd == nil {
 		resp := &ExecutionResponse{
@@ -207,9 +224,8 @@ func (e *CommandExecutor) ExecuteCommand(op *RPCOperation, req *ExecutionRequest
 		return parsedData, response, nil
 	}
 
-	// Fallback to response wrapper if parsing failed
-	response.Message = "Command executed successfully"
-	return response, response, nil
+	// Parsing failed — return raw stdout as data, metadata in response
+	return stdoutStr, response, nil
 }
 
 // parseCommandOutput attempts to parse command output into structured data

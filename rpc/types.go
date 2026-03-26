@@ -2,6 +2,10 @@ package rpc
 
 import "github.com/spf13/cobra"
 
+// DataFunc is a function that returns structured data directly, bypassing stdout capture.
+// Used by commands registered via AddCommand to provide data to the HTTP handler.
+type DataFunc func(flags map[string]string, args []string) (any, error)
+
 // RPCOperation represents a generic RPC operation that can be converted to various formats
 type RPCOperation struct {
 	Name        string         `json:"name"`
@@ -12,6 +16,7 @@ type RPCOperation struct {
 	Path        string         `json:"path,omitempty"`   // For REST APIs
 	Method      string         `json:"method,omitempty"` // HTTP method
 	Tags        []string       `json:"tags,omitempty"`   // For grouping
+	DataFunc    DataFunc       `json:"-"`                // Direct data provider, bypasses stdout capture
 }
 
 // RPCParameter represents a parameter in an RPC operation

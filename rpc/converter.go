@@ -3,6 +3,7 @@ package rpc
 import (
 	"strings"
 
+	"github.com/flanksource/clicky"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -161,6 +162,10 @@ func (c *Converter) ConvertCommand(cmd *cobra.Command) (*RPCOperation, error) {
 		Tags:        tags,
 	}
 
+	if df := clicky.GetDataFunc(cmd); df != nil {
+		operation.DataFunc = df
+	}
+
 	return operation, nil
 }
 
@@ -270,13 +275,14 @@ func (c *Converter) generateRESTPath(cmd *cobra.Command, cmdPath string) string 
 		// Skip the last part if it's a CRUD operation
 		if i == len(parts)-1 {
 			if isCRUDOperation(part) {
-				// If this CRUD operation has positional args, add path parameter
-				if cmd.Args != nil {
-					// Extract parameter name from Use field (e.g., "get [policyNumber]")
+				partLower := strings.ToLower(part)
+				// get/delete/inspect always take an {id} path parameter
+				if partLower == "get" || partLower == "delete" || partLower == "inspect" {
 					paramName := extractParameterName(cmd.Use)
-					if paramName != "" {
-						pathParts = append(pathParts, "{"+paramName+"}")
+					if paramName == "" {
+						paramName = "id"
 					}
+					pathParts = append(pathParts, "{"+paramName+"}")
 				}
 				break
 			}
@@ -318,12 +324,37 @@ func (c *Converter) generateRESTPath(cmd *cobra.Command, cmdPath string) string 
 // e.g., "get [policyNumber]" -> "policyNumber"
 // e.g., "get [id]" -> "id"
 func extractParameterName(use string) string {
-	start := strings.Index(use, "[")
-	end := strings.Index(use, "]")
+	// Try <param> first (e.g., "get <id>")
+	start := strings.Index(use, "<")
+	end := strings.Index(use, ">")
 	if start != -1 && end != -1 && end > start {
-		return strings.TrimSpace(use[start+1 : end])
+		name := strings.TrimSpace(use[start+1 : end])
+		if isValidParamName(name) {
+			return name
+		}
+	}
+
+	// Try [param] (e.g., "get [id]")
+	start = strings.Index(use, "[")
+	end = strings.Index(use, "]")
+	if start != -1 && end != -1 && end > start {
+		name := strings.TrimSpace(use[start+1 : end])
+		if isValidParamName(name) {
+			return name
+		}
 	}
 	return ""
+}
+
+func isValidParamName(name string) bool {
+	if name == "" {
+		return false
+	}
+	// Reject variadic/body-style args like "key=value ...", "[args...]"
+	if strings.Contains(name, "=") || strings.Contains(name, "...") || strings.Contains(name, " ") {
+		return false
+	}
+	return true
 }
 
 // updateParameterLocations updates parameter "In" field to "path" for parameters that appear in the URL path
