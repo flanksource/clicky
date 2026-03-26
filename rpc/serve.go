@@ -80,19 +80,24 @@ func NewSwaggerServer(config *ServeConfig, rootCmd *cobra.Command, openAPIConfig
 }
 
 // Start starts the HTTP server
+// RegisterRoutes registers all API routes onto the provided mux.
+// This allows callers to compose the SwaggerServer routes with other handlers.
+func (s *SwaggerServer) RegisterRoutes(mux *http.ServeMux) {
+	mux.HandleFunc("/api/openapi.json", s.handleOpenAPIJSON)
+	mux.HandleFunc("/api/openapi.yaml", s.handleOpenAPIYAML)
+	mux.HandleFunc("/health", s.handleHealth)
+
+	if s.executor != nil {
+		s.registerExecutionRoutes(mux)
+	}
+}
+
 func (s *SwaggerServer) Start(ctx context.Context) error {
 	mux := http.NewServeMux()
 
 	// Register routes
 	mux.HandleFunc("/", s.handleSwaggerUI)
-	mux.HandleFunc("/api/openapi.json", s.handleOpenAPIJSON)
-	mux.HandleFunc("/api/openapi.yaml", s.handleOpenAPIYAML)
-	mux.HandleFunc("/health", s.handleHealth)
-
-	// Register dynamic execution routes if executor is enabled
-	if s.executor != nil {
-		s.registerExecutionRoutes(mux)
-	}
+	s.RegisterRoutes(mux)
 
 	// Create server
 	addr := fmt.Sprintf("%s:%d", s.config.Host, s.config.Port)
@@ -124,7 +129,7 @@ func (s *SwaggerServer) Start(ctx context.Context) error {
 		go func() {
 			time.Sleep(500 * time.Millisecond) // Give server time to start
 			url := fmt.Sprintf("http://%s", addr)
-			if err := openBrowser(url); err != nil {
+			if err := OpenBrowser(url); err != nil {
 				fmt.Printf("⚠️  Failed to open browser: %v\n", err)
 				fmt.Printf("📖 Please manually open: %s\n", url)
 			} else {
@@ -264,7 +269,7 @@ func (s *SwaggerServer) handleHealth(w http.ResponseWriter, r *http.Request) {
 }
 
 // openBrowser opens the default browser to the specified URL
-func openBrowser(url string) error {
+func OpenBrowser(url string) error {
 	var cmd string
 	var args []string
 
