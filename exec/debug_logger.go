@@ -112,6 +112,16 @@ func (d debugVerbose) Infof(format string, args ...interface{}) {
 	}
 }
 
+// WithValues implements logger.Verbose.
+func (d debugVerbose) WithValues(_ ...interface{}) logger.Verbose {
+	return d
+}
+
+// Always implements logger.Verbose.
+func (d debugVerbose) Always() logger.Verbose {
+	return d
+}
+
 // WithFilter implements logger.Verbose.
 func (d debugVerbose) WithFilter(filters ...string) logger.Verbose {
 	d.v = d.v.WithFilter(filters...)
