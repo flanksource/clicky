@@ -51,6 +51,7 @@ type Manager struct {
 	stopRenderCh  chan struct{}
 	renderDone    chan struct{}
 	renderStopped sync.Once
+	renderStarted sync.Once
 
 	// Terminal state
 	originalTermState *term.State
@@ -247,10 +248,6 @@ func newManagerWithConcurrency(maxConcurrent int) *Manager {
 		tm.StopCapturingOutput()
 	})
 
-	if !tm.noProgress.Load() {
-		tm.startRenderLoop()
-	}
-
 	return tm
 }
 
@@ -358,6 +355,12 @@ func (tm *Manager) newTask(name string, opts ...Option) *Task {
 }
 
 func (tm *Manager) enqueue(task *Task) *Task {
+	tm.renderStarted.Do(func() {
+		if !tm.noProgress.Load() {
+			tm.startRenderLoop()
+		}
+	})
+
 	if task.identity != "" {
 		if existing, ok := tm.tasksByIdentity.Load(task.identity); ok {
 			return existing.(*Task)

@@ -67,11 +67,10 @@ func (tm *Manager) stopRender() {
 		done := tm.renderDone
 		tm.mu.RUnlock()
 
-		if ch == nil {
-			return
+		if ch != nil {
+			close(ch)
+			<-done
 		}
-		close(ch)
-		<-done
 		tm.renderFinal()
 		tm.cleanupTerminal()
 	})
@@ -79,7 +78,7 @@ func (tm *Manager) stopRender() {
 
 // cleanupTerminal restores terminal to a clean state
 func (tm *Manager) cleanupTerminal() {
-	if !tm.isInteractive {
+	if !tm.isInteractive || tm.noProgress.Load() {
 		return
 	}
 	output := tm.renderer.Output()
