@@ -1,10 +1,11 @@
+---
+build: go build -o ./uber-demo-test . && chmod +x ./uber-demo-test
+cwd: ../..
+---
 # Uber Demo Task ANSI Fixtures
 
 Tests that `--no-progress` suppresses ANSI layout commands (cursor movement, screen clearing) in piped/non-interactive mode.
 
----
-build: go build -o ./uber-demo-test .
----
 
 ## --no-progress with piped output (non-interactive)
 
