@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.20.0](https://github.com/flanksource/clicky/compare/v1.19.0...v1.20.0) (2026-03-26)
+
+
+### ✨ Features
+
+* collapse completed tasks when they exceed terminal height ([4f9d07a](https://github.com/flanksource/clicky/commit/4f9d07a738e8917072cf9926fa360b21b5a8a67e))
+* **tailwind:** add headtail truncation mode for showing first and last n lines ([7bde52f](https://github.com/flanksource/clicky/commit/7bde52fd68e1a125edc22d6ebeeb77f91456ee2e))
+* **tailwind:** support terminal-relative dimensions in arbitrary classes ([cf65008](https://github.com/flanksource/clicky/commit/cf650089c2b1624c64636bfc073bee2296e61a41))
+
+
+### 🐛 Bug Fixes
+
+* html rendering of list of tables ([d0267d6](https://github.com/flanksource/clicky/commit/d0267d6ddc4b7dc59229f86eaa852ce6563f4b13))
+* **api:** resolve no-color flag from environment variables ([027bdec](https://github.com/flanksource/clicky/commit/027bdecf3cbe7ada35c86adc9b93fb412cb0fcb2))
+
+
+### 🔧 Maintenance
+
+* go mod tidy ([1025b96](https://github.com/flanksource/clicky/commit/1025b96e5dccec72379224ef69a9ac8baa3b7199))
+* reduce logging verbosity ([54badfc](https://github.com/flanksource/clicky/commit/54badfc237d96ab0e19eea3e8976529da0fa8cb6))
+* use flankbot for semantic release ([93acf07](https://github.com/flanksource/clicky/commit/93acf074b276cc69c7e47b72522e2b0336c9d16d))
+
 ## [1.19.0](https://github.com/flanksource/clicky/compare/v1.18.1...v1.19.0) (2026-03-06)
 
 
