@@ -386,7 +386,7 @@ func (t *Task) FailedWithError(err error) (*Task, error) {
 	t.getBufferedLogger().Errorf("%s", err.Error())
 
 	t.SetStatus(StatusFailed)
-	return t, nil
+	return nil, nil
 }
 
 // Warning marks the task as completed with warnings
@@ -623,8 +623,14 @@ func (t *Task) Pretty() api.Text {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
-	if pretty, ok := t.result.(formatters.PrettyMixin); ok {
-		return pretty.Pretty()
+	if t.result != nil {
+		if pretty, ok := t.result.(formatters.PrettyMixin); ok {
+			// Guard against typed nil (e.g. (*Task)(nil)) and self-reference
+			rv := reflect.ValueOf(pretty)
+			if rv.Kind() == reflect.Ptr && !rv.IsNil() && rv.Pointer() != reflect.ValueOf(t).Pointer() {
+				return pretty.Pretty()
+			}
+		}
 	}
 
 	var text api.Text
