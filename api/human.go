@@ -133,6 +133,25 @@ func Human(content any, styles ...string) Text {
 	return Text{Content: fmt.Sprintf("%v", content), Style: strings.Join(styles, " ")}
 }
 
+func TimeAgo(t *time.Time) Text {
+	if t == nil {
+		return Text{}
+	}
+	d := time.Since(*t)
+	var v string
+	switch {
+	case d < time.Minute:
+		v = fmt.Sprintf("%ds ago", int(d.Seconds()))
+	case d < time.Hour:
+		v = fmt.Sprintf("%dm ago", int(d.Minutes()))
+	case d < 24*time.Hour:
+		v = fmt.Sprintf("%dh ago", int(d.Hours()))
+	default:
+		v = fmt.Sprintf("%dd ago", int(d.Hours()/24))
+	}
+	return Text{Content: v, Style: "date"}
+}
+
 func HumanNumber(value int64, styles ...string) Text {
 	v := fmt.Sprintf("%d", value)
 	if value >= 50*M {
