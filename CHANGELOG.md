@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.0](https://github.com/flanksource/clicky/compare/v2.0.0...v2.1.0) (2026-03-26)
+
+
+### ✨ Features
+
+* **rpc:** add structured data support to rpc operations via direct function invocation ([109c950](https://github.com/flanksource/clicky/commit/109c9504f51365eb66a821ae1c7b67d06a82baa9))
+
 ## [2.0.0](https://github.com/flanksource/clicky/compare/v1.20.0...v2.0.0) (2026-03-26)
 
 
