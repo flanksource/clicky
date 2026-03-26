@@ -94,7 +94,7 @@ jobs:
         if: github.event.inputs.dry-run != 'true'
         id: semantic
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.FLANKBOT }}
         run: |
           echo "Running semantic-release with enhanced patch rules..."
           echo "Last tag: ${{ steps.changes.outputs.last_tag }}"
