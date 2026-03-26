@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.21.1](https://github.com/flanksource/clicky/compare/v1.21.0...v1.21.1) (2026-03-26)
+
+
+### ⚠ BREAKING CHANGES
+
+* **api:** add custom actions and bulk actions to entities
+
+### ✨ Features
+
+* **api:** add custom actions and bulk actions to entities ([6f06836](https://github.com/flanksource/clicky/commit/6f068367c8909dd3d9e2033238ef406cf3798cc6))
+* **rpc:** add structured data support to rpc operations via direct function invocation ([109c950](https://github.com/flanksource/clicky/commit/109c9504f51365eb66a821ae1c7b67d06a82baa9))
+
+
+### 🔧 Maintenance
+
+* bump version ([879e50c](https://github.com/flanksource/clicky/commit/879e50c896c6c4d9fc9d1ce4e145f017e7c49f0e))
+* **build:** update release workflow and adjust versioning strategy ([c977f7e](https://github.com/flanksource/clicky/commit/c977f7e763460fa2ab8e6060b13f35cd1b1bbb5c))
+* **release:** 2.1.0 [skip ci] ([eb59755](https://github.com/flanksource/clicky/commit/eb59755d7f9bf86635750f11be2448d8b3a582a0))
+
 ## [2.1.0](https://github.com/flanksource/clicky/compare/v2.0.0...v2.1.0) (2026-03-26)
 
 
