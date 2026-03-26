@@ -141,13 +141,13 @@ func TimeAgo(t *time.Time) Text {
 	var v string
 	switch {
 	case d < time.Minute:
-		v = fmt.Sprintf("%ds ago", int(d.Seconds()))
+		v = fmt.Sprintf("%2ds ago", int(d.Seconds()))
 	case d < time.Hour:
-		v = fmt.Sprintf("%dm ago", int(d.Minutes()))
+		v = fmt.Sprintf("%2dm ago", int(d.Minutes()))
 	case d < 24*time.Hour:
-		v = fmt.Sprintf("%dh ago", int(d.Hours()))
+		v = fmt.Sprintf("%2dh ago", int(d.Hours()))
 	default:
-		v = fmt.Sprintf("%dd ago", int(d.Hours()/24))
+		v = fmt.Sprintf("%2dd ago", int(d.Hours()/24))
 	}
 	return Text{Content: v, Style: "date"}
 }
