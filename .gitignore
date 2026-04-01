@@ -67,6 +67,12 @@ clicky
 *.json
 *.csv
 *.yaml
+
+# Re-include tracked config/build files
+!task/ui/package.json
+!task/ui/package-lock.json
+!task/ui/tsconfig.json
+!.golangci.yaml
 .playwright-mcp/
 *-demo
 formatters/.playwright-mcp/
