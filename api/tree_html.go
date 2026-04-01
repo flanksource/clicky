@@ -28,7 +28,7 @@ func (r *treeHTMLRenderer) renderNode(tree *TextTree, depth int) string {
 
 	if depth == 0 {
 		if r.interactive {
-			result.WriteString(`<div class="tree-view" x-data="createTreeData()" x-init="expandAll()">`)
+			result.WriteString(`<div class="tree-view" x-data="createTreeData()">`)
 			result.WriteString(`<div class="tree-controls mb-3 flex gap-2">`)
 			result.WriteString(`<button @click="expandAll()" class="px-3 py-1 text-sm bg-blue-500 hover:bg-blue-600 text-white rounded">Expand All</button>`)
 			result.WriteString(`<button @click="collapseAll()" class="px-3 py-1 text-sm bg-gray-500 hover:bg-gray-600 text-white rounded">Collapse All</button>`)
@@ -64,9 +64,9 @@ func (r *treeHTMLRenderer) renderInteractiveNode(tree *TextTree, depth int) stri
 
 	nodeID := r.generateNodeID()
 	if len(children) > 0 {
-		result.WriteString(fmt.Sprintf(`<span class="tree-toggle" @click.stop="toggleNode('%s')" data-node-id="%s">`, nodeID, nodeID))
-		result.WriteString(fmt.Sprintf(`<iconify-icon icon="ion:chevron-forward" x-show="!isExpanded('%s')"></iconify-icon>`, nodeID))
-		result.WriteString(fmt.Sprintf(`<iconify-icon icon="ion:chevron-down" x-show="isExpanded('%s')"></iconify-icon>`, nodeID))
+		fmt.Fprintf(&result, `<span class="tree-toggle" @click.stop="toggleNode('%s')" data-node-id="%s">`, nodeID, nodeID)
+		fmt.Fprintf(&result, `<iconify-icon icon="ion:chevron-forward" x-show="!isExpanded('%s')"></iconify-icon>`, nodeID)
+		fmt.Fprintf(&result, `<iconify-icon icon="ion:chevron-down" x-show="isExpanded('%s')" style="display:none"></iconify-icon>`, nodeID)
 		result.WriteString(`</span>`)
 	} else {
 		result.WriteString(`<span class="tree-leaf-indicator">•</span>`)
@@ -74,7 +74,7 @@ func (r *treeHTMLRenderer) renderInteractiveNode(tree *TextTree, depth int) stri
 
 	result.WriteString(`<div class="flex-1">`)
 	if len(children) > 0 {
-		result.WriteString(fmt.Sprintf(`<span class="tree-node cursor-pointer" @click="toggleNode('%s')">`, nodeID))
+		fmt.Fprintf(&result, `<span class="tree-node cursor-pointer" @click="toggleNode('%s')">`, nodeID)
 	} else {
 		result.WriteString(`<span class="tree-node">`)
 	}
@@ -82,7 +82,7 @@ func (r *treeHTMLRenderer) renderInteractiveNode(tree *TextTree, depth int) stri
 	result.WriteString(`</span>`)
 
 	if len(children) > 0 {
-		result.WriteString(fmt.Sprintf(`<ul class="tree-children ml-4 mt-1 space-y-1" x-show="isExpanded('%s')">`, nodeID))
+		fmt.Fprintf(&result, `<ul class="tree-children ml-4 mt-1 space-y-1" x-show="isExpanded('%s')" style="display:none">`, nodeID)
 		for i := range children {
 			childHTML := r.renderInteractiveNode(&children[i], depth+1)
 			result.WriteString(childHTML)

@@ -38,29 +38,13 @@ func (c Collapsed) String() string {
 	return result.String()
 }
 
-// ANSI returns terminal output with expandable indicator
+// ANSI returns the content directly without the collapsed wrapper,
+// since terminals don't support interactive expand/collapse.
 func (c Collapsed) ANSI() string {
-	var result strings.Builder
-
-	// Use chevron icon for collapsed state
-	result.WriteString(icons.ChevronRight.ANSI())
-	result.WriteString(" ")
-	result.WriteString(c.Label)
-	result.WriteString("\n")
-
 	if c.Content != nil {
-		// Indent content
-		content := c.Content.ANSI()
-		lines := strings.Split(content, "\n")
-		for _, line := range lines {
-			if line != "" {
-				result.WriteString("  ")
-				result.WriteString(line)
-				result.WriteString("\n")
-			}
-		}
+		return c.Content.ANSI()
 	}
-	return result.String()
+	return ""
 }
 
 // HTML returns HTML with Alpine.js collapse functionality
@@ -78,11 +62,11 @@ func (c Collapsed) HTML() string {
 	html.WriteString(`<span x-data="{ open: false }" class="space-y-2">`)
 
 	// Button with toggle functionality
-	html.WriteString(fmt.Sprintf(`<button @click="open = !open" class="%s">`, buttonClass))
+	fmt.Fprintf(&html, `<button @click="open = !open" class="%s">`, buttonClass)
 
 	// Chevron icon that rotates based on state
 	html.WriteString(`<iconify-icon x-show="!open" icon="codicon:chevron-right"></iconify-icon>`)
-	html.WriteString(`<iconify-icon x-show="open" icon="codicon:chevron-down"></iconify-icon>`)
+	html.WriteString(`<iconify-icon x-show="open" style="display:none" icon="codicon:chevron-down"></iconify-icon>`)
 
 	// Custom icon if provided
 	if c.Icon != nil {
@@ -90,14 +74,19 @@ func (c Collapsed) HTML() string {
 	}
 
 	// Button label
-	html.WriteString(fmt.Sprintf(`<span>%s</span>`, c.Label))
+	fmt.Fprintf(&html, `<span>%s</span>`, c.Label)
 	html.WriteString(`</button>`)
 
-	// Collapsible content
+	// Collapsible content - use x-if with template to avoid adding heavy content to DOM until expanded.
+	// Use StaticHTML when available since scripts inside <template x-if> won't execute.
 	if c.Content != nil {
-		html.WriteString(`<div x-show="open" x-collapse class="ml-6 mt-2">`)
-		html.WriteString(c.Content.HTML())
-		html.WriteString(`</div>`)
+		html.WriteString(`<template x-if="open"><div class="ml-6 mt-2">`)
+		if sp, ok := c.Content.(StaticHTMLProvider); ok {
+			html.WriteString(sp.StaticHTML())
+		} else {
+			html.WriteString(c.Content.HTML())
+		}
+		html.WriteString(`</div></template>`)
 	}
 
 	html.WriteString(`</span>`)
@@ -111,7 +100,7 @@ func (c Collapsed) Markdown() string {
 
 	// Use HTML details/summary element which works in many Markdown renderers
 	result.WriteString("<details>\n")
-	result.WriteString(fmt.Sprintf("<summary>%s</summary>\n\n", c.Label))
+	fmt.Fprintf(&result, "<summary>%s</summary>\n\n", c.Label)
 
 	if c.Content != nil {
 		result.WriteString(c.Content.Markdown())
@@ -126,7 +115,7 @@ func (c Collapsed) Markdown() string {
 func (c Collapsed) MarkdownSlack() string {
 	var result strings.Builder
 
-	result.WriteString(fmt.Sprintf("*▸ %s*\n", c.Label))
+	fmt.Fprintf(&result, "*▸ %s*\n", c.Label)
 
 	if c.Content != nil {
 		result.WriteString(markdownTextable(c.Content, true))

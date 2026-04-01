@@ -35,6 +35,13 @@ type Textable interface {
 	Markdown() string // Markdown formatted output
 }
 
+// StaticHTMLProvider is implemented by types that can render pure HTML without JavaScript.
+// Used by Collapsed to avoid embedding scripts (e.g. Grid.js) inside <template x-if>
+// where they won't execute.
+type StaticHTMLProvider interface {
+	StaticHTML() string
+}
+
 func CompactList[T any](items []T) Textable {
 	list := List{
 		MaxInline: 3,

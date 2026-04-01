@@ -1,5 +1,7 @@
 package api
 
+import "fmt"
+
 // ColumnDef defines a table column's schema and display properties.
 // Order is determined by array position when returned from TableProvider.Columns().
 type ColumnDef struct {
@@ -123,11 +125,16 @@ func NewTableFrom[T TableProvider](items []T) TextTable {
 		table.Headers = append(table.Headers, Text{Content: col.DisplayLabel(), Style: col.HeaderStyle})
 		table.FieldNames = append(table.FieldNames, col.Name)
 
+		style := col.Style
+		if col.MaxWidth > 0 {
+			style = fmt.Sprintf("%s max-w-[%dch] truncate", style, col.MaxWidth)
+		}
+
 		// Convert ColumnDef to PrettyField for Columns slice
 		table.Columns = append(table.Columns, PrettyField{
 			Name:          col.Name,
 			Label:         col.DisplayLabel(),
-			Style:         col.Style,
+			Style:         style,
 			LabelStyle:    col.HeaderStyle,
 			Type:          col.Type,
 			Format:        col.Format,
@@ -146,8 +153,11 @@ func NewTableFrom[T TableProvider](items []T) TextTable {
 				continue
 			}
 			if val, exists := rowData[col.Name]; exists {
-				// Convert value to TypedValue using Text{}.Add()
-				text := Text{Style: col.Style}.Add(convertToTextable(val))
+				style := col.Style
+				if col.MaxWidth > 0 {
+					style = fmt.Sprintf("%s max-w-[%dch] truncate", style, col.MaxWidth)
+				}
+				text := Text{Style: style}.Add(convertToTextable(val))
 				row[col.Name] = TypedValue{Textable: text}
 			} else {
 				row[col.Name] = TypedValue{Textable: Text{}}

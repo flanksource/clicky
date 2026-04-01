@@ -38,6 +38,11 @@ func (c Code) String() string {
 	return c.Content
 }
 
+func (c Code) Trim() Code {
+	c.Content = strings.TrimSpace(c.Content)
+	return c
+}
+
 // ANSI returns the source code with ANSI color codes for terminal display.
 // Uses chroma with a terminal-compatible formatter.
 func (c Code) ANSI() string {
