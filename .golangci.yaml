@@ -1,0 +1,17 @@
+version: "2"
+linters:
+  default: standard
+
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - std-error-handling
+      - common-false-positives
+      - legacy
+
+    paths:
+      - ".*\\.my\\.go$"
+      - ".*_test\\.go$"
+      - "hack/"
+      - "vendor/"
