@@ -82,21 +82,30 @@ func (s *MCPServer) Start(ctx context.Context) error {
 
 // startStdioServer starts the server using stdio transport
 func (s *MCPServer) startStdioServer(ctx context.Context) error {
-	scanner := bufio.NewScanner(os.Stdin)
+	lines := make(chan string)
+	scanErr := make(chan error, 1)
+
+	go func() {
+		scanner := bufio.NewScanner(os.Stdin)
+		for scanner.Scan() {
+			lines <- scanner.Text()
+		}
+		if err := scanner.Err(); err != nil {
+			scanErr <- err
+		}
+		close(lines)
+	}()
 
 	for {
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
-		default:
-			if !scanner.Scan() {
-				if err := scanner.Err(); err != nil {
-					return fmt.Errorf("stdin scan error: %w", err)
-				}
+			return nil
+		case err := <-scanErr:
+			return fmt.Errorf("stdin scan error: %w", err)
+		case line, ok := <-lines:
+			if !ok {
 				return nil // EOF
 			}
-
-			line := scanner.Text()
 			if line == "" {
 				continue
 			}

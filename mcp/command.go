@@ -16,12 +16,13 @@ import (
 
 // CommandOptions holds options for MCP command creation
 type CommandOptions struct {
-	ConfigPath string
-	Verbose    bool
-	Transport  string
-	Address    string
-	Port       int
-	AutoExpose bool
+	ConfigPath    string
+	Verbose       bool
+	Transport     string
+	Address       string
+	Port          int
+	AutoExpose    bool
+	InitialConfig *Config
 }
 
 // NewCommand creates the MCP command group that can be added to any cobra CLI
@@ -33,9 +34,9 @@ func NewCommand() *cobra.Command {
 func NewCommandWithConfig(config *Config) *cobra.Command {
 	opts := &CommandOptions{}
 
-	// Apply config defaults if provided
+	// Store initial config for merging in serve command
 	if config != nil {
-		opts.ConfigPath = "" // Will be overridden by config file
+		opts.InitialConfig = config
 		opts.AutoExpose = config.Tools.AutoExpose
 		opts.Transport = config.Transport.Type
 		opts.Address = config.Transport.Address
@@ -54,6 +55,7 @@ The MCP command group provides functionality to:
 
 	// Add subcommands
 	mcpCmd.AddCommand(newServeCommand(opts))
+	mcpCmd.AddCommand(newInstallCommand(opts))
 	mcpCmd.AddCommand(newConfigCommand(opts))
 	mcpCmd.AddCommand(newPromptCommand(opts))
 
@@ -88,6 +90,21 @@ Examples:
 			config, err := LoadConfig(configPath)
 			if err != nil {
 				return fmt.Errorf("failed to load configuration: %w", err)
+			}
+
+			// Merge initial config (from NewCommandWithConfig)
+			if ic := opts.InitialConfig; ic != nil {
+				if ic.Name != "" {
+					config.Name = ic.Name
+				}
+				if ic.Version != "" {
+					config.Version = ic.Version
+				}
+				if ic.Tools.AutoExpose {
+					config.Tools.AutoExpose = true
+				}
+				config.Tools.Exclude = append(config.Tools.Exclude, ic.Tools.Exclude...)
+				config.Tools.Include = append(config.Tools.Include, ic.Tools.Include...)
 			}
 
 			// Apply command-line overrides

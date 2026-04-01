@@ -149,12 +149,25 @@ func (r *ToolRegistry) GetTool(name string) (*ToolDefinition, bool) {
 	return tool, exists
 }
 
+var autoExcluded = map[string]bool{
+	"help":       true,
+	"completion": true,
+	"version":    true,
+	"mcp":        true,
+}
+
 // shouldExposeCommand determines if a command should be exposed as an MCP tool
 func (r *ToolRegistry) shouldExposeCommand(cmd *cobra.Command) bool {
 	cmdPath := getCommandPath(cmd)
 
 	// Skip root command and commands without Run function
 	if cmd.Parent() == nil || (cmd.Run == nil && cmd.RunE == nil) {
+		return false
+	}
+
+	// Skip built-in commands
+	topLevel := strings.SplitN(cmdPath, " ", 2)[0]
+	if autoExcluded[topLevel] {
 		return false
 	}
 
