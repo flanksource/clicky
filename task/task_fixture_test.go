@@ -28,14 +28,14 @@ type logMessage struct {
 }
 
 type taskFixture struct {
-	Name        string          `yaml:"name"`
-	LogMessages []logMessage    `yaml:"log_messages"`
+	Name        string           `yaml:"name"`
+	LogMessages []logMessage     `yaml:"log_messages"`
 	Progress    *progressFixture `yaml:"progress"`
-	Status      string          `yaml:"status"`
-	ResultType  string          `yaml:"result_type"`
-	Result      any             `yaml:"result"`
-	Error       string          `yaml:"error"`
-	Assertions  []string        `yaml:"assertions"`
+	Status      string           `yaml:"status"`
+	ResultType  string           `yaml:"result_type"`
+	Result      any              `yaml:"result"`
+	Error       string           `yaml:"error"`
+	Assertions  []string         `yaml:"assertions"`
 }
 
 func executeFixtureTask(fixture taskFixture) (result any, status task.Status, logs []logger.BufferedLogEntry, logsByLevel map[string][]logger.BufferedLogEntry, err error) {
