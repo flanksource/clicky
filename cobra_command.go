@@ -109,9 +109,7 @@ func AddNamedCommand[T any](name string, parent *cobra.Command, opts T, fn func(
 
 	cmd.SilenceUsage = true
 	if h, ok := optsValue.Interface().(Help); ok {
-		cmd.SetHelpFunc(func(c *cobra.Command, args []string) {
-			_, _ = os.Stderr.WriteString(h.Help().ANSI())
-		})
+		cmd.Long = h.Help().ANSI()
 	}
 
 	// Parse struct fields including embedded structs

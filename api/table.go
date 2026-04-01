@@ -121,8 +121,8 @@ func (table TextTable) CompactHTML() string {
 		result.WriteString(`<th class="border border-gray-300 px-2 py-1 bg-gray-100 w-6"></th>`)
 	}
 	for _, header := range table.Headers {
-		result.WriteString(fmt.Sprintf(`<th class="border border-gray-300 px-2 py-1 bg-gray-100 font-semibold">%s</th>`,
-			html.EscapeString(header.String())))
+		fmt.Fprintf(&result, `<th class="border border-gray-300 px-2 py-1 bg-gray-100 font-semibold">%s</th>`,
+			html.EscapeString(header.String()))
 	}
 	result.WriteString("</tr></thead>")
 
@@ -135,7 +135,7 @@ func (table TextTable) CompactHTML() string {
 			result.WriteString(`<tr class="cursor-pointer" @click="open = !open">`)
 			result.WriteString(`<td class="border border-gray-300 px-2 py-1 text-center">`)
 			result.WriteString(`<iconify-icon x-show="!open" icon="codicon:chevron-right"></iconify-icon>`)
-			result.WriteString(`<iconify-icon x-show="open" icon="codicon:chevron-down"></iconify-icon>`)
+			result.WriteString(`<iconify-icon x-show="open" style="display:none" icon="codicon:chevron-down"></iconify-icon>`)
 			result.WriteString(`</td>`)
 		} else {
 			result.WriteString(`<tbody>`)
@@ -146,17 +146,27 @@ func (table TextTable) CompactHTML() string {
 		}
 
 		for _, header := range table.Headers {
-			cellValue := row[header.String()]
-			result.WriteString(fmt.Sprintf(`<td class="border border-gray-300 px-2 py-1">%s</td>`,
-				cellValue.HTML()))
+			cellValue, ok := row[header.String()]
+			var cellHTML string
+			if ok {
+				cellHTML = cellValue.HTML()
+			}
+			fmt.Fprintf(&result, `<td class="border border-gray-300 px-2 py-1">%s</td>`, cellHTML)
 		}
 		result.WriteString("</tr>")
 
 		if detail != nil {
-			result.WriteString(`<tr x-show="open" x-collapse>`)
-			result.WriteString(fmt.Sprintf(`<td colspan="%d" class="border border-gray-300 px-3 py-2 bg-gray-50">`, colCount))
-			result.WriteString(detail.HTML())
-			result.WriteString(`</td></tr>`)
+			if sp, ok := detail.(StaticHTMLProvider); ok {
+				result.WriteString(`<tr><td colspan="`)
+				fmt.Fprintf(&result, `%d" class="border border-gray-300 px-3 py-2 bg-gray-50 whitespace-normal break-words max-w-0">`, colCount)
+				result.WriteString(sp.StaticHTML())
+				result.WriteString(`</td></tr>`)
+			} else {
+				result.WriteString(`<template x-if="open"><tr>`)
+				fmt.Fprintf(&result, `<td colspan="%d" class="border border-gray-300 px-3 py-2 bg-gray-50 whitespace-normal break-words max-w-0">`, colCount)
+				result.WriteString(detail.HTML())
+				result.WriteString(`</td></tr></template>`)
+			}
 		}
 		result.WriteString(`</tbody>`)
 	}
@@ -212,8 +222,8 @@ func (table TextTable) StaticHTML() string {
 		if headerLabel == "" {
 			headerLabel = PrettifyFieldName(col.Name)
 		}
-		result.WriteString(fmt.Sprintf(`<th class="border border-gray-300 px-3 py-2 text-left font-semibold">%s</th>`,
-			html.EscapeString(headerLabel)))
+		fmt.Fprintf(&result, `<th class="border border-gray-300 px-3 py-2 text-left font-semibold">%s</th>`,
+			html.EscapeString(headerLabel))
 	}
 	result.WriteString("</tr></thead>")
 
@@ -227,18 +237,18 @@ func (table TextTable) StaticHTML() string {
 
 		if detail != nil {
 			result.WriteString(`<tbody x-data="{ open: false }">`)
-			result.WriteString(fmt.Sprintf(`<tr class="cursor-pointer hover:bg-gray-100%s" @click="open = !open">`, rowClass))
+			fmt.Fprintf(&result, `<tr class="cursor-pointer hover:bg-gray-100%s" @click="open = !open">`, rowClass)
 			result.WriteString(`<td class="border border-gray-300 px-3 py-2 text-center">`)
 			result.WriteString(`<iconify-icon x-show="!open" icon="codicon:chevron-right"></iconify-icon>`)
-			result.WriteString(`<iconify-icon x-show="open" icon="codicon:chevron-down"></iconify-icon>`)
+			result.WriteString(`<iconify-icon x-show="open" style="display:none" icon="codicon:chevron-down"></iconify-icon>`)
 			result.WriteString(`</td>`)
 		} else {
 			result.WriteString(`<tbody>`)
 			if hasDetail {
-				result.WriteString(fmt.Sprintf(`<tr class="%s">`, rowClass))
+				fmt.Fprintf(&result, `<tr class="%s">`, rowClass)
 				result.WriteString(`<td class="border border-gray-300 px-3 py-2"></td>`)
 			} else {
-				result.WriteString(fmt.Sprintf(`<tr class="%s">`, rowClass))
+				fmt.Fprintf(&result, `<tr class="%s">`, rowClass)
 			}
 		}
 
@@ -248,16 +258,16 @@ func (table TextTable) StaticHTML() string {
 			if exists {
 				cellContent = fieldValue.HTML()
 			}
-			result.WriteString(fmt.Sprintf(`<td class="border border-gray-300 px-3 py-2">%s</td>`, cellContent))
+			fmt.Fprintf(&result, `<td class="border border-gray-300 px-3 py-2">%s</td>`, cellContent)
 		}
 		result.WriteString("</tr>")
 
 		// Detail row
 		if detail != nil {
-			result.WriteString(`<tr x-show="open" x-collapse>`)
-			result.WriteString(fmt.Sprintf(`<td colspan="%d" class="border border-gray-300 px-6 py-4 bg-gray-50">`, colCount))
+			result.WriteString(`<template x-if="open"><tr>`)
+			fmt.Fprintf(&result, `<td colspan="%d" class="border border-gray-300 px-6 py-4 bg-gray-50 whitespace-normal break-words max-w-0">`, colCount)
 			result.WriteString(detail.HTML())
-			result.WriteString(`</td></tr>`)
+			result.WriteString(`</td></tr></template>`)
 		}
 		result.WriteString(`</tbody>`)
 	}
@@ -311,7 +321,7 @@ func (table TextTable) html(interactive bool) string {
 	tableID := fmt.Sprintf("gridjs-table-%d", tableIDCounter.Add(1))
 
 	// Create a div for Grid.js to mount
-	result.WriteString(fmt.Sprintf("            <div id=\"%s\"></div>\n", tableID))
+	fmt.Fprintf(&result, "            <div id=\"%s\"></div>\n", tableID)
 
 	// Generate JavaScript to initialize Grid.js
 	result.WriteString("            <script>\n")
@@ -331,7 +341,7 @@ func (table TextTable) html(interactive bool) string {
 		}
 
 		// Format column definition with sorting and HTML rendering enabled
-		result.WriteString(fmt.Sprintf("     { name: %s, sort: true, formatter: (cell) => gridjs.html(cell) }", jsonEscape(headerLabel)))
+		fmt.Fprintf(&result, "     { name: %s, sort: true, formatter: (cell) => gridjs.html(cell) }", jsonEscape(headerLabel))
 	}
 	result.WriteString("\n ],\n")
 
@@ -372,7 +382,7 @@ func (table TextTable) html(interactive bool) string {
 	result.WriteString("     td: 'gridjs-td'\n")
 	result.WriteString(" }\n")
 
-	result.WriteString(fmt.Sprintf("                    }).render(document.getElementById('%s')).then(() => {\n", tableID))
+	fmt.Fprintf(&result, "                    }).render(document.getElementById('%s')).then(() => {\n", tableID)
 	result.WriteString(" // Reinitialize tooltips after Grid.js renders the table\n")
 	result.WriteString(" if (typeof initTooltips === 'function') {\n")
 	result.WriteString("     initTooltips();\n")
@@ -400,8 +410,8 @@ func (table TextTable) htmlWithDetail(columns []PrettyField) string {
 		if headerLabel == "" {
 			headerLabel = PrettifyFieldName(col.Name)
 		}
-		result.WriteString(fmt.Sprintf(`<th class="border border-gray-300 px-3 py-2 text-left font-semibold">%s</th>`,
-			html.EscapeString(headerLabel)))
+		fmt.Fprintf(&result, `<th class="border border-gray-300 px-3 py-2 text-left font-semibold">%s</th>`,
+			html.EscapeString(headerLabel))
 	}
 	result.WriteString("</tr></thead>")
 
@@ -415,14 +425,14 @@ func (table TextTable) htmlWithDetail(columns []PrettyField) string {
 
 		if detail != nil {
 			result.WriteString(`<tbody x-data="{ open: false }">`)
-			result.WriteString(fmt.Sprintf(`<tr class="cursor-pointer hover:bg-gray-100%s" @click="open = !open">`, rowClass))
+			fmt.Fprintf(&result, `<tr class="cursor-pointer hover:bg-gray-100%s" @click="open = !open">`, rowClass)
 			result.WriteString(`<td class="border border-gray-300 px-3 py-2 text-center">`)
 			result.WriteString(`<iconify-icon x-show="!open" icon="codicon:chevron-right"></iconify-icon>`)
-			result.WriteString(`<iconify-icon x-show="open" icon="codicon:chevron-down"></iconify-icon>`)
+			result.WriteString(`<iconify-icon x-show="open" style="display:none" icon="codicon:chevron-down"></iconify-icon>`)
 			result.WriteString(`</td>`)
 		} else {
 			result.WriteString(`<tbody>`)
-			result.WriteString(fmt.Sprintf(`<tr class="%s">`, rowClass))
+			fmt.Fprintf(&result, `<tr class="%s">`, rowClass)
 			result.WriteString(`<td class="border border-gray-300 px-3 py-2"></td>`)
 		}
 
@@ -432,15 +442,15 @@ func (table TextTable) htmlWithDetail(columns []PrettyField) string {
 			if exists {
 				cellContent = fieldValue.HTML()
 			}
-			result.WriteString(fmt.Sprintf(`<td class="border border-gray-300 px-3 py-2">%s</td>`, cellContent))
+			fmt.Fprintf(&result, `<td class="border border-gray-300 px-3 py-2">%s</td>`, cellContent)
 		}
 		result.WriteString("</tr>")
 
 		if detail != nil {
-			result.WriteString(`<tr x-show="open" x-collapse>`)
-			result.WriteString(fmt.Sprintf(`<td colspan="%d" class="border border-gray-300 px-6 py-4 bg-gray-50">`, colCount))
+			result.WriteString(`<template x-if="open"><tr>`)
+			fmt.Fprintf(&result, `<td colspan="%d" class="border border-gray-300 px-6 py-4 bg-gray-50 whitespace-normal break-words max-w-0">`, colCount)
 			result.WriteString(detail.HTML())
-			result.WriteString(`</td></tr>`)
+			result.WriteString(`</td></tr></template>`)
 		}
 		result.WriteString(`</tbody>`)
 	}
