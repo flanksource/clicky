@@ -1,3 +1,5 @@
+//go:build integration
+
 package rpc
 
 import (
@@ -802,8 +804,27 @@ func startClickyServer(t *testing.T, binaryPath string) (int, func()) {
 	err = cmd.Start()
 	require.NoError(t, err)
 
-	// Give the server time to start
-	time.Sleep(1 * time.Second)
+	// Wait for server to be ready
+	ready := false
+	for i := 0; i < 20; i++ {
+		time.Sleep(500 * time.Millisecond)
+		resp, err := http.Get(fmt.Sprintf("http://localhost:%d/health", port))
+		if err == nil {
+			resp.Body.Close()
+			ready = true
+			break
+		}
+	}
+	if !ready {
+		cleanup := func() {
+			if cmd.Process != nil {
+				_ = cmd.Process.Kill()
+				_ = cmd.Wait()
+			}
+		}
+		cleanup()
+		t.Fatal("Server failed to start within 10 seconds")
+	}
 
 	// Read and log server output for debugging
 	go func() {

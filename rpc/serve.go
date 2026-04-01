@@ -413,10 +413,33 @@ func (s *SwaggerServer) registerExecutionRoutes(mux *http.ServeMux) {
 		}
 		registered[key] = op.Name
 
+		// Sanitize path parameter names: Go's ServeMux requires alphanumeric wildcard names
+		sanitized := sanitizePathParams(path)
+
 		// Register the route with method prefix (Go 1.22+ ServeMux)
-		pattern := method + " " + path
+		pattern := method + " " + sanitized
 		mux.HandleFunc(pattern, s.handleExecuteCommand)
 	}
+}
+
+// sanitizePathParams replaces hyphens and other invalid characters in {param} names
+// with underscores, since Go's ServeMux requires alphanumeric wildcard names.
+func sanitizePathParams(path string) string {
+	for {
+		start := strings.Index(path, "{")
+		if start == -1 {
+			break
+		}
+		end := strings.Index(path[start:], "}")
+		if end == -1 {
+			break
+		}
+		end += start
+		name := path[start+1 : end]
+		sanitized := strings.NewReplacer("-", "_", ".", "_").Replace(name)
+		path = path[:start+1] + sanitized + path[end:]
+	}
+	return path
 }
 
 // executeCommandCore contains the core execution logic without HTTP handling
@@ -509,7 +532,7 @@ func (s *SwaggerServer) writeFormattedResponse(w http.ResponseWriter, data any, 
 	if err != nil {
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte(fmt.Sprintf("format error: %v", err))) //nolint:errcheck
+		fmt.Fprintf(w, "format error: %v", err) //nolint:errcheck
 		return
 	}
 

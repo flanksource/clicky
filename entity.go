@@ -8,6 +8,7 @@ import (
 	"reflect"
 	"sync"
 
+	"github.com/flanksource/clicky/api"
 	"github.com/flanksource/clicky/flags"
 	"github.com/samber/lo"
 	"github.com/spf13/cobra"
@@ -33,6 +34,7 @@ type EntityInfo struct {
 	Operations  []EntityOperation
 	Actions     []ActionInfo
 	BulkActions []BulkActionInfo
+	IsAdmin     bool
 }
 
 // EntityOperation represents a single CRUD operation.
@@ -86,6 +88,11 @@ type Entity[T EntityItem, ListOpts any] struct {
 	Actions     []Action[T]
 	BulkActions []BulkAction[T, ListOpts]
 
+	// Admin groups admin-only operations (inspect, configure, etc.)
+	// that produce different views/columns from the main CRUD operations.
+	// Generates subcommands under an "admin" subgroup and routes like /entity/admin/{verb}.
+	Admin *Entity[T, ListOpts]
+
 	// ValidArgs provides shell completion for the ID argument.
 	ValidArgs func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective)
 }
@@ -109,7 +116,11 @@ func RegisterEntity[T EntityItem, ListOpts any](e Entity[T, ListOpts]) {
 			Verb: "list",
 			DataFunc: func(flagMap map[string]string, args []string) (any, error) {
 				opts := buildOpts[ListOpts](flagMap)
-				return e.List(opts)
+				items, err := e.List(opts)
+				if err != nil {
+					return nil, err
+				}
+				return withEntityIDs(items), nil
 			},
 		})
 	}
@@ -219,6 +230,61 @@ func RegisterEntity[T EntityItem, ListOpts any](e Entity[T, ListOpts]) {
 		info.BulkActions = append(info.BulkActions, bai)
 	}
 
+	if e.Admin != nil {
+		admin := *e.Admin
+		if admin.Name == "" || admin.Name == name {
+			admin.Name = name
+		}
+		// Store as admin sub-entity — GenerateCLI nests under "admin" parent
+		adminInfo := EntityInfo{
+			Name:     admin.Name,
+			Type:     info.Type,
+			ListType: info.ListType,
+			IsAdmin:  true,
+		}
+		if admin.List != nil {
+			adminInfo.Operations = append(adminInfo.Operations, EntityOperation{
+				Verb: "list",
+				DataFunc: func(flagMap map[string]string, args []string) (any, error) {
+					opts := buildOpts[ListOpts](flagMap)
+					return admin.List(opts)
+				},
+			})
+		}
+		if admin.Get != nil {
+			adminInfo.Operations = append(adminInfo.Operations, EntityOperation{
+				Verb: "get",
+				DataFunc: func(flagMap map[string]string, args []string) (any, error) {
+					id := flagMap["id"]
+					if id == "" && len(args) > 0 {
+						id = args[0]
+					}
+					if id == "" {
+						return nil, fmt.Errorf("id is required")
+					}
+					return admin.Get(id)
+				},
+			})
+		}
+		for _, action := range admin.Actions {
+			a := action
+			adminInfo.Actions = append(adminInfo.Actions, ActionInfo{
+				Name:  a.Name,
+				Short: a.Short,
+				DataFunc: func(flagMap map[string]string, args []string) (any, error) {
+					id := flagMap["id"]
+					if id == "" && len(args) > 0 {
+						id = args[0]
+					}
+					return a.Run(id, flagMap)
+				},
+			})
+		}
+		entityRegistryMu.Lock()
+		entityRegistry = append(entityRegistry, adminInfo)
+		entityRegistryMu.Unlock()
+	}
+
 	entityRegistryMu.Lock()
 	entityRegistry = append(entityRegistry, info)
 	entityRegistryMu.Unlock()
@@ -232,9 +298,22 @@ func GetEntities() []EntityInfo {
 }
 
 // GenerateCLI creates cobra subcommands for all registered entities under parent.
+// Admin entities are nested under a shared "admin" parent command.
 func GenerateCLI(parent *cobra.Command) {
+	var adminCmd *cobra.Command
 	for _, entity := range GetEntities() {
-		generateEntityCLI(parent, entity)
+		if entity.IsAdmin {
+			if adminCmd == nil {
+				adminCmd = &cobra.Command{
+					Use:   "admin",
+					Short: "Administrative operations",
+				}
+				parent.AddCommand(adminCmd)
+			}
+			generateEntityCLI(adminCmd, entity)
+		} else {
+			generateEntityCLI(parent, entity)
+		}
 	}
 }
 
@@ -446,7 +525,7 @@ func buildOpts[T any](flagMap map[string]string) T {
 				field.SetString(val)
 			case reflect.Int, reflect.Int64:
 				var n int64
-				fmt.Sscanf(val, "%d", &n)
+				_, _ = fmt.Sscanf(val, "%d", &n)
 				field.SetInt(n)
 			case reflect.Bool:
 				field.SetBool(val == "true")
@@ -455,4 +534,46 @@ func buildOpts[T any](flagMap map[string]string) T {
 	}
 
 	return v.Interface().(T)
+}
+
+// withEntityIDs wraps each EntityItem in the slice to include a _id field in JSON output.
+func withEntityIDs[T EntityItem](items []T) []entityWithID[T] {
+	result := make([]entityWithID[T], len(items))
+	for i, item := range items {
+		result[i] = entityWithID[T]{ID: item.GetID(), Inner: item}
+	}
+	return result
+}
+
+type entityWithID[T EntityItem] struct {
+	ID    string `json:"_id"`
+	Inner T
+}
+
+func (e entityWithID[T]) GetID() string   { return e.ID }
+func (e entityWithID[T]) GetName() string { return e.Inner.GetName() }
+
+func (e entityWithID[T]) PrettyRow(opts interface{}) map[string]api.Text {
+	if pr, ok := any(e.Inner).(api.PrettyRow); ok {
+		return pr.PrettyRow(opts)
+	}
+	return nil
+}
+
+func (e entityWithID[T]) MarshalJSON() ([]byte, error) {
+	data, err := json.Marshal(e.Inner)
+	if err != nil {
+		return nil, err
+	}
+	if len(data) < 2 || data[0] != '{' {
+		return data, nil
+	}
+	idJSON, err := json.Marshal(e.ID)
+	if err != nil {
+		return nil, err
+	}
+	prefix := []byte(`{"_id":`)
+	prefix = append(prefix, idJSON...)
+	prefix = append(prefix, ',')
+	return append(prefix, data[1:]...), nil
 }
