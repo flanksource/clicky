@@ -38,6 +38,9 @@ type FormatOptions struct {
 	Tree  bool `json:"tree,omitempty"`  // Display in tree structure
 	Table bool `json:"table,omitempty"` // Display in table structure
 
+	// React-specific options
+	ReactComponent string `json:"react_component,omitempty"` // Custom JSX/TSX source for html-react format
+
 	// Paging options
 	Page  int `json:"page,omitempty"`  // Current page (1-indexed)
 	Limit int `json:"limit,omitempty"` // Items per page
