@@ -71,10 +71,63 @@ func NewCommandExecutor(service *RPCService, config *ExecutorConfig) *CommandExe
 	}
 }
 
-// FindOperation finds an RPC operation by HTTP method and path
+// FindOperation finds an RPC operation by HTTP method and path.
+// Supports templated paths like /api/v1/policy/{id} matched against
+// concrete paths like /api/v1/policy/12345.
 func (e *CommandExecutor) FindOperation(method, path string) *RPCOperation {
 	key := strings.ToUpper(method) + ":" + path
-	return e.operations[key]
+	if op := e.operations[key]; op != nil {
+		return op
+	}
+
+	// Try template matching for paths with {param} segments
+	for _, op := range e.operations {
+		if !strings.EqualFold(op.Method, method) {
+			continue
+		}
+		if matchTemplatePath(op.Path, path) {
+			return op
+		}
+	}
+	return nil
+}
+
+// matchTemplatePath checks if a concrete path matches a templated path pattern.
+// e.g., "/api/v1/policy/{id}" matches "/api/v1/policy/12345"
+// e.g., "/api/v1/policy/{id}/recalculate" matches "/api/v1/policy/12345/recalculate"
+func matchTemplatePath(template, concrete string) bool {
+	tParts := strings.Split(strings.Trim(template, "/"), "/")
+	cParts := strings.Split(strings.Trim(concrete, "/"), "/")
+	if len(tParts) != len(cParts) {
+		return false
+	}
+	for i, t := range tParts {
+		if strings.HasPrefix(t, "{") && strings.HasSuffix(t, "}") {
+			continue // template segment matches anything
+		}
+		if t != cParts[i] {
+			return false
+		}
+	}
+	return true
+}
+
+// extractPathParams extracts parameter values from a concrete path using the template.
+// e.g., template="/api/v1/policy/{id}", path="/api/v1/policy/12345" → {"id": "12345"}
+func extractPathParams(template, path string) map[string]string {
+	result := make(map[string]string)
+	tParts := strings.Split(strings.Trim(template, "/"), "/")
+	pParts := strings.Split(strings.Trim(path, "/"), "/")
+	for i, t := range tParts {
+		if i >= len(pParts) {
+			break
+		}
+		if strings.HasPrefix(t, "{") && strings.HasSuffix(t, "}") {
+			name := t[1 : len(t)-1]
+			result[name] = pParts[i]
+		}
+	}
+	return result
 }
 
 // ExecuteCommand executes a Cobra command with the given parameters
@@ -339,6 +392,21 @@ func (e *CommandExecutor) executeWithGlobalCapture(execCmd *cobra.Command, args 
 func (e *CommandExecutor) ExtractRequestFromHTTP(r *http.Request, op *RPCOperation) (*ExecutionRequest, error) {
 	req := &ExecutionRequest{
 		Flags: make(map[string]string),
+	}
+
+	// Extract path parameters from URL using the template.
+	// Path param values may be comma-delimited for bulk operations.
+	pathParams := extractPathParams(op.Path, r.URL.Path)
+	for _, param := range op.Parameters {
+		if param.In == "path" {
+			if value, ok := pathParams[param.Name]; ok {
+				// Split comma-delimited IDs into separate args
+				for _, id := range strings.Split(value, ",") {
+					req.Args = append(req.Args, strings.TrimSpace(id))
+				}
+				req.Flags[param.Name] = value
+			}
+		}
 	}
 
 	// Extract JSON body for POST/PUT requests FIRST (so query params can override)

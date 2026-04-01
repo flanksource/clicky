@@ -264,7 +264,8 @@ func (c *Converter) generateRESTPath(cmd *cobra.Command, cmdPath string) string 
 	// Convert command path to REST path
 	// e.g., "user create" -> "/api/v1/user"
 	// e.g., "user get [id]" -> "/api/v1/user/{id}"
-	// e.g., "policy activities --policy" -> "/api/v1/policy/{policyNumber}/activities"
+	// e.g., "policy recalculate <id>" -> "/api/v1/policy/{id}/recalculate"
+	// e.g., "policy bulk-suspend <id> [id...]" -> "/api/v1/policy/{id}/bulk-suspend"
 
 	parts := strings.Split(cmdPath, " ")
 
@@ -294,24 +295,35 @@ func (c *Converter) generateRESTPath(cmd *cobra.Command, cmdPath string) string 
 		}
 	}
 
-	// Handle nested resources that require ID in path (e.g., "policy activities")
-	// Check if parent command has a required flag that should be a path param
+	// For non-CRUD action commands with positional <id> args under a parent entity,
+	// restructure to /entity/{id}/action pattern.
+	// e.g., /api/v1/policy/recalculate with Use="recalculate <id>"
+	//    -> /api/v1/policy/{id}/recalculate
 	if cmd.Parent() != nil && !isCRUDOperation(cmd.Name()) {
-		parentName := cmd.Parent().Name()
-		// Check for common ID flags that should be path parameters
-		idFlagNames := []string{parentName, parentName + "Number", "id"}
-		for _, flagName := range idFlagNames {
-			if flag := cmd.Flags().Lookup(flagName); flag != nil {
-				// Insert the ID parameter before the current command
-				// e.g., /api/v1/policy/activities -> /api/v1/policy/{policyNumber}/activities
-				if len(pathParts) >= 2 {
-					// Insert ID param after the resource name
-					newParts := make([]string, 0, len(pathParts)+1)
-					newParts = append(newParts, pathParts[:len(pathParts)-1]...)
-					newParts = append(newParts, "{"+flagName+"}")
-					newParts = append(newParts, pathParts[len(pathParts)-1:]...)
-					pathParts = newParts
-					break
+		paramName := extractParameterName(cmd.Use)
+		if paramName != "" {
+			// Insert {id} before the action verb
+			if len(pathParts) >= 2 {
+				newParts := make([]string, 0, len(pathParts)+1)
+				newParts = append(newParts, pathParts[:len(pathParts)-1]...)
+				newParts = append(newParts, "{"+paramName+"}")
+				newParts = append(newParts, pathParts[len(pathParts)-1:]...)
+				pathParts = newParts
+			}
+		} else {
+			// Check for common ID flags that should be path parameters
+			parentName := cmd.Parent().Name()
+			idFlagNames := []string{parentName, parentName + "Number", "id"}
+			for _, flagName := range idFlagNames {
+				if flag := cmd.Flags().Lookup(flagName); flag != nil {
+					if len(pathParts) >= 2 {
+						newParts := make([]string, 0, len(pathParts)+1)
+						newParts = append(newParts, pathParts[:len(pathParts)-1]...)
+						newParts = append(newParts, "{"+flagName+"}")
+						newParts = append(newParts, pathParts[len(pathParts)-1:]...)
+						pathParts = newParts
+						break
+					}
 				}
 			}
 		}
