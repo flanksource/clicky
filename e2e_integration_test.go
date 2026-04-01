@@ -163,10 +163,10 @@ var _ = Describe("E2E Clicky Command Execution", func() {
 			By("verifying pretty endpoint exists")
 			paths, ok := spec["paths"].(map[string]interface{})
 			Expect(ok).To(BeTrue(), "Paths should be a map")
-			Expect(paths).To(HaveKey("/api/v1/pretty"), "Should have pretty endpoint")
+			Expect(paths).To(HaveKey("/api/v1/{file}/pretty"), "Should have pretty endpoint")
 
 			By("verifying schema parameter is required")
-			prettyPath, ok := paths["/api/v1/pretty"].(map[string]interface{})
+			prettyPath, ok := paths["/api/v1/{file}/pretty"].(map[string]interface{})
 			Expect(ok).To(BeTrue(), "Pretty path should be a map")
 
 			postMethod, ok := prettyPath["post"].(map[string]interface{})
