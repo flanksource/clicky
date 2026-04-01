@@ -110,9 +110,9 @@ func buildNoTreeDataMessage(data *api.PrettyData) string {
 	if len(data.Schema.Fields) > 0 {
 		msg.WriteString("Available fields:\n")
 		for _, field := range data.Schema.Fields {
-			msg.WriteString(fmt.Sprintf("  - %s (format: %s", field.Name, field.Format))
+			fmt.Fprintf(&msg, "  - %s (format: %s", field.Name, field.Format)
 			if field.Label != "" && field.Label != field.Name {
-				msg.WriteString(fmt.Sprintf(", label: %s", field.Label))
+				fmt.Fprintf(&msg, ", label: %s", field.Label)
 			}
 			msg.WriteString(")\n")
 		}
@@ -123,12 +123,12 @@ func buildNoTreeDataMessage(data *api.PrettyData) string {
 
 	// Show available table
 	if data.Table != nil && len(data.Table.Rows) > 0 {
-		msg.WriteString(fmt.Sprintf("Available table with %d rows\n\n", len(data.Table.Rows)))
+		fmt.Fprintf(&msg, "Available table with %d rows\n\n", len(data.Table.Rows))
 	}
 
 	// Show original data type if available
 	if data.Original != nil {
-		msg.WriteString(fmt.Sprintf("Original data type: %T\n", data.Original))
+		fmt.Fprintf(&msg, "Original data type: %T\n", data.Original)
 	}
 
 	msg.WriteString("\nExpected: At least one field with format='tree'")

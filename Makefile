@@ -5,11 +5,15 @@ GOLANGCI_LINT ?= $(LOCALBIN)/golangci-lint
 ## Tool Versions
 GOLANGCI_LINT_VERSION ?= v2.8.0
 
-.PHONY: test build clean install
+.PHONY: test build clean install task-ui
 
 
 test:
 	go test -v ./...
+
+# Run OpenAPI integration tests (builds binary, starts server)
+test\:openapi:
+	go test -v -tags integration -timeout 60s ./rpc/ -run TestOpenAPIServe_E2E
 
 # Run tests with coverage
 test-coverage:
@@ -19,9 +23,14 @@ test-coverage:
 build:
 	go build -o clicky ./cmd/clicky/
 
+# Build the task-ui frontend bundle (Preact + Vite → single IIFE)
+task-ui:
+	cd task/ui && npm ci && npm run build
+
 # Clean build artifacts
 clean:
 	rm -f clicky
+	rm -rf task/ui/dist task/ui/node_modules
 	go clean
 
 # Install dependencies

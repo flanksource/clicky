@@ -172,6 +172,9 @@ func (f *FormatManager) Format(format string, data interface{}) (string, error) 
 	case "tree":
 		return f.Tree(data)
 	default:
+		if customFn, exists := GetCustomFormatter(format); exists {
+			return customFn(data, FormatOptions{Format: format})
+		}
 		return "", fmt.Errorf("unsupported format: %s", format)
 	}
 }
