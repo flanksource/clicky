@@ -114,7 +114,7 @@ func newPrettyCommand() *cobra.Command {
 	var options formatters.FormatOptions
 
 	cmd := &cobra.Command{
-		Use:   "pretty [flags] <data-file1> [data-file2...]",
+		Use:   "pretty [flags] <file> [file...]",
 		Short: "Format data files using a YAML schema",
 		Long: `Format structured data files (JSON, YAML, etc.) using a YAML schema definition.
 
@@ -212,7 +212,7 @@ func newSchemaHelpCommand() *cobra.Command {
 
 func newSchemaValidateCommand() *cobra.Command {
 	return &cobra.Command{
-		Use:   "validate <schema-file>",
+		Use:   "validate <file>",
 		Short: "Validate a schema file",
 		Long:  `Check if a schema file is valid and report any errors or warnings.`,
 		Args:  cobra.ExactArgs(1),
