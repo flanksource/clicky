@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 env:
-  GO_VERSION: "1.25"
+  GO_VERSION: "1.26"
 
 jobs:
   test:
@@ -18,7 +18,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest]
-        go-version: ["1.25"]
+        go-version: ["1.26"]
 
     steps:
       - name: Checkout code
@@ -32,6 +32,14 @@ jobs:
           go-version: ${{ matrix.go-version }}
           cache: true
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Build task-ui frontend
+        run: cd task/ui && npm ci && npm run build
+
       - name: Install dependencies
         run: |
           go mod download
@@ -42,6 +50,32 @@ jobs:
 
       - name: Run tests
         run: make test
+        env:
+          CGO_ENABLED: 1
+
+  openapi:
+    name: OpenAPI Integration
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Build task-ui frontend
+        run: cd task/ui && npm ci && npm run build
+
+      - name: Run OpenAPI integration tests
+        run: make test:openapi
         env:
           CGO_ENABLED: 1
 
@@ -61,6 +95,14 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
           cache: true
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Build task-ui frontend
+        run: cd task/ui && npm ci && npm run build
 
       - name: Build binary
         run: make build

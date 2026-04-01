@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"net/http"
 	"os"
 	"time"
 
@@ -9,6 +10,7 @@ import (
 	"github.com/flanksource/clicky/api"
 	"github.com/flanksource/clicky/api/icons"
 	"github.com/flanksource/clicky/task"
+	taskui "github.com/flanksource/clicky/task/ui"
 	flanksourceContext "github.com/flanksource/commons/context"
 	"github.com/google/uuid"
 	"github.com/spf13/cobra"
@@ -999,6 +1001,257 @@ func showNilHandling(opts NilHandlingOptions) (any, error) {
 	return createNilHandlingShowcase(), nil
 }
 
+// ComponentsOptions for the components showcase command
+type ComponentsOptions struct{}
+
+type ComponentsShowcase struct {
+	CodeBlocks     api.TextList `json:"-" pretty:"label=Code Blocks,format=list"`
+	CollapsedItems api.TextList `json:"-" pretty:"label=Collapsed Sections,format=list"`
+	Badges         api.TextList `json:"-" pretty:"label=Badges,format=list"`
+	Buttons        api.TextList `json:"-" pretty:"label=Buttons,format=list"`
+}
+
+func showComponents(_ ComponentsOptions) (any, error) {
+	return ComponentsShowcase{
+		CodeBlocks: api.TextList{
+			api.CodeBlock("go", "func main() {\n\tfmt.Println(\"Hello, World!\")\n}"),
+			api.CodeBlock("sql", "SELECT u.name, COUNT(o.id) AS orders\nFROM users u\nLEFT JOIN orders o ON o.user_id = u.id\nWHERE u.active = true\nGROUP BY u.name\nORDER BY orders DESC\nLIMIT 10;"),
+			api.CodeBlock("json", "{\n  \"name\": \"clicky\",\n  \"version\": \"1.0.0\",\n  \"features\": [\"pretty\", \"html\", \"markdown\"]\n}"),
+			api.CodeBlock("yaml", "apiVersion: apps/v1\nkind: Deployment\nmetadata:\n  name: mission-control\nspec:\n  replicas: 3"),
+		},
+		CollapsedItems: api.TextList{
+			clicky.Collapsed("Database Configuration", clicky.Map(map[string]string{"host": "db.example.com", "port": "5432", "database": "production", "ssl": "required"})),
+			clicky.Collapsed("Build Output", api.CodeBlock("bash", "$ go build ./...\n$ go test ./... -count=1\nok  github.com/flanksource/clicky/api  0.42s\nPASS")),
+			clicky.Collapsed("Error Details", api.Text{Content: "Connection refused: dial tcp 10.0.0.1:5432\nRetried 3 times with exponential backoff", Style: "text-red-600"}),
+		},
+		Badges: api.TextList{
+			api.Text{}.Add(api.Badge("Healthy", "bg-green-100 text-green-800")).Add(api.Badge("Warning", "bg-yellow-100 text-yellow-800")).Add(api.Badge("Critical", "bg-red-100 text-red-800")).Add(api.Badge("Unknown", "bg-gray-100 text-gray-800")),
+			api.Text{}.Add(api.Badge("v1.2.3", "bg-blue-100 text-blue-800")).Add(api.Badge("stable", "bg-green-100 text-green-800")).Add(api.Badge("amd64", "bg-purple-100 text-purple-800")),
+		},
+		Buttons: api.TextList{
+			api.ButtonGroup{Buttons: []api.Button{
+				{Label: "View Docs", Href: "https://docs.flanksource.com"},
+				{Label: "Open Dashboard", Href: "https://app.flanksource.com"},
+				{Label: "Report Issue", Href: "https://github.com/flanksource/clicky/issues"},
+			}},
+		},
+	}, nil
+}
+
+type DetailEmployee struct {
+	ID, Name, Department, Email, Notes string
+}
+
+func (DetailEmployee) Columns() []api.ColumnDef {
+	return []api.ColumnDef{
+		api.Column("id").Label("ID").Build(),
+		api.Column("name").Label("Name").Style("font-semibold").Build(),
+		api.Column("department").Label("Department").Build(),
+		api.Column("email").Label("Email").Build(),
+	}
+}
+
+func (e DetailEmployee) Row() map[string]any {
+	return map[string]any{
+		"id": e.ID, "name": e.Name,
+		"department": api.Text{}.Add(icons.Folder.WithStyle("text-blue-500")).Add(api.Text{Content: e.Department}),
+		"email":      e.Email,
+	}
+}
+
+func (e DetailEmployee) RowDetail() api.Textable {
+	if e.Notes == "" {
+		return nil
+	}
+	return api.Text{Content: e.Notes, Style: "text-gray-600 italic"}
+}
+
+type CollapsibleRowOptions struct{}
+
+func showCollapsibleRows(_ CollapsibleRowOptions) (any, error) {
+	return api.NewTableFrom([]DetailEmployee{
+		{ID: "1", Name: "Alice Johnson", Department: "Engineering", Email: "alice@example.com", Notes: "Tech lead for the platform team. On-call this week."},
+		{ID: "2", Name: "Bob Smith", Department: "Sales", Email: "bob@example.com"},
+		{ID: "3", Name: "Carol Williams", Department: "Marketing", Email: "carol@example.com", Notes: "Working on Q2 launch campaign."},
+		{ID: "4", Name: "David Brown", Department: "Engineering", Email: "david@example.com"},
+		{ID: "5", Name: "Eve Davis", Department: "HR", Email: "eve@example.com", Notes: "Coordinating annual review cycle."},
+	}), nil
+}
+
+type SparseTable struct{ Name, Version, Deprecated, License, Description string }
+
+func (SparseTable) Columns() []api.ColumnDef {
+	return []api.ColumnDef{
+		api.Column("name").Label("Package").Style("font-semibold").Build(),
+		api.Column("version").Label("Version").Build(),
+		api.Column("deprecated").Label("Deprecated").Build(),
+		api.Column("license").Label("License").Build(),
+		api.Column("description").Label("Description").MaxWidth(40).Build(),
+	}
+}
+
+func (s SparseTable) Row() map[string]any {
+	return map[string]any{"name": s.Name, "version": s.Version, "deprecated": s.Deprecated, "license": s.License, "description": s.Description}
+}
+
+type ColumnBuilderOptions struct{}
+
+func showColumnBuilder(_ ColumnBuilderOptions) (any, error) {
+	return api.NewTableFrom([]SparseTable{
+		{Name: "react", Version: "18.3.1", License: "MIT", Description: "A JavaScript library for building user interfaces"},
+		{Name: "lodash", Version: "4.17.21", License: "MIT", Description: "A modern JavaScript utility library"},
+		{Name: "express", Version: "4.18.2", License: "MIT", Description: "Fast, unopinionated, minimalist web framework"},
+		{Name: "moment", Version: "2.29.4", License: "MIT", Description: "Parse, validate, manipulate, and display dates"},
+		{Name: "webpack", Version: "5.88.0", License: "MIT", Description: "A bundler for JavaScript and friends"},
+	}), nil
+}
+
+type TaskUIOptions struct {
+	Port     int    `flag:"port" help:"HTTP server port" default:"8080"`
+	NumTasks int    `flag:"tasks" help:"Number of concurrent tasks for batch group" default:"5"`
+	Count    int    `flag:"count" help:"Total number of tasks to generate (overrides default groups)" default:"0"`
+	Spread   string `flag:"spread" help:"Spread task creation over this duration (e.g. 30s, 1m)" default:""`
+}
+
+func showTaskUI(opts TaskUIOptions) (any, error) {
+	task.SetNoProgress(true)
+	var spread time.Duration
+	if opts.Spread != "" {
+		if d, err := time.ParseDuration(opts.Spread); err == nil {
+			spread = d
+		}
+	}
+	go func() {
+		time.Sleep(1 * time.Second)
+		if opts.Count > 0 {
+			runScaleTasks(opts.Count, spread)
+		} else {
+			runGroupedTasks(opts.NumTasks, func(d time.Duration) { time.Sleep(d * 3) })
+		}
+	}()
+
+	handler := taskui.Handler()
+
+	addr := fmt.Sprintf(":%d", opts.Port)
+	clicky.Infof("Task UI at http://localhost%s", addr)
+	if err := http.ListenAndServe(addr, handler); err != nil {
+		fmt.Fprintf(os.Stderr, "Server error: %v\n", err)
+	}
+	return nil, nil
+}
+
+func runGroupedTasks(numTasks int, sleep func(time.Duration), _ ...task.Option) {
+	build := task.StartGroup[string]("Build Pipeline")
+	build.Add("Download dependencies", func(_ flanksourceContext.Context, t *task.Task) (string, error) {
+		for i := 1; i <= 5; i++ {
+			sleep(150 * time.Millisecond)
+			t.SetProgress(i, 5)
+			t.Infof("Downloaded package %d of 5", i)
+		}
+		t.Success()
+		return "done", nil
+	})
+	build.Add("Build project", func(_ flanksourceContext.Context, t *task.Task) (string, error) {
+		for i, step := range []string{"Parsing", "Type checking", "Compiling", "Linking"} {
+			sleep(200 * time.Millisecond)
+			t.SetProgress(i+1, 4)
+			t.Infof("%s...", step)
+		}
+		t.Warnf("Found 2 deprecated API calls")
+		t.Warning()
+		return "built with warnings", nil
+	})
+	build.Add("Run tests", func(_ flanksourceContext.Context, t *task.Task) (string, error) {
+		for i := 1; i <= 8; i++ {
+			sleep(100 * time.Millisecond)
+			t.SetProgress(i, 8)
+			t.Infof("Test %d passed", i)
+		}
+		t.Success()
+		return "8 tests passed", nil
+	})
+	build.Add("Publish artifacts", func(_ flanksourceContext.Context, t *task.Task) (string, error) {
+		t.Infof("Uploading...")
+		sleep(300 * time.Millisecond)
+		t.SetProgress(1, 3)
+		sleep(300 * time.Millisecond)
+		t.Errorf("Connection reset by peer")
+		t.SetProgress(2, 3)
+		sleep(200 * time.Millisecond)
+		t.Errorf("Registry returned 503")
+		t.FailedWithError(fmt.Errorf("publish failed"))
+		return "", fmt.Errorf("publish failed")
+	})
+
+	batch := task.StartGroup[string]("Batch Processing")
+	for i := 1; i <= numTasks; i++ {
+		n := i
+		batch.Add(fmt.Sprintf("Process batch %d", n), func(_ flanksourceContext.Context, t *task.Task) (string, error) {
+			for j := 1; j <= 10; j++ {
+				sleep(50 * time.Millisecond)
+				t.SetProgress(j, 10)
+			}
+			if n%3 == 0 {
+				t.Warnf("Batch %d had slow items", n)
+				t.Warning()
+			} else {
+				t.Success()
+			}
+			return fmt.Sprintf("batch %d done", n), nil
+		})
+	}
+}
+
+func runScaleTasks(count int, duration time.Duration, _ ...task.Option) {
+	batchSize := 50
+	if count < 100 {
+		batchSize = max(1, count/5)
+	}
+	numBatches := (count + batchSize - 1) / batchSize
+
+	var delay time.Duration
+	if duration > 0 && numBatches > 1 {
+		delay = duration / time.Duration(numBatches)
+	}
+
+	taskNum := 0
+	for b := 0; b < numBatches; b++ {
+		groupName := fmt.Sprintf("Batch %d", b+1)
+		if numBatches == 1 {
+			groupName = "Tasks"
+		}
+		g := task.StartGroup[string](groupName)
+		remaining := min(batchSize, count-taskNum)
+		for i := 0; i < remaining; i++ {
+			taskNum++
+			n := taskNum
+			g.Add(fmt.Sprintf("Task %d", n), func(_ flanksourceContext.Context, t *task.Task) (string, error) {
+				steps := 3 + n%5
+				for s := 1; s <= steps; s++ {
+					time.Sleep(time.Duration(50+n%100) * time.Millisecond)
+					t.SetProgress(s, steps)
+					t.Infof("Step %d/%d", s, steps)
+				}
+				switch n % 10 {
+				case 7:
+					t.Warnf("Task %d completed with warnings", n)
+					t.Warning()
+				case 9:
+					t.Errorf("Task %d encountered an error", n)
+					t.FailedWithError(fmt.Errorf("task %d failed", n))
+					return "", fmt.Errorf("failed")
+				default:
+					t.Success()
+				}
+				return fmt.Sprintf("task %d done", n), nil
+			})
+		}
+		if delay > 0 && b < numBatches-1 {
+			time.Sleep(delay)
+		}
+	}
+}
+
 func main() {
 	rootCmd := &cobra.Command{
 		Use:   "uber-demo",
@@ -1024,7 +1277,11 @@ func main() {
 	clicky.AddNamedCommand("table-provider", rootCmd, TableProviderOptions{}, showTableProvider)
 	clicky.AddNamedCommand("trees", rootCmd, clicky.FileTreeOptions{}, showTrees)
 	clicky.AddNamedCommand("tasks", rootCmd, TasksOptions{}, showTasks)
+	clicky.AddNamedCommand("task-ui", rootCmd, TaskUIOptions{}, showTaskUI)
 	clicky.AddNamedCommand("nil-handling", rootCmd, NilHandlingOptions{}, showNilHandling)
+	clicky.AddNamedCommand("components", rootCmd, ComponentsOptions{}, showComponents)
+	clicky.AddNamedCommand("collapsible-rows", rootCmd, CollapsibleRowOptions{}, showCollapsibleRows)
+	clicky.AddNamedCommand("column-builder", rootCmd, ColumnBuilderOptions{}, showColumnBuilder)
 
 	clicky.BindAllFlags(rootCmd.PersistentFlags())
 

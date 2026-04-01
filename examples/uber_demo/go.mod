@@ -3,9 +3,9 @@ module github.com/flanksource/clicky/examples/uber_demo
 go 1.25.1
 
 require (
-	github.com/flanksource/clicky v1.17.0
+	github.com/flanksource/clicky v1.21.1
 	github.com/flanksource/commons v1.47.2
-	github.com/flanksource/gomplate/v3 v3.24.71
+	github.com/flanksource/gomplate/v3 v3.24.74
 	github.com/google/uuid v1.6.0
 	github.com/onsi/ginkgo/v2 v2.28.0
 	github.com/onsi/gomega v1.39.1
@@ -38,7 +38,7 @@ require (
 	github.com/dlclark/regexp2 v1.11.5 // indirect
 	github.com/emirpasic/gods/v2 v2.0.0-alpha // indirect
 	github.com/fatih/color v1.18.0 // indirect
-	github.com/flanksource/is-healthy v1.0.83 // indirect
+	github.com/flanksource/is-healthy v1.0.86 // indirect
 	github.com/flanksource/kubectl-neat v1.0.4 // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
 	github.com/fxamacker/cbor/v2 v2.9.0 // indirect
@@ -153,3 +153,5 @@ require (
 )
 
 replace github.com/flanksource/clicky => ../..
+
+// replace github.com/flanksource/commons => ../../../commons
