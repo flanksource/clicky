@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"reflect"
+	"sort"
 	"sync"
 
 	"github.com/flanksource/clicky/api"
@@ -553,11 +554,167 @@ type entityWithID[T EntityItem] struct {
 func (e entityWithID[T]) GetID() string   { return e.ID }
 func (e entityWithID[T]) GetName() string { return e.Inner.GetName() }
 
-func (e entityWithID[T]) PrettyRow(opts interface{}) map[string]api.Text {
-	if pr, ok := any(e.Inner).(api.PrettyRow); ok {
-		return pr.PrettyRow(opts)
+func (e entityWithID[T]) Columns() []api.ColumnDef {
+	if tp, ok := any(e.Inner).(api.TableProvider); ok {
+		return tp.Columns()
 	}
-	return nil
+
+	if prettyRow, ok := entityPrettyRow(any(e.Inner), nil); ok {
+		columns := columnsFromPrettyRow(prettyRow)
+		if len(columns) > 0 {
+			return columns
+		}
+	}
+
+	columns, _, ok := columnsAndRowFromStruct(any(e.Inner))
+	if !ok {
+		return nil
+	}
+	return columns
+}
+
+func (e entityWithID[T]) Row() map[string]any {
+	if tp, ok := any(e.Inner).(api.TableProvider); ok {
+		return tp.Row()
+	}
+
+	if prettyRow, ok := entityPrettyRow(any(e.Inner), nil); ok {
+		row := make(map[string]any, len(prettyRow))
+		for key, value := range prettyRow {
+			row[key] = value
+		}
+		return row
+	}
+
+	_, row, ok := columnsAndRowFromStruct(any(e.Inner))
+	if !ok {
+		return nil
+	}
+	return row
+}
+
+func (e entityWithID[T]) PrettyRow(opts interface{}) map[string]api.Text {
+	if row, ok := entityPrettyRow(any(e.Inner), opts); ok {
+		return row
+	}
+
+	rowData := e.Row()
+	if len(rowData) == 0 {
+		return nil
+	}
+
+	row := make(map[string]api.Text)
+	order := 1
+	for _, col := range e.Columns() {
+		if col.Hidden {
+			continue
+		}
+		cell := api.Text{Style: fmt.Sprintf("order-%d %s", order, col.Style)}
+		if value, ok := rowData[col.Name]; ok {
+			cell = addPrettyRowValue(cell, value)
+		}
+		row[col.DisplayLabel()] = cell
+		order++
+	}
+	return row
+}
+
+func entityPrettyRow(inner any, opts interface{}) (map[string]api.Text, bool) {
+	if pr, ok := inner.(api.PrettyRow); ok {
+		if row := pr.PrettyRow(opts); len(row) > 0 {
+			return row, true
+		}
+	}
+	return nil, false
+}
+
+func columnsFromPrettyRow(prettyRow map[string]api.Text) []api.ColumnDef {
+	type orderedColumn struct {
+		name  string
+		style string
+		order int
+	}
+
+	columns := make([]orderedColumn, 0, len(prettyRow))
+	for name, text := range prettyRow {
+		columns = append(columns, orderedColumn{
+			name:  name,
+			style: text.Style,
+			order: api.ExtractOrderValue(text.Style),
+		})
+	}
+
+	sort.Slice(columns, func(i, j int) bool {
+		if columns[i].order != columns[j].order {
+			return columns[i].order < columns[j].order
+		}
+		return columns[i].name < columns[j].name
+	})
+
+	defs := make([]api.ColumnDef, 0, len(columns))
+	for _, col := range columns {
+		defs = append(defs, api.ColumnDef{
+			Name:  col.name,
+			Label: col.name,
+			Style: col.style,
+		})
+	}
+	return defs
+}
+
+func columnsAndRowFromStruct(inner any) ([]api.ColumnDef, map[string]any, bool) {
+	parser := api.NewStructParser()
+	val := reflect.ValueOf(inner)
+	if !val.IsValid() {
+		return nil, nil, false
+	}
+
+	for val.Kind() == reflect.Ptr {
+		if val.IsNil() {
+			return nil, nil, false
+		}
+		val = val.Elem()
+	}
+
+	fields, err := parser.GetTableFields(val)
+	if err != nil {
+		return nil, nil, false
+	}
+
+	typedRow, err := parser.StructToRow(val)
+	if err != nil {
+		return nil, nil, false
+	}
+
+	columns := make([]api.ColumnDef, 0, len(fields))
+	row := make(map[string]any, len(fields))
+	for _, field := range fields {
+		columns = append(columns, api.ColumnDef{
+			Name:          field.Name,
+			Label:         field.Label,
+			Style:         field.Style,
+			HeaderStyle:   field.LabelStyle,
+			Type:          field.Type,
+			Format:        field.Format,
+			FormatOptions: field.FormatOptions,
+		})
+		if value, ok := typedRow[field.Name]; ok {
+			row[field.Name] = value.Value()
+		}
+	}
+
+	return columns, row, true
+}
+
+func addPrettyRowValue(cell api.Text, value any) api.Text {
+	switch v := value.(type) {
+	case api.Textable:
+		return cell.Add(v)
+	case api.Pretty:
+		return cell.Add(v.Pretty())
+	default:
+		return cell.Add(api.Human(v))
+	}
 }
 
 func (e entityWithID[T]) MarshalJSON() ([]byte, error) {
