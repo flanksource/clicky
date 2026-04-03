@@ -75,4 +75,18 @@ var _ = Describe("WithoutEmptyColumns", func() {
 		filtered := table.WithoutEmptyColumns()
 		Expect(filtered.Headers).To(BeEmpty())
 	})
+
+	It("does not panic when all columns are filtered out during render", func() {
+		table := TextTable{
+			Headers:    TextList{Text{Content: "Col"}},
+			FieldNames: []string{"col"},
+		}
+		table.Rows = []TableRow{
+			{"col": TypedValue{Textable: Text{Content: "  "}}},
+		}
+
+		Expect(func() { table.String() }).NotTo(Panic())
+		Expect(table.String()).To(BeEmpty())
+		Expect(func() { table.ANSI() }).NotTo(Panic())
+	})
 })

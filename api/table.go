@@ -560,6 +560,9 @@ func (t *TextTable) renderLipgloss(withColors bool) string {
 	}
 	filtered := t.WithoutEmptyColumns()
 	t = &filtered
+	if len(t.Headers) == 0 {
+		return ""
+	}
 
 	// Calculate max width per column using .String() for accurate measurement
 	columnWidths := make([]int, len(t.Headers))
