@@ -41,6 +41,10 @@ func GetDataFunc(cmd *cobra.Command) func(flags map[string]string, args []string
 //   - @file.txt - read from file
 //   - @https://... - fetch from URL
 //   - For slices: one value per line (skip empty lines and # comments)
+//   - For slices: @file.csv:ColumnName reads a named column from a CSV
+//     (first row is the header, empty cells are skipped)
+//   - For slices: @file.xlsx:ColumnName / @file.xls:ColumnName reads a named
+//     column from the first worksheet (case-insensitive header match)
 //
 // Supported types:
 //   - string, int, bool

@@ -30,6 +30,8 @@ type EntityItem interface {
 // EntityInfo is the type-erased representation stored in the registry.
 type EntityInfo struct {
 	Name        string
+	Parent      string
+	Aliases     []string
 	Type        reflect.Type
 	ListType    reflect.Type
 	Operations  []EntityOperation
@@ -79,12 +81,18 @@ type BulkAction[T EntityItem, ListOpts any] struct {
 // T is the type returned by List and must implement EntityItem.
 // Get/Create/Update return any to allow different detail representations.
 type Entity[T EntityItem, ListOpts any] struct {
-	Name   string
-	List   func(opts ListOpts) ([]T, error)
-	Get    func(id string) (any, error)
-	Create func(body map[string]any) (any, error)
-	Update func(id string, body map[string]any) (any, error)
-	Delete func(id string) error
+	Name string
+	// Parent, when set, nests the entity's command under a parent cobra command
+	// with that name. The parent command is created lazily by GenerateCLI if it
+	// does not already exist.
+	Parent string
+	// Aliases applied to the generated entity cobra command.
+	Aliases []string
+	List    func(opts ListOpts) ([]T, error)
+	Get     func(id string) (any, error)
+	Create  func(body map[string]any) (any, error)
+	Update  func(id string, body map[string]any) (any, error)
+	Delete  func(id string) error
 
 	Actions     []Action[T]
 	BulkActions []BulkAction[T, ListOpts]
@@ -108,6 +116,8 @@ func RegisterEntity[T EntityItem, ListOpts any](e Entity[T, ListOpts]) {
 
 	info := EntityInfo{
 		Name:     name,
+		Parent:   e.Parent,
+		Aliases:  e.Aliases,
 		Type:     reflect.TypeOf((*T)(nil)).Elem(),
 		ListType: reflect.TypeOf((*ListOpts)(nil)).Elem(),
 	}
@@ -300,28 +310,53 @@ func GetEntities() []EntityInfo {
 
 // GenerateCLI creates cobra subcommands for all registered entities under parent.
 // Admin entities are nested under a shared "admin" parent command.
+// Entities with a Parent set are nested under a shared parent cobra command,
+// created lazily if it does not already exist.
 func GenerateCLI(parent *cobra.Command) {
 	var adminCmd *cobra.Command
 	for _, entity := range GetEntities() {
+		target := parent
+		if entity.Parent != "" {
+			target = findOrCreateChild(parent, entity.Parent)
+		}
 		if entity.IsAdmin {
 			if adminCmd == nil {
 				adminCmd = &cobra.Command{
 					Use:   "admin",
 					Short: "Administrative operations",
 				}
-				parent.AddCommand(adminCmd)
+				target.AddCommand(adminCmd)
 			}
 			generateEntityCLI(adminCmd, entity)
 		} else {
-			generateEntityCLI(parent, entity)
+			generateEntityCLI(target, entity)
 		}
 	}
+
+	flushPendingSubCommands(parent)
+}
+
+// findOrCreateChild returns the child command of parent named name. If no
+// matching child exists, a thin parent command is created and attached.
+func findOrCreateChild(parent *cobra.Command, name string) *cobra.Command {
+	for _, c := range parent.Commands() {
+		if c.Name() == name {
+			return c
+		}
+	}
+	child := &cobra.Command{
+		Use:   name,
+		Short: fmt.Sprintf("%s operations", name),
+	}
+	parent.AddCommand(child)
+	return child
 }
 
 func generateEntityCLI(parent *cobra.Command, entity EntityInfo) {
 	entityCmd := &cobra.Command{
-		Use:   entity.Name,
-		Short: fmt.Sprintf("Manage %s resources", entity.Name),
+		Use:     entity.Name,
+		Aliases: entity.Aliases,
+		Short:   fmt.Sprintf("Manage %s resources", entity.Name),
 	}
 	parent.AddCommand(entityCmd)
 
