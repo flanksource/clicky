@@ -5,6 +5,36 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.21.2](https://github.com/flanksource/clicky/compare/v1.21.1...v1.21.2) (2026-04-13)
+
+
+### ♻️ Code Refactoring
+
+* **api:** simplify html rendering with fmt.fprintf and static html provider ([f89e0ef](https://github.com/flanksource/clicky/commit/f89e0efcec2dc6a32454555aaf0e749838dac91c))
+
+
+### ✨ Features
+
+* **api:** add admin entity subcommands and entity id wrapping ([1cb238c](https://github.com/flanksource/clicky/commit/1cb238c56380804b54a33c83570795a9a8a20c16))
+* **api:** add entity parent nesting and command aliases support ([664876f](https://github.com/flanksource/clicky/commit/664876f36aa12c4b04862fef8c4b94de68c53100))
+* **ci:** upgrade go to 1.26 and add task-ui frontend builds ([fb0818d](https://github.com/flanksource/clicky/commit/fb0818d92a94674b14f17c535f78ed8f265b0e7f))
+* **flags:** add support for column selectors in CSV and Excel files ([94692d4](https://github.com/flanksource/clicky/commit/94692d406d98cf06009bd138f546b6b652c2cef9))
+* **format:** support multiple output sinks with format=file syntax ([97b69e9](https://github.com/flanksource/clicky/commit/97b69e97adb7d17d89e7b5d5b0e23ffa244994ee))
+* **formatters:** add html-react formatter with embedded react component ([75373a6](https://github.com/flanksource/clicky/commit/75373a6059b4f16a5b29ff12d7a327ca9f73f65f))
+* **lint:** add clickylint static analyzer for api.Text usage patterns ([1fa3ab2](https://github.com/flanksource/clicky/commit/1fa3ab23766554170acd4b7ee684f55e3a307d0b))
+* **mcp:** add install command and improve stdio handling ([c39ccce](https://github.com/flanksource/clicky/commit/c39cccee7cfb4e09e1fefef5b131e0e4ddb4b4a8))
+* **ui:** add task progress web ui with sse streaming and json api ([29720c1](https://github.com/flanksource/clicky/commit/29720c101adb69865809939faeea9dcd62725c18))
+
+
+### 🐛 Bug Fixes
+
+* address PR [#94](https://github.com/flanksource/clicky/issues/94) review feedback and lint failures ([3865926](https://github.com/flanksource/clicky/commit/386592613d59dc791dc5e840452918b138eef41b))
+* restore lint testdata stub dropped during rebase ([644b7df](https://github.com/flanksource/clicky/commit/644b7df03f36829efda907a6331eeccbd6e5f3d0))
+* **api:** prevent panic when all table columns are filtered out ([5eea6b5](https://github.com/flanksource/clicky/commit/5eea6b5151f29752f8aa351517869cb02eeff74e))
+* **ci:** add gitignore negations for task-ui and golangci config ([ed1a06f](https://github.com/flanksource/clicky/commit/ed1a06f6a89e488399e9e6c89c905e1b71e21e09))
+* **ci:** trigger release directly on push to main ([704a544](https://github.com/flanksource/clicky/commit/704a5442de7e147a00597564c6a9f767bc7bad1e))
+* **rpc:** improve command executor robustness and path sanitization ([e9b776a](https://github.com/flanksource/clicky/commit/e9b776a2c0d6405de9a5f23ca92195d6e0bf01e4))
+
 ## [1.21.1](https://github.com/flanksource/clicky/compare/v1.21.0...v1.21.1) (2026-03-26)
 
 
