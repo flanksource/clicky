@@ -1,9 +1,7 @@
 name: Release
 
 on:
-  workflow_run:
-    workflows: ["Test"]
-    types: [completed]
+  push:
     branches: [main, master]
   workflow_dispatch:
     inputs:
@@ -29,7 +27,7 @@ env:
 jobs:
   semantic-release:
     name: Semantic Release
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    if: github.event_name == 'workflow_dispatch' || !startsWith(github.event.head_commit.message, 'chore(release):')
     runs-on: ubuntu-latest
     outputs:
       new_release_published: ${{ steps.semantic.outputs.new_release_published }}
