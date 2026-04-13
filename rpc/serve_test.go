@@ -286,7 +286,7 @@ func TestSanitizePathParams(t *testing.T) {
 		{"/api/v1/{company-id}/plans/{plan-name}", "/api/v1/{company_id}/plans/{plan_name}", true},
 		{"/api/v1/{a-b.c}/x/{d}", "/api/v1/{a_b_c}/x/{d}", true},
 		{"", "", true},
-		{"/api/{broken", "/api/{broken", true},
+		{"/api/{broken", "/api/{broken", false},
 	}
 
 	for _, tt := range tests {

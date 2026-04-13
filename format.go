@@ -104,6 +104,7 @@ func FormatToFile(o any, opts FormatOptions, file string) error {
 // opts.Sinks is empty the function falls back to MustPrint(o, opts) for
 // back-compat with call sites that haven't run ParseFormatSpec.
 func PrintAndWriteSinks(o any, opts FormatOptions) {
+	_ = task.Wait()
 	if len(opts.Sinks) == 0 {
 		MustPrint(o, opts)
 		return
