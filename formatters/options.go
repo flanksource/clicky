@@ -14,21 +14,31 @@ import (
 // knownFormats is the set of format names accepted in --format specs
 // (both as a bare stdout format and inside "format=file" sinks).
 var knownFormats = map[string]bool{
-	"pretty":   true,
-	"json":     true,
-	"yaml":     true,
-	"csv":      true,
-	"html":     true,
-	"markdown": true,
-	"md":       true,
-	"pdf":      true,
-	"slack":    true,
+	"pretty":      true,
+	"json":        true,
+	"yaml":        true,
+	"yml":         true,
+	"csv":         true,
+	"html":        true,
+	"html-static": true,
+	"markdown":    true,
+	"md":          true,
+	"pdf":         true,
+	"slack":       true,
+	"excel":       true,
+	"xlsx":        true,
+	"tree":        true,
 }
 
 // canonicalFormat normalises common aliases (e.g. "md" -> "markdown").
 func canonicalFormat(f string) string {
-	if f == "md" {
+	switch f {
+	case "md":
 		return "markdown"
+	case "yml":
+		return "yaml"
+	case "xlsx":
+		return "excel"
 	}
 	return f
 }

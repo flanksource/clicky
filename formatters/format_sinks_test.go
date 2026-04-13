@@ -11,11 +11,11 @@ import (
 
 func TestParseFormatSpec(t *testing.T) {
 	tests := []struct {
-		name    string
-		format  string
+		name     string
+		format   string
 		booleans func(*FormatOptions)
-		want    []FormatSink
-		wantErr string
+		want     []FormatSink
+		wantErr  string
 	}{
 		{
 			name:   "empty spec yields no sinks",

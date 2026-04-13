@@ -122,7 +122,9 @@ func (s *SwaggerServer) Start(ctx context.Context) error {
 		fmt.Printf("📖 Swagger UI available at: http://%s/\n", addr)
 		fmt.Printf("📄 OpenAPI JSON spec: http://%s/api/openapi.json\n", addr)
 		fmt.Printf("📄 OpenAPI YAML spec: http://%s/api/openapi.yaml\n", addr)
-		fmt.Printf("💊 Health check: http://%s/health\n", addr)
+		if !s.config.SkipHealth {
+			fmt.Printf("💊 Health check: http://%s/health\n", addr)
+		}
 		fmt.Println("Press Ctrl+C to stop the server")
 
 		if err := s.server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
@@ -409,17 +411,6 @@ func (s *SwaggerServer) registerExecutionRoutes(mux *http.ServeMux) {
 		path := op.Path
 		method := strings.ToUpper(op.Method)
 
-		// Check for duplicate method+path
-		key := method + " " + path
-		if existingOp, found := registered[key]; found {
-			fmt.Printf("⚠️  Warning: Duplicate endpoint detected\n")
-			fmt.Printf("    Path: %s %s\n", method, path)
-			fmt.Printf("    Already registered by: %s\n", existingOp)
-			fmt.Printf("    Skipping: %s\n", op.Name)
-			continue
-		}
-		registered[key] = op.Name
-
 		// Replace spaces in path segments with hyphens
 		path = strings.ReplaceAll(path, " ", "-")
 
@@ -432,6 +423,14 @@ func (s *SwaggerServer) registerExecutionRoutes(mux *http.ServeMux) {
 
 		// Register the route with method prefix (Go 1.22+ ServeMux)
 		pattern := method + " " + sanitized
+		if existingOp, found := registered[pattern]; found {
+			fmt.Printf("⚠️  Warning: Duplicate endpoint detected\n")
+			fmt.Printf("    Path: %s\n", pattern)
+			fmt.Printf("    Already registered by: %s\n", existingOp)
+			fmt.Printf("    Skipping: %s\n", op.Name)
+			continue
+		}
+		registered[pattern] = op.Name
 		mux.HandleFunc(pattern, s.handleExecuteCommand)
 		routeCount++
 	}
@@ -450,11 +449,11 @@ func sanitizePathParams(path string) (string, bool) {
 			break
 		}
 		start += offset
-		end := strings.Index(path[start:], "}")
+		end := strings.Index(path[start+1:], "}")
 		if end == -1 {
-			break
+			return path, false
 		}
-		end += start
+		end += start + 1
 		name := path[start+1 : end]
 		sanitized := sanitizeWildcard(name)
 		if !isValidWildcard(sanitized) {
@@ -483,7 +482,7 @@ func isValidWildcard(name string) bool {
 		return false
 	}
 	for _, r := range name {
-		if !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_') {
+		if (r < 'a' || r > 'z') && (r < 'A' || r > 'Z') && (r < '0' || r > '9') && r != '_' {
 			return false
 		}
 	}

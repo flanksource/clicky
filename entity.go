@@ -313,19 +313,22 @@ func GetEntities() []EntityInfo {
 // Entities with a Parent set are nested under a shared parent cobra command,
 // created lazily if it does not already exist.
 func GenerateCLI(parent *cobra.Command) {
-	var adminCmd *cobra.Command
+	adminCmds := make(map[string]*cobra.Command)
 	for _, entity := range GetEntities() {
 		target := parent
 		if entity.Parent != "" {
 			target = findOrCreateChild(parent, entity.Parent)
 		}
 		if entity.IsAdmin {
+			key := target.CommandPath()
+			adminCmd := adminCmds[key]
 			if adminCmd == nil {
 				adminCmd = &cobra.Command{
 					Use:   "admin",
 					Short: "Administrative operations",
 				}
 				target.AddCommand(adminCmd)
+				adminCmds[key] = adminCmd
 			}
 			generateEntityCLI(adminCmd, entity)
 		} else {
