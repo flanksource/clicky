@@ -93,6 +93,40 @@ func FormatToFile(o any, opts FormatOptions, file string) error {
 	return Formatter.FormatToFile(_opts, o)
 }
 
+// PrintAndWriteSinks renders o for each sink in opts.Sinks.
+//
+// Stdout sinks (File == "") go through MustPrint, preserving existing
+// pretty/stdout behaviour. File sinks call Formatter.FormatToFile, which
+// renders in the sink's format and writes to the given path.
+//
+// Per-sink errors are logged via Errorf but do NOT abort other sinks, so a
+// broken HTML template cannot eat the JSON artifact that CI depends on. If
+// opts.Sinks is empty the function falls back to MustPrint(o, opts) for
+// back-compat with call sites that haven't run ParseFormatSpec.
+func PrintAndWriteSinks(o any, opts FormatOptions) {
+	if len(opts.Sinks) == 0 {
+		MustPrint(o, opts)
+		return
+	}
+	for _, sink := range opts.Sinks {
+		sinkOpts := opts
+		sinkOpts.Sinks = nil
+		sinkOpts.Format = sink.Format
+		sinkOpts.JSON, sinkOpts.YAML, sinkOpts.CSV = false, false, false
+		sinkOpts.HTML, sinkOpts.Markdown, sinkOpts.Pretty = false, false, false
+		sinkOpts.PDF, sinkOpts.Slack = false, false
+		if sink.File == "" {
+			sinkOpts.Output = ""
+			MustPrint(o, sinkOpts)
+			continue
+		}
+		sinkOpts.Output = sink.File
+		if err := Formatter.FormatToFile(sinkOpts, o); err != nil {
+			Errorf("failed to write %s output to %s: %v", sink.Format, sink.File, err)
+		}
+	}
+}
+
 var Human = api.Human
 var Class = api.Clz
 

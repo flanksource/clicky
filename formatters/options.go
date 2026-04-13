@@ -2,6 +2,7 @@ package formatters
 
 import (
 	"flag"
+	"fmt"
 	"os"
 	"strings"
 
@@ -9,6 +10,36 @@ import (
 
 	"github.com/flanksource/clicky/api"
 )
+
+// knownFormats is the set of format names accepted in --format specs
+// (both as a bare stdout format and inside "format=file" sinks).
+var knownFormats = map[string]bool{
+	"pretty":   true,
+	"json":     true,
+	"yaml":     true,
+	"csv":      true,
+	"html":     true,
+	"markdown": true,
+	"md":       true,
+	"pdf":      true,
+	"slack":    true,
+}
+
+// canonicalFormat normalises common aliases (e.g. "md" -> "markdown").
+func canonicalFormat(f string) string {
+	if f == "md" {
+		return "markdown"
+	}
+	return f
+}
+
+// FormatSink is one (format, file) pair parsed from the --format spec.
+// When File == "" the sink renders to stdout; otherwise it is written
+// to the given file via FormatManager.FormatToFile.
+type FormatSink struct {
+	Format string
+	File   string
+}
 
 type PrettyMixin interface {
 	Pretty() api.Text
@@ -45,8 +76,93 @@ type FormatOptions struct {
 	Page  int `json:"page,omitempty"`  // Current page (1-indexed)
 	Limit int `json:"limit,omitempty"` // Items per page
 
+	// Sinks is derived state populated by ParseFormatSpec from the raw Format
+	// string. It holds zero or one stdout sink (File == "") plus zero or more
+	// file sinks produced by "format=file" pairs in --format.
+	Sinks []FormatSink `json:"-"`
+
 	// Internal fields (not exposed via flags)
 	depth int // Hidden field for tracking nesting depth in recursive formatting
+}
+
+// ParseFormatSpec parses the raw Format string into Sinks.
+//
+// Accepts a single format name ("json"), a comma-separated list of
+// "format=file" pairs ("json=out.json,markdown=summary.md"), or a mix
+// ("pretty,json=out.json"). A bare format name becomes a stdout sink;
+// no more than one stdout sink may appear in a single spec. "format=file"
+// pairs are additive file sinks and have no upper bound.
+//
+// When Sinks has already been set (e.g. by a previous call or direct
+// assignment in tests) the method is a no-op.
+//
+// If Format is empty and one of the legacy mutually-exclusive boolean
+// toggles (JSON/HTML/...) is set, a matching single stdout sink is
+// synthesized so existing call sites keep working unchanged.
+func (o *FormatOptions) ParseFormatSpec() error {
+	if len(o.Sinks) > 0 {
+		return nil
+	}
+	spec := strings.TrimSpace(o.Format)
+	if spec == "" {
+		if legacy := legacyBoolFormat(o); legacy != "" {
+			o.Sinks = []FormatSink{{Format: legacy}}
+		}
+		return nil
+	}
+
+	var stdoutCount int
+	for _, rawPart := range strings.Split(spec, ",") {
+		part := strings.TrimSpace(rawPart)
+		if part == "" {
+			continue
+		}
+		name, file, hasFile := strings.Cut(part, "=")
+		name = canonicalFormat(strings.TrimSpace(name))
+		file = strings.TrimSpace(file)
+		if name == "" {
+			return fmt.Errorf("invalid --format entry %q: empty format name", part)
+		}
+		if !knownFormats[name] {
+			return fmt.Errorf("invalid --format entry %q: unknown format %q", part, name)
+		}
+		if hasFile && file == "" {
+			return fmt.Errorf("invalid --format entry %q: empty file path after '='", part)
+		}
+		if !hasFile {
+			stdoutCount++
+			if stdoutCount > 1 {
+				return fmt.Errorf("invalid --format %q: more than one stdout format specified", spec)
+			}
+		}
+		o.Sinks = append(o.Sinks, FormatSink{Format: name, File: file})
+	}
+	return nil
+}
+
+// legacyBoolFormat returns the format name selected by the legacy mutually
+// exclusive booleans on FormatOptions, or "" if none is set. Used as a
+// fallback when Format is empty so pre-existing call sites keep working.
+func legacyBoolFormat(o *FormatOptions) string {
+	switch {
+	case o.JSON:
+		return "json"
+	case o.YAML:
+		return "yaml"
+	case o.CSV:
+		return "csv"
+	case o.HTML:
+		return "html"
+	case o.Markdown:
+		return "markdown"
+	case o.PDF:
+		return "pdf"
+	case o.Slack:
+		return "slack"
+	case o.Pretty:
+		return "pretty"
+	}
+	return ""
 }
 
 func (o FormatOptions) SkipTable() bool {
@@ -95,6 +211,9 @@ func MergeOptions(opts ...FormatOptions) FormatOptions {
 		}
 		if opt.depth > 0 {
 			merged.depth = opt.depth
+		}
+		if len(opt.Sinks) > 0 {
+			merged.Sinks = append(merged.Sinks, opt.Sinks...)
 		}
 		if opt.JSON {
 			merged.JSON = true

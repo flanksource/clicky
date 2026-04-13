@@ -50,7 +50,11 @@ func BindAllFlags(flags *pflag.FlagSet, filters ...string) *AllFlags {
 
 	if collections.MatchItems("format", filters...) {
 
-		flags.StringVar(&Flags.Format, "format", "", "Output format: pretty, json, yaml, csv, html, pdf, markdown")
+		flags.StringVar(&Flags.Format, "format", "",
+			"Output format. Either a single format (pretty|json|yaml|csv|html|markdown|pdf|slack) "+
+				"rendered to stdout, or a comma-separated list of format=file sinks "+
+				"(e.g. 'json=out.json,markdown=summary.md') written to files. "+
+				"A bare format and format=file pairs may be mixed in one spec.")
 		flags.StringVar(&Flags.Filter, "filter", "", "CEL expression to filter output data")
 		flags.BoolVar(&Flags.NoColor, "no-color", false, "Disable colored output")
 		flags.BoolVar(&Flags.DumpSchema, "dump-schema", false, "Dump the schema to stderr for debugging")
