@@ -37,6 +37,7 @@ type ServeConfig struct {
 	Version     string
 	AutoRefresh bool
 	Open        bool
+	SkipHealth  bool            // Skip registering /health (caller provides their own)
 	Executor    *ExecutorConfig // Optional command execution configuration
 }
 
@@ -72,7 +73,9 @@ func NewSwaggerServer(config *ServeConfig, rootCmd *cobra.Command, openAPIConfig
 	if config.Executor != nil && config.Executor.Enabled {
 		converter := NewConverter(DefaultConfig())
 		service, err := converter.ConvertCommandTree(rootCmd)
-		if err == nil {
+		if err != nil {
+			fmt.Printf("⚠️  Warning: Failed to build executor command tree: %v\n", err)
+		} else {
 			server.executor = NewCommandExecutor(service, config.Executor)
 		}
 	}
@@ -86,7 +89,9 @@ func NewSwaggerServer(config *ServeConfig, rootCmd *cobra.Command, openAPIConfig
 func (s *SwaggerServer) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/openapi.json", s.handleOpenAPIJSON)
 	mux.HandleFunc("/api/openapi.yaml", s.handleOpenAPIYAML)
-	mux.HandleFunc("/health", s.handleHealth)
+	if !s.config.SkipHealth {
+		mux.HandleFunc("/health", s.handleHealth)
+	}
 
 	if s.executor != nil {
 		s.registerExecutionRoutes(mux)
@@ -392,10 +397,12 @@ generated dynamically and reflects the current state of the CLI commands.`,
 // registerExecutionRoutes registers dynamic command execution routes based on the RPC service
 func (s *SwaggerServer) registerExecutionRoutes(mux *http.ServeMux) {
 	if s.executor == nil || s.executor.service == nil {
+		fmt.Printf("⚠️  Warning: Executor has no service; no routes registered\n")
 		return
 	}
 
 	registered := make(map[string]string)
+	routeCount := 0
 
 	// Register a route for each operation
 	for _, op := range s.executor.service.Operations {
@@ -413,33 +420,74 @@ func (s *SwaggerServer) registerExecutionRoutes(mux *http.ServeMux) {
 		}
 		registered[key] = op.Name
 
+		// Replace spaces in path segments with hyphens
+		path = strings.ReplaceAll(path, " ", "-")
+
 		// Sanitize path parameter names: Go's ServeMux requires alphanumeric wildcard names
-		sanitized := sanitizePathParams(path)
+		sanitized, ok := sanitizePathParams(path)
+		if !ok {
+			fmt.Printf("⚠️  Warning: Skipping route with invalid path params: %s %s\n", method, path)
+			continue
+		}
 
 		// Register the route with method prefix (Go 1.22+ ServeMux)
 		pattern := method + " " + sanitized
 		mux.HandleFunc(pattern, s.handleExecuteCommand)
+		routeCount++
 	}
+	fmt.Printf("✅ Registered %d executor routes\n", routeCount)
 }
 
-// sanitizePathParams replaces hyphens and other invalid characters in {param} names
-// with underscores, since Go's ServeMux requires alphanumeric wildcard names.
-func sanitizePathParams(path string) string {
+// sanitizePathParams replaces invalid characters in {param} names with underscores
+// and spaces with hyphens, since Go's ServeMux requires alphanumeric wildcard names.
+// Returns the sanitized path and true, or the original path and false if any param
+// name is still invalid after sanitization.
+func sanitizePathParams(path string) (string, bool) {
+	offset := 0
 	for {
-		start := strings.Index(path, "{")
+		start := strings.Index(path[offset:], "{")
 		if start == -1 {
 			break
 		}
+		start += offset
 		end := strings.Index(path[start:], "}")
 		if end == -1 {
 			break
 		}
 		end += start
 		name := path[start+1 : end]
-		sanitized := strings.NewReplacer("-", "_", ".", "_").Replace(name)
+		sanitized := sanitizeWildcard(name)
+		if !isValidWildcard(sanitized) {
+			return path, false
+		}
 		path = path[:start+1] + sanitized + path[end:]
+		offset = start + 1 + len(sanitized) + 1
 	}
-	return path
+	return path, true
+}
+
+func sanitizeWildcard(name string) string {
+	var b strings.Builder
+	for _, r := range name {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_' {
+			b.WriteRune(r)
+		} else {
+			b.WriteRune('_')
+		}
+	}
+	return b.String()
+}
+
+func isValidWildcard(name string) bool {
+	if name == "" {
+		return false
+	}
+	for _, r := range name {
+		if !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_') {
+			return false
+		}
+	}
+	return true
 }
 
 // executeCommandCore contains the core execution logic without HTTP handling

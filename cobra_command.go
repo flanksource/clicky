@@ -217,7 +217,10 @@ func AddNamedCommand[T any](name string, parent *cobra.Command, opts T, fn func(
 			return err
 		}
 
-		MustPrint(result, Flags.FormatOptions)
+		if err := Flags.FormatOptions.ParseFormatSpec(); err != nil {
+			return err
+		}
+		PrintAndWriteSinks(result, Flags.FormatOptions)
 
 		return nil
 	}

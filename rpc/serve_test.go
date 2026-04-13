@@ -273,6 +273,31 @@ func TestTemplateData(t *testing.T) {
 	assert.True(t, data.AutoRefresh)
 }
 
+func TestSanitizePathParams(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+		ok    bool
+	}{
+		{"/api/v1/users", "/api/v1/users", true},
+		{"/api/v1/{id}", "/api/v1/{id}", true},
+		{"/api/v1/{policy-id}", "/api/v1/{policy_id}", true},
+		{"/api/v1/{file.name}", "/api/v1/{file_name}", true},
+		{"/api/v1/{company-id}/plans/{plan-name}", "/api/v1/{company_id}/plans/{plan_name}", true},
+		{"/api/v1/{a-b.c}/x/{d}", "/api/v1/{a_b_c}/x/{d}", true},
+		{"", "", true},
+		{"/api/{broken", "/api/{broken", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			got, ok := sanitizePathParams(tt.input)
+			assert.Equal(t, tt.ok, ok)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
+
 // Integration test that verifies the complete flow
 func TestSwaggerServer_Integration(t *testing.T) {
 	// Create test server
