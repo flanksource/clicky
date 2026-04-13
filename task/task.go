@@ -645,7 +645,9 @@ func (t *Task) Pretty() api.Text {
 		displayName += ": " + t.description
 	}
 
-	text.Content = fmt.Sprintf("%s %-10s", lo.Ellipsis(displayName, api.GetTerminalWidth()-20), duration)
+	text.Content = displayName
+	text.Style = "max-w-[tw-20ch] truncate-suffix"
+	text = text.Space().Append(fmt.Sprintf("%-10s", duration), "")
 
 	// Note: We can't call t.Status() here since it would try to acquire the same mutex
 	// So we directly access t.status and handle the health check inline
