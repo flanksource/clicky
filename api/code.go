@@ -275,19 +275,17 @@ func GetChromaCSS() string {
 		return ""
 	}
 
-	// Add custom CSS for line wrapping and inline display
-	buf.WriteString("\n/* Custom line wrapping and inline display for code */\n")
-	buf.WriteString(".chroma {\n")
-	buf.WriteString("    display: inline !important;\n")
-	buf.WriteString("    white-space: pre-wrap !important;\n")
-	buf.WriteString("    word-break: keep-all;\n")
-	buf.WriteString("    overflow-wrap: break-word;\n")
-	buf.WriteString("}\n")
-	buf.WriteString(".chroma code {\n")
-	buf.WriteString("    display: inline !important;\n")
-	buf.WriteString("}\n")
-	buf.WriteString(".chroma .line {\n")
-	buf.WriteString("    display: inline !important;\n")
+	// Custom CSS for chroma blocks: keep them as block-level <pre> elements
+	// (the chroma default), but allow long lines to wrap so wide code doesn't
+	// blow out tree views.
+	buf.WriteString("\n/* Custom line wrapping for chroma code blocks */\n")
+	buf.WriteString("pre.chroma {\n")
+	buf.WriteString("    white-space: pre-wrap;\n")
+	buf.WriteString("    word-break: break-word;\n")
+	buf.WriteString("    overflow-wrap: anywhere;\n")
+	buf.WriteString("    margin: 0.25rem 0;\n")
+	buf.WriteString("    padding: 0.5rem 0.75rem;\n")
+	buf.WriteString("    border-radius: 0.25rem;\n")
 	buf.WriteString("}\n")
 
 	return buf.String()

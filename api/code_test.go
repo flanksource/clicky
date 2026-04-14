@@ -154,6 +154,60 @@ func TestCode_ANSI(t *testing.T) {
 	}
 }
 
+// TestCodeBlock_NormalizesPlainLanguageNames pins the regression where
+// CodeBlock("typescript", ...) produced unwrapped escaped text because the
+// underlying mimeTypeToLanguage helper only recognised MIME types and
+// silently returned "" for plain language identifiers like "typescript",
+// "go", "sql", causing Code.HTML() to fall through to html.EscapeString
+// without the surrounding <pre><code> chroma wrapper.
+func TestCodeBlock_NormalizesPlainLanguageNames(t *testing.T) {
+	cases := []struct {
+		input string
+		want  string
+	}{
+		{"typescript", "typescript"},
+		{"ts", "typescript"},
+		{"go", "go"},
+		{"golang", "go"},
+		{"javascript", "javascript"},
+		{"js", "javascript"},
+		{"sql", "sql"},
+		{"yaml", "yaml"},
+		{"json", "json"},
+		// MIME types still resolve correctly.
+		{"application/json", "json"},
+		{"text/x-typescript", "typescript"},
+		{"application/javascript", "javascript"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.input, func(t *testing.T) {
+			got := CodeBlock(tc.input, "x").Language
+			if got != tc.want {
+				t.Errorf("CodeBlock(%q).Language = %q, want %q", tc.input, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestCodeBlock_HTMLWrapsInPreBlock ensures that CodeBlock("typescript", ...)
+// produces a chroma-wrapped <pre class="chroma"><code>...</code></pre>
+// element. Without language normalization the output collapses to escaped
+// inline text, which renders as a single line in HTML disclosures.
+func TestCodeBlock_HTMLWrapsInPreBlock(t *testing.T) {
+	pseudo := "if cond {\n  doThing()\n}\nfollowUp()"
+	html := CodeBlock("typescript", pseudo).HTML()
+	if !strings.Contains(html, `<pre class="chroma">`) {
+		t.Errorf("CodeBlock(typescript).HTML() missing <pre class=\"chroma\"> wrapper, got: %s", html)
+	}
+	if !strings.Contains(html, "<code>") {
+		t.Errorf("CodeBlock(typescript).HTML() missing <code> wrapper, got: %s", html)
+	}
+	// Token-level highlighting should be present (chroma .k for keywords).
+	if !strings.Contains(html, `class="k"`) {
+		t.Errorf("CodeBlock(typescript).HTML() missing keyword highlighting span, got: %s", html)
+	}
+}
+
 func TestCode_HTML(t *testing.T) {
 	tests := []struct {
 		name         string

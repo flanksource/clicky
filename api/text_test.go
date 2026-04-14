@@ -682,3 +682,67 @@ func TestAppendTruncatesMultilineStrings(t *testing.T) {
 		t.Error("expected headtail output to not contain middle lines")
 	}
 }
+
+func TestAppendStyle(t *testing.T) {
+	classSet := func(s string) map[string]struct{} {
+		out := map[string]struct{}{}
+		for _, c := range strings.Fields(s) {
+			out[c] = struct{}{}
+		}
+		return out
+	}
+	eq := func(a, b map[string]struct{}) bool {
+		if len(a) != len(b) {
+			return false
+		}
+		for k := range a {
+			if _, ok := b[k]; !ok {
+				return false
+			}
+		}
+		return true
+	}
+
+	tests := []struct {
+		name     string
+		start    string
+		append   []string
+		expected []string
+	}{
+		{"empty + empty", "", nil, nil},
+		{"empty + one", "", []string{"text-red-500"}, []string{"text-red-500"}},
+		{"existing + none", "font-bold text-blue-500", nil, []string{"font-bold", "text-blue-500"}},
+		{
+			"preserve truncation style while adding color",
+			"max-w-[10] truncate-suffix",
+			[]string{"text-red-500"},
+			[]string{"max-w-[10]", "truncate-suffix", "text-red-500"},
+		},
+		{
+			"dedupe identical class",
+			"text-red-500",
+			[]string{"text-red-500 font-bold"},
+			[]string{"font-bold", "text-red-500"},
+		},
+		{
+			"space-separated class string split and deduped",
+			"max-w-[10]",
+			[]string{"max-w-[10] text-green-500"},
+			[]string{"max-w-[10]", "text-green-500"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := Text{Style: tt.start}.AppendStyle(tt.append...)
+			want := map[string]struct{}{}
+			for _, c := range tt.expected {
+				want[c] = struct{}{}
+			}
+			got := classSet(result.Style)
+			if !eq(got, want) {
+				t.Errorf("AppendStyle(%q, %v).Style = %q, want classes %v",
+					tt.start, tt.append, result.Style, tt.expected)
+			}
+		})
+	}
+}

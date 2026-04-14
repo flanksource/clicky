@@ -267,15 +267,28 @@ func (t Text) Styles(classes ...string) Text {
 	return t
 }
 
+// AppendStyle merges the given Tailwind class names into t.Style without
+// duplicating classes that are already present.
+func (t Text) AppendStyle(classes ...string) Text {
+	t.Style = uniqueStyles(t.Style, classes...)
+	return t
+}
+
 // WrapSpace adds a space before and after the content
 func (t Text) WrapSpace() Text {
 	return t.Wrap(" ", " ")
 }
 
 // Wrap adds a prefix and suffix to the content
+// Wrap returns a new Text consisting of `prefix`, the receiver `t`, and
+// `suffix`. When a style is supplied, the prefix and suffix are placed in
+// dedicated child Text nodes carrying that style; the receiver `t` is left
+// untouched. (The earlier implementation called `t.Add(t)` after appending the
+// prefix, which doubled the receiver in the output.)
 func (t Text) Wrap(prefix, suffix string, style ...string) Text {
 	if len(style) > 0 {
-		return t.Add(Text{Content: prefix, Style: style[0]}).
+		return Text{}.
+			Add(Text{Content: prefix, Style: style[0]}).
 			Add(t).
 			Add(Text{Content: suffix, Style: style[0]})
 	}
@@ -642,7 +655,15 @@ func Clz(v bool, clz string, elseClz ...string) string {
 	return ""
 }
 
+// mimeTypeToLanguage maps an HTTP-style MIME type ("application/json",
+// "text/x-typescript", etc.) to the chroma lexer name. For inputs that look
+// like plain language identifiers ("typescript", "go", "sql") it falls back
+// to normalizeLanguage so callers can pass either form.
 func mimeTypeToLanguage(mime string) string {
+	mime = strings.ToLower(strings.TrimSpace(mime))
+	if !strings.Contains(mime, "/") {
+		return normalizeLanguage(mime)
+	}
 	switch {
 	case strings.Contains(mime, "json"):
 		return "json"
@@ -652,10 +673,10 @@ func mimeTypeToLanguage(mime string) string {
 		return "yaml"
 	case strings.Contains(mime, "html"):
 		return "html"
-	case strings.Contains(mime, "text/html"):
-		return "html"
 	case strings.Contains(mime, "text/plain"):
 		return "txt"
+	case strings.Contains(mime, "typescript"):
+		return "typescript"
 	case strings.Contains(mime, "javascript"):
 		return "javascript"
 	case strings.Contains(mime, "css"):

@@ -77,11 +77,12 @@ func (s Status) Style() string {
 	return s.Health().Style()
 }
 
-// Apply applies the status icon and style to the given text
+// Apply applies the status icon and style to the given text, preserving any
+// style classes (such as width/truncation directives) the caller has already
+// set.
 func (s Status) Apply(t api.Text) api.Text {
 	t.Content = fmt.Sprintf("%s %s", s.Icon(), t.Content)
-	t.Style = s.Style()
-	return t
+	return t.AppendStyle(s.Style())
 }
 
 // Pretty returns a pretty formatted text representation of the status
