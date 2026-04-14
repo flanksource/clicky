@@ -13,6 +13,7 @@ import (
 	flanksourceContext "github.com/flanksource/commons/context"
 
 	"github.com/flanksource/clicky/api"
+	"github.com/flanksource/clicky/api/tailwind"
 	"github.com/flanksource/clicky/text"
 )
 
@@ -413,4 +414,76 @@ func TestPlainRenderOnlyDirtyTasks(t *testing.T) {
 
 	// Cleanup
 	close(testManager.shutdown)
+}
+
+func TestPretty_TruncatesLongPrompt(t *testing.T) {
+	originalWidthFunc := tailwind.TerminalWidthFunc
+	tailwind.TerminalWidthFunc = func() int { return 120 }
+	t.Cleanup(func() { tailwind.TerminalWidthFunc = originalWidthFunc })
+
+	testManager := newTestManager(1)
+	t.Cleanup(func() { close(testManager.shutdown) })
+
+	longPrompt := strings.Repeat("x", 5000)
+	task := testManager.newTask("short-name", WithPrompt(longPrompt))
+	task.status = StatusSuccess
+
+	check := func(label, rendered string) {
+		stripped := text.StripANSI(rendered)
+		runeLen := len([]rune(stripped))
+		if runeLen > 150 {
+			t.Errorf("%s: rendered length %d exceeds 150 runes; output: %q", label, runeLen, stripped)
+		}
+		if !strings.ContainsRune(stripped, '…') {
+			t.Errorf("%s: expected ellipsis in truncated output; got: %q", label, stripped)
+		}
+	}
+
+	pretty := task.Pretty()
+	check("ANSI", pretty.ANSI())
+	check("String", pretty.String())
+}
+
+func TestStatusApply_PreservesIncomingStyle(t *testing.T) {
+	originalWidthFunc := tailwind.TerminalWidthFunc
+	tailwind.TerminalWidthFunc = func() int { return 120 }
+	t.Cleanup(func() { tailwind.TerminalWidthFunc = originalWidthFunc })
+
+	in := api.Text{Content: "helloworldhello", Style: "max-w-[10] truncate-suffix"}
+	out := StatusSuccess.Apply(in)
+
+	classes := map[string]struct{}{}
+	for _, c := range strings.Fields(out.Style) {
+		classes[c] = struct{}{}
+	}
+	for _, expected := range []string{"max-w-[10]", "truncate-suffix"} {
+		if _, ok := classes[expected]; !ok {
+			t.Errorf("expected style to retain %q; got %q", expected, out.Style)
+		}
+	}
+	statusStyle := StatusSuccess.Style()
+	if statusStyle != "" {
+		if _, ok := classes[statusStyle]; !ok {
+			t.Errorf("expected status style %q to be appended; got %q", statusStyle, out.Style)
+		}
+	}
+
+	stripped := text.StripANSI(out.ANSI())
+	if len([]rune(stripped)) > 12 {
+		t.Errorf("expected visible length <= 12 after truncation, got %d: %q", len([]rune(stripped)), stripped)
+	}
+	if !strings.ContainsRune(stripped, '…') {
+		t.Errorf("expected ellipsis in truncated ANSI output; got: %q", stripped)
+	}
+
+	twice := StatusSuccess.Apply(out)
+	classCounts := map[string]int{}
+	for _, c := range strings.Fields(twice.Style) {
+		classCounts[c]++
+	}
+	for cls, n := range classCounts {
+		if n > 1 {
+			t.Errorf("class %q duplicated after repeated Apply: %q", cls, twice.Style)
+		}
+	}
 }

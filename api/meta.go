@@ -479,6 +479,12 @@ func implementsOrDeref(t reflect.Type, iface reflect.Type) bool {
 }
 
 func TryTypedValue(o any) *TypedValue {
+	if o == nil {
+		return nil
+	}
+	if rv := reflect.ValueOf(o); (rv.Kind() == reflect.Ptr || rv.Kind() == reflect.Interface) && rv.IsNil() {
+		return nil
+	}
 	switch v := o.(type) {
 	case TypedValue:
 		return &v
