@@ -660,6 +660,7 @@ func Clz(v bool, clz string, elseClz ...string) string {
 // like plain language identifiers ("typescript", "go", "sql") it falls back
 // to normalizeLanguage so callers can pass either form.
 func mimeTypeToLanguage(mime string) string {
+	mime = strings.ToLower(strings.TrimSpace(mime))
 	if !strings.Contains(mime, "/") {
 		return normalizeLanguage(mime)
 	}
