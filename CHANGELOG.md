@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.21.4](https://github.com/flanksource/clicky/compare/v1.21.3...v1.21.4) (2026-04-14)
+
+
+### 🐛 Bug Fixes
+
+* **api,text:** Fix language normalization and style preservation in code blocks Improve code block rendering and text styling: ([#97](https://github.com/flanksource/clicky/issues/97)) ([4204ea9](https://github.com/flanksource/clicky/commit/4204ea90458d8376ecfdfc7c787a9d0352460e52))
+
 ## [1.21.3](https://github.com/flanksource/clicky/compare/v1.21.2...v1.21.3) (2026-04-13)
 
 
