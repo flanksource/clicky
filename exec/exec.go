@@ -75,6 +75,10 @@ type Process struct {
 	SucceedOnNonZero bool
 	exitCode         *int
 	done             chan struct{} // Closed when Run() completes
+	// newProcessGroup, when true, spawns the subprocess in its own POSIX
+	// process group (Setpgid) / Windows process group (CREATE_NEW_PROCESS_GROUP)
+	// so the whole descendant tree can be terminated atomically via KillTree.
+	newProcessGroup bool
 }
 
 // ExecResult contains the result of a command execution with structured output and metadata.
@@ -383,6 +387,36 @@ func (p *Process) WithTimeout(timeout time.Duration) *Process {
 	return p
 }
 
+// WithProcessGroup spawns the subprocess in its own process group so the
+// entire descendant tree can be terminated atomically via KillTree. Must be
+// called before Run/Start. On POSIX this sets Setpgid=true; on Windows it
+// sets CREATE_NEW_PROCESS_GROUP.
+func (p *Process) WithProcessGroup() *Process {
+	p.newProcessGroup = true
+	return p
+}
+
+// Pid returns the OS pid of the running subprocess, or 0 if it hasn't
+// started yet. Safe to call concurrently with Run().
+func (p *Process) Pid() int {
+	if p.cmd != nil && p.cmd.Process != nil {
+		return p.cmd.Process.Pid
+	}
+	return 0
+}
+
+// KillTree terminates the subprocess and every descendant. Prefer this over
+// Kill/ForceKill for processes that fork or exec grandchildren (test runners,
+// headless browsers, etc). When WithProcessGroup was set at spawn, the kill
+// is atomic (POSIX: SIGKILL to -pgid; Windows: TerminateJobObject); otherwise
+// KillTree falls back to a gopsutil-style descendant walk, which is racy.
+func (p *Process) KillTree() error {
+	if p.cmd == nil || p.cmd.Process == nil {
+		return nil
+	}
+	return killTree(p.cmd.Process.Pid, p.newProcessGroup)
+}
+
 func (p Process) Name() string {
 	if p.cmd != nil {
 		return p.cmd.Path
@@ -590,6 +624,14 @@ func (p *Process) Run() *Process {
 
 	cmd.Stderr = p.captureOutput.GetStderrWriter()
 	cmd.Stdout = p.captureOutput.GetStdoutWriter()
+
+	applyProcessGroup(cmd, p.newProcessGroup)
+	if p.newProcessGroup {
+		// Force-close the stdout/stderr pipes 2s after the direct child
+		// exits so Wait() can return even when orphaned descendants still
+		// hold them open. Go 1.20+ feature.
+		cmd.WaitDelay = 2 * time.Second
+	}
 
 	p.log.Tracef(api.Text{}.Append("run", "text-muted").Append(icons.MinimalArrow, "text-muted").Space().Add(p.Short()).ANSI())
 
