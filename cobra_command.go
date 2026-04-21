@@ -137,6 +137,7 @@ func AddNamedCommand[T any](name string, parent *cobra.Command, opts T, fn func(
 	flagValues := make(map[string]*flags.FlagValue)
 
 	// Bind all flags
+	var argsField *flags.FlagValue
 	for _, info := range fieldInfos {
 		fv := flags.BindFlag(cmd, info)
 		if fv != nil {
@@ -146,11 +147,19 @@ func AddNamedCommand[T any](name string, parent *cobra.Command, opts T, fn func(
 				key = flags.ARGS
 			}
 			flagValues[key] = fv
+			// Track the args-accepting field regardless of whether it
+			// also has a flag name. A field tagged both `flag:"x"` and
+			// `args:"true"` should accept the positional OR the flag;
+			// the binder in flags/assignment.go already handles that
+			// precedence.
+			if info.IsArgs {
+				argsField = fv
+			}
 		}
 	}
 
-	if fv, ok := flagValues[flags.ARGS]; ok {
-		if fv.Required {
+	if argsField != nil {
+		if argsField.Required {
 			cmd.Args = cobra.MinimumNArgs(1)
 		} else {
 			cmd.Args = cobra.MinimumNArgs(0)
