@@ -18,8 +18,10 @@ var knownFormats = map[string]bool{
 	"json":        true,
 	"yaml":        true,
 	"yml":         true,
+	"clicky-json": true,
 	"csv":         true,
 	"html":        true,
+	"html-react":  true,
 	"html-static": true,
 	"markdown":    true,
 	"md":          true,
@@ -78,9 +80,6 @@ type FormatOptions struct {
 	// Display structure flags (additive with format flags)
 	Tree  bool `json:"tree,omitempty"`  // Display in tree structure
 	Table bool `json:"table,omitempty"` // Display in table structure
-
-	// React-specific options
-	ReactComponent string `json:"react_component,omitempty"` // Custom JSX/TSX source for html-react format
 
 	// Paging options
 	Page  int `json:"page,omitempty"`  // Current page (1-indexed)

@@ -9,11 +9,13 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+	"golang.org/x/tools/go/analysis/singlechecker"
 	"gopkg.in/yaml.v3"
 
 	"github.com/flanksource/clicky/api"
 	"github.com/flanksource/clicky/extensions"
 	"github.com/flanksource/clicky/formatters"
+	"github.com/flanksource/clicky/lint"
 	"github.com/flanksource/commons/logger"
 )
 
@@ -100,6 +102,7 @@ For backward compatibility, you can use the root command directly, or use the
 	rootCmd.AddCommand(newPrettyCommand())
 	rootCmd.AddCommand(newVersionCommand())
 	rootCmd.AddCommand(newSchemaCommand())
+	rootCmd.AddCommand(newLintCommand())
 
 	// Add OpenAPI and MCP commands using extensions
 	extensions.CobraExtensions(rootCmd).
@@ -165,6 +168,36 @@ raw data into beautifully formatted output using customizable schemas.`,
 	formatters.BindPFlags(cmd.Flags(), &options)
 
 	return cmd
+}
+
+func newLintCommand() *cobra.Command {
+	return &cobra.Command{
+		Use:   "lint [flags] [packages...]",
+		Short: "Run the clicky API linter on Go packages (defaults to ./...)",
+		Long: `Run the clicky API linter (clickylint) on the given Go packages.
+
+Detects bad usage patterns of the clicky text API, such as incorrect
+composite literal usage of api.Text. Accepts the same flags as go vet
+(-json, -fix, -c=N, etc.); these are passed through to the analyzer
+driver, so use "clicky lint -- -help" to see them.
+
+If no packages are given, defaults to ./... in the current directory.`,
+		Example: `  clicky lint ./...
+  clicky lint ./pkg/foo ./pkg/bar
+  clicky lint -json ./...`,
+		Args:               cobra.ArbitraryArgs,
+		DisableFlagParsing: true,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(args) == 0 {
+				args = []string{"./..."}
+			}
+			origArgs := os.Args
+			defer func() { os.Args = origArgs }()
+			os.Args = append([]string{"clickylint"}, args...)
+			singlechecker.Main(lint.Analyzer)
+			return nil
+		},
+	}
 }
 
 func newVersionCommand() *cobra.Command {

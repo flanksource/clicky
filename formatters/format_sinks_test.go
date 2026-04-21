@@ -63,6 +63,16 @@ func TestParseFormatSpec(t *testing.T) {
 			},
 		},
 		{
+			name:   "html-react is accepted as a bare stdout format",
+			format: "html-react",
+			want:   []FormatSink{{Format: "html-react"}},
+		},
+		{
+			name:   "html-react is accepted as a file sink",
+			format: "html-react=out.json",
+			want:   []FormatSink{{Format: "html-react", File: "out.json"}},
+		},
+		{
 			name:    "two bare formats is an error",
 			format:  "json,markdown",
 			wantErr: "more than one stdout format",

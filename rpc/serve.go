@@ -89,6 +89,7 @@ func NewSwaggerServer(config *ServeConfig, rootCmd *cobra.Command, openAPIConfig
 func (s *SwaggerServer) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/openapi.json", s.handleOpenAPIJSON)
 	mux.HandleFunc("/api/openapi.yaml", s.handleOpenAPIYAML)
+	mux.HandleFunc("/api/entities", s.handleEntities)
 	if !s.config.SkipHealth {
 		mux.HandleFunc("/health", s.handleHealth)
 	}
@@ -617,6 +618,9 @@ func extractFormatOpts(r *http.Request) formatOptions {
 			case "application/json":
 				opts.Format = "json"
 				return opts
+			case "application/clicky+json":
+				opts.Format = "clicky-json"
+				return opts
 			case "application/yaml", "text/yaml", "application/x-yaml":
 				opts.Format = "yaml"
 				return opts
@@ -645,11 +649,13 @@ func extractFormatOpts(r *http.Request) formatOptions {
 
 func formatToContentType(format string) string {
 	switch format {
+	case "clicky-json":
+		return "application/clicky+json"
 	case "yaml", "yml":
 		return "application/yaml"
 	case "csv":
 		return "text/csv; charset=utf-8"
-	case "html":
+	case "html", "html-react":
 		return "text/html; charset=utf-8"
 	case "markdown", "md":
 		return "text/markdown; charset=utf-8"

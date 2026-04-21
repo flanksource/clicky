@@ -45,6 +45,65 @@ func TestFormatHandler_JSON(t *testing.T) {
 	}
 }
 
+func TestFormatHandler_ClickyJSON(t *testing.T) {
+	handler := FormatHandler(func(r *http.Request) (any, error) {
+		return testUser{Name: "Ada", Email: "ada@example.com"}, nil
+	})
+
+	cases := []struct {
+		name string
+		req  *http.Request
+	}{
+		{
+			name: "query param ?format=clicky-json",
+			req:  httptest.NewRequest("GET", "http://example.com/users?format=clicky-json", nil),
+		},
+		{
+			name: "path extension .clicky",
+			req:  httptest.NewRequest("GET", "http://example.com/users.clicky", nil),
+		},
+		{
+			name: "Accept: application/clicky+json",
+			req: func() *http.Request {
+				r := httptest.NewRequest("GET", "http://example.com/users", nil)
+				r.Header.Set("Accept", "application/clicky+json")
+				return r
+			}(),
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			w := httptest.NewRecorder()
+			handler(w, tc.req)
+
+			if w.Code != http.StatusOK {
+				t.Fatalf("status = %d, want 200", w.Code)
+			}
+			if ct := w.Header().Get("Content-Type"); ct != "application/clicky+json" {
+				t.Errorf("Content-Type = %q, want application/clicky+json", ct)
+			}
+
+			var doc struct {
+				Version int             `json:"version"`
+				Node    json.RawMessage `json:"node"`
+			}
+			if err := json.Unmarshal(w.Body.Bytes(), &doc); err != nil {
+				t.Fatalf("response is not Clicky JSON: %v\n%s", err, w.Body.String())
+			}
+			if doc.Version != 1 {
+				t.Errorf("version = %d, want 1", doc.Version)
+			}
+			if len(doc.Node) == 0 {
+				t.Error("missing node payload")
+			}
+			if !strings.Contains(w.Body.String(), "Ada") {
+				t.Errorf("body missing input value; got:\n%s", w.Body.String())
+			}
+		})
+	}
+}
+
 func TestFormatHandler_YAML(t *testing.T) {
 	handler := FormatHandler(func(r *http.Request) (any, error) {
 		return testUser{Name: "Bob", Email: "bob@example.com"}, nil

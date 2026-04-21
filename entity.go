@@ -44,6 +44,11 @@ type EntityInfo struct {
 type EntityOperation struct {
 	Verb     string // "list", "get", "create", "update", "delete"
 	DataFunc func(flags map[string]string, args []string) (any, error)
+	// FlagsType, when non-nil, binds typed flags from the given struct type
+	// onto the generated cobra command and collects their values into the
+	// flag map passed to DataFunc. Used by actions that implement
+	// ActionFlags; ignored for the built-in CRUD verbs.
+	FlagsType reflect.Type
 }
 
 // ActionInfo is the type-erased representation of a single-entity action.
@@ -51,6 +56,10 @@ type ActionInfo struct {
 	Name     string
 	Short    string
 	DataFunc func(flags map[string]string, args []string) (any, error)
+	// FlagsType, if non-nil, is the struct type whose `flag:"..."` tagged
+	// fields are registered as cobra flags on the generated action command
+	// and populated into the flag map passed to DataFunc.
+	FlagsType reflect.Type
 }
 
 // BulkActionInfo is the type-erased representation of a bulk action.
@@ -62,11 +71,27 @@ type BulkActionInfo struct {
 	ListType   reflect.Type
 }
 
+// ActionFlags is a marker interface implemented by options structs that
+// declare typed cobra flags for a clicky Action. When an Action's Flags
+// field is non-nil, the concrete type of the value is reflected for its
+// `flag:"..."` struct tags and those flags are bound to the generated
+// action cobra command.
+//
+// Implementers attach a no-op `ClickyActionFlags()` method to an options
+// struct, then pass a zero value of that struct in `Action.Flags`.
+type ActionFlags interface {
+	ClickyActionFlags()
+}
+
 // Action represents a custom operation on a single entity by ID.
 type Action[T EntityItem] struct {
 	Name  string
 	Short string
 	Run   func(id string, flags map[string]string) (any, error)
+	// Flags, if non-nil, is an options struct value implementing ActionFlags.
+	// Its type's `flag:"..."` tags drive command-line flag registration, and
+	// the parsed values are passed into Run via the flags map.
+	Flags ActionFlags
 }
 
 // BulkAction represents a custom operation on multiple entities.
@@ -90,9 +115,19 @@ type Entity[T EntityItem, ListOpts any] struct {
 	Aliases []string
 	List    func(opts ListOpts) ([]T, error)
 	Get     func(id string) (any, error)
-	Create  func(body map[string]any) (any, error)
-	Update  func(id string, body map[string]any) (any, error)
-	Delete  func(id string) error
+	// GetFlags, when non-nil, is a zero-value struct value implementing
+	// ActionFlags whose `flag:"..."` tagged fields are registered as
+	// CLI flags on the generated `get` subcommand. The parsed values are
+	// passed into GetWithFlags.
+	//
+	// GetWithFlags is mutually exclusive with Get: when both are set,
+	// GetWithFlags wins. Set GetFlags to declare the flag schema and
+	// GetWithFlags to receive the typed values.
+	GetFlags     ActionFlags
+	GetWithFlags func(id string, flags map[string]string) (any, error)
+	Create       func(body map[string]any) (any, error)
+	Update       func(id string, body map[string]any) (any, error)
+	Delete       func(id string) error
 
 	Actions     []Action[T]
 	BulkActions []BulkAction[T, ListOpts]
@@ -136,7 +171,22 @@ func RegisterEntity[T EntityItem, ListOpts any](e Entity[T, ListOpts]) {
 		})
 	}
 
-	if e.Get != nil {
+	if e.GetWithFlags != nil {
+		info.Operations = append(info.Operations, EntityOperation{
+			Verb:      "get",
+			FlagsType: actionFlagsType(e.GetFlags),
+			DataFunc: func(flagMap map[string]string, args []string) (any, error) {
+				id := flagMap["id"]
+				if id == "" && len(args) > 0 {
+					id = args[0]
+				}
+				if id == "" {
+					return nil, fmt.Errorf("id is required")
+				}
+				return e.GetWithFlags(id, flagMap)
+			},
+		})
+	} else if e.Get != nil {
 		info.Operations = append(info.Operations, EntityOperation{
 			Verb: "get",
 			DataFunc: func(flagMap map[string]string, args []string) (any, error) {
@@ -206,8 +256,9 @@ func RegisterEntity[T EntityItem, ListOpts any](e Entity[T, ListOpts]) {
 	for _, action := range e.Actions {
 		a := action
 		info.Actions = append(info.Actions, ActionInfo{
-			Name:  a.Name,
-			Short: a.Short,
+			Name:      a.Name,
+			Short:     a.Short,
+			FlagsType: actionFlagsType(a.Flags),
 			DataFunc: func(flagMap map[string]string, args []string) (any, error) {
 				id := flagMap["id"]
 				if id == "" && len(args) > 0 {
@@ -280,8 +331,9 @@ func RegisterEntity[T EntityItem, ListOpts any](e Entity[T, ListOpts]) {
 		for _, action := range admin.Actions {
 			a := action
 			adminInfo.Actions = append(adminInfo.Actions, ActionInfo{
-				Name:  a.Name,
-				Short: a.Short,
+				Name:      a.Name,
+				Short:     a.Short,
+				FlagsType: actionFlagsType(a.Flags),
 				DataFunc: func(flagMap map[string]string, args []string) (any, error) {
 					id := flagMap["id"]
 					if id == "" && len(args) > 0 {
@@ -369,8 +421,9 @@ func generateEntityCLI(parent *cobra.Command, entity EntityInfo) {
 
 	for _, action := range entity.Actions {
 		generateIDCommand(entityCmd, action.Name, action.Short, EntityOperation{
-			Verb:     action.Name,
-			DataFunc: action.DataFunc,
+			Verb:      action.Name,
+			DataFunc:  action.DataFunc,
+			FlagsType: action.FlagsType,
 		})
 	}
 
@@ -420,12 +473,24 @@ func generateListCommand(parent *cobra.Command, entity EntityInfo, op EntityOper
 }
 
 func generateIDCommand(parent *cobra.Command, verb, short string, op EntityOperation) {
+	hasFlags := op.FlagsType != nil
+	use := fmt.Sprintf("%s <id>", verb)
+	if hasFlags {
+		use = fmt.Sprintf("%s <id> [flags]", verb)
+	}
 	cmd := &cobra.Command{
-		Use:   fmt.Sprintf("%s <id>", verb),
+		Use:   use,
 		Short: short,
 		Args:  cobra.ExactArgs(1),
 		RunE: func(c *cobra.Command, args []string) error {
-			result, err := op.DataFunc(nil, args)
+			var flagMap map[string]string
+			if hasFlags {
+				flagMap = make(map[string]string)
+				c.Flags().Visit(func(f *pflag.Flag) {
+					flagMap[f.Name] = f.Value.String()
+				})
+			}
+			result, err := op.DataFunc(flagMap, args)
 			if err != nil {
 				return err
 			}
@@ -438,8 +503,25 @@ func generateIDCommand(parent *cobra.Command, verb, short string, op EntityOpera
 	if verb == "get" {
 		cmd.Aliases = []string{"inspect"}
 	}
+	if hasFlags {
+		bindTypeFlags(cmd, op.FlagsType)
+	}
 	parent.AddCommand(cmd)
 	dataFuncRegistry.Store(cmd, op.DataFunc)
+}
+
+// actionFlagsType resolves an ActionFlags implementer to its concrete
+// struct reflect.Type, dereferencing a pointer if the caller handed one in.
+// Returns nil when the action declared no flags.
+func actionFlagsType(f ActionFlags) reflect.Type {
+	if f == nil {
+		return nil
+	}
+	t := reflect.TypeOf(f)
+	for t.Kind() == reflect.Ptr {
+		t = t.Elem()
+	}
+	return t
 }
 
 func generateBodyCommand(parent *cobra.Command, verb, short string, op EntityOperation) {

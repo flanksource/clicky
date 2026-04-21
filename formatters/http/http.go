@@ -158,6 +158,8 @@ func extensionToFormat(ext string) string {
 		return "slack"
 	case "txt":
 		return "pretty"
+	case "clicky":
+		return "clicky-json"
 	default:
 		return ""
 	}
@@ -186,6 +188,8 @@ func acceptToFormat(accept string) string {
 			return "excel"
 		case "application/vnd.slack.block-kit+json":
 			return "slack"
+		case "application/clicky+json":
+			return "clicky-json"
 		case "text/plain":
 			return "pretty"
 		}
@@ -236,11 +240,13 @@ func formatToContentType(format string) string {
 	switch format {
 	case "json":
 		return "application/json"
+	case "clicky-json":
+		return "application/clicky+json"
 	case "yaml", "yml":
 		return "application/yaml"
 	case "csv":
 		return "text/csv"
-	case "html":
+	case "html", "html-react":
 		return "text/html; charset=utf-8"
 	case "markdown", "md":
 		return "text/markdown; charset=utf-8"

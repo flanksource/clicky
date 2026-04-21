@@ -1,10 +1,12 @@
 package formatters
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 
 	"github.com/flanksource/clicky/api"
+	"github.com/flanksource/clicky/api/icons"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
@@ -25,19 +27,20 @@ var _ = Describe("HTMLReactFormatter", func() {
 	})
 
 	Describe("HTML structure", func() {
-		It("should contain import map with react and facet", func() {
+		It("should contain the clicky-ui shell", func() {
 			table := api.TextTable{
 				Headers: api.TextList{api.Text{Content: "Name"}},
 				Rows:    []api.TableRow{{"Name": api.TypedValue{Textable: api.Text{Content: "test"}}}},
 			}
 			output, err := formatter.Format(table, FormatOptions{})
 			Expect(err).NotTo(HaveOccurred())
-			Expect(output).To(ContainSubstring("text/babel"))
-			Expect(output).To(ContainSubstring("react.production.min.js"))
-			Expect(output).To(ContainSubstring("babel.min.js"))
+			Expect(output).To(ContainSubstring("@flanksource/clicky-ui"))
+			Expect(output).To(ContainSubstring("importmap"))
+			Expect(output).To(ContainSubstring(`data-theme="light"`))
+			Expect(output).To(ContainSubstring("tokens.css"))
 		})
 
-		It("should embed data in clicky-data script tag", func() {
+		It("should embed the versioned clicky payload", func() {
 			table := api.TextTable{
 				Headers: api.TextList{api.Text{Content: "Name"}},
 				Rows:    []api.TableRow{{"Name": api.TypedValue{Textable: api.Text{Content: "hello"}}}},
@@ -45,7 +48,8 @@ var _ = Describe("HTMLReactFormatter", func() {
 			output, err := formatter.Format(table, FormatOptions{})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(output).To(ContainSubstring(`id="clicky-data"`))
-			Expect(output).To(ContainSubstring(`"type":"table"`))
+			Expect(output).To(ContainSubstring(`"version":1`))
+			Expect(output).To(ContainSubstring(`"kind":"table"`))
 			Expect(output).To(ContainSubstring("hello"))
 		})
 
@@ -57,7 +61,7 @@ var _ = Describe("HTMLReactFormatter", func() {
 	})
 
 	Describe("Data conversion", func() {
-		It("should convert TextTable to react table data", func() {
+		It("should convert TextTable to clicky table data", func() {
 			table := api.TextTable{
 				Headers: api.TextList{
 					api.Text{Content: "Name"},
@@ -76,7 +80,7 @@ var _ = Describe("HTMLReactFormatter", func() {
 			Expect(output).To(ContainSubstring("30"))
 		})
 
-		It("should convert TextTree to react tree data", func() {
+		It("should convert TextTree to clicky tree data", func() {
 			tree := api.TextTree{
 				Node: api.Text{Content: "root"},
 				Children: []api.TextTree{
@@ -86,7 +90,7 @@ var _ = Describe("HTMLReactFormatter", func() {
 			}
 			output, err := formatter.Format(tree, FormatOptions{})
 			Expect(err).NotTo(HaveOccurred())
-			Expect(output).To(ContainSubstring(`"type":"tree"`))
+			Expect(output).To(ContainSubstring(`"kind":"tree"`))
 			Expect(output).To(ContainSubstring("root"))
 			Expect(output).To(ContainSubstring("child1"))
 		})
@@ -95,19 +99,7 @@ var _ = Describe("HTMLReactFormatter", func() {
 			output, err := formatter.Format(api.Text{Content: "hello world"}, FormatOptions{})
 			Expect(err).NotTo(HaveOccurred())
 			Expect(output).To(ContainSubstring("hello world"))
-		})
-	})
-
-	Describe("Custom component", func() {
-		It("should embed custom component source when provided", func() {
-			customJSX := `function App({ data }) { return <div className="p-4"><h1>Custom</h1><pre>{JSON.stringify(data)}</pre></div>; }`
-			output, err := formatter.Format(
-				api.Text{Content: "test"},
-				FormatOptions{ReactComponent: customJSX},
-			)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(output).To(ContainSubstring(customJSX))
-			Expect(output).To(ContainSubstring("text/babel"))
+			Expect(output).To(ContainSubstring(`"kind":"text"`))
 		})
 	})
 
@@ -128,8 +120,59 @@ var _ = Describe("HTMLReactFormatter", func() {
 			}
 			output, err := fm.Format("html-react", table)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(output).To(ContainSubstring("text/babel"))
+			Expect(output).To(ContainSubstring("@flanksource/clicky-ui"))
 		})
+	})
+})
+
+var _ = Describe("ClickyJSONFormatter", func() {
+	var formatter *ClickyJSONFormatter
+
+	BeforeEach(func() {
+		formatter = &ClickyJSONFormatter{}
+	})
+
+	It("should be registered as clicky-json custom formatter", func() {
+		fn, exists := GetCustomFormatter("clicky-json")
+		Expect(exists).To(BeTrue())
+		Expect(fn).NotTo(BeNil())
+	})
+
+	It("should emit the clicky document JSON without an HTML shell", func() {
+		table := api.TextTable{
+			Headers: api.TextList{api.Text{Content: "Name"}},
+			Rows:    []api.TableRow{{"Name": api.TypedValue{Textable: api.Text{Content: "svc-a"}}}},
+		}
+		output, err := formatter.Format(table, FormatOptions{})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(output).To(ContainSubstring(`"version": 1`))
+		Expect(output).To(ContainSubstring(`"kind": "table"`))
+		Expect(output).To(ContainSubstring("svc-a"))
+		Expect(output).NotTo(ContainSubstring("<!doctype html>"))
+		Expect(output).NotTo(ContainSubstring("@flanksource/clicky-ui"))
+	})
+
+	It("should produce the same payload that html-react embeds", func() {
+		data := api.Text{Content: "hello"}
+		jsonOut, err := formatter.Format(data, FormatOptions{})
+		Expect(err).NotTo(HaveOccurred())
+
+		htmlOut, err := (&HTMLReactFormatter{}).Format(data, FormatOptions{})
+		Expect(err).NotTo(HaveOccurred())
+
+		// The html-react shell embeds the compact (unindented) form, while
+		// clicky-json is indented. Compare the parsed structure instead.
+		var fromJSON, fromHTML map[string]any
+		Expect(json.Unmarshal([]byte(jsonOut), &fromJSON)).To(Succeed())
+
+		start := strings.Index(htmlOut, `<script id="clicky-data" type="application/json">`)
+		Expect(start).To(BeNumerically(">=", 0))
+		start += len(`<script id="clicky-data" type="application/json">`)
+		end := strings.Index(htmlOut[start:], "</script>")
+		Expect(end).To(BeNumerically(">", 0))
+		Expect(json.Unmarshal([]byte(htmlOut[start:start+end]), &fromHTML)).To(Succeed())
+
+		Expect(fromJSON).To(Equal(fromHTML))
 	})
 })
 
@@ -149,20 +192,27 @@ func TestHTMLReactConvertTable(t *testing.T) {
 				"Status": api.TypedValue{Textable: api.Text{Content: "degraded"}},
 			},
 		},
+		RowDetail: []api.Textable{
+			api.Code{Content: "SELECT 1", Language: "sql"},
+			nil,
+		},
 	}
 
-	rd := convertTable(table, nil)
-	if rd.Type != "table" {
-		t.Fatalf("expected type=table, got %s", rd.Type)
+	node := convertTable(table)
+	if node.Kind != "table" {
+		t.Fatalf("expected kind=table, got %s", node.Kind)
 	}
-	if len(rd.Table.Columns) != 2 {
-		t.Fatalf("expected 2 columns, got %d", len(rd.Table.Columns))
+	if len(node.Columns) != 2 {
+		t.Fatalf("expected 2 columns, got %d", len(node.Columns))
 	}
-	if len(rd.Table.Rows) != 2 {
-		t.Fatalf("expected 2 rows, got %d", len(rd.Table.Rows))
+	if len(node.Rows) != 2 {
+		t.Fatalf("expected 2 rows, got %d", len(node.Rows))
 	}
-	if rd.Table.Rows[0]["Name"].Text != "svc-a" {
-		t.Errorf("expected row[0][Name]=svc-a, got %s", rd.Table.Rows[0]["Name"].Text)
+	if node.Rows[0].Cells["Name"].Plain != "svc-a" {
+		t.Errorf("expected row[0][Name]=svc-a, got %s", node.Rows[0].Cells["Name"].Plain)
+	}
+	if node.Rows[0].Detail == nil || node.Rows[0].Detail.Kind != "code" {
+		t.Fatalf("expected row detail code node, got %#v", node.Rows[0].Detail)
 	}
 }
 
@@ -174,29 +224,79 @@ func TestHTMLReactConvertTree(t *testing.T) {
 		},
 	}
 
-	rt := convertTree(tree)
-	if rt.Label != "root" {
-		t.Fatalf("expected label=root, got %s", rt.Label)
+	node := convertTree(tree)
+	if node.Kind != "tree" {
+		t.Fatalf("expected kind=tree, got %s", node.Kind)
 	}
-	if len(rt.Children) != 1 {
-		t.Fatalf("expected 1 child, got %d", len(rt.Children))
+	if len(node.Roots) != 1 {
+		t.Fatalf("expected 1 root, got %d", len(node.Roots))
 	}
-	if rt.Children[0].Label != "child" {
-		t.Errorf("expected child label=child, got %s", rt.Children[0].Label)
+	if node.Roots[0].Label.Plain != "root" {
+		t.Fatalf("expected label=root, got %s", node.Roots[0].Label.Plain)
+	}
+	if len(node.Roots[0].Children) != 1 {
+		t.Fatalf("expected 1 child, got %d", len(node.Roots[0].Children))
+	}
+	if node.Roots[0].Children[0].Label.Plain != "child" {
+		t.Errorf("expected child label=child, got %s", node.Roots[0].Children[0].Label.Plain)
+	}
+}
+
+func TestHTMLReactConvertRichTextables(t *testing.T) {
+	text := api.Text{
+		Content: "status:",
+		Style:   "font-bold text-green-600",
+		Children: []api.Textable{
+			icons.Check,
+			api.Text{Content: " healthy"},
+		},
+	}.WithTooltip(api.Text{Content: "all checks passing"})
+
+	textNode := convertTextable(text)
+	if textNode.Kind != "text" {
+		t.Fatalf("expected text node, got %s", textNode.Kind)
+	}
+	if textNode.Tooltip == nil || textNode.Tooltip.Plain != "all checks passing" {
+		t.Fatalf("expected tooltip to be preserved, got %#v", textNode.Tooltip)
+	}
+	if len(textNode.Children) != 2 {
+		t.Fatalf("expected 2 children, got %d", len(textNode.Children))
+	}
+
+	groupNode := convertTextable(api.ButtonGroup{
+		Buttons: []api.Button{
+			{Label: "Docs", Href: "https://example.com/docs"},
+			{Label: "Restart", ID: "restart"},
+		},
+	})
+	if groupNode.Kind != "button-group" || len(groupNode.Items) != 2 {
+		t.Fatalf("expected button-group with 2 items, got %#v", groupNode)
+	}
+
+	mapNode := convertTextable(api.DescriptionList{
+		Items: []api.KeyValuePair{
+			{Key: "owner", Value: "platform"},
+			{Key: "region", Value: "eu-west-1"},
+		},
+	})
+	if mapNode.Kind != "map" || len(mapNode.Fields) != 2 {
+		t.Fatalf("expected 2 map fields, got %#v", mapNode)
 	}
 }
 
 func TestHTMLReactBuildHTML(t *testing.T) {
-	html := buildReactHTML(`{"type":"text","text":"hello"}`, "")
+	html := buildReactHTML(`{"version":1,"node":{"kind":"text","text":"hello"}}`)
 
 	checks := []string{
 		"clicky-data",
-		"text/babel",
-		"react.production.min.js",
-		"babel.min.js",
 		`id="root"`,
+		"@flanksource/clicky-ui",
+		"importmap",
+		`data-theme="light"`,
+		"tokens.css",
 		"tailwindcss.com",
 		"iconify",
+		"prismjs",
 	}
 	for _, check := range checks {
 		if !strings.Contains(html, check) {

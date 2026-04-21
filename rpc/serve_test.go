@@ -385,3 +385,53 @@ func TestSwaggerServer_Integration(t *testing.T) {
 		})
 	}
 }
+
+func TestExtractFormatOpts_ClickyJSON(t *testing.T) {
+	cases := []struct {
+		name string
+		req  *http.Request
+		want string
+	}{
+		{
+			name: "query param ?format=clicky-json",
+			req:  httptest.NewRequest("GET", "/x?format=clicky-json", nil),
+			want: "clicky-json",
+		},
+		{
+			name: "Accept: application/clicky+json",
+			req: func() *http.Request {
+				r := httptest.NewRequest("GET", "/x", nil)
+				r.Header.Set("Accept", "application/clicky+json")
+				return r
+			}(),
+			want: "clicky-json",
+		},
+		{
+			name: "Accept list with clicky+json and weight",
+			req: func() *http.Request {
+				r := httptest.NewRequest("GET", "/x", nil)
+				r.Header.Set("Accept", "application/clicky+json; q=1.0, application/json; q=0.5")
+				return r
+			}(),
+			want: "clicky-json",
+		},
+		{
+			name: "no signal defaults to json",
+			req:  httptest.NewRequest("GET", "/x", nil),
+			want: "json",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := extractFormatOpts(tc.req).Format
+			assert.Equal(t, tc.want, got)
+		})
+	}
+}
+
+func TestFormatToContentType_ClickyJSON(t *testing.T) {
+	assert.Equal(t, "application/clicky+json", formatToContentType("clicky-json"))
+	assert.Equal(t, "text/html; charset=utf-8", formatToContentType("html-react"))
+	assert.Equal(t, "application/json", formatToContentType("json"))
+}
