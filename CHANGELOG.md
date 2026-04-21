@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.21.5](https://github.com/flanksource/clicky/compare/v1.21.4...v1.21.5) (2026-04-21)
+
+
+### ✨ Features
+
+* **exec:** add atomic process tree termination with WithProcessGroup and KillTree ([0537211](https://github.com/flanksource/clicky/commit/05372118ae07217102601836cc27025e01d0e96b))
+* **formatters,entity,rpc:** add clicky-json format and typed flags support for entities ([e541744](https://github.com/flanksource/clicky/commit/e54174494b77dcab166a25a13e94313029ba195d))
+
+
+### 🐛 Bug Fixes
+
+* **cobra_command:** track args field separately from flag lookup to support dual flag+args ([bdc4049](https://github.com/flanksource/clicky/commit/bdc40499ef85111de1ab923a28335b4056b6aeea))
+
 ## [1.21.4](https://github.com/flanksource/clicky/compare/v1.21.3...v1.21.4) (2026-04-14)
 
 
