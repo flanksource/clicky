@@ -200,6 +200,7 @@ type Task struct {
 	name        string
 	description string
 	modelName   string
+	id          string
 	prompt      string
 	identity    string // Unique identifier for task deduplication
 
@@ -257,6 +258,11 @@ func (t *Task) Identity() string {
 	return t.identity
 }
 
+// ID returns the task's immutable UUID.
+func (t *Task) ID() string {
+	return t.id
+}
+
 // Context returns the task's context for cancellation
 func (t *Task) Context() context.Context {
 	return t.ctx
@@ -276,6 +282,7 @@ func (t *Task) Cancel() {
 		if t.cancel != nil {
 			t.cancel()
 		}
+		t.dirty.Store(true)
 		t.signalDone() // Signal task completion
 		t.mu.Unlock()
 	} else {

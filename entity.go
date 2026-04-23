@@ -7,6 +7,7 @@ import (
 	"os"
 	"reflect"
 	"sort"
+	"strings"
 	"sync"
 
 	"github.com/flanksource/clicky/api"
@@ -37,6 +38,7 @@ type EntityInfo struct {
 	Operations  []EntityOperation
 	Actions     []ActionInfo
 	BulkActions []BulkActionInfo
+	ValidArgs   func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective)
 	IsAdmin     bool
 }
 
@@ -48,7 +50,9 @@ type EntityOperation struct {
 	// onto the generated cobra command and collects their values into the
 	// flag map passed to DataFunc. Used by actions that implement
 	// ActionFlags; ignored for the built-in CRUD verbs.
-	FlagsType reflect.Type
+	FlagsType       reflect.Type
+	LookupFunc      func(flags map[string]string, args []string) (any, error)
+	BindCompletions func(cmd *cobra.Command)
 }
 
 // ActionInfo is the type-erased representation of a single-entity action.
@@ -64,11 +68,13 @@ type ActionInfo struct {
 
 // BulkActionInfo is the type-erased representation of a bulk action.
 type BulkActionInfo struct {
-	Name       string
-	Short      string
-	DataFunc   func(flags map[string]string, args []string) (any, error)
-	FilterFunc func(flags map[string]string, args []string) (any, error)
-	ListType   reflect.Type
+	Name            string
+	Short           string
+	DataFunc        func(flags map[string]string, args []string) (any, error)
+	FilterFunc      func(flags map[string]string, args []string) (any, error)
+	LookupFunc      func(flags map[string]string, args []string) (any, error)
+	ListType        reflect.Type
+	BindCompletions func(cmd *cobra.Command)
 }
 
 // ActionFlags is a marker interface implemented by options structs that
@@ -81,6 +87,15 @@ type BulkActionInfo struct {
 // struct, then pass a zero value of that struct in `Action.Flags`.
 type ActionFlags interface {
 	ClickyActionFlags()
+}
+
+// Filter resolves raw entity option values into the backend-specific shape and
+// exposes UI metadata for the currently selected and available values.
+type Filter[ListOpts any] interface {
+	Key() string
+	Label() string
+	Lookup(opts *ListOpts) (map[string]api.Textable, error)
+	Options(opts ListOpts) map[string]api.Textable
 }
 
 // Action represents a custom operation on a single entity by ID.
@@ -128,6 +143,7 @@ type Entity[T EntityItem, ListOpts any] struct {
 	Create       func(body map[string]any) (any, error)
 	Update       func(id string, body map[string]any) (any, error)
 	Delete       func(id string) error
+	Filters      []Filter[ListOpts]
 
 	Actions     []Action[T]
 	BulkActions []BulkAction[T, ListOpts]
@@ -150,24 +166,30 @@ func RegisterEntity[T EntityItem, ListOpts any](e Entity[T, ListOpts]) {
 	}
 
 	info := EntityInfo{
-		Name:     name,
-		Parent:   e.Parent,
-		Aliases:  e.Aliases,
-		Type:     reflect.TypeOf((*T)(nil)).Elem(),
-		ListType: reflect.TypeOf((*ListOpts)(nil)).Elem(),
+		Name:      name,
+		Parent:    e.Parent,
+		Aliases:   e.Aliases,
+		Type:      reflect.TypeOf((*T)(nil)).Elem(),
+		ListType:  reflect.TypeOf((*ListOpts)(nil)).Elem(),
+		ValidArgs: e.ValidArgs,
 	}
 
 	if e.List != nil {
 		info.Operations = append(info.Operations, EntityOperation{
 			Verb: "list",
 			DataFunc: func(flagMap map[string]string, args []string) (any, error) {
-				opts := buildOpts[ListOpts](flagMap)
+				opts, err := resolveEntityOpts[ListOpts](flagMap, e.Filters)
+				if err != nil {
+					return nil, err
+				}
 				items, err := e.List(opts)
 				if err != nil {
 					return nil, err
 				}
 				return withEntityIDs(items), nil
 			},
+			LookupFunc:      buildLookupFunc[ListOpts](e.Filters),
+			BindCompletions: buildFilterCompletionBinder[ListOpts](e.Filters),
 		})
 	}
 
@@ -285,9 +307,14 @@ func RegisterEntity[T EntityItem, ListOpts any](e Entity[T, ListOpts]) {
 		}
 		if b.RunFilter != nil {
 			bai.FilterFunc = func(flagMap map[string]string, args []string) (any, error) {
-				opts := buildOpts[ListOpts](flagMap)
+				opts, err := resolveEntityOpts[ListOpts](flagMap, e.Filters)
+				if err != nil {
+					return nil, err
+				}
 				return b.RunFilter(opts, flagMap)
 			}
+			bai.LookupFunc = buildLookupFunc[ListOpts](e.Filters)
+			bai.BindCompletions = buildFilterCompletionBinder[ListOpts](e.Filters)
 		}
 		info.BulkActions = append(info.BulkActions, bai)
 	}
@@ -297,23 +324,48 @@ func RegisterEntity[T EntityItem, ListOpts any](e Entity[T, ListOpts]) {
 		if admin.Name == "" || admin.Name == name {
 			admin.Name = name
 		}
+		adminValidArgs := admin.ValidArgs
+		if adminValidArgs == nil {
+			adminValidArgs = e.ValidArgs
+		}
 		// Store as admin sub-entity — GenerateCLI nests under "admin" parent
 		adminInfo := EntityInfo{
-			Name:     admin.Name,
-			Type:     info.Type,
-			ListType: info.ListType,
-			IsAdmin:  true,
+			Name:      admin.Name,
+			Type:      info.Type,
+			ListType:  info.ListType,
+			ValidArgs: adminValidArgs,
+			IsAdmin:   true,
 		}
 		if admin.List != nil {
 			adminInfo.Operations = append(adminInfo.Operations, EntityOperation{
 				Verb: "list",
 				DataFunc: func(flagMap map[string]string, args []string) (any, error) {
-					opts := buildOpts[ListOpts](flagMap)
+					opts, err := resolveEntityOpts[ListOpts](flagMap, admin.Filters)
+					if err != nil {
+						return nil, err
+					}
 					return admin.List(opts)
 				},
+				LookupFunc:      buildLookupFunc[ListOpts](admin.Filters),
+				BindCompletions: buildFilterCompletionBinder[ListOpts](admin.Filters),
 			})
 		}
-		if admin.Get != nil {
+		if admin.GetWithFlags != nil {
+			adminInfo.Operations = append(adminInfo.Operations, EntityOperation{
+				Verb:      "get",
+				FlagsType: actionFlagsType(admin.GetFlags),
+				DataFunc: func(flagMap map[string]string, args []string) (any, error) {
+					id := flagMap["id"]
+					if id == "" && len(args) > 0 {
+						id = args[0]
+					}
+					if id == "" {
+						return nil, fmt.Errorf("id is required")
+					}
+					return admin.GetWithFlags(id, flagMap)
+				},
+			})
+		} else if admin.Get != nil {
 			adminInfo.Operations = append(adminInfo.Operations, EntityOperation{
 				Verb: "get",
 				DataFunc: func(flagMap map[string]string, args []string) (any, error) {
@@ -424,7 +476,7 @@ func generateEntityCLI(parent *cobra.Command, entity EntityInfo) {
 			Verb:      action.Name,
 			DataFunc:  action.DataFunc,
 			FlagsType: action.FlagsType,
-		})
+		}, entity.ValidArgs)
 	}
 
 	for _, ba := range entity.BulkActions {
@@ -437,13 +489,13 @@ func generateEntitySubcommand(parent *cobra.Command, entity EntityInfo, op Entit
 	case "list":
 		generateListCommand(parent, entity, op)
 	case "get":
-		generateIDCommand(parent, "get", fmt.Sprintf("Get a %s by ID", entity.Name), op)
+		generateIDCommand(parent, "get", fmt.Sprintf("Get a %s by ID", entity.Name), op, entity.ValidArgs)
 	case "create":
 		generateBodyCommand(parent, "create", fmt.Sprintf("Create a %s", entity.Name), op)
 	case "update":
 		generateBodyCommand(parent, "update", fmt.Sprintf("Update a %s", entity.Name), op)
 	case "delete":
-		generateIDCommand(parent, "delete", fmt.Sprintf("Delete a %s", entity.Name), op)
+		generateIDCommand(parent, "delete", fmt.Sprintf("Delete a %s", entity.Name), op, entity.ValidArgs)
 	}
 }
 
@@ -467,12 +519,18 @@ func generateListCommand(parent *cobra.Command, entity EntityInfo, op EntityOper
 
 	// Bind filter flags from the ListOpts type
 	bindTypeFlags(cmd, entity.ListType)
+	if op.BindCompletions != nil {
+		op.BindCompletions(cmd)
+	}
 
 	parent.AddCommand(cmd)
 	dataFuncRegistry.Store(cmd, op.DataFunc)
+	if op.LookupFunc != nil {
+		lookupFuncRegistry.Store(cmd, op.LookupFunc)
+	}
 }
 
-func generateIDCommand(parent *cobra.Command, verb, short string, op EntityOperation) {
+func generateIDCommand(parent *cobra.Command, verb, short string, op EntityOperation, validArgs func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective)) {
 	hasFlags := op.FlagsType != nil
 	use := fmt.Sprintf("%s <id>", verb)
 	if hasFlags {
@@ -502,6 +560,9 @@ func generateIDCommand(parent *cobra.Command, verb, short string, op EntityOpera
 	}
 	if verb == "get" {
 		cmd.Aliases = []string{"inspect"}
+	}
+	if validArgs != nil {
+		cmd.ValidArgsFunction = validArgs
 	}
 	if hasFlags {
 		bindTypeFlags(cmd, op.FlagsType)
@@ -579,6 +640,13 @@ func generateBodyCommand(parent *cobra.Command, verb, short string, op EntityOpe
 }
 
 func generateBulkActionCommand(parent *cobra.Command, ba BulkActionInfo) {
+	execute := func(flagMap map[string]string, args []string) (any, error) {
+		if ba.FilterFunc != nil && flagMap["filter"] != "" {
+			return ba.FilterFunc(flagMap, args)
+		}
+		return ba.DataFunc(flagMap, args)
+	}
+
 	cmd := &cobra.Command{
 		Use:   fmt.Sprintf("%s <id> [id...]", ba.Name),
 		Short: ba.Short,
@@ -590,18 +658,7 @@ func generateBulkActionCommand(parent *cobra.Command, ba BulkActionInfo) {
 			})
 
 			// Use filter mode if --filter flag is set and FilterFunc exists
-			if ba.FilterFunc != nil && flagMap["filter"] != "" {
-				result, err := ba.FilterFunc(flagMap, args)
-				if err != nil {
-					return err
-				}
-				if result != nil {
-					MustPrint(result, Flags.FormatOptions)
-				}
-				return nil
-			}
-
-			result, err := ba.DataFunc(flagMap, args)
+			result, err := execute(flagMap, args)
 			if err != nil {
 				return err
 			}
@@ -614,10 +671,16 @@ func generateBulkActionCommand(parent *cobra.Command, ba BulkActionInfo) {
 
 	if ba.FilterFunc != nil {
 		bindTypeFlags(cmd, ba.ListType)
+		if ba.BindCompletions != nil {
+			ba.BindCompletions(cmd)
+		}
 	}
 
 	parent.AddCommand(cmd)
-	dataFuncRegistry.Store(cmd, ba.DataFunc)
+	dataFuncRegistry.Store(cmd, execute)
+	if ba.LookupFunc != nil {
+		lookupFuncRegistry.Store(cmd, ba.LookupFunc)
+	}
 }
 
 // bindTypeFlags registers cobra flags from a struct type's field tags.
@@ -628,33 +691,243 @@ func bindTypeFlags(cmd *cobra.Command, t reflect.Type) {
 	}
 }
 
-// buildOpts creates an instance of T and populates it from a flag map.
-func buildOpts[T any](flagMap map[string]string) T {
-	t := reflect.TypeOf((*T)(nil)).Elem()
-	v := reflect.New(t).Elem()
+func buildFilterCompletionBinder[T any](filters []Filter[T]) func(cmd *cobra.Command) {
+	if len(filters) == 0 {
+		return nil
+	}
 
-	fieldInfos, _ := flags.ParseStructFields(t)
-	for _, info := range fieldInfos {
-		name := info.FlagName
-		if name == "" {
-			name = lo.KebabCase(info.FieldName)
-		}
-		if val, ok := flagMap[name]; ok && val != "" {
-			field := v.FieldByIndex(info.FieldPath)
-			switch field.Kind() {
-			case reflect.String:
-				field.SetString(val)
-			case reflect.Int, reflect.Int64:
-				var n int64
-				_, _ = fmt.Sscanf(val, "%d", &n)
-				field.SetInt(n)
-			case reflect.Bool:
-				field.SetBool(val == "true")
+	return func(cmd *cobra.Command) {
+		for _, filter := range filters {
+			if cmd.Flag(filter.Key()) == nil {
+				continue
 			}
+			if _, exists := cmd.GetFlagCompletionFunc(filter.Key()); exists {
+				continue
+			}
+
+			filter := filter
+			_ = cmd.RegisterFlagCompletionFunc(filter.Key(), func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+				flagMap := make(map[string]string)
+				cmd.Flags().Visit(func(f *pflag.Flag) {
+					if f.Name == filter.Key() {
+						return
+					}
+					flagMap[f.Name] = f.Value.String()
+				})
+
+				opts, err := resolveEntityOpts[T](flagMap, filters)
+				if err != nil {
+					return nil, cobra.ShellCompDirectiveError
+				}
+
+				options := filter.Options(opts)
+				if len(options) == 0 {
+					return nil, cobra.ShellCompDirectiveNoFileComp
+				}
+
+				keys := make([]string, 0, len(options))
+				for key := range options {
+					if strings.HasPrefix(key, toComplete) {
+						keys = append(keys, key)
+					}
+				}
+				sort.Strings(keys)
+
+				completions := make([]string, 0, len(keys))
+				for _, key := range keys {
+					description := sanitizeCompletionDescription(options[key].String())
+					if description == "" || description == key {
+						completions = append(completions, key)
+						continue
+					}
+					completions = append(completions, cobra.CompletionWithDesc(key, description))
+				}
+
+				return completions, cobra.ShellCompDirectiveNoFileComp
+			})
+		}
+	}
+}
+
+func sanitizeCompletionDescription(value string) string {
+	value = strings.TrimSpace(value)
+	value = strings.ReplaceAll(value, "\t", " ")
+	value = strings.ReplaceAll(value, "\n", " ")
+	return value
+}
+
+// buildOpts creates an instance of T and populates it from a flag map.
+func buildOpts[T any](flagMap map[string]string) (T, error) {
+	var zero T
+	t := reflect.TypeOf((*T)(nil)).Elem()
+	if t.Kind() != reflect.Struct {
+		return zero, fmt.Errorf("expected struct options, got %s", t.Kind())
+	}
+
+	cmd := &cobra.Command{Use: "opts"}
+	fieldInfos, err := flags.ParseStructFields(t)
+	if err != nil {
+		return zero, err
+	}
+	flagValues := make([]*flags.FlagValue, 0, len(fieldInfos))
+	for _, info := range fieldInfos {
+		if fv := flags.BindFlag(cmd, info); fv != nil {
+			flagValues = append(flagValues, fv)
 		}
 	}
 
-	return v.Interface().(T)
+	for name, val := range flagMap {
+		flag := cmd.Flags().Lookup(name)
+		if flag == nil {
+			continue
+		}
+		if err := flag.Value.Set(val); err != nil {
+			return zero, fmt.Errorf("setting flag %s: %w", name, err)
+		}
+		flag.Changed = true
+	}
+
+	v := reflect.New(t).Elem()
+	for _, fv := range flagValues {
+		if err := flags.AssignFieldValue(v, fv, nil, false); err != nil {
+			return zero, err
+		}
+	}
+
+	return v.Interface().(T), nil
+}
+
+func resolveEntityOpts[T any](flagMap map[string]string, filters []Filter[T]) (T, error) {
+	opts, err := buildOpts[T](flagMap)
+	if err != nil {
+		return opts, err
+	}
+	_, err = applyEntityFilters(&opts, filters)
+	return opts, err
+}
+
+func buildLookupFunc[T any](filters []Filter[T]) func(flags map[string]string, args []string) (any, error) {
+	if len(filters) == 0 {
+		return nil
+	}
+
+	lookupMetadata := buildLookupMetadata[T]()
+
+	return func(flagMap map[string]string, args []string) (any, error) {
+		opts, err := buildOpts[T](flagMap)
+		if err != nil {
+			return nil, err
+		}
+
+		selected, err := applyEntityFilters(&opts, filters)
+		if err != nil {
+			return nil, err
+		}
+
+		response := entityLookupResponse{
+			Filters: make(map[string]entityLookupFilter, len(filters)),
+		}
+		for _, filter := range filters {
+			meta := lookupMetadata[filter.Key()]
+			response.Filters[filter.Key()] = entityLookupFilter{
+				Label:    filter.Label(),
+				Options:  toClickyNodeMap(filter.Options(opts)),
+				Selected: toClickyNodeMap(selected[filter.Key()]),
+				Multi:    meta.Multi,
+				Type:     meta.Type,
+			}
+		}
+		return response, nil
+	}
+}
+
+type entityLookupMetadata struct {
+	Multi bool
+	Type  string
+}
+
+func buildLookupMetadata[T any]() map[string]entityLookupMetadata {
+	structType := reflect.TypeOf((*T)(nil)).Elem()
+	if structType.Kind() != reflect.Struct {
+		return nil
+	}
+
+	fields, err := flags.ParseStructFields(structType)
+	if err != nil {
+		return nil
+	}
+
+	metadata := make(map[string]entityLookupMetadata, len(fields))
+	for _, field := range fields {
+		if field.FlagName == "" || field.FlagName == "-" {
+			continue
+		}
+		metadata[field.FlagName] = describeLookupField(field)
+	}
+
+	return metadata
+}
+
+func describeLookupField(field flags.FieldInfo) entityLookupMetadata {
+	fieldType := field.FieldType
+	for fieldType.Kind() == reflect.Ptr {
+		fieldType = fieldType.Elem()
+	}
+
+	meta := entityLookupMetadata{
+		Multi: fieldType.Kind() == reflect.Slice,
+	}
+
+	switch {
+	case fieldType.Kind() == reflect.Bool:
+		meta.Type = "bool"
+	case isNumericKind(fieldType.Kind()):
+		meta.Type = "number"
+	case fieldType.String() == "time.Time":
+		switch {
+		case isRangeStartFlag(field.FlagName):
+			meta.Type = "from"
+		case isRangeEndFlag(field.FlagName):
+			meta.Type = "to"
+		default:
+			meta.Type = "date"
+		}
+	}
+
+	return meta
+}
+
+func isNumericKind(kind reflect.Kind) bool {
+	switch kind {
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64,
+		reflect.Float32, reflect.Float64:
+		return true
+	default:
+		return false
+	}
+}
+
+func isRangeStartFlag(name string) bool {
+	return name == "from" || strings.HasSuffix(name, "-from")
+}
+
+func isRangeEndFlag(name string) bool {
+	return name == "to" || strings.HasSuffix(name, "-to")
+}
+
+func applyEntityFilters[T any](opts *T, filters []Filter[T]) (map[string]map[string]api.Textable, error) {
+	selected := make(map[string]map[string]api.Textable, len(filters))
+	for _, filter := range filters {
+		values, err := filter.Lookup(opts)
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", filter.Key(), err)
+		}
+		if len(values) > 0 {
+			selected[filter.Key()] = values
+		}
+	}
+	return selected, nil
 }
 
 // withEntityIDs wraps each EntityItem in the slice to include a _id field in JSON output.

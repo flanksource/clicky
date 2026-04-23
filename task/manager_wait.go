@@ -35,6 +35,36 @@ func CancelAll() {
 	}
 }
 
+// StopTask cancels a specific pending or running task by immutable ID.
+func StopTask(id string) bool {
+	if global == nil || id == "" {
+		return false
+	}
+
+	global.mu.RLock()
+	tasks := make([]*Task, len(global.tasks))
+	copy(tasks, global.tasks)
+	global.mu.RUnlock()
+
+	for _, task := range tasks {
+		if task == nil || task.ID() != id {
+			continue
+		}
+
+		task.mu.Lock()
+		runnable := task.status == StatusPending || task.status == StatusRunning
+		task.mu.Unlock()
+		if !runnable {
+			return false
+		}
+
+		task.Cancel()
+		return true
+	}
+
+	return false
+}
+
 // ClearTasks removes all completed tasks from the task list
 func ClearTasks() {
 	global.mu.Lock()
@@ -157,7 +187,7 @@ func Debug() string {
 	defer global.mu.RUnlock()
 
 	var result string
-	result += fmt.Sprintf("Task Manager: {no-color=%v, no-progress=%v, workers=%v}\n", global.noColor.Load(), global.noProgress.Load(), global.workersActive.Load())
+	result += fmt.Sprintf("Task Manager: {no-color=%v, no-progress=%v, no-render=%v, workers=%v}\n", global.noColor.Load(), global.noProgress.Load(), global.noRender.Load(), global.workersActive.Load())
 	result += fmt.Sprintf("  Total Tasks: %d\n", len(global.tasks))
 	result += fmt.Sprintf("  Active Workers: %d\n", global.workersActive.Load())
 	result += "  Task Details:\n"
@@ -201,7 +231,7 @@ func WaitForAllTasks() {
 	}
 
 	// For plain render mode, force a final render
-	if global.noProgress.Load() {
+	if global.noProgress.Load() && !global.noRender.Load() {
 		global.PlainRender()
 	}
 }

@@ -29,7 +29,7 @@ type TaskSnapshot struct {
 // SnapshotTask creates a TaskSnapshot from a Task.
 func SnapshotTask(t *Task, groupName string) TaskSnapshot {
 	snap := TaskSnapshot{
-		ID:     t.Name(),
+		ID:     t.ID(),
 		Name:   t.Name(),
 		Type:   "task",
 		Group:  groupName,

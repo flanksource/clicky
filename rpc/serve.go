@@ -407,6 +407,28 @@ func (s *SwaggerServer) registerExecutionRoutes(mux *http.ServeMux) {
 	registered := make(map[string]string)
 	routeCount := 0
 
+	registerRoute := func(method, path, opName string) bool {
+		sanitized, ok := sanitizePathParams(path)
+		if !ok {
+			fmt.Printf("⚠️  Warning: Skipping route with invalid path params: %s %s\n", method, path)
+			return false
+		}
+
+		pattern := method + " " + sanitized
+		if existingOp, found := registered[pattern]; found {
+			fmt.Printf("⚠️  Warning: Duplicate endpoint detected\n")
+			fmt.Printf("    Path: %s\n", pattern)
+			fmt.Printf("    Already registered by: %s\n", existingOp)
+			fmt.Printf("    Skipping: %s\n", opName)
+			return false
+		}
+
+		registered[pattern] = opName
+		mux.HandleFunc(pattern, s.handleExecuteCommand)
+		routeCount++
+		return true
+	}
+
 	// Register a route for each operation
 	for _, op := range s.executor.service.Operations {
 		path := op.Path
@@ -414,26 +436,16 @@ func (s *SwaggerServer) registerExecutionRoutes(mux *http.ServeMux) {
 
 		// Replace spaces in path segments with hyphens
 		path = strings.ReplaceAll(path, " ", "-")
+		registerRoute(method, path, op.Name)
 
-		// Sanitize path parameter names: Go's ServeMux requires alphanumeric wildcard names
-		sanitized, ok := sanitizePathParams(path)
-		if !ok {
-			fmt.Printf("⚠️  Warning: Skipping route with invalid path params: %s %s\n", method, path)
+		if op.LookupFunc == nil {
 			continue
 		}
 
-		// Register the route with method prefix (Go 1.22+ ServeMux)
-		pattern := method + " " + sanitized
-		if existingOp, found := registered[pattern]; found {
-			fmt.Printf("⚠️  Warning: Duplicate endpoint detected\n")
-			fmt.Printf("    Path: %s\n", pattern)
-			fmt.Printf("    Already registered by: %s\n", existingOp)
-			fmt.Printf("    Skipping: %s\n", op.Name)
-			continue
+		registerRoute(http.MethodHead, path, op.Name+" lookup")
+		if !strings.EqualFold(method, http.MethodGet) {
+			registerRoute(http.MethodGet, path, op.Name+" lookup")
 		}
-		registered[pattern] = op.Name
-		mux.HandleFunc(pattern, s.handleExecuteCommand)
-		routeCount++
 	}
 	fmt.Printf("✅ Registered %d executor routes\n", routeCount)
 }
@@ -539,11 +551,30 @@ func (s *SwaggerServer) executeCommandCore(r *http.Request) (any, *ExecutionResp
 func (s *SwaggerServer) handleExecuteCommand(w http.ResponseWriter, r *http.Request) {
 	// Set CORS headers
 	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, HEAD, OPTIONS")
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Accept")
 
 	if r.Method == "OPTIONS" {
 		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	lookupRequested := isLookupRequest(r)
+	op := s.executor.FindOperation(r.Method, r.URL.Path)
+	if lookupRequested {
+		if op == nil || op.LookupFunc == nil {
+			op = s.executor.FindLookupOperation(r.Method, r.URL.Path)
+		}
+		if op == nil || op.LookupFunc == nil {
+			http.Error(w, fmt.Sprintf("No lookup found for %s %s", r.Method, r.URL.Path), http.StatusNotFound)
+			return
+		}
+		s.handleLookupCommand(w, r, op)
+		return
+	}
+
+	if op == nil {
+		http.Error(w, fmt.Sprintf("No operation found for %s %s", r.Method, r.URL.Path), http.StatusNotFound)
 		return
 	}
 
@@ -566,6 +597,38 @@ func (s *SwaggerServer) handleExecuteCommand(w http.ResponseWriter, r *http.Requ
 	// Format and write response body using FormatManager (defaults to json)
 	opts := extractFormatOpts(r)
 	s.writeFormattedResponse(w, data, opts, statusCode)
+}
+
+func isLookupRequest(r *http.Request) bool {
+	if strings.EqualFold(r.Method, http.MethodHead) {
+		return true
+	}
+	return r.URL.Query().Get("__lookup") == "filters"
+}
+
+func (s *SwaggerServer) handleLookupCommand(w http.ResponseWriter, r *http.Request, op *RPCOperation) {
+	req, err := s.executor.ExtractRequestFromHTTP(r, op)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to extract parameters: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	data, err := op.LookupFunc(req.Flags, req.Args)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json+clicky")
+	w.WriteHeader(http.StatusOK)
+
+	if strings.EqualFold(r.Method, http.MethodHead) {
+		return
+	}
+
+	if err := json.NewEncoder(w).Encode(data); err != nil {
+		http.Error(w, fmt.Sprintf("failed to encode lookup response: %v", err), http.StatusInternalServerError)
+	}
 }
 
 // writeFormattedResponse formats data using the FormatManager and writes it as
@@ -618,7 +681,7 @@ func extractFormatOpts(r *http.Request) formatOptions {
 			case "application/json":
 				opts.Format = "json"
 				return opts
-			case "application/clicky+json":
+			case "application/clicky+json", "application/json+clicky":
 				opts.Format = "clicky-json"
 				return opts
 			case "application/yaml", "text/yaml", "application/x-yaml":
@@ -650,7 +713,7 @@ func extractFormatOpts(r *http.Request) formatOptions {
 func formatToContentType(format string) string {
 	switch format {
 	case "clicky-json":
-		return "application/clicky+json"
+		return "application/json+clicky"
 	case "yaml", "yml":
 		return "application/yaml"
 	case "csv":

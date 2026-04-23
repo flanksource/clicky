@@ -70,6 +70,14 @@ func TestFormatHandler_ClickyJSON(t *testing.T) {
 				return r
 			}(),
 		},
+		{
+			name: "Accept: application/json+clicky",
+			req: func() *http.Request {
+				r := httptest.NewRequest("GET", "http://example.com/users", nil)
+				r.Header.Set("Accept", "application/json+clicky")
+				return r
+			}(),
+		},
 	}
 
 	for _, tc := range cases {
@@ -80,8 +88,8 @@ func TestFormatHandler_ClickyJSON(t *testing.T) {
 			if w.Code != http.StatusOK {
 				t.Fatalf("status = %d, want 200", w.Code)
 			}
-			if ct := w.Header().Get("Content-Type"); ct != "application/clicky+json" {
-				t.Errorf("Content-Type = %q, want application/clicky+json", ct)
+			if ct := w.Header().Get("Content-Type"); ct != "application/json+clicky" {
+				t.Errorf("Content-Type = %q, want application/json+clicky", ct)
 			}
 
 			var doc struct {

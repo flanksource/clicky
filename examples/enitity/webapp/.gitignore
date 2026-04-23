@@ -1,0 +1,13 @@
+node_modules
+# Keep dist/index.html committed as a placeholder so go:embed always has
+# something to embed. `vite build` regenerates the directory with real
+# hashed assets which we ignore here.
+dist/assets
+dist/*.js
+dist/*.css
+dist/*.svg
+dist/*.ico
+dist/*.png
+dist/.vite
+*.log
+.vite

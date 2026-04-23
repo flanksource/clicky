@@ -104,6 +104,7 @@ func WithIdentity(identity string) Option {
 // ManagerOptions contains configuration options for TaskManager
 type ManagerOptions struct {
 	NoProgress      bool          // Disable progress display
+	NoRender        bool          // Disable all task rendering
 	MaxConcurrent   int           // Maximum concurrent tasks (0 = unlimited)
 	GracefulTimeout time.Duration // Timeout for graceful shutdown
 
@@ -116,6 +117,7 @@ type ManagerOptions struct {
 func DefaultManagerOptions() *ManagerOptions {
 	return &ManagerOptions{
 		NoProgress:      false,
+		NoRender:        false,
 		MaxConcurrent:   1,
 		GracefulTimeout: 10 * time.Second,
 		MaxRetries:      3,
@@ -126,6 +128,7 @@ func DefaultManagerOptions() *ManagerOptions {
 // Apply configures a TaskManager with these options
 func (opts *ManagerOptions) Apply() {
 	SetNoProgress(opts.NoProgress)
+	SetNoRender(opts.NoRender)
 	SetMaxConcurrent(opts.MaxConcurrent)
 	SetGracefulTimeout(opts.GracefulTimeout)
 

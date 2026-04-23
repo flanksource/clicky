@@ -15,6 +15,7 @@ import (
 	"github.com/flanksource/commons/collections"
 	flanksourceContext "github.com/flanksource/commons/context"
 	"github.com/flanksource/commons/logger"
+	"github.com/google/uuid"
 	"golang.org/x/sync/semaphore"
 	"golang.org/x/term"
 )
@@ -37,6 +38,7 @@ type Manager struct {
 	onInterrupt     func()      // optional cleanup callback
 	noColor         atomic.Bool // Disable colored output
 	noProgress      atomic.Bool // Disable progress display
+	noRender        atomic.Bool // Disable all task rendering
 
 	// Priority queue for task scheduling
 	taskQueue     *collections.Queue[*Task]
@@ -52,6 +54,7 @@ type Manager struct {
 	renderDone    chan struct{}
 	renderStopped sync.Once
 	renderStarted sync.Once
+	renderOwnsTTY bool
 
 	// Terminal state
 	originalTermState *term.State
@@ -266,6 +269,16 @@ func SetNoProgress(noProgress bool) {
 	global.noProgress.Store(noProgress)
 }
 
+// SetNoRender enables or disables all task rendering, including final summaries.
+func SetNoRender(noRender bool) {
+	global.noRender.Store(noRender)
+}
+
+// IsNoRender reports whether task rendering is currently disabled.
+func IsNoRender() bool {
+	return global.noRender.Load()
+}
+
 // SetMaxConcurrent sets the maximum number of concurrent tasks
 func SetMaxConcurrent(max int) {
 	global.mu.Lock()
@@ -315,6 +328,7 @@ func (tm *Manager) newTask(name string, opts ...Option) *Task {
 
 	task := &Task{
 		name:           name,
+		id:             uuid.NewString(),
 		status:         StatusPending,
 		progress:       0,
 		maxValue:       100,
@@ -355,11 +369,13 @@ func (tm *Manager) newTask(name string, opts ...Option) *Task {
 }
 
 func (tm *Manager) enqueue(task *Task) *Task {
-	tm.renderStarted.Do(func() {
-		if !tm.noProgress.Load() {
-			tm.startRenderLoop()
-		}
-	})
+	if !tm.noRender.Load() {
+		tm.renderStarted.Do(func() {
+			if !tm.noProgress.Load() {
+				tm.startRenderLoop()
+			}
+		})
+	}
 
 	if task.identity != "" {
 		if existing, ok := tm.tasksByIdentity.Load(task.identity); ok {

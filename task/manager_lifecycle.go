@@ -12,9 +12,17 @@ import (
 // startRenderLoop starts the unified render loop for both interactive and non-interactive modes.
 // Must not be called concurrently with stopRender.
 func (tm *Manager) startRenderLoop() {
+	if tm.noRender.Load() {
+		return
+	}
+	if tm.isInteractive && !globalANSITerminal.tryAcquireTaskRenderer(tm) {
+		return
+	}
+
 	tm.mu.Lock()
 	tm.stopRenderCh = make(chan struct{})
 	tm.renderDone = make(chan struct{})
+	tm.renderOwnsTTY = tm.isInteractive
 	tm.mu.Unlock()
 	go tm.renderLoop()
 }
@@ -27,6 +35,7 @@ func (tm *Manager) renderLoop() {
 	defer func() {
 		if r := recover(); r != nil {
 			tm.cleanupTerminal()
+			tm.releaseRenderTerminal()
 			panic(r)
 		}
 	}()
@@ -71,14 +80,17 @@ func (tm *Manager) stopRender() {
 			close(ch)
 			<-done
 		}
-		tm.renderFinal()
+		if !tm.noRender.Load() {
+			tm.renderFinal()
+		}
 		tm.cleanupTerminal()
+		tm.releaseRenderTerminal()
 	})
 }
 
 // cleanupTerminal restores terminal to a clean state
 func (tm *Manager) cleanupTerminal() {
-	if !tm.isInteractive || tm.noProgress.Load() {
+	if !tm.isInteractive || tm.noProgress.Load() || !tm.ownsRenderTerminal() {
 		return
 	}
 	output := tm.renderer.Output()
@@ -93,6 +105,9 @@ func (tm *Manager) cleanupTerminal() {
 
 // renderFinal outputs the final task status
 func (tm *Manager) renderFinal() {
+	if tm.noRender.Load() {
+		return
+	}
 	tm.mu.RLock()
 	if len(tm.tasks) == 0 {
 		tm.mu.RUnlock()
@@ -107,5 +122,22 @@ func (tm *Manager) renderFinal() {
 		fmt.Fprintln(os.Stderr, rendered.String())
 	} else {
 		fmt.Fprintln(os.Stderr, rendered.ANSI())
+	}
+}
+
+func (tm *Manager) ownsRenderTerminal() bool {
+	tm.mu.RLock()
+	defer tm.mu.RUnlock()
+	return tm.renderOwnsTTY
+}
+
+func (tm *Manager) releaseRenderTerminal() {
+	tm.mu.Lock()
+	ownsTTY := tm.renderOwnsTTY
+	tm.renderOwnsTTY = false
+	tm.mu.Unlock()
+
+	if ownsTTY {
+		globalANSITerminal.releaseTaskRenderer(tm)
 	}
 }
