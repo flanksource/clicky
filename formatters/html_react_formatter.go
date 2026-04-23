@@ -21,9 +21,9 @@ func init() {
 
 type HTMLReactFormatter struct{}
 
-// ClickyJSONFormatter emits the Clicky document JSON (application/clicky+json)
-// that the html-react formatter embeds inside its HTML shell. The payload is
-// the same shape consumed by @flanksource/clicky-ui's <Clicky data={...} />.
+// ClickyJSONFormatter emits the Clicky document JSON (application/json+clicky).
+// The HTTP layer also accepts the legacy application/clicky+json alias. The
+// payload is the same shape consumed by @flanksource/clicky-ui's <Clicky data={...} />.
 type ClickyJSONFormatter struct{}
 
 type clickyDocument struct {

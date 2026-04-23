@@ -188,7 +188,7 @@ func acceptToFormat(accept string) string {
 			return "excel"
 		case "application/vnd.slack.block-kit+json":
 			return "slack"
-		case "application/clicky+json":
+		case "application/clicky+json", "application/json+clicky":
 			return "clicky-json"
 		case "text/plain":
 			return "pretty"
@@ -241,7 +241,7 @@ func formatToContentType(format string) string {
 	case "json":
 		return "application/json"
 	case "clicky-json":
-		return "application/clicky+json"
+		return "application/json+clicky"
 	case "yaml", "yml":
 		return "application/yaml"
 	case "csv":
