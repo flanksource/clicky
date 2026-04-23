@@ -1,8 +1,10 @@
-import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
+import { expect, test, type APIRequestContext, type Locator, type Page } from "@playwright/test";
 
 const stackRow = (page: Page, name: string) =>
   page.locator("tbody tr").filter({ hasText: name }).first();
 const explorerSearch = (page: Page) => page.getByPlaceholder("Search api explorer...");
+const responseBody = (scope: Page | Locator) =>
+  scope.locator('[aria-label="Response body"]');
 
 function escapeRegExp(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -77,6 +79,7 @@ test.describe("entity demo", () => {
     await expect(stackRow(page, "checkout")).toBeVisible();
     await expect(stackRow(page, "billing")).toBeVisible();
     await expect(page.getByText("marketing-site")).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /time range filter/i })).toBeVisible();
 
     const filteredLookup = waitForLookup(page, "/api/v1/stack", {
       team: "team/platform",
@@ -101,6 +104,43 @@ test.describe("entity demo", () => {
     await expect(page.getByText("marketing-site")).toHaveCount(0);
   });
 
+  test("renders the special time range filter and applies from/to over the real stack list", async ({
+    page,
+  }) => {
+    const stacks = waitForJson(page, "/api/v1/stack");
+    const lookup = waitForLookup(page, "/api/v1/stack", {});
+
+    await page.goto("/stacks", { waitUntil: "domcontentloaded" });
+    await Promise.all([stacks, lookup]);
+
+    await expect(page.getByRole("button", { name: /time range filter/i })).toBeVisible();
+    await expect(stackRow(page, "checkout")).toBeVisible();
+    await expect(stackRow(page, "billing")).toBeVisible();
+
+    const rangedLookup = waitForLookup(page, "/api/v1/stack", {
+      from: "now-24h",
+      to: "now",
+    });
+    await page.getByRole("button", { name: /time range filter/i }).click();
+    await page.getByRole("button", { name: /last 24 hours/i }).click();
+    await rangedLookup;
+
+    const rangedList = waitForJson(page, "/api/v1/stack", {
+      from: "now-24h",
+      to: "now",
+    });
+    await page.getByRole("button", { name: "Apply" }).click();
+    await rangedList;
+
+    await expect(stackRow(page, "checkout")).toBeVisible();
+    await expect(stackRow(page, "billing")).toHaveCount(0);
+
+    const adminList = waitForJson(page, "/api/v1/admin/stack");
+    await page.goto("/admin-stacks", { waitUntil: "domcontentloaded" });
+    await adminList;
+    await expect(page.getByRole("button", { name: /time range filter/i })).toBeVisible();
+  });
+
   test("shows cluster rows and the real cluster endpoint list", async ({ page }) => {
     const clusters = waitForJson(page, "/api/v1/catalog/cluster");
 
@@ -115,6 +155,47 @@ test.describe("entity demo", () => {
 
     await expect(page.getByText("/api/v1/catalog/cluster/{id}")).toBeVisible();
     await expect(page.getByText("Get a cluster by ID")).toBeVisible();
+  });
+
+  test("clicking a list row navigates to detail and locks the row action id", async ({
+    page,
+  }) => {
+    const stacks = waitForJson(page, "/api/v1/stack");
+
+    await page.goto("/stacks", { waitUntil: "domcontentloaded" });
+    await stacks;
+
+    await Promise.all([
+      page.waitForURL(/\/entity\/stacks\/stk-001$/),
+      stackRow(page, "checkout").getByRole("link", { name: "stk-001" }).click(),
+    ]);
+
+    await expect(responseBody(page).first()).toContainText("stk-001");
+    await expect(responseBody(page).first()).toContainText("checkout");
+    await expect(page.getByRole("radiogroup", { name: /clicky view mode/i })).toBeVisible();
+    await expect(page.getByRole("button", { name: /^download$/i })).toBeVisible();
+
+    await page.getByRole("button", { name: /restart/i }).click();
+
+    const dialog = page.getByRole("dialog");
+    await expect(dialog.getByLabel("Id")).toHaveValue("stk-001");
+    await expect(dialog.getByLabel("Id")).toBeDisabled();
+
+    const actionRequest = page.waitForResponse((response) => {
+      const url = new URL(response.url());
+      return (
+        url.pathname === "/api/v1/stack/stk-001/restart" &&
+        response.request().method() === "POST" &&
+        response.ok()
+      );
+    });
+
+    await dialog.getByLabel("Reason").fill("row-action-test");
+    await dialog.getByLabel("Drain").uncheck();
+    await dialog.getByRole("button", { name: "Execute request" }).click();
+    await actionRequest;
+
+    await expect(responseBody(dialog)).toContainText("row-action-test");
   });
 
   test("surfaces archived admin rows and explorer endpoints from the generated spec", async ({
@@ -155,8 +236,10 @@ test.describe("entity demo", () => {
     await expect(page).toHaveURL(/\/commands\/stack_list$/);
     await page.getByRole("button", { name: "Execute request" }).click();
     await listRequest;
-    await expect(page.getByLabel("Response body")).toContainText("checkout");
-    await expect(page.getByLabel("Response body")).toContainText("billing");
+    await expect(responseBody(page)).toContainText("checkout");
+    await expect(responseBody(page)).toContainText("billing");
+    await expect(page.getByRole("radiogroup", { name: /clicky view mode/i })).toBeVisible();
+    await expect(page.getByRole("button", { name: /^download$/i })).toBeVisible();
 
     await page.goto("/explorer", { waitUntil: "domcontentloaded" });
     await search.fill("get a stack by id");
@@ -168,8 +251,10 @@ test.describe("entity demo", () => {
     await page.getByLabel("Id").fill("stk-001");
     await page.getByRole("button", { name: "Execute request" }).click();
     await getRequest;
-    await expect(page.getByLabel("Response body")).toContainText("stk-001");
-    await expect(page.getByLabel("Response body")).toContainText("checkout");
+    await expect(responseBody(page)).toContainText("stk-001");
+    await expect(responseBody(page)).toContainText("checkout");
+    await expect(page.getByRole("radiogroup", { name: /clicky view mode/i })).toBeVisible();
+    await expect(page.getByRole("button", { name: /^download$/i })).toBeVisible();
 
     await page.goto("/explorer", { waitUntil: "domcontentloaded" });
     await search.fill("restart a stack");
@@ -190,8 +275,8 @@ test.describe("entity demo", () => {
     await page.getByLabel("Drain").uncheck();
     await page.getByRole("button", { name: "Execute request" }).click();
     await actionRequest;
-    await expect(page.getByLabel("Response body")).toContainText('"action": "restart"');
-    await expect(page.getByLabel("Response body")).toContainText('"reason": "explorer-test"');
+    await expect(responseBody(page)).toContainText("restart");
+    await expect(responseBody(page)).toContainText("explorer-test");
   });
 
   test("reflects a real restart mutation after reloading the stacks table", async ({

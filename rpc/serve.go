@@ -681,7 +681,7 @@ func extractFormatOpts(r *http.Request) formatOptions {
 			case "application/json":
 				opts.Format = "json"
 				return opts
-			case "application/clicky+json":
+			case "application/clicky+json", "application/json+clicky":
 				opts.Format = "clicky-json"
 				return opts
 			case "application/yaml", "text/yaml", "application/x-yaml":
@@ -713,7 +713,7 @@ func extractFormatOpts(r *http.Request) formatOptions {
 func formatToContentType(format string) string {
 	switch format {
 	case "clicky-json":
-		return "application/clicky+json"
+		return "application/json+clicky"
 	case "yaml", "yml":
 		return "application/yaml"
 	case "csv":

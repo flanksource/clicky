@@ -8,9 +8,9 @@ import { defineConfig } from "vite";
 const apiTarget = process.env.CLICKY_EXAMPLE_API_URL || "http://localhost:8080";
 
 export default defineConfig({
-  // Relative base so assets resolve correctly when served from any mount
-  // point in the Go binary (go:embed serves off "/").
-  base: "./",
+  // The example app is embedded and served from "/", so root-relative assets
+  // keep deep links like /entity/:domainKey/:id working on full page loads.
+  base: "/",
   plugins: [tailwindcss(), react()],
   resolve: {
     alias: {

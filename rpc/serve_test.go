@@ -407,6 +407,15 @@ func TestExtractFormatOpts_ClickyJSON(t *testing.T) {
 			want: "clicky-json",
 		},
 		{
+			name: "Accept: application/json+clicky",
+			req: func() *http.Request {
+				r := httptest.NewRequest("GET", "/x", nil)
+				r.Header.Set("Accept", "application/json+clicky")
+				return r
+			}(),
+			want: "clicky-json",
+		},
+		{
 			name: "Accept list with clicky+json and weight",
 			req: func() *http.Request {
 				r := httptest.NewRequest("GET", "/x", nil)
@@ -431,7 +440,7 @@ func TestExtractFormatOpts_ClickyJSON(t *testing.T) {
 }
 
 func TestFormatToContentType_ClickyJSON(t *testing.T) {
-	assert.Equal(t, "application/clicky+json", formatToContentType("clicky-json"))
+	assert.Equal(t, "application/json+clicky", formatToContentType("clicky-json"))
 	assert.Equal(t, "text/html; charset=utf-8", formatToContentType("html-react"))
 	assert.Equal(t, "application/json", formatToContentType("json"))
 }

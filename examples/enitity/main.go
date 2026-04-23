@@ -20,7 +20,6 @@ import (
 	"github.com/flanksource/clicky/api"
 	"github.com/flanksource/clicky/extensions"
 	"github.com/flanksource/clicky/rpc"
-	"github.com/flanksource/commons/duration"
 	"github.com/spf13/cobra"
 )
 
@@ -80,9 +79,9 @@ func (c cluster) GetID() string   { return c.ID }
 func (c cluster) GetName() string { return c.Name }
 
 type stackWindowOpts struct {
-	Tags         []string          `flag:"tags" help:"Return only stacks containing all of these tags"`
-	UpdatedSince time.Time         `flag:"updated-since" help:"Return stacks deployed after this time" default:"now-30d"`
-	Window       duration.Duration `flag:"window" help:"Return stacks deployed within this duration" default:"720h"`
+	Tags []string  `flag:"tags" help:"Return only stacks containing all of these tags"`
+	From time.Time `flag:"from" help:"Return stacks deployed on or after this time" default:"now-30d"`
+	To   time.Time `flag:"to" help:"Return stacks deployed on or before this time" default:"now"`
 }
 
 type stackListOpts struct {
@@ -550,10 +549,10 @@ func (d *demoStore) matchingStacksLocked(opts stackListOpts, includeArchived boo
 		if len(opts.Tags) > 0 && !containsAll(item.Tags, opts.Tags) {
 			continue
 		}
-		if !opts.UpdatedSince.IsZero() && item.LastDeploy.Before(opts.UpdatedSince) {
+		if !opts.From.IsZero() && item.LastDeploy.Before(opts.From) {
 			continue
 		}
-		if time.Duration(opts.Window) > 0 && item.LastDeploy.Before(time.Now().Add(-time.Duration(opts.Window))) {
+		if !opts.To.IsZero() && item.LastDeploy.After(opts.To) {
 			continue
 		}
 		items = append(items, item)
@@ -629,10 +628,38 @@ func (stackStatusFilter) Options(opts stackListOpts) map[string]api.Textable {
 	return options
 }
 
+type stackFromFilter struct{}
+
+func (stackFromFilter) Key() string   { return "from" }
+func (stackFromFilter) Label() string { return "From" }
+
+func (stackFromFilter) Lookup(_ *stackListOpts) (map[string]api.Textable, error) {
+	return nil, nil
+}
+
+func (stackFromFilter) Options(_ stackListOpts) map[string]api.Textable {
+	return nil
+}
+
+type stackToFilter struct{}
+
+func (stackToFilter) Key() string   { return "to" }
+func (stackToFilter) Label() string { return "To" }
+
+func (stackToFilter) Lookup(_ *stackListOpts) (map[string]api.Textable, error) {
+	return nil, nil
+}
+
+func (stackToFilter) Options(_ stackListOpts) map[string]api.Textable {
+	return nil
+}
+
 func registerEntities(store *demoStore) {
 	stackFilters := []clicky.Filter[stackListOpts]{
 		stackTeamFilter{},
 		stackStatusFilter{},
+		stackFromFilter{},
+		stackToFilter{},
 	}
 
 	clicky.RegisterEntity(clicky.Entity[stack, stackListOpts]{
