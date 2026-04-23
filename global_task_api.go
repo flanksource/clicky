@@ -54,6 +54,11 @@ func CancelAllGlobalTasks() {
 	task.CancelAll()
 }
 
+// StopTask cancels a specific global task by immutable task ID.
+func StopTask(id string) bool {
+	return task.StopTask(id)
+}
+
 // ClearGlobalTasks removes completed tasks from the global TaskManager
 func ClearGlobalTasks() {
 	task.ClearTasks()

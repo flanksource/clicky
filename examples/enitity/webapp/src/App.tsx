@@ -2,6 +2,7 @@ import { Link, Navigate, Route, Routes, useParams } from "react-router-dom";
 import {
   OperationCatalog,
   OperationCommandPage,
+  OperationEntityPage,
   ThemeSwitcher,
   type RenderLink,
 } from "@flanksource/clicky-ui";
@@ -51,6 +52,35 @@ function CommandRoute() {
   );
 }
 
+function EntityRoute() {
+  const { domainKey, id } = useParams<{ domainKey: string; id: string }>();
+  const spec = domainKey ? domains[domainKey] : undefined;
+
+  if (!spec) {
+    return (
+      <div className="p-6 text-sm text-muted-foreground">
+        Unknown domain: <code>{domainKey}</code>
+      </div>
+    );
+  }
+
+  return (
+    <OperationEntityPage
+      id={id}
+      definition={spec.definition}
+      entities={spec.entities}
+      allOperations={spec.allOperations}
+      operationIdPrefix={spec.operationIdPrefix}
+      listOperationId={spec.listOperationId}
+      detailOperationId={spec.detailOperationId}
+      client={apiClient}
+      renderLink={renderLink}
+      backHref={`/${domainKey}`}
+      backLabel={`Back to ${spec.definition.title}`}
+    />
+  );
+}
+
 function Sidebar() {
   return (
     <aside className="flex w-56 shrink-0 flex-col border-r border-border bg-muted/30 p-4">
@@ -87,6 +117,7 @@ export function App() {
         <Routes>
           <Route path="/" element={<Navigate to="/stacks" replace />} />
           <Route path="/commands/:operationId" element={<CommandRoute />} />
+          <Route path="/entity/:domainKey/:id" element={<EntityRoute />} />
           <Route path="/:domainKey" element={<DomainPage />} />
         </Routes>
       </main>

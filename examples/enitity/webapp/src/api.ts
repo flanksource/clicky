@@ -29,6 +29,7 @@ async function request(
   method: string,
   body?: unknown,
   headers?: Record<string, string>,
+  requestUrl?: string,
 ): Promise<ExecutionResponse> {
   const upper = method.toUpperCase();
   const init: RequestInit = {
@@ -41,6 +42,7 @@ async function request(
   }
   const response = await fetch(path, init);
   const text = await response.text();
+  const contentType = response.headers.get("Content-Type") || undefined;
   if (!response.ok) {
     throw new Error(
       `${upper} ${path} failed with ${response.status}: ${text || response.statusText}`,
@@ -50,7 +52,31 @@ async function request(
     success: true,
     exit_code: 0,
     stdout: text,
+    contentType,
+    requestUrl,
+    parsed: maybeParseJson(text, contentType),
   };
+}
+
+function maybeParseJson(text: string, contentType?: string) {
+  const trimmed = text.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+
+  const shouldParse =
+    contentType?.toLowerCase().includes("json") ||
+    trimmed.startsWith("{") ||
+    trimmed.startsWith("[");
+  if (!shouldParse) {
+    return undefined;
+  }
+
+  try {
+    return JSON.parse(trimmed) as unknown;
+  } catch {
+    return undefined;
+  }
 }
 
 export const apiClient: OperationsApiClient = {
@@ -71,7 +97,7 @@ export const apiClient: OperationsApiClient = {
     if (method.toUpperCase() === "GET") {
       const search = new URLSearchParams(remaining).toString();
       const url = search ? `${resolved}?${search}` : resolved;
-      return request(url, method, undefined, headers);
+      return request(url, method, undefined, headers, url);
     }
     return request(resolved, method, remaining, headers);
   },
