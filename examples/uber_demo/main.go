@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/flanksource/clicky"
@@ -14,6 +15,7 @@ import (
 	flanksourceContext "github.com/flanksource/commons/context"
 	"github.com/google/uuid"
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 )
 
 // Helper functions for creating pointers
@@ -614,6 +616,21 @@ type TasksOptions struct {
 	Timeout  time.Duration `flag:"timeout" help:"Overall timeout for all tasks" default:"0"`
 }
 
+// TaskPromptOptions configures the interactive task/prompt demo.
+type TaskPromptOptions struct {
+	NoSleep bool `flag:"no-sleep" help:"Skip simulated delays before the prompt appears" default:"false"`
+	Count   int  `flag:"count" help:"Number of options to generate for the select prompts" default:"8"`
+}
+
+type TaskPromptResult struct {
+	SelectedAction string   `json:"selected_action" pretty:"label=Selected Action"`
+	SelectedChecks []string `json:"selected_checks,omitempty" pretty:"label=Selected Checks,omitempty"`
+	ChangeTicket   string   `json:"change_ticket,omitempty" pretty:"label=Change Ticket,omitempty"`
+	PromptStatus   string   `json:"prompt_status" pretty:"label=Prompt Status"`
+	OptionCount    int      `json:"option_count" pretty:"label=Option Count"`
+	TerminalNote   string   `json:"terminal_note" pretty:"label=Terminal Handoff"`
+}
+
 // ProductTable demonstrates basic table formatting
 type ProductTable struct {
 	ID          int     `json:"id" pretty:"label=ID"`
@@ -866,6 +883,156 @@ func showTasks(opts TasksOptions) (any, error) {
 	fmt.Fprintln(os.Stdout, "[stdout] stopping")
 
 	return nil, nil
+}
+
+func showTaskPrompt(opts TaskPromptOptions) (any, error) {
+	if !term.IsTerminal(int(os.Stdin.Fd())) || !term.IsTerminal(int(os.Stderr.Fd())) {
+		return nil, fmt.Errorf("task-prompt requires an interactive terminal")
+	}
+
+	optionCount := max(opts.Count, 3)
+	actions := buildRolloutActions(optionCount)
+	checks := buildValidationChecks(optionCount)
+
+	sleep := func(d time.Duration) {
+		if !opts.NoSleep {
+			time.Sleep(d)
+		}
+	}
+
+	releaseWatch := make(chan struct{})
+
+	task.StartTask("Collect rollout snapshot", func(ctx flanksourceContext.Context, t *task.Task) (map[string]any, error) {
+		steps := []string{
+			"Inspecting cluster state",
+			"Checking canary pods",
+			"Verifying recent error rates",
+		}
+		for i, step := range steps {
+			sleep(180 * time.Millisecond)
+			t.SetProgress(i+1, len(steps))
+			t.Infof("%s", step)
+		}
+		t.Success()
+		return map[string]any{"region": "us-east-1", "healthy_pods": 12}, nil
+	})
+
+	task.StartTask("Watch operator gate", func(ctx flanksourceContext.Context, t *task.Task) (string, error) {
+		stages := []string{
+			"Streaming canary metrics",
+			"Tailing ingress logs",
+			"Waiting for operator prompt",
+		}
+		for i, stage := range stages {
+			sleep(150 * time.Millisecond)
+			t.SetDescription(stage)
+			t.SetProgress(i+1, len(stages))
+		}
+
+		<-releaseWatch
+		t.SetDescription("Operator responded")
+		t.Success()
+		return "gate released", nil
+	})
+
+	sleep(350 * time.Millisecond)
+
+	result := TaskPromptResult{
+		SelectedAction: "operator cancelled",
+		PromptStatus:   "selection cancelled",
+		OptionCount:    optionCount,
+		TerminalNote:   "Task rendering stops before prompt UI takes over the ANSI terminal.",
+	}
+
+	action, ok := clicky.PromptSelect(actions, clicky.PromptSelectOptions[string]{
+		Title: "Choose the next rollout action",
+	})
+
+	if ok {
+		result.SelectedAction = action
+		result.PromptStatus = "action selected"
+
+		selectedChecks, checksOK := clicky.PromptMultiSelect(checks, clicky.PromptMultiSelectOptions[string]{
+			Title:   "Choose the rollout checks to keep running",
+			Limit:   min(4, len(checks)),
+			Ordered: true,
+		})
+
+		if checksOK {
+			result.SelectedChecks = selectedChecks
+			result.PromptStatus = "checks selected"
+
+			ticket, ticketOK := clicky.PromptText(clicky.PromptTextOptions{
+				Title:       "Enter the change ticket",
+				Placeholder: "e.g. REL-1234",
+				Validate: func(value string) error {
+					if strings.TrimSpace(value) == "" {
+						return fmt.Errorf("change ticket is required")
+					}
+					return nil
+				},
+			})
+			if ticketOK {
+				result.ChangeTicket = ticket
+				result.PromptStatus = "confirmed"
+			} else {
+				result.PromptStatus = "ticket entry cancelled"
+			}
+		} else {
+			result.PromptStatus = "check selection cancelled"
+		}
+	}
+
+	close(releaseWatch)
+	task.Wait()
+
+	return result, nil
+}
+
+func buildRolloutActions(count int) []string {
+	base := []string{
+		"Promote canary",
+		"Hold rollout",
+		"Abort release",
+		"Roll back deploy",
+		"Pause traffic shift",
+		"Scale canary up",
+		"Scale canary down",
+		"Open incident bridge",
+		"Notify API owners",
+		"Trigger smoke suite",
+	}
+
+	return buildPromptOptions(base, count, "Action")
+}
+
+func buildValidationChecks(count int) []string {
+	base := []string{
+		"Tail ingress error logs",
+		"Watch saturation dashboard",
+		"Run synthetic checkout probe",
+		"Verify canary pod restarts",
+		"Inspect downstream queue depth",
+		"Track p95 latency panel",
+		"Confirm feature flag rollout",
+		"Ping on-call database owner",
+		"Check payment gateway health",
+		"Review deployment event stream",
+	}
+
+	return buildPromptOptions(base, count, "Check")
+}
+
+func buildPromptOptions(base []string, count int, prefix string) []string {
+	options := make([]string, 0, count)
+	for i := 0; i < count; i++ {
+		if i < len(base) {
+			options = append(options, base[i])
+			continue
+		}
+		options = append(options, fmt.Sprintf("%s %02d", prefix, i+1))
+	}
+	return options
 }
 
 func runBasicTasks(sleep func(time.Duration), opts ...task.Option) {
@@ -1277,6 +1444,7 @@ func main() {
 	clicky.AddNamedCommand("table-provider", rootCmd, TableProviderOptions{}, showTableProvider)
 	clicky.AddNamedCommand("trees", rootCmd, clicky.FileTreeOptions{}, showTrees)
 	clicky.AddNamedCommand("tasks", rootCmd, TasksOptions{}, showTasks)
+	clicky.AddNamedCommand("task-prompt", rootCmd, TaskPromptOptions{}, showTaskPrompt)
 	clicky.AddNamedCommand("task-ui", rootCmd, TaskUIOptions{}, showTaskUI)
 	clicky.AddNamedCommand("nil-handling", rootCmd, NilHandlingOptions{}, showNilHandling)
 	clicky.AddNamedCommand("components", rootCmd, ComponentsOptions{}, showComponents)

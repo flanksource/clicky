@@ -214,7 +214,7 @@ func (g *TypedGroup[T]) WaitFor() *WaitResult {
 	result.Duration = g.Duration()
 
 	// For plain render mode, force a final render
-	if g.manager != nil && g.manager.noProgress.Load() {
+	if g.manager != nil && g.manager.noProgress.Load() && !g.manager.noRender.Load() {
 		g.manager.PlainRender()
 	}
 

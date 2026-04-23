@@ -32,6 +32,18 @@ func (w *worker) run() {
 				continue
 			}
 
+			task.mu.Lock()
+			skip := task.status == StatusCancelled
+			task.mu.Unlock()
+			if skip {
+				task.completed.Store(true)
+				task.signalDone()
+				if task.identity != "" {
+					w.manager.tasksByIdentity.Delete(task.identity)
+				}
+				continue
+			}
+
 			// Check dependencies
 			if !w.checkDependencies(task) {
 				// Dependencies not met, re-enqueue with delay
