@@ -5,6 +5,7 @@ This directory contains examples showing how to use the clicky library to format
 ## Files
 
 - `clicky-pipe.go` - Main example program that can read JSON from stdin or file
+- `enitity/` - End-to-end entity example covering CRUD, filters, admin entities, nested parents, and `openapi serve --enable-executor`
 - `example-data.json` - Sample order data with complex nested structures and arrays
 - `go.mod` - Module configuration
 

@@ -7,8 +7,8 @@ require (
 	github.com/alecthomas/chroma/v2 v2.23.1
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/creack/pty v1.1.24
-	github.com/flanksource/commons v1.47.2
-	github.com/flanksource/gomplate/v3 v3.24.74
+	github.com/flanksource/commons v1.50.3
+	github.com/flanksource/gomplate/v3 v3.24.77
 	github.com/go-xmlfmt/xmlfmt v1.1.3
 	github.com/goccy/go-yaml v1.19.2
 	github.com/golang-jwt/jwt/v5 v5.3.0

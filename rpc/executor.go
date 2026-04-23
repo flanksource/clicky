@@ -75,12 +75,15 @@ func NewCommandExecutor(service *RPCService, config *ExecutorConfig) *CommandExe
 // Supports templated paths like /api/v1/policy/{id} matched against
 // concrete paths like /api/v1/policy/12345.
 func (e *CommandExecutor) FindOperation(method, path string) *RPCOperation {
+	return e.findOperationForMethod(method, path)
+}
+
+func (e *CommandExecutor) findOperationForMethod(method, path string) *RPCOperation {
 	key := strings.ToUpper(method) + ":" + path
 	if op := e.operations[key]; op != nil {
 		return op
 	}
 
-	// Try template matching for paths with {param} segments
 	for _, op := range e.operations {
 		if !strings.EqualFold(op.Method, method) {
 			continue
@@ -89,6 +92,49 @@ func (e *CommandExecutor) FindOperation(method, path string) *RPCOperation {
 			return op
 		}
 	}
+
+	return nil
+}
+
+func (e *CommandExecutor) FindLookupOperation(method, path string) *RPCOperation {
+	if strings.EqualFold(method, http.MethodHead) {
+		if op := e.findLookupOperationForMethod(http.MethodGet, path); op != nil {
+			return op
+		}
+	}
+
+	for _, candidateMethod := range []string{
+		http.MethodGet,
+		http.MethodPost,
+		http.MethodPut,
+		http.MethodDelete,
+		http.MethodPatch,
+	} {
+		if op := e.findLookupOperationForMethod(candidateMethod, path); op != nil {
+			return op
+		}
+	}
+
+	return nil
+}
+
+func (e *CommandExecutor) findLookupOperationForMethod(method, path string) *RPCOperation {
+	preferredMethods := []string{
+		method,
+	}
+
+	for _, preferredMethod := range preferredMethods {
+		for i := range e.service.Operations {
+			op := &e.service.Operations[i]
+			if op.LookupFunc == nil || !strings.EqualFold(op.Method, preferredMethod) {
+				continue
+			}
+			if matchTemplatePath(op.Path, path) {
+				return op
+			}
+		}
+	}
+
 	return nil
 }
 
