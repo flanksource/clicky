@@ -1,6 +1,7 @@
 package clicky
 
 import (
+	"sync"
 	"testing"
 
 	"github.com/spf13/cobra"
@@ -23,6 +24,8 @@ func resetEntityRegistry(t *testing.T) {
 	entityRegistryMu.Lock()
 	entityRegistry = nil
 	entityRegistryMu.Unlock()
+	dataFuncRegistry = sync.Map{}
+	lookupFuncRegistry = sync.Map{}
 	pendingSubCommandsMu.Lock()
 	pendingSubCommands = nil
 	pendingSubCommandsMu.Unlock()

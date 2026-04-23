@@ -1,0 +1,1108 @@
+package main
+
+import (
+	"context"
+	"embed"
+	"fmt"
+	"io/fs"
+	"net/http"
+	"os"
+	"os/signal"
+	"path"
+	"sort"
+	"strconv"
+	"strings"
+	"sync"
+	"syscall"
+	"time"
+
+	"github.com/flanksource/clicky"
+	"github.com/flanksource/clicky/api"
+	"github.com/flanksource/clicky/extensions"
+	"github.com/flanksource/clicky/rpc"
+	"github.com/flanksource/commons/duration"
+	"github.com/spf13/cobra"
+)
+
+// webappFS carries the Vite-built single-page app. `webapp/dist/index.html`
+// is committed as a placeholder so this embed always resolves; running
+// `pnpm build` inside webapp/ replaces the contents with hashed bundles.
+//
+//go:embed webapp/dist
+var webappFS embed.FS
+
+type stack struct {
+	ID         string    `json:"id"`
+	Name       string    `json:"name"`
+	Team       string    `json:"team"`
+	Status     string    `json:"status"`
+	Region     string    `json:"region"`
+	Tags       []string  `json:"tags,omitempty"`
+	Archived   bool      `json:"archived,omitempty"`
+	Version    int       `json:"version"`
+	LastDeploy time.Time `json:"lastDeploy"`
+}
+
+func (s stack) GetID() string   { return s.ID }
+func (s stack) GetName() string { return s.Name }
+
+func (s stack) PrettyRow(_ interface{}) map[string]api.Text {
+	return map[string]api.Text{
+		"Name": {
+			Content: s.Name,
+			Style:   "font-semibold",
+		},
+		"Team": {
+			Content: labelFromCanonicalTeam(s.Team),
+		},
+		"Status": {
+			Content: labelFromCanonicalStatus(s.Status),
+			Style:   statusStyle(s.Status),
+		},
+		"Region": {
+			Content: s.Region,
+		},
+		"Tags": {
+			Content: strings.Join(s.Tags, ", "),
+			Style:   "text-slate-600",
+		},
+	}
+}
+
+type cluster struct {
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	Provider string `json:"provider"`
+	Region   string `json:"region"`
+}
+
+func (c cluster) GetID() string   { return c.ID }
+func (c cluster) GetName() string { return c.Name }
+
+type stackWindowOpts struct {
+	Tags         []string          `flag:"tags" help:"Return only stacks containing all of these tags"`
+	UpdatedSince time.Time         `flag:"updated-since" help:"Return stacks deployed after this time" default:"now-30d"`
+	Window       duration.Duration `flag:"window" help:"Return stacks deployed within this duration" default:"720h"`
+}
+
+type stackListOpts struct {
+	stackWindowOpts
+	Team            string `flag:"team" help:"Team slug or canonical backend team id"`
+	Status          string `flag:"status" help:"Status label or canonical backend status id"`
+	Region          string `flag:"region" help:"Region filter"`
+	Filter          string `flag:"filter" help:"Switch bulk actions into filter mode when set"`
+	IncludeArchived bool   `flag:"include-archived" help:"Include archived stacks"`
+}
+
+type clusterListOpts struct {
+	Provider string `flag:"provider" help:"Cloud provider filter"`
+	Region   string `flag:"region" help:"Region filter"`
+}
+
+type inspectFlags struct {
+	Events       int  `flag:"events" help:"Number of synthetic events to include" default:"3"`
+	IncludeAudit bool `flag:"include-audit" help:"Include audit metadata" default:"false"`
+}
+
+func (inspectFlags) ClickyActionFlags() {}
+
+type restartFlags struct {
+	Drain  bool   `flag:"drain" help:"Drain traffic before restart" default:"true"`
+	Reason string `flag:"reason" help:"Reason to record for the restart" default:"manual"`
+}
+
+func (restartFlags) ClickyActionFlags() {}
+
+type adminInspectFlags struct {
+	IncludeSecret bool `flag:"include-secret" help:"Include simulated secret material" default:"false"`
+}
+
+func (adminInspectFlags) ClickyActionFlags() {}
+
+type stackSummaryOpts struct {
+	Team            string `flag:"team" help:"Only summarize one team"`
+	IncludeArchived bool   `flag:"include-archived" help:"Include archived stacks in the summary"`
+}
+
+type stackDetail struct {
+	Stack  stack             `json:"stack"`
+	Events []string          `json:"events,omitempty"`
+	Audit  map[string]any    `json:"audit,omitempty"`
+	Notes  map[string]string `json:"notes,omitempty"`
+	Secret map[string]string `json:"secret,omitempty"`
+	Admin  map[string]string `json:"admin,omitempty"`
+	Flags  map[string]string `json:"flags,omitempty"`
+	Meta   map[string]any    `json:"meta,omitempty"`
+}
+
+type actionResult struct {
+	Action     string   `json:"action"`
+	IDs        []string `json:"ids,omitempty"`
+	Reason     string   `json:"reason,omitempty"`
+	Drain      bool     `json:"drain,omitempty"`
+	MatchedBy  string   `json:"matchedBy,omitempty"`
+	MatchedIDs []string `json:"matchedIds,omitempty"`
+}
+
+type stackSummary struct {
+	Total    int            `json:"total"`
+	ByTeam   map[string]int `json:"byTeam"`
+	ByStatus map[string]int `json:"byStatus"`
+}
+
+type demoStore struct {
+	mu           sync.Mutex
+	nextStackID  int
+	stacks       map[string]stack
+	clusters     map[string]cluster
+	restartLog   []string
+	reconcileLog []string
+}
+
+func newDemoStore() *demoStore {
+	store := &demoStore{}
+	store.reset()
+	return store
+}
+
+func (d *demoStore) reset() {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	d.nextStackID = 4
+	d.restartLog = nil
+	d.reconcileLog = nil
+	d.stacks = map[string]stack{
+		"stk-001": {
+			ID:         "stk-001",
+			Name:       "checkout",
+			Team:       "team/platform",
+			Status:     "status:healthy",
+			Region:     "eu-west-1",
+			Tags:       []string{"critical", "customer"},
+			Version:    12,
+			LastDeploy: time.Now().Add(-4 * time.Hour).UTC(),
+		},
+		"stk-002": {
+			ID:         "stk-002",
+			Name:       "billing",
+			Team:       "team/core",
+			Status:     "status:degraded",
+			Region:     "us-east-1",
+			Tags:       []string{"payments", "database"},
+			Version:    19,
+			LastDeploy: time.Now().Add(-48 * time.Hour).UTC(),
+		},
+		"stk-003": {
+			ID:         "stk-003",
+			Name:       "marketing-site",
+			Team:       "team/platform",
+			Status:     "status:paused",
+			Region:     "eu-west-1",
+			Tags:       []string{"public", "edge"},
+			Archived:   true,
+			Version:    7,
+			LastDeploy: time.Now().Add(-14 * 24 * time.Hour).UTC(),
+		},
+	}
+	d.clusters = map[string]cluster{
+		"cls-001": {ID: "cls-001", Name: "shared-eu1", Provider: "aws", Region: "eu-west-1"},
+		"cls-002": {ID: "cls-002", Name: "payments-us1", Provider: "aws", Region: "us-east-1"},
+		"cls-003": {ID: "cls-003", Name: "labs-eu2", Provider: "gcp", Region: "europe-west2"},
+	}
+}
+
+func (d *demoStore) counts() (int, int) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return len(d.stacks), len(d.clusters)
+}
+
+func (d *demoStore) listStacks(opts stackListOpts) ([]stack, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	items := d.matchingStacksLocked(opts, false)
+	sort.Slice(items, func(i, j int) bool {
+		return items[i].ID < items[j].ID
+	})
+	return items, nil
+}
+
+func (d *demoStore) listAdminStacks(opts stackListOpts) ([]stack, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	items := d.matchingStacksLocked(opts, true)
+	sort.Slice(items, func(i, j int) bool {
+		return items[i].ID < items[j].ID
+	})
+	return items, nil
+}
+
+func (d *demoStore) getStack(id string, flags map[string]string) (any, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	item, ok := d.stacks[id]
+	if !ok {
+		return nil, fmt.Errorf("stack %q not found", id)
+	}
+
+	detail := stackDetail{
+		Stack: item,
+		Events: syntheticEvents(
+			item.Name,
+			intFlag(flags, "events", 3),
+		),
+		Flags: copyStringMap(flags),
+		Notes: map[string]string{
+			"team":   labelFromCanonicalTeam(item.Team),
+			"status": labelFromCanonicalStatus(item.Status),
+		},
+	}
+	if boolFlag(flags, "include-audit") {
+		detail.Audit = map[string]any{
+			"lastRestart": lastEntry(d.restartLog),
+			"lastDeploy":  item.LastDeploy,
+			"version":     item.Version,
+		}
+	}
+
+	return detail, nil
+}
+
+func (d *demoStore) getAdminStack(id string, flags map[string]string) (any, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	item, ok := d.stacks[id]
+	if !ok {
+		return nil, fmt.Errorf("stack %q not found", id)
+	}
+
+	detail := stackDetail{
+		Stack: item,
+		Admin: map[string]string{
+			"canonicalTeam":   item.Team,
+			"canonicalStatus": item.Status,
+			"reconcileHint":   "run admin stack reconcile to refresh synthetic health",
+		},
+		Meta: map[string]any{
+			"restartLog":   append([]string(nil), d.restartLog...),
+			"reconcileLog": append([]string(nil), d.reconcileLog...),
+		},
+		Flags: copyStringMap(flags),
+	}
+	if boolFlag(flags, "include-secret") {
+		detail.Secret = map[string]string{
+			"token":    "demo-token",
+			"rotation": "disabled in the example store",
+		}
+	}
+	return detail, nil
+}
+
+func (d *demoStore) createStack(body map[string]any) (any, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	name := valueOrDefault(stringValue(body["name"]), "unnamed")
+	team := canonicalTeam(valueOrDefault(stringValue(body["team"]), "platform"))
+	status := canonicalStatus(valueOrDefault(stringValue(body["status"]), "healthy"))
+	region := valueOrDefault(stringValue(body["region"]), "eu-west-1")
+	id := fmt.Sprintf("stk-%03d", d.nextStackID)
+	d.nextStackID++
+
+	item := stack{
+		ID:         id,
+		Name:       name,
+		Team:       team,
+		Status:     status,
+		Region:     region,
+		Tags:       sliceValue(body["tags"]),
+		Archived:   boolValue(body["archived"]),
+		Version:    1,
+		LastDeploy: time.Now().UTC(),
+	}
+	d.stacks[id] = item
+	return item, nil
+}
+
+func (d *demoStore) updateStack(id string, body map[string]any) (any, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	item, ok := d.stacks[id]
+	if !ok {
+		return nil, fmt.Errorf("stack %q not found", id)
+	}
+
+	if value := stringValue(body["name"]); value != "" {
+		item.Name = value
+	}
+	if value := stringValue(body["team"]); value != "" {
+		item.Team = canonicalTeam(value)
+	}
+	if value := stringValue(body["status"]); value != "" {
+		item.Status = canonicalStatus(value)
+	}
+	if value := stringValue(body["region"]); value != "" {
+		item.Region = value
+	}
+	if raw, ok := body["tags"]; ok {
+		item.Tags = sliceValue(raw)
+	}
+	if raw, ok := body["archived"]; ok {
+		item.Archived = boolValue(raw)
+	}
+	item.Version++
+	item.LastDeploy = time.Now().UTC()
+	d.stacks[id] = item
+	return item, nil
+}
+
+func (d *demoStore) deleteStack(id string) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	if _, ok := d.stacks[id]; !ok {
+		return fmt.Errorf("stack %q not found", id)
+	}
+	delete(d.stacks, id)
+	return nil
+}
+
+func (d *demoStore) restartStack(id string, flags map[string]string) (any, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	item, ok := d.stacks[id]
+	if !ok {
+		return nil, fmt.Errorf("stack %q not found", id)
+	}
+	item.Status = "status:healthy"
+	item.Version++
+	item.LastDeploy = time.Now().UTC()
+	d.stacks[id] = item
+
+	reason := valueOrDefault(strings.TrimSpace(flags["reason"]), "manual")
+	drain := boolFlagDefault(flags, "drain", true)
+	entry := fmt.Sprintf("%s restarted with reason=%s drain=%t", id, reason, drain)
+	d.restartLog = append(d.restartLog, entry)
+
+	return actionResult{
+		Action: "restart",
+		IDs:    []string{id},
+		Reason: reason,
+		Drain:  drain,
+	}, nil
+}
+
+func (d *demoStore) reconcileStack(id string, flags map[string]string) (any, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	item, ok := d.stacks[id]
+	if !ok {
+		return nil, fmt.Errorf("stack %q not found", id)
+	}
+	item.Status = "status:healthy"
+	d.stacks[id] = item
+
+	entry := fmt.Sprintf("%s reconciled", id)
+	d.reconcileLog = append(d.reconcileLog, entry)
+
+	return actionResult{
+		Action: "reconcile",
+		IDs:    []string{id},
+	}, nil
+}
+
+func (d *demoStore) pauseStacks(ids []string, _ map[string]string) (any, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	updated := make([]string, 0, len(ids))
+	for _, id := range ids {
+		item, ok := d.stacks[id]
+		if !ok {
+			return nil, fmt.Errorf("stack %q not found", id)
+		}
+		item.Status = "status:paused"
+		item.Version++
+		d.stacks[id] = item
+		updated = append(updated, id)
+	}
+	sort.Strings(updated)
+
+	return actionResult{
+		Action: "pause",
+		IDs:    updated,
+	}, nil
+}
+
+func (d *demoStore) pauseStacksByFilter(opts stackListOpts, _ map[string]string) (any, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	matched := d.matchingStacksLocked(opts, true)
+	ids := make([]string, 0, len(matched))
+	for _, item := range matched {
+		current := d.stacks[item.ID]
+		current.Status = "status:paused"
+		current.Version++
+		d.stacks[item.ID] = current
+		ids = append(ids, item.ID)
+	}
+	sort.Strings(ids)
+
+	return actionResult{
+		Action:     "pause",
+		MatchedBy:  opts.Filter,
+		MatchedIDs: ids,
+	}, nil
+}
+
+func (d *demoStore) summarizeStacks(opts stackSummaryOpts) (any, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	summary := stackSummary{
+		ByTeam:   map[string]int{},
+		ByStatus: map[string]int{},
+	}
+	team := canonicalTeam(opts.Team)
+	for _, item := range d.stacks {
+		if !opts.IncludeArchived && item.Archived {
+			continue
+		}
+		if opts.Team != "" && item.Team != team {
+			continue
+		}
+		summary.Total++
+		summary.ByTeam[labelFromCanonicalTeam(item.Team)]++
+		summary.ByStatus[labelFromCanonicalStatus(item.Status)]++
+	}
+	return summary, nil
+}
+
+func (d *demoStore) listClusters(opts clusterListOpts) ([]cluster, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	items := make([]cluster, 0, len(d.clusters))
+	for _, item := range d.clusters {
+		if opts.Provider != "" && !strings.EqualFold(item.Provider, opts.Provider) {
+			continue
+		}
+		if opts.Region != "" && !strings.EqualFold(item.Region, opts.Region) {
+			continue
+		}
+		items = append(items, item)
+	}
+	sort.Slice(items, func(i, j int) bool {
+		return items[i].ID < items[j].ID
+	})
+	return items, nil
+}
+
+func (d *demoStore) getCluster(id string) (any, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	item, ok := d.clusters[id]
+	if !ok {
+		return nil, fmt.Errorf("cluster %q not found", id)
+	}
+	return item, nil
+}
+
+func (d *demoStore) completeStackIDs(_ *cobra.Command, _ []string, toComplete string) ([]string, cobra.ShellCompDirective) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	ids := make([]string, 0, len(d.stacks))
+	for id := range d.stacks {
+		if strings.HasPrefix(id, toComplete) {
+			ids = append(ids, id)
+		}
+	}
+	sort.Strings(ids)
+	return ids, cobra.ShellCompDirectiveNoFileComp
+}
+
+func (d *demoStore) matchingStacksLocked(opts stackListOpts, includeArchived bool) []stack {
+	items := make([]stack, 0, len(d.stacks))
+	for _, item := range d.stacks {
+		if item.Archived && !includeArchived && !opts.IncludeArchived {
+			continue
+		}
+		if opts.Team != "" && item.Team != opts.Team {
+			continue
+		}
+		if opts.Status != "" && item.Status != opts.Status {
+			continue
+		}
+		if opts.Region != "" && !strings.EqualFold(item.Region, opts.Region) {
+			continue
+		}
+		if len(opts.Tags) > 0 && !containsAll(item.Tags, opts.Tags) {
+			continue
+		}
+		if !opts.UpdatedSince.IsZero() && item.LastDeploy.Before(opts.UpdatedSince) {
+			continue
+		}
+		if time.Duration(opts.Window) > 0 && item.LastDeploy.Before(time.Now().Add(-time.Duration(opts.Window))) {
+			continue
+		}
+		items = append(items, item)
+	}
+	return items
+}
+
+type stackTeamFilter struct{}
+
+func (stackTeamFilter) Key() string   { return "team" }
+func (stackTeamFilter) Label() string { return "Team" }
+
+func (stackTeamFilter) Lookup(opts *stackListOpts) (map[string]api.Textable, error) {
+	if opts.Team == "" {
+		return nil, nil
+	}
+	opts.Team = canonicalTeam(opts.Team)
+	label := labelFromCanonicalTeam(opts.Team)
+	return map[string]api.Textable{
+		opts.Team: api.Text{
+			Content: label,
+			Style:   "font-semibold",
+		},
+	}, nil
+}
+
+func (stackTeamFilter) Options(opts stackListOpts) map[string]api.Textable {
+	options := map[string]api.Textable{
+		"team/platform": api.Text{Content: "Platform"},
+		"team/core":     api.Text{Content: "Core"},
+		"team/data":     api.Text{Content: "Data"},
+	}
+	if strings.EqualFold(opts.Region, "us-east-1") {
+		return map[string]api.Textable{
+			"team/core": options["team/core"],
+		}
+	}
+	return options
+}
+
+type stackStatusFilter struct{}
+
+func (stackStatusFilter) Key() string   { return "status" }
+func (stackStatusFilter) Label() string { return "Status" }
+
+func (stackStatusFilter) Lookup(opts *stackListOpts) (map[string]api.Textable, error) {
+	if opts.Status == "" {
+		return nil, nil
+	}
+	opts.Status = canonicalStatus(opts.Status)
+	label := labelFromCanonicalStatus(opts.Status)
+	return map[string]api.Textable{
+		opts.Status: api.Text{
+			Content: label,
+			Style:   statusStyle(opts.Status),
+			Tooltip: api.Text{Content: "Canonical backend value: " + opts.Status},
+		},
+	}, nil
+}
+
+func (stackStatusFilter) Options(opts stackListOpts) map[string]api.Textable {
+	options := map[string]api.Textable{
+		"status:healthy":  api.Text{Content: "Healthy", Style: statusStyle("status:healthy")},
+		"status:degraded": api.Text{Content: "Degraded", Style: statusStyle("status:degraded")},
+		"status:paused":   api.Text{Content: "Paused", Style: statusStyle("status:paused")},
+	}
+	if opts.Team == "team/platform" {
+		return map[string]api.Textable{
+			"status:healthy": options["status:healthy"],
+			"status:paused":  options["status:paused"],
+		}
+	}
+	return options
+}
+
+func registerEntities(store *demoStore) {
+	stackFilters := []clicky.Filter[stackListOpts]{
+		stackTeamFilter{},
+		stackStatusFilter{},
+	}
+
+	clicky.RegisterEntity(clicky.Entity[stack, stackListOpts]{
+		Name:     "stack",
+		Aliases:  []string{"stacks", "svc"},
+		Filters:  stackFilters,
+		List:     store.listStacks,
+		GetFlags: inspectFlags{},
+		GetWithFlags: func(id string, flags map[string]string) (any, error) {
+			return store.getStack(id, flags)
+		},
+		Create: store.createStack,
+		Update: store.updateStack,
+		Delete: store.deleteStack,
+		Actions: []clicky.Action[stack]{
+			{
+				Name:  "restart",
+				Short: "Restart a stack and record synthetic audit metadata",
+				Flags: restartFlags{},
+				Run: func(id string, flags map[string]string) (any, error) {
+					return store.restartStack(id, flags)
+				},
+			},
+		},
+		BulkActions: []clicky.BulkAction[stack, stackListOpts]{
+			{
+				Name:  "pause",
+				Short: "Pause stacks directly by id or indirectly through filter mode",
+				Run: func(ids []string, flags map[string]string) (any, error) {
+					return store.pauseStacks(ids, flags)
+				},
+				RunFilter: func(opts stackListOpts, flags map[string]string) (any, error) {
+					return store.pauseStacksByFilter(opts, flags)
+				},
+			},
+		},
+		Admin: &clicky.Entity[stack, stackListOpts]{
+			Filters:  stackFilters,
+			List:     store.listAdminStacks,
+			GetFlags: adminInspectFlags{},
+			GetWithFlags: func(id string, flags map[string]string) (any, error) {
+				return store.getAdminStack(id, flags)
+			},
+			Actions: []clicky.Action[stack]{
+				{
+					Name:  "reconcile",
+					Short: "Force a synthetic admin reconcile for a stack",
+					Run: func(id string, flags map[string]string) (any, error) {
+						return store.reconcileStack(id, flags)
+					},
+				},
+			},
+		},
+		ValidArgs: store.completeStackIDs,
+	})
+
+	clicky.RegisterEntity(clicky.Entity[cluster, clusterListOpts]{
+		Parent: "catalog",
+		List:   store.listClusters,
+		Get:    store.getCluster,
+	})
+}
+
+func registerSubCommands(store *demoStore) {
+	clicky.RegisterSubCommand("stack", &cobra.Command{
+		Use:   "seed",
+		Short: "Reset the in-memory demo data set",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			store.reset()
+			stacks, clusters := store.counts()
+			fmt.Fprintf(cmd.OutOrStdout(), "reset demo store with %d stacks and %d clusters\n", stacks, clusters)
+			return nil
+		},
+	})
+
+	clicky.RegisterSubCommandFn("stack", func(parent *cobra.Command) {
+		clicky.AddNamedCommand("summary", parent, stackSummaryOpts{}, store.summarizeStacks)
+	})
+}
+
+// newServeUICommand wires the clicky RPC executor together with the Vite
+// webapp embedded above. The webapp consumes `@flanksource/clicky-ui`'s
+// `OperationCatalog` against `/api/openapi.json` and `/api/v1/...`.
+func newServeUICommand() *cobra.Command {
+	var (
+		host string
+		port int
+	)
+
+	cmd := &cobra.Command{
+		Use:   "serve-ui",
+		Short: "Start the HTTP API and embedded operation-catalog UI",
+		Long: `Start an HTTP server that exposes both the executor-backed OpenAPI endpoints
+and the embedded React UI built from clicky-ui's OperationCatalog component.
+
+The API is served at /api/openapi.json + /api/v1/..., the UI at /. Build the
+Vite frontend with ` + "`cd webapp && pnpm install && pnpm build`" + ` before
+compiling the Go binary so the embedded assets are current.`,
+		Example: `  entity-demo serve-ui --port 8080
+  entity-demo serve-ui --host 0.0.0.0 --port 9090`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if port < 1 || port > 65535 {
+				return fmt.Errorf("invalid port: %d", port)
+			}
+
+			rootCmd := cmd.Root()
+			openAPIConfig := &rpc.OpenAPIConfig{
+				Title:       "Clicky Entity Example",
+				Description: "Entity example app with embedded OperationCatalog UI.",
+				Version:     "1.0.0",
+			}
+			serveConfig := &rpc.ServeConfig{
+				Host:    host,
+				Port:    port,
+				Title:   openAPIConfig.Title,
+				Version: openAPIConfig.Version,
+				Executor: &rpc.ExecutorConfig{
+					Enabled:    true,
+					SkipPreRun: true,
+					PathPrefix: "/api/v1",
+				},
+			}
+
+			server := rpc.NewSwaggerServer(serveConfig, rootCmd, openAPIConfig)
+
+			mux := http.NewServeMux()
+			server.RegisterRoutes(mux)
+
+			uiHandler, err := newWebappHandler()
+			if err != nil {
+				return fmt.Errorf("load embedded webapp: %w", err)
+			}
+			mux.Handle("/", uiHandler)
+
+			addr := fmt.Sprintf("%s:%d", host, port)
+			httpSrv := &http.Server{
+				Addr:         addr,
+				Handler:      mux,
+				ReadTimeout:  30 * time.Second,
+				WriteTimeout: 30 * time.Second,
+				IdleTimeout:  60 * time.Second,
+			}
+
+			ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
+			defer stop()
+
+			errCh := make(chan error, 1)
+			go func() {
+				fmt.Fprintf(cmd.OutOrStdout(), "🚀 Entity UI listening on http://%s\n", addr)
+				fmt.Fprintf(cmd.OutOrStdout(), "   • UI:           http://%s/\n", addr)
+				fmt.Fprintf(cmd.OutOrStdout(), "   • OpenAPI JSON: http://%s/api/openapi.json\n", addr)
+				fmt.Fprintf(cmd.OutOrStdout(), "   • Executor API: http://%s/api/v1/...\n", addr)
+				if err := httpSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+					errCh <- err
+				}
+			}()
+
+			select {
+			case <-ctx.Done():
+				shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
+				return httpSrv.Shutdown(shutdownCtx)
+			case err := <-errCh:
+				return err
+			}
+		},
+	}
+
+	cmd.Flags().StringVar(&host, "host", "localhost", "Host to bind the server to")
+	cmd.Flags().IntVarP(&port, "port", "p", 8080, "Port to bind the server to")
+
+	return cmd
+}
+
+// newWebappHandler returns an http.Handler that serves the embedded Vite
+// build. Unknown paths fall back to index.html so the React router can
+// handle client-side routes on a full page load.
+func newWebappHandler() (http.Handler, error) {
+	sub, err := fs.Sub(webappFS, "webapp/dist")
+	if err != nil {
+		return nil, err
+	}
+	fileServer := http.FileServer(http.FS(sub))
+
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requested := strings.TrimPrefix(r.URL.Path, "/")
+		if requested == "" {
+			serveIndex(w, sub)
+			return
+		}
+		if _, err := fs.Stat(sub, requested); err != nil {
+			// File not found: assume a SPA route and return index.html.
+			if !looksLikeAssetRequest(requested) {
+				serveIndex(w, sub)
+				return
+			}
+			http.NotFound(w, r)
+			return
+		}
+		fileServer.ServeHTTP(w, r)
+	}), nil
+}
+
+func serveIndex(w http.ResponseWriter, sub fs.FS) {
+	data, err := fs.ReadFile(sub, "index.html")
+	if err != nil {
+		http.Error(w, "webapp index.html missing — run `pnpm build` in webapp/", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-cache")
+	_, _ = w.Write(data)
+}
+
+// looksLikeAssetRequest returns true when the request targets a file with a
+// known extension, so we don't swallow a genuine 404 (e.g. a missing image
+// reference) with the SPA fallback.
+func looksLikeAssetRequest(requested string) bool {
+	ext := strings.ToLower(path.Ext(requested))
+	switch ext {
+	case ".js", ".mjs", ".css", ".map", ".ico", ".png", ".jpg", ".jpeg",
+		".gif", ".svg", ".webp", ".woff", ".woff2", ".ttf", ".eot", ".txt":
+		return true
+	}
+	return false
+}
+
+func main() {
+	store := newDemoStore()
+
+	rootCmd := &cobra.Command{
+		Use:   "entity-demo",
+		Short: "Entity example covering clicky entity generation and served execution",
+		Long: `A self-contained example showing how clicky entities can power both a CLI
+and the executor-backed OpenAPI serve mode from the same registrations.`,
+	}
+
+	registerEntities(store)
+	registerSubCommands(store)
+	clicky.GenerateCLI(rootCmd)
+
+	extensions.CobraExtensions(rootCmd).OpenAPICommandWithConfig(&rpc.OpenAPIConfig{
+		Title:       "Clicky Entity Example",
+		Description: "Entity example app covering CRUD, actions, filters, admin views, nested parents, and executor-backed serve mode.",
+		Version:     "1.0.0",
+		Tags: []rpc.OpenAPITag{
+			{Name: "stack", Description: "Stack entity operations"},
+			{Name: "catalog", Description: "Nested catalog entity operations"},
+			{Name: "admin", Description: "Administrative entity operations"},
+		},
+	})
+
+	rootCmd.AddCommand(newServeUICommand())
+
+	if err := rootCmd.Execute(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+}
+
+func containsAll(have, want []string) bool {
+	if len(want) == 0 {
+		return true
+	}
+	set := make(map[string]struct{}, len(have))
+	for _, value := range have {
+		set[strings.ToLower(strings.TrimSpace(value))] = struct{}{}
+	}
+	for _, value := range want {
+		if _, ok := set[strings.ToLower(strings.TrimSpace(value))]; !ok {
+			return false
+		}
+	}
+	return true
+}
+
+func canonicalTeam(value string) string {
+	value = strings.TrimSpace(strings.ToLower(value))
+	switch value {
+	case "", "team/platform":
+		return "team/platform"
+	case "platform":
+		return "team/platform"
+	case "team/core":
+		return "team/core"
+	case "core":
+		return "team/core"
+	case "team/data":
+		return "team/data"
+	case "data":
+		return "team/data"
+	default:
+		if strings.HasPrefix(value, "team/") {
+			return value
+		}
+		return "team/" + value
+	}
+}
+
+func labelFromCanonicalTeam(value string) string {
+	return titleCase(strings.TrimPrefix(value, "team/"))
+}
+
+func canonicalStatus(value string) string {
+	value = strings.TrimSpace(strings.ToLower(value))
+	switch value {
+	case "", "status:healthy":
+		return "status:healthy"
+	case "healthy":
+		return "status:healthy"
+	case "status:degraded":
+		return "status:degraded"
+	case "degraded":
+		return "status:degraded"
+	case "status:paused":
+		return "status:paused"
+	case "paused":
+		return "status:paused"
+	default:
+		if strings.HasPrefix(value, "status:") {
+			return value
+		}
+		return "status:" + value
+	}
+}
+
+func labelFromCanonicalStatus(value string) string {
+	return titleCase(strings.TrimPrefix(value, "status:"))
+}
+
+func statusStyle(value string) string {
+	switch value {
+	case "status:healthy":
+		return "text-green-600 font-semibold"
+	case "status:degraded":
+		return "text-amber-600 font-semibold"
+	case "status:paused":
+		return "text-slate-500"
+	default:
+		return "text-slate-700"
+	}
+}
+
+func syntheticEvents(name string, count int) []string {
+	if count <= 0 {
+		return nil
+	}
+	events := make([]string, 0, count)
+	for i := 0; i < count; i++ {
+		events = append(events, fmt.Sprintf("%s event %d", name, i+1))
+	}
+	return events
+}
+
+func lastEntry(values []string) string {
+	if len(values) == 0 {
+		return ""
+	}
+	return values[len(values)-1]
+}
+
+func copyStringMap(values map[string]string) map[string]string {
+	if len(values) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(values))
+	for key, value := range values {
+		out[key] = value
+	}
+	return out
+}
+
+func intFlag(flags map[string]string, key string, fallback int) int {
+	if value, err := strconv.Atoi(flags[key]); err == nil {
+		return value
+	}
+	return fallback
+}
+
+func boolFlag(flags map[string]string, key string) bool {
+	value, err := strconv.ParseBool(flags[key])
+	return err == nil && value
+}
+
+func boolFlagDefault(flags map[string]string, key string, fallback bool) bool {
+	value, err := strconv.ParseBool(flags[key])
+	if err != nil {
+		return fallback
+	}
+	return value
+}
+
+func stringValue(value any) string {
+	switch typed := value.(type) {
+	case string:
+		return strings.TrimSpace(typed)
+	case fmt.Stringer:
+		return strings.TrimSpace(typed.String())
+	case nil:
+		return ""
+	default:
+		return strings.TrimSpace(fmt.Sprintf("%v", typed))
+	}
+}
+
+func sliceValue(value any) []string {
+	switch typed := value.(type) {
+	case []string:
+		return append([]string(nil), typed...)
+	case []any:
+		items := make([]string, 0, len(typed))
+		for _, item := range typed {
+			if value := stringValue(item); value != "" {
+				items = append(items, value)
+			}
+		}
+		return items
+	case string:
+		if typed == "" {
+			return nil
+		}
+		parts := strings.Split(typed, ",")
+		items := make([]string, 0, len(parts))
+		for _, part := range parts {
+			if value := strings.TrimSpace(part); value != "" {
+				items = append(items, value)
+			}
+		}
+		return items
+	default:
+		value := stringValue(value)
+		if value == "" {
+			return nil
+		}
+		return []string{value}
+	}
+}
+
+func boolValue(value any) bool {
+	switch typed := value.(type) {
+	case bool:
+		return typed
+	case string:
+		parsed, err := strconv.ParseBool(typed)
+		return err == nil && parsed
+	default:
+		parsed, err := strconv.ParseBool(fmt.Sprintf("%v", typed))
+		return err == nil && parsed
+	}
+}
+
+func valueOrDefault(value, fallback string) string {
+	if value == "" {
+		return fallback
+	}
+	return value
+}
+
+func titleCase(value string) string {
+	if value == "" {
+		return ""
+	}
+	parts := strings.FieldsFunc(value, func(r rune) bool {
+		return r == '-' || r == '_' || r == ' '
+	})
+	for i := range parts {
+		if parts[i] == "" {
+			continue
+		}
+		parts[i] = strings.ToUpper(parts[i][:1]) + strings.ToLower(parts[i][1:])
+	}
+	return strings.Join(parts, " ")
+}

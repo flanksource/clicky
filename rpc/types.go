@@ -17,6 +17,7 @@ type RPCOperation struct {
 	Method      string         `json:"method,omitempty"` // HTTP method
 	Tags        []string       `json:"tags,omitempty"`   // For grouping
 	DataFunc    DataFunc       `json:"-"`                // Direct data provider, bypasses stdout capture
+	LookupFunc  DataFunc       `json:"-"`                // Direct filter metadata provider
 }
 
 // RPCParameter represents a parameter in an RPC operation

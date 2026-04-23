@@ -17,10 +17,21 @@ import (
 // that can invoke the user function directly with flag values.
 var dataFuncRegistry sync.Map // map[*cobra.Command]func(flags map[string]string, args []string) (any, error)
 
+// lookupFuncRegistry maps cobra commands to filter metadata lookup closures.
+var lookupFuncRegistry sync.Map // map[*cobra.Command]func(flags map[string]string, args []string) (any, error)
+
 // GetDataFunc returns the direct data function registered for a command, if any.
 // Used by the RPC converter to wire DataFunc on RPCOperation.
 func GetDataFunc(cmd *cobra.Command) func(flags map[string]string, args []string) (any, error) {
 	if v, ok := dataFuncRegistry.Load(cmd); ok {
+		return v.(func(flags map[string]string, args []string) (any, error))
+	}
+	return nil
+}
+
+// GetLookupFunc returns the direct lookup function registered for a command, if any.
+func GetLookupFunc(cmd *cobra.Command) func(flags map[string]string, args []string) (any, error) {
+	if v, ok := lookupFuncRegistry.Load(cmd); ok {
 		return v.(func(flags map[string]string, args []string) (any, error))
 	}
 	return nil
