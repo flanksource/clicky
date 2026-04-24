@@ -168,6 +168,21 @@ func Collapsed(label string, content api.Textable, styles ...string) api.Collaps
 var KeyValue = api.KeyValue
 var CodeBlock = api.CodeBlock
 var Badge = api.Badge
+var LinkTargetDialog = api.LinkTargetDialog
+var LinkTargetHover = api.LinkTargetHover
+var LinkTargetExpand = api.LinkTargetExpand
+var LinkTargetClicky = api.LinkTargetClicky
+var LinkTargetSelf = api.LinkTargetSelf
+var LinkTargetWindow = api.LinkTargetWindow
+var LinkTargetTab = api.LinkTargetTab
+
+func Link(href string) api.Link {
+	return api.NewLink(href)
+}
+
+func LinkCommand(command string) api.LinkCommand {
+	return api.NewLinkCommand(command)
+}
 
 func Map[T any](m map[string]T, styles ...string) api.DescriptionList {
 	style := "compact"

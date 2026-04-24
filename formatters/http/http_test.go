@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	clickyformatters "github.com/flanksource/clicky/formatters"
 	"gopkg.in/yaml.v3"
 )
 
@@ -271,6 +272,53 @@ func TestFormatHandler_DefaultFormat(t *testing.T) {
 	contentType := w.Header().Get("Content-Type")
 	if contentType != "application/json" {
 		t.Errorf("Expected default Content-Type application/json, got %s", contentType)
+	}
+}
+
+func TestFormatHandler_PassesRequestToFormatCallbacks(t *testing.T) {
+	clickyformatters.ClearFormatCallbacks()
+	t.Cleanup(clickyformatters.ClearFormatCallbacks)
+
+	clickyformatters.AddFormatCallback(clickyformatters.FormatCallback{
+		BeforeFormat: func(ctx any, manager *clickyformatters.FormatManager, options clickyformatters.FormatOptions, before any) any {
+			req, ok := ctx.(*http.Request)
+			if !ok {
+				t.Fatalf("callback ctx type = %T", ctx)
+			}
+
+			user, ok := before.(testUser)
+			if !ok {
+				t.Fatalf("before type = %T", before)
+			}
+
+			return map[string]any{
+				"name":  user.Name,
+				"email": user.Email,
+				"path":  req.URL.Path,
+			}
+		},
+	})
+
+	handler := FormatHandler(func(r *http.Request) (any, error) {
+		return testUser{Name: "Eve", Email: "eve@example.com"}, nil
+	})
+
+	req := httptest.NewRequest("GET", "http://example.com/users?format=json", nil)
+	w := httptest.NewRecorder()
+
+	handler(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("Expected status 200, got %d", w.Code)
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("Failed to parse JSON response: %v", err)
+	}
+
+	if payload["path"] != "/users" {
+		t.Fatalf("path = %#v, want /users", payload["path"])
 	}
 }
 
