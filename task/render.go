@@ -2,7 +2,6 @@ package task
 
 import (
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
@@ -21,14 +20,21 @@ func (tm *Manager) PlainRender() {
 	taskSnapshot := make([]*Task, len(tm.tasks))
 	copy(taskSnapshot, tm.tasks)
 
-	// noProgress mode: only print dirty tasks, never clear screen
+	// noProgress mode: only print dirty tasks, never clear screen. Route
+	// writes through the renderer's Output (original stderr captured at
+	// manager init) so live progress stays out of StartCapturingOutput's
+	// buffer and appears in real time. Guard each line with bufferMutex so
+	// a concurrent log-serializer write cannot split a single line write.
+	output := tm.renderer.Output()
 	for _, task := range taskSnapshot {
 		if task.PopDirty() {
+			tm.bufferMutex.Lock()
 			if tm.noColor.Load() {
-				fmt.Fprintf(os.Stderr, "%s\n", task.Pretty().String())
+				fmt.Fprintf(output, "%s\n", task.Pretty().String())
 			} else {
-				fmt.Fprintf(os.Stderr, "%s\n", task.Pretty().ANSI())
+				fmt.Fprintf(output, "%s\n", task.Pretty().ANSI())
 			}
+			tm.bufferMutex.Unlock()
 			if task.bufferedLogger != nil {
 				task.bufferedLogger.ClearLogs()
 			}
@@ -145,8 +151,30 @@ func (tm *Manager) interactiveRender(lastLines int) int {
 	out = strings.Join(lines, "\n")
 
 	output := tm.renderer.Output()
-	output.ClearLines(lastLines)
-	fmt.Fprint(os.Stderr, out)
+	// Hold bufferMutex for the full clear+write sequence so a concurrent
+	// logger write routed through the installed log serializer cannot
+	// land between the ClearLines and the new content. Both sides acquire
+	// the same mutex; the render side holds it for the brief duration of
+	// the clear + Fprint, well under a 250ms tick.
+	tm.bufferMutex.Lock()
+	// Widen the clear to cover any log lines the serializer emitted since
+	// the last tick. Without this, a logger.Infof between ticks advances
+	// the cursor past the tracked region; the next ClearLines(lastLines)
+	// undercounts and leaves the top of the previous frame stacked above
+	// the new one.
+	extra := 0
+	if tm.logSerializer != nil {
+		extra = tm.logSerializer.TakeLinesWritten()
+	}
+	output.ClearLines(lastLines + extra)
+	// Write content through the renderer's Output, which holds the original
+	// stderr captured at manager init. Routing through bare os.Stderr here
+	// would split writes across two sinks — the ClearLines bytes go direct
+	// to the terminal while the content goes into StartCapturingOutput's
+	// buffer and gets flushed at shutdown, stripping the clears from the
+	// content and leaving every rendered frame stacked in the final output.
+	fmt.Fprint(output, out)
+	tm.bufferMutex.Unlock()
 
 	return strings.Count(out, "\n")
 }

@@ -27,4 +27,28 @@ var _ = Describe("clickylint", func() {
 		results := analysistest.Run(GinkgoT(), testdata, lint.Analyzer, "good")
 		Expect(results).NotTo(BeEmpty())
 	})
+
+	It("flags direct stdout/stderr writes", func() {
+		testdata := analysistest.TestData()
+		results := analysistest.Run(GinkgoT(), testdata, lint.Analyzer, "directstdout/bad")
+		Expect(results).NotTo(BeEmpty())
+	})
+
+	It("allows legitimate os.Stdin / inspection / buffer writes", func() {
+		testdata := analysistest.TestData()
+		results := analysistest.Run(GinkgoT(), testdata, lint.Analyzer, "directstdout/good")
+		Expect(results).NotTo(BeEmpty())
+	})
+
+	It("honors the //clicky:allow-stdout file-level opt-out", func() {
+		testdata := analysistest.TestData()
+		results := analysistest.Run(GinkgoT(), testdata, lint.Analyzer, "directstdout/allowed")
+		Expect(results).NotTo(BeEmpty())
+	})
+
+	It("skips main packages", func() {
+		testdata := analysistest.TestData()
+		results := analysistest.Run(GinkgoT(), testdata, lint.Analyzer, "directstdout/mainpkg")
+		Expect(results).NotTo(BeEmpty())
+	})
 })

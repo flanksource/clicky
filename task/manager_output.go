@@ -123,6 +123,32 @@ func (tm *Manager) StartCapturingOutput() {
 	tm.capturingOutput = true
 }
 
+// StartCapturingOutput replaces os.Stdout and os.Stderr on the global
+// task manager with pipes that buffer everything written until
+// StopCapturingOutput is called. The live task renderer is unaffected
+// because it captured the original file descriptors at manager init
+// time (see Manager.renderer in manager.go). Loggers that captured
+// os.Stderr before this call will also keep writing to the real
+// terminal — only bare fmt.Print / os.Stderr writes after this call
+// get buffered.
+func StartCapturingOutput() {
+	if global == nil {
+		return
+	}
+	global.StartCapturingOutput()
+}
+
+// StopCapturingOutput restores the real os.Stdout and os.Stderr on the
+// global task manager and flushes every buffered line to the restored
+// streams in the order it was written, tagged by stream of origin.
+// Safe to call when capture wasn't started (no-op).
+func StopCapturingOutput() {
+	if global == nil {
+		return
+	}
+	global.StopCapturingOutput()
+}
+
 // StopCapturingOutput restores stdout/stderr and prints buffered output
 func (tm *Manager) StopCapturingOutput() {
 	tm.bufferMutex.Lock()

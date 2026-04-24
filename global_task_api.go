@@ -64,6 +64,26 @@ func ClearGlobalTasks() {
 	task.ClearTasks()
 }
 
+// StartCapturingOutput replaces os.Stdout / os.Stderr with internal
+// pipes so that bare fmt.Print / os.Stderr writes are buffered instead
+// of interleaving with the live task renderer. The live renderer keeps
+// drawing on the real terminal because it captured the original file
+// descriptors at manager init. Loggers that captured os.Stderr before
+// this call keep writing live, too.
+//
+// Pair with StopCapturingOutput at end-of-run; the buffered content is
+// flushed in stream order onto the restored streams.
+func StartCapturingOutput() {
+	task.StartCapturingOutput()
+}
+
+// StopCapturingOutput restores os.Stdout / os.Stderr and flushes every
+// buffered line to the real terminal in write order, tagged by stream.
+// Safe to call when capture wasn't started.
+func StopCapturingOutput() {
+	task.StopCapturingOutput()
+}
+
 // GetGlobalTaskManagerStats returns stats about the global TaskManager
 func GetGlobalTaskManagerStats() (total, running, completed, failed int) {
 

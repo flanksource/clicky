@@ -24,7 +24,37 @@ func (tm *Manager) startRenderLoop() {
 	tm.renderDone = make(chan struct{})
 	tm.renderOwnsTTY = tm.isInteractive
 	tm.mu.Unlock()
+
+	// Route flanksource/commons/logger output through a writer that
+	// serializes against tick renders. Without this, a logger.Infof between
+	// two ticks shifts the cursor without updating lastLines, so the next
+	// tick's ClearLines undercounts and leaves stale frame lines behind.
+	// Restored in stopRender.
+	tm.installLogSerializer()
+
 	go tm.renderLoop()
+}
+
+// installLogSerializer swaps the commons logger writer for a mutex-guarded
+// serializer that shares tm.bufferMutex with the renderer. Caller must pair
+// with uninstallLogSerializer (done by stopRender).
+func (tm *Manager) installLogSerializer() {
+	prev := logger.GetOutput()
+	tm.savedLogOutput = prev
+	ser := newLogSerializingWriter(&tm.bufferMutex, prev)
+	tm.logSerializer = ser
+	logger.SetOutput(ser)
+}
+
+// uninstallLogSerializer restores the pre-renderer logger writer. No-op if
+// installLogSerializer was never called (e.g. noRender).
+func (tm *Manager) uninstallLogSerializer() {
+	if tm.savedLogOutput == nil {
+		return
+	}
+	logger.SetOutput(tm.savedLogOutput)
+	tm.savedLogOutput = nil
+	tm.logSerializer = nil
 }
 
 // renderLoop is the unified loop for both interactive and non-interactive modes.
@@ -42,7 +72,9 @@ func (tm *Manager) renderLoop() {
 
 	output := tm.renderer.Output()
 	if tm.isInteractive {
+		tm.bufferMutex.Lock()
 		output.HideCursor()
+		tm.bufferMutex.Unlock()
 	}
 
 	var lastLines int
@@ -53,7 +85,13 @@ func (tm *Manager) renderLoop() {
 		select {
 		case <-tm.stopRenderCh:
 			if tm.isInteractive {
-				output.ClearLines(lastLines)
+				// Final in-place render so the visible frame reflects
+				// completed task states even if stop fired between ticks.
+				// interactiveRender atomically ClearLines(lastLines) then
+				// writes the fresh content, avoiding the double-emit that
+				// would occur if we cleared here and also called
+				// renderFinal below in stopRender.
+				tm.interactiveRender(lastLines)
 			} else {
 				tm.PlainRender()
 			}
@@ -80,10 +118,18 @@ func (tm *Manager) stopRender() {
 			close(ch)
 			<-done
 		}
-		if !tm.noRender.Load() {
+		// In interactive mode the stop branch of renderLoop already emitted
+		// the authoritative final frame (via interactiveRender, which
+		// ClearLines(lastLines)+writes atomically). Calling renderFinal
+		// here would append a second copy of the summary below the live
+		// frame, doubling every summary line. PlainRender-based mode only
+		// prints dirty tasks per tick, so renderFinal is still needed to
+		// cover tasks that completed between the last tick and stop.
+		if !tm.noRender.Load() && !tm.isInteractive {
 			tm.renderFinal()
 		}
 		tm.cleanupTerminal()
+		tm.uninstallLogSerializer()
 		tm.releaseRenderTerminal()
 	})
 }
@@ -94,8 +140,10 @@ func (tm *Manager) cleanupTerminal() {
 		return
 	}
 	output := tm.renderer.Output()
+	tm.bufferMutex.Lock()
 	output.ShowCursor()
 	output.Reset()
+	tm.bufferMutex.Unlock()
 	if tm.originalTermState != nil {
 		if err := term.Restore(int(os.Stderr.Fd()), tm.originalTermState); err != nil {
 			logger.Debugf("failed to restore terminal state: %v", err)
@@ -118,10 +166,19 @@ func (tm *Manager) renderFinal() {
 	tm.mu.RUnlock()
 
 	rendered := tm.prettyFromTasks(taskSnapshot)
+	// Write through renderer.Output (original stderr captured at init) so
+	// the final summary joins the live render stream and doesn't land in
+	// the StartCapturingOutput pipe — otherwise buffered content flushed
+	// at shutdown gets stacked below every already-rendered frame. Guard
+	// with bufferMutex so a log-serializer write in flight doesn't split
+	// the summary block.
+	output := tm.renderer.Output()
+	tm.bufferMutex.Lock()
+	defer tm.bufferMutex.Unlock()
 	if tm.noColor.Load() {
-		fmt.Fprintln(os.Stderr, rendered.String())
+		fmt.Fprintln(output, rendered.String())
 	} else {
-		fmt.Fprintln(os.Stderr, rendered.ANSI())
+		fmt.Fprintln(output, rendered.ANSI())
 	}
 }
 

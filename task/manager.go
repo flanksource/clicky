@@ -3,6 +3,7 @@ package task
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"reflect"
 	"strings"
@@ -34,11 +35,23 @@ type Manager struct {
 	renderer      *lipgloss.Renderer
 	styles        styleSet
 
-	gracefulTimeout time.Duration
-	onInterrupt     func()      // optional cleanup callback
-	noColor         atomic.Bool // Disable colored output
-	noProgress      atomic.Bool // Disable progress display
-	noRender        atomic.Bool // Disable all task rendering
+	gracefulTimeout  time.Duration
+	onInterrupt      func()      // optional cleanup callback
+	noColor          atomic.Bool // Disable colored output
+	noProgress       atomic.Bool // Disable progress display
+	noRender         atomic.Bool // Disable all task rendering
+	forceInteractive atomic.Bool // Force the interactive renderer on regardless of test/CI env
+
+	// savedLogOutput holds the flanksource/commons/logger writer that was
+	// active before the render loop installed its serializer. Restored on
+	// stopRender so logger output goes back to its original destination
+	// once the renderer releases the terminal.
+	savedLogOutput io.Writer
+
+	// logSerializer is the writer installed while the renderer owns the
+	// terminal. Tick renders read TakeLinesWritten from it to widen the
+	// next ClearLines to cover any log lines that landed between ticks.
+	logSerializer *logSerializingWriter
 
 	// Priority queue for task scheduling
 	taskQueue     *collections.Queue[*Task]
@@ -88,9 +101,17 @@ type styleSet struct {
 func init() {
 	global = newManager()
 
-	if isTestEnvironment() {
+	if os.Getenv("CLICKY_FORCE_INTERACTIVE") != "" {
+		SetForceInteractive(true)
+	}
+
+	if isTestEnvironment() && !IsForceInteractive() {
 		SetNoProgress(true)
 		SetNoColor(true)
+	}
+
+	if IsForceInteractive() {
+		global.isInteractive = true
 	}
 }
 
@@ -277,6 +298,25 @@ func SetNoRender(noRender bool) {
 // IsNoRender reports whether task rendering is currently disabled.
 func IsNoRender() bool {
 	return global.noRender.Load()
+}
+
+// SetForceInteractive forces the interactive renderer on even when the process is
+// running under `go test` or CI (GO_TEST, CI, GITHUB_ACTIONS, …). It also marks
+// the manager as interactive when the underlying FD is not a TTY, so that a
+// PTY-wrapping caller sees the full cursor/clear/redraw ANSI stream. Intended
+// for harnesses that need to audit interactive output — normal applications
+// should rely on the automatic TTY detection.
+func SetForceInteractive(force bool) {
+	global.forceInteractive.Store(force)
+	if force {
+		global.isInteractive = true
+	}
+}
+
+// IsForceInteractive reports whether the interactive renderer has been forced
+// on via SetForceInteractive or the CLICKY_FORCE_INTERACTIVE env var.
+func IsForceInteractive() bool {
+	return global.forceInteractive.Load()
 }
 
 // SetMaxConcurrent sets the maximum number of concurrent tasks
