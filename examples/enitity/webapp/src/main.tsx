@@ -6,7 +6,7 @@ import { ThemeProvider, DensityProvider } from "@flanksource/clicky-ui";
 // Register the <iconify-icon> web component so clicky-ui's <Icon> glyphs
 // render (it loads icons on-demand from the Iconify CDN at runtime).
 import "iconify-icon";
-import "@flanksource/clicky-ui/styles.css";
+import "../../../../../clicky-ui/packages/ui/src/styles/tokens.css";
 import "./index.css";
 import { App } from "./App";
 
