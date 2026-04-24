@@ -210,7 +210,22 @@ func formatTextable(data api.Textable, opts FormatOptions) (string, error) {
 }
 
 func (f *FormatManager) FormatWithOptions(options FormatOptions, data ...any) (string, error) {
+	return f.FormatWithContext(nil, options, data...)
+}
 
+// FormatWithContext formats data with an optional caller context that is
+// forwarded to registered format callbacks.
+func (f *FormatManager) FormatWithContext(ctx any, options FormatOptions, data ...any) (string, error) {
+	before := collapseFormatInput(data...)
+	before = f.applyBeforeFormatCallbacks(ctx, options, before)
+	output, err := f.formatWithOptions(options, expandFormatInput(before)...)
+	if err != nil {
+		return "", err
+	}
+	return f.applyAfterFormatCallbacks(ctx, options, before, output), nil
+}
+
+func (f *FormatManager) formatWithOptions(options FormatOptions, data ...any) (string, error) {
 	if len(data) == 0 {
 		return "", fmt.Errorf("no data provided for formatting")
 	}
@@ -369,8 +384,14 @@ func (f *FormatManager) FormatWithOptions(options FormatOptions, data ...any) (s
 
 // FormatToFile formats data and writes to a file if output is specified
 func (f *FormatManager) FormatToFile(options FormatOptions, data interface{}) error {
+	return f.FormatToFileWithContext(nil, options, data)
+}
+
+// FormatToFileWithContext formats data and writes it to a file or stdout while
+// forwarding ctx to registered format callbacks.
+func (f *FormatManager) FormatToFileWithContext(ctx any, options FormatOptions, data interface{}) error {
 	// Format the data
-	output, err := f.FormatWithOptions(options, data)
+	output, err := f.FormatWithContext(ctx, options, data)
 	if err != nil {
 		return fmt.Errorf("failed to format data: %w", err)
 	}
@@ -422,44 +443,62 @@ func (f *FormatManager) ParseSchema(data interface{}) (*api.PrettyObject, error)
 
 // FormatWithSchema handles schema-aware formatting using provided PrettyData
 func (f *FormatManager) FormatWithSchema(prettyData *api.PrettyData, options FormatOptions) (string, error) {
+	return f.FormatWithSchemaContext(nil, prettyData, options)
+}
+
+// FormatWithSchemaContext handles schema-aware formatting while forwarding ctx
+// to registered format callbacks.
+func (f *FormatManager) FormatWithSchemaContext(ctx any, prettyData *api.PrettyData, options FormatOptions) (string, error) {
+	before := any(prettyData)
+	before = f.applyBeforeFormatCallbacks(ctx, options, before)
+	if transformed, ok := before.(*api.PrettyData); ok && transformed != nil {
+		prettyData = transformed
+	}
+
 	// Handle different output formats for schema-aware data
 	format := strings.ToLower(options.Format)
+	var output string
+	var err error
 	switch format {
 	case "json":
-
-		return f.jsonFormatter.FormatValue(prettyData.Original)
+		output, err = f.jsonFormatter.FormatValue(prettyData.Original)
 	case "yaml", "yml":
-		return f.yamlFormatter.FormatValue(prettyData.Original)
+		output, err = f.yamlFormatter.FormatValue(prettyData.Original)
 	case "csv":
 		if f.csvFormatter == nil {
 			f.csvFormatter = NewCSVFormatter()
 		}
-		return f.csvFormatter.FormatPrettyData(prettyData)
+		output, err = f.csvFormatter.FormatPrettyData(prettyData)
 	case "markdown", "md":
 		if f.markdownFormatter == nil {
 			f.markdownFormatter = NewMarkdownFormatter()
 		}
 		f.markdownFormatter.NoColor = options.NoColor
-		return f.markdownFormatter.FormatPrettyData(prettyData, options)
+		output, err = f.markdownFormatter.FormatPrettyData(prettyData, options)
 	case "slack":
 		if f.slackFormatter == nil {
 			f.slackFormatter = NewSlackFormatter()
 		}
-		return f.slackFormatter.FormatPrettyData(prettyData, options)
+		output, err = f.slackFormatter.FormatPrettyData(prettyData, options)
 	case "html", "html-static", "html-pdf", "pdf":
 		formatter, ok := GetCustomFormatter(options.Format)
 		if !ok {
 			return "", fmt.Errorf("%s formatter not registered, register using 'import _ github.com/flanksource/clicky/formatters/html'", options.Format)
 		}
-		return formatter(prettyData, options)
+		output, err = formatter(prettyData, options)
 	default:
 		// Default to pretty format
 		if f.prettyFormatter == nil {
 			f.prettyFormatter = NewPrettyFormatter()
 		}
 		f.prettyFormatter.NoColor = options.NoColor
-		return f.prettyFormatter.FormatPrettyData(prettyData)
+		output, err = f.prettyFormatter.FormatPrettyData(prettyData)
 	}
+
+	if err != nil {
+		return "", err
+	}
+	return f.applyAfterFormatCallbacks(ctx, options, before, output), nil
 }
 
 var DEFAULT_MANAGER api.FormatManager = NewFormatManager()

@@ -282,6 +282,31 @@ func TestHTMLReactConvertRichTextables(t *testing.T) {
 	if mapNode.Kind != "map" || len(mapNode.Fields) != 2 {
 		t.Fatalf("expected 2 map fields, got %#v", mapNode)
 	}
+
+	linkNode := convertTextable(api.NewLink("https://example.com/docs").
+		Append("docs", "text-blue-600 underline"))
+	if linkNode.Kind != "link" || linkNode.Href != "https://example.com/docs" {
+		t.Fatalf("expected link node with href, got %#v", linkNode)
+	}
+	if len(linkNode.Children) != 1 || linkNode.Children[0].Plain != "docs" {
+		t.Fatalf("expected inline link content, got %#v", linkNode.Children)
+	}
+
+	commandNode := convertTextable(api.NewLinkCommand("stack/get").
+		WithArgs("stack-42").
+		WithFlag("events", "1").
+		WithTarget(api.LinkTargetDialog).
+		WithAutoRun(true).
+		Append("stack-42", "text-blue-600 underline"))
+	if commandNode.Kind != "link-command" || commandNode.Command != "stack/get" {
+		t.Fatalf("expected link-command node, got %#v", commandNode)
+	}
+	if len(commandNode.Args) != 1 || commandNode.Args[0] != "stack-42" {
+		t.Fatalf("expected args to be preserved, got %#v", commandNode.Args)
+	}
+	if commandNode.Flags["events"] != "1" || !commandNode.AutoRun {
+		t.Fatalf("expected command flags/autRun to be preserved, got %#v", commandNode)
+	}
 }
 
 func TestHTMLReactBuildHTML(t *testing.T) {

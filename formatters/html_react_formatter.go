@@ -72,33 +72,38 @@ type clickyTreeItem struct {
 }
 
 type clickyNode struct {
-	Kind            string           `json:"kind"`
-	Plain           string           `json:"plain,omitempty"`
-	Style           *clickyStyle     `json:"style,omitempty"`
-	Text            string           `json:"text,omitempty"`
-	Children        []clickyNode     `json:"children,omitempty"`
-	Tooltip         *clickyNode      `json:"tooltip,omitempty"`
-	HTML            string           `json:"html,omitempty"`
-	Inline          bool             `json:"inline,omitempty"`
-	Ordered         bool             `json:"ordered,omitempty"`
-	Unstyled        bool             `json:"unstyled,omitempty"`
-	Bullet          *clickyNode      `json:"bullet,omitempty"`
-	Items           []clickyNode     `json:"items,omitempty"`
-	Fields          []clickyField    `json:"fields,omitempty"`
-	Columns         []clickyColumn   `json:"columns,omitempty"`
-	Rows            []clickyRow      `json:"rows,omitempty"`
-	Roots           []clickyTreeItem `json:"roots,omitempty"`
-	Label           *clickyNode      `json:"label,omitempty"`
-	Content         *clickyNode      `json:"content,omitempty"`
-	Href            string           `json:"href,omitempty"`
-	ID              string           `json:"id,omitempty"`
-	Payload         string           `json:"payload,omitempty"`
-	Variant         string           `json:"variant,omitempty"`
-	Iconify         string           `json:"iconify,omitempty"`
-	Unicode         string           `json:"unicode,omitempty"`
-	Language        string           `json:"language,omitempty"`
-	Source          string           `json:"source,omitempty"`
-	HighlightedHTML string           `json:"highlightedHtml,omitempty"`
+	Kind            string            `json:"kind"`
+	Plain           string            `json:"plain,omitempty"`
+	Style           *clickyStyle      `json:"style,omitempty"`
+	Text            string            `json:"text,omitempty"`
+	Children        []clickyNode      `json:"children,omitempty"`
+	Tooltip         *clickyNode       `json:"tooltip,omitempty"`
+	HTML            string            `json:"html,omitempty"`
+	Inline          bool              `json:"inline,omitempty"`
+	Ordered         bool              `json:"ordered,omitempty"`
+	Unstyled        bool              `json:"unstyled,omitempty"`
+	Bullet          *clickyNode       `json:"bullet,omitempty"`
+	Items           []clickyNode      `json:"items,omitempty"`
+	Fields          []clickyField     `json:"fields,omitempty"`
+	Columns         []clickyColumn    `json:"columns,omitempty"`
+	Rows            []clickyRow       `json:"rows,omitempty"`
+	Roots           []clickyTreeItem  `json:"roots,omitempty"`
+	Label           *clickyNode       `json:"label,omitempty"`
+	Content         *clickyNode       `json:"content,omitempty"`
+	Href            string            `json:"href,omitempty"`
+	Target          string            `json:"target,omitempty"`
+	Command         string            `json:"command,omitempty"`
+	Args            []string          `json:"args,omitempty"`
+	Flags           map[string]string `json:"flags,omitempty"`
+	AutoRun         bool              `json:"autoRun,omitempty"`
+	ID              string            `json:"id,omitempty"`
+	Payload         string            `json:"payload,omitempty"`
+	Variant         string            `json:"variant,omitempty"`
+	Iconify         string            `json:"iconify,omitempty"`
+	Unicode         string            `json:"unicode,omitempty"`
+	Language        string            `json:"language,omitempty"`
+	Source          string            `json:"source,omitempty"`
+	HighlightedHTML string            `json:"highlightedHtml,omitempty"`
 }
 
 func (f *HTMLReactFormatter) Format(data any, opts FormatOptions) (string, error) {
@@ -183,6 +188,14 @@ func convertTextable(t api.Textable) clickyNode {
 		return convertText(v)
 	case *api.Text:
 		return convertText(*v)
+	case api.Link:
+		return convertLink(v)
+	case *api.Link:
+		return convertLink(*v)
+	case api.LinkCommand:
+		return convertLinkCommand(v)
+	case *api.LinkCommand:
+		return convertLinkCommand(*v)
 	case api.TextTable:
 		return convertTable(&v)
 	case *api.TextTable:
@@ -255,8 +268,12 @@ func convertTextable(t api.Textable) clickyNode {
 }
 
 func convertText(text api.Text) clickyNode {
+	return convertInlineTextNode("text", text)
+}
+
+func convertInlineTextNode(kind string, text api.Text) clickyNode {
 	node := clickyNode{
-		Kind:  "text",
+		Kind:  kind,
 		Plain: text.String(),
 		Text:  text.Content,
 		Style: convertTextStyle(text.Style, text.Class, false),
@@ -271,6 +288,30 @@ func convertText(text api.Text) clickyNode {
 		node.Children = append(node.Children, convertTextable(child))
 	}
 
+	return node
+}
+
+func convertLink(link api.Link) clickyNode {
+	node := convertInlineTextNode("link", link.Content)
+	node.Href = link.Href
+	node.Target = string(link.Target)
+	return node
+}
+
+func convertLinkCommand(link api.LinkCommand) clickyNode {
+	node := convertInlineTextNode("link-command", link.Content)
+	node.Command = link.Command
+	node.Target = string(link.Target)
+	node.AutoRun = link.AutoRun
+	if len(link.Args) > 0 {
+		node.Args = append([]string(nil), link.Args...)
+	}
+	if len(link.Flags) > 0 {
+		node.Flags = make(map[string]string, len(link.Flags))
+		for key, value := range link.Flags {
+			node.Flags[key] = value
+		}
+	}
 	return node
 }
 

@@ -32,7 +32,7 @@ func FormatHandler(fn func(*http.Request) (any, error)) http.HandlerFunc {
 		opts := extractFormatOptions(r)
 
 		manager := formatters.NewFormatManager()
-		output, err := manager.FormatWithOptions(opts, data)
+		output, err := manager.FormatWithContext(r, opts, data)
 		if err != nil {
 			logger.Errorf("Format error: %v", err)
 			http.Error(w, fmt.Sprintf("Failed to format response: %v", err), http.StatusInternalServerError)
