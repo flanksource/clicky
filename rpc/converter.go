@@ -161,6 +161,22 @@ func (c *Converter) ConvertCommand(cmd *cobra.Command) (*RPCOperation, error) {
 		Method:      method,
 		Tags:        tags,
 	}
+	operation.Clicky = &ClickyOperationMeta{
+		Command: strings.ReplaceAll(cmdPath, " ", "/"),
+	}
+	if meta := clicky.GetCommandOpenAPIMeta(cmd); meta != nil {
+		operation.Clicky.SurfaceID = clickySurfaceID(meta.Entity, meta.Parent, meta.Admin)
+		operation.Clicky.Entity = meta.Entity
+		operation.Clicky.Parent = meta.Parent
+		operation.Clicky.Aliases = append([]string(nil), meta.Aliases...)
+		operation.Clicky.Admin = meta.Admin
+		operation.Clicky.Verb = meta.Verb
+		operation.Clicky.Scope = meta.Scope
+		operation.Clicky.ActionName = meta.ActionName
+		operation.Clicky.IDParam = meta.IDParam
+		operation.Clicky.SupportsLookup = meta.SupportsLookup
+		operation.Clicky.SupportsFilterMode = meta.SupportsFilterMode
+	}
 
 	if df := clicky.GetDataFunc(cmd); df != nil {
 		operation.DataFunc = df
@@ -170,6 +186,22 @@ func (c *Converter) ConvertCommand(cmd *cobra.Command) (*RPCOperation, error) {
 	}
 
 	return operation, nil
+}
+
+func clickySurfaceID(entity string, parent string, admin bool) string {
+	if entity == "" {
+		return ""
+	}
+
+	parts := []string{"entity", entity}
+	if parent != "" {
+		parts = append(parts, "parent", parent)
+	}
+	if admin {
+		parts = append(parts, "admin")
+	}
+
+	return strings.Join(parts, ":")
 }
 
 // ConvertCommandTree recursively converts a command and its subcommands

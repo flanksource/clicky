@@ -815,6 +815,10 @@ func (p *StructParser) StructToRow(val reflect.Value) (PrettyDataRow, error) {
 		}
 
 		fieldVal := val.Field(i)
+		jsonTag := field.Tag.Get("json")
+		if jsonTag != "" && strings.Contains(jsonTag, "omitempty") && IsEmpty(fieldVal) {
+			continue
+		}
 		row[jsonFieldName(field)] = p.ProcessFieldValue(fieldVal)
 	}
 

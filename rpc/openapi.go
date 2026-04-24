@@ -3,6 +3,7 @@ package rpc
 import (
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -17,6 +18,7 @@ type OpenAPISpec struct {
 	Paths      map[string]OpenAPIPath `json:"paths"`
 	Components *OpenAPIComponents     `json:"components,omitempty"`
 	Tags       []OpenAPITag           `json:"tags,omitempty"`
+	Clicky     *ClickySpecMeta        `json:"x-clicky,omitempty"`
 }
 
 // OpenAPIInfo contains metadata about the API
@@ -68,6 +70,7 @@ type OpenAPIOperation struct {
 	RequestBody *OpenAPIRequestBody        `json:"requestBody,omitempty"`
 	Responses   map[string]OpenAPIResponse `json:"responses"`
 	Security    []map[string][]string      `json:"security,omitempty"`
+	Clicky      *ClickyOperationMeta       `json:"x-clicky,omitempty"`
 }
 
 // OpenAPIParameter represents a parameter in the OpenAPI spec
@@ -227,6 +230,7 @@ func (g *OpenAPIGenerator) GenerateFromService(service *RPCService) *OpenAPISpec
 		Paths:   make(map[string]OpenAPIPath),
 		Tags:    g.config.Tags,
 	}
+	spec.Clicky = g.buildClickySpecMeta(service.Operations)
 
 	// Group operations by path
 	pathMap := make(map[string][]RPCOperation)
@@ -283,6 +287,16 @@ func (g *OpenAPIGenerator) convertOperationToOpenAPI(op RPCOperation) OpenAPIOpe
 		OperationID: strings.ReplaceAll(op.Name, " ", "_"),
 		Parameters:  []OpenAPIParameter{},
 		Responses:   make(map[string]OpenAPIResponse),
+	}
+	if op.Clicky != nil && (op.Clicky.Surface != "" || op.Clicky.Command != "") {
+		meta := *op.Clicky
+		meta.SurfaceID = ""
+		meta.Entity = ""
+		meta.Parent = ""
+		meta.Aliases = nil
+		meta.Admin = false
+		meta.Order = 0
+		openAPIOp.Clicky = &meta
 	}
 
 	// Convert parameters
@@ -370,6 +384,147 @@ func (g *OpenAPIGenerator) convertOperationToOpenAPI(op RPCOperation) OpenAPIOpe
 	}
 
 	return openAPIOp
+}
+
+func (g *OpenAPIGenerator) buildClickySpecMeta(operations []RPCOperation) *ClickySpecMeta {
+	type surfaceEntry struct {
+		surface ClickySurface
+		baseKey string
+	}
+
+	if len(operations) == 0 {
+		return nil
+	}
+
+	surfacesByID := make(map[string]*surfaceEntry)
+	surfaceIDs := make([]string, 0)
+
+	for index := range operations {
+		meta := operations[index].Clicky
+		if meta == nil || meta.SurfaceID == "" || meta.Entity == "" {
+			continue
+		}
+
+		meta.Order = index
+		entry := surfacesByID[meta.SurfaceID]
+		if entry == nil {
+			baseKey := clickySurfaceBaseKey(meta.Entity, meta.Aliases)
+			entry = &surfaceEntry{
+				surface: ClickySurface{
+					Entity: meta.Entity,
+					Parent: meta.Parent,
+					Admin:  meta.Admin,
+					Title:  clickySurfaceTitle(baseKey, meta.Admin),
+					Order:  index,
+				},
+				baseKey: baseKey,
+			}
+			surfacesByID[meta.SurfaceID] = entry
+			surfaceIDs = append(surfaceIDs, meta.SurfaceID)
+		}
+
+		if entry.surface.Description == "" && meta.Verb == "list" && operations[index].Description != "" {
+			entry.surface.Description = operations[index].Description
+		}
+	}
+
+	if len(surfaceIDs) == 0 {
+		return nil
+	}
+
+	candidateCounts := make(map[string]int)
+	for _, id := range surfaceIDs {
+		entry := surfacesByID[id]
+		candidateCounts[clickySurfaceCandidateKey(entry.baseKey, entry.surface.Parent, entry.surface.Admin)]++
+	}
+
+	surfaces := make([]ClickySurface, 0, len(surfaceIDs))
+	resolvedKeys := make(map[string]string, len(surfaceIDs))
+	for _, id := range surfaceIDs {
+		entry := surfacesByID[id]
+		key := clickySurfaceCandidateKey(entry.baseKey, entry.surface.Parent, entry.surface.Admin)
+		if candidateCounts[key] > 1 && entry.surface.Parent != "" {
+			key = entry.surface.Parent + "-" + key
+		}
+		entry.surface.Key = key
+		if entry.surface.Description == "" {
+			entry.surface.Description = fmt.Sprintf("Manage %s resources.", strings.ToLower(entry.surface.Title))
+		}
+		resolvedKeys[id] = key
+		surfaces = append(surfaces, entry.surface)
+	}
+
+	for index := range operations {
+		if operations[index].Clicky == nil {
+			continue
+		}
+		operations[index].Clicky.Surface = resolvedKeys[operations[index].Clicky.SurfaceID]
+	}
+
+	sort.SliceStable(surfaces, func(i, j int) bool {
+		if surfaces[i].Admin != surfaces[j].Admin {
+			return !surfaces[i].Admin
+		}
+		return surfaces[i].Order < surfaces[j].Order
+	})
+
+	for index := range operations {
+		if operations[index].Clicky == nil {
+			continue
+		}
+		operations[index].Clicky.Surface = resolvedKeys[operations[index].Clicky.SurfaceID]
+	}
+
+	return &ClickySpecMeta{Surfaces: surfaces}
+}
+
+func clickySurfaceBaseKey(entity string, aliases []string) string {
+	if len(aliases) > 0 && aliases[0] != "" {
+		return aliases[0]
+	}
+	return clickyPluralize(entity)
+}
+
+func clickySurfaceCandidateKey(baseKey string, parent string, admin bool) string {
+	if admin {
+		return "admin-" + baseKey
+	}
+	return baseKey
+}
+
+func clickySurfaceTitle(baseKey string, admin bool) string {
+	title := clickyTitleCase(baseKey)
+	if admin {
+		return "Admin — " + title
+	}
+	return title
+}
+
+func clickyPluralize(value string) string {
+	switch {
+	case value == "":
+		return value
+	case strings.HasSuffix(value, "s"):
+		return value
+	case strings.HasSuffix(value, "x"), strings.HasSuffix(value, "z"),
+		strings.HasSuffix(value, "ch"), strings.HasSuffix(value, "sh"):
+		return value + "es"
+	default:
+		return value + "s"
+	}
+}
+
+func clickyTitleCase(value string) string {
+	parts := strings.FieldsFunc(value, func(r rune) bool {
+		return r == '-' || r == '_' || r == ' '
+	})
+	for index, part := range parts {
+		if part == "" {
+			continue
+		}
+		parts[index] = strings.ToUpper(part[:1]) + part[1:]
+	}
+	return strings.Join(parts, " ")
 }
 
 // convertRPCSchemaToOpenAPI converts an RPC schema to OpenAPI schema

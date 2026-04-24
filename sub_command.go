@@ -62,6 +62,13 @@ func flushPendingSubCommands(root *cobra.Command) {
 		if p.build != nil {
 			p.build(parent)
 		} else {
+			if GetCommandOpenAPIMeta(parent) != nil {
+				actionName := p.cmd.Name()
+				if actionName == "" {
+					actionName = p.cmd.Use
+				}
+				annotateEntityOperationCommand(p.cmd, parent, "action", "collection", actionName, "", false, false)
+			}
 			parent.AddCommand(p.cmd)
 		}
 	}

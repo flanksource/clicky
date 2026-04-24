@@ -117,9 +117,18 @@ func AddNamedCommand[T any](name string, parent *cobra.Command, opts T, fn func(
 		Use: name,
 	}
 	parent.AddCommand(cmd)
+	if meta := GetCommandOpenAPIMeta(parent); meta != nil {
+		annotateEntityOperationCommand(cmd, parent, "action", "collection", name, "", false, false)
+	}
 
 	if namer, ok := optsValue.Interface().(Name); ok {
 		cmd.Use = namer.GetName()
+		if meta := GetCommandOpenAPIMeta(parent); meta != nil {
+			actionName := strings.Fields(cmd.Use)
+			if len(actionName) > 0 {
+				setCommandAnnotation(cmd, annotationClickyOperationAction, actionName[0])
+			}
+		}
 	}
 
 	cmd.SilenceUsage = true

@@ -8,16 +8,53 @@ type DataFunc func(flags map[string]string, args []string) (any, error)
 
 // RPCOperation represents a generic RPC operation that can be converted to various formats
 type RPCOperation struct {
-	Name        string         `json:"name"`
-	Description string         `json:"description"`
-	Parameters  []RPCParameter `json:"parameters"`
-	Schema      Schema         `json:"schema"`
-	Command     *cobra.Command `json:"-"`                // Reference to original command
-	Path        string         `json:"path,omitempty"`   // For REST APIs
-	Method      string         `json:"method,omitempty"` // HTTP method
-	Tags        []string       `json:"tags,omitempty"`   // For grouping
-	DataFunc    DataFunc       `json:"-"`                // Direct data provider, bypasses stdout capture
-	LookupFunc  DataFunc       `json:"-"`                // Direct filter metadata provider
+	Name        string               `json:"name"`
+	Description string               `json:"description"`
+	Parameters  []RPCParameter       `json:"parameters"`
+	Schema      Schema               `json:"schema"`
+	Command     *cobra.Command       `json:"-"`                // Reference to original command
+	Path        string               `json:"path,omitempty"`   // For REST APIs
+	Method      string               `json:"method,omitempty"` // HTTP method
+	Tags        []string             `json:"tags,omitempty"`   // For grouping
+	DataFunc    DataFunc             `json:"-"`                // Direct data provider, bypasses stdout capture
+	LookupFunc  DataFunc             `json:"-"`                // Direct filter metadata provider
+	Clicky      *ClickyOperationMeta `json:"-"`                // Entity semantics used for OpenAPI extensions
+}
+
+// ClickySpecMeta is emitted as the OpenAPI-level x-clicky extension.
+type ClickySpecMeta struct {
+	Surfaces []ClickySurface `json:"surfaces,omitempty"`
+}
+
+// ClickySurface describes a UI surface resolved from clicky entity metadata.
+type ClickySurface struct {
+	Key         string `json:"key"`
+	Entity      string `json:"entity"`
+	Title       string `json:"title"`
+	Parent      string `json:"parent,omitempty"`
+	Admin       bool   `json:"admin,omitempty"`
+	Description string `json:"description,omitempty"`
+	Order       int    `json:"-"`
+}
+
+// ClickyOperationMeta is emitted as the OpenAPI operation-level x-clicky
+// extension. SurfaceID/Aliases are internal-only fields used while building
+// the final surface list.
+type ClickyOperationMeta struct {
+	SurfaceID          string   `json:"-"`
+	Command            string   `json:"command,omitempty"`
+	Surface            string   `json:"surface,omitempty"`
+	Entity             string   `json:"-"`
+	Parent             string   `json:"-"`
+	Aliases            []string `json:"-"`
+	Admin              bool     `json:"-"`
+	Verb               string   `json:"verb,omitempty"`
+	Scope              string   `json:"scope,omitempty"`
+	ActionName         string   `json:"actionName,omitempty"`
+	IDParam            string   `json:"idParam,omitempty"`
+	SupportsLookup     bool     `json:"supportsLookup,omitempty"`
+	SupportsFilterMode bool     `json:"supportsFilterMode,omitempty"`
+	Order              int      `json:"-"`
 }
 
 // RPCParameter represents a parameter in an RPC operation
