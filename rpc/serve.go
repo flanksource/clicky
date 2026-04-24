@@ -596,7 +596,7 @@ func (s *SwaggerServer) handleExecuteCommand(w http.ResponseWriter, r *http.Requ
 
 	// Format and write response body using FormatManager (defaults to json)
 	opts := extractFormatOpts(r)
-	s.writeFormattedResponse(w, data, opts, statusCode)
+	s.writeFormattedResponse(w, r, data, opts, statusCode)
 }
 
 func isLookupRequest(r *http.Request) bool {
@@ -633,9 +633,9 @@ func (s *SwaggerServer) handleLookupCommand(w http.ResponseWriter, r *http.Reque
 
 // writeFormattedResponse formats data using the FormatManager and writes it as
 // the raw response body with the appropriate Content-Type.
-func (s *SwaggerServer) writeFormattedResponse(w http.ResponseWriter, data any, opts formatOptions, statusCode int) {
+func (s *SwaggerServer) writeFormattedResponse(w http.ResponseWriter, r *http.Request, data any, opts formatOptions, statusCode int) {
 	manager := formatters.NewFormatManager()
-	output, err := manager.FormatWithOptions(formatters.FormatOptions{
+	output, err := manager.FormatWithContext(r, formatters.FormatOptions{
 		Format: opts.Format,
 		Page:   opts.Page,
 		Limit:  opts.Limit,

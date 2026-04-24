@@ -465,6 +465,7 @@ func generateEntityCLI(parent *cobra.Command, entity EntityInfo) {
 		Aliases: entity.Aliases,
 		Short:   fmt.Sprintf("Manage %s resources", entity.Name),
 	}
+	annotateEntityCommand(entityCmd, entity)
 	parent.AddCommand(entityCmd)
 
 	for _, op := range entity.Operations {
@@ -476,7 +477,7 @@ func generateEntityCLI(parent *cobra.Command, entity EntityInfo) {
 			Verb:      action.Name,
 			DataFunc:  action.DataFunc,
 			FlagsType: action.FlagsType,
-		}, entity.ValidArgs)
+		}, entity.ValidArgs, "action", "entity", action.Name, "id", false, false)
 	}
 
 	for _, ba := range entity.BulkActions {
@@ -489,13 +490,37 @@ func generateEntitySubcommand(parent *cobra.Command, entity EntityInfo, op Entit
 	case "list":
 		generateListCommand(parent, entity, op)
 	case "get":
-		generateIDCommand(parent, "get", fmt.Sprintf("Get a %s by ID", entity.Name), op, entity.ValidArgs)
+		generateIDCommand(
+			parent,
+			"get",
+			fmt.Sprintf("Get a %s by ID", entity.Name),
+			op,
+			entity.ValidArgs,
+			"get",
+			"entity",
+			"",
+			"id",
+			false,
+			false,
+		)
 	case "create":
 		generateBodyCommand(parent, "create", fmt.Sprintf("Create a %s", entity.Name), op)
 	case "update":
 		generateBodyCommand(parent, "update", fmt.Sprintf("Update a %s", entity.Name), op)
 	case "delete":
-		generateIDCommand(parent, "delete", fmt.Sprintf("Delete a %s", entity.Name), op, entity.ValidArgs)
+		generateIDCommand(
+			parent,
+			"delete",
+			fmt.Sprintf("Delete a %s", entity.Name),
+			op,
+			entity.ValidArgs,
+			"delete",
+			"entity",
+			"",
+			"id",
+			false,
+			false,
+		)
 	}
 }
 
@@ -523,6 +548,7 @@ func generateListCommand(parent *cobra.Command, entity EntityInfo, op EntityOper
 		op.BindCompletions(cmd)
 	}
 
+	annotateEntityOperationCommand(cmd, parent, "list", "collection", "", "", op.LookupFunc != nil, false)
 	parent.AddCommand(cmd)
 	dataFuncRegistry.Store(cmd, op.DataFunc)
 	if op.LookupFunc != nil {
@@ -530,7 +556,19 @@ func generateListCommand(parent *cobra.Command, entity EntityInfo, op EntityOper
 	}
 }
 
-func generateIDCommand(parent *cobra.Command, verb, short string, op EntityOperation, validArgs func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective)) {
+func generateIDCommand(
+	parent *cobra.Command,
+	verb string,
+	short string,
+	op EntityOperation,
+	validArgs func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective),
+	metaVerb string,
+	scope string,
+	actionName string,
+	idParam string,
+	supportsLookup bool,
+	supportsFilterMode bool,
+) {
 	hasFlags := op.FlagsType != nil
 	use := fmt.Sprintf("%s <id>", verb)
 	if hasFlags {
@@ -567,6 +605,7 @@ func generateIDCommand(parent *cobra.Command, verb, short string, op EntityOpera
 	if hasFlags {
 		bindTypeFlags(cmd, op.FlagsType)
 	}
+	annotateEntityOperationCommand(cmd, parent, metaVerb, scope, actionName, idParam, supportsLookup, supportsFilterMode)
 	parent.AddCommand(cmd)
 	dataFuncRegistry.Store(cmd, op.DataFunc)
 }
@@ -635,6 +674,13 @@ func generateBodyCommand(parent *cobra.Command, verb, short string, op EntityOpe
 			return nil
 		},
 	}
+	scope := "collection"
+	idParam := ""
+	if verb == "update" {
+		scope = "entity"
+		idParam = "id"
+	}
+	annotateEntityOperationCommand(cmd, parent, verb, scope, "", idParam, false, false)
 	parent.AddCommand(cmd)
 	dataFuncRegistry.Store(cmd, op.DataFunc)
 }
@@ -676,6 +722,7 @@ func generateBulkActionCommand(parent *cobra.Command, ba BulkActionInfo) {
 		}
 	}
 
+	annotateEntityOperationCommand(cmd, parent, "action", "collection", ba.Name, "id", ba.LookupFunc != nil, ba.FilterFunc != nil)
 	parent.AddCommand(cmd)
 	dataFuncRegistry.Store(cmd, execute)
 	if ba.LookupFunc != nil {
