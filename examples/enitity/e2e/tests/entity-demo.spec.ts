@@ -279,6 +279,65 @@ test.describe("entity demo", () => {
     await expect(responseBody(page)).toContainText("explorer-test");
   });
 
+  test("link examples page renders every target and deep-links command pages", async ({
+    page,
+  }) => {
+    const openApi = waitForJson(page, "/api/openapi.json");
+    const examples = page.waitForResponse((response) => {
+      const url = new URL(response.url());
+      return url.pathname === "/api/examples/links" && response.ok();
+    });
+
+    await page.goto("/links", { waitUntil: "domcontentloaded" });
+    await Promise.all([openApi, examples]);
+
+    await expect(page.getByRole("heading", { name: "Link and LinkCommand examples" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Open the stacks surface" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Navigate to clusters in this tab" })).toHaveAttribute("target", "_self");
+    await expect(page.getByRole("link", { name: "Open the API explorer in a new window" })).toHaveAttribute("target", "_blank");
+    await expect(page.getByRole("link", { name: "Open admin stacks in a new tab" })).toHaveAttribute("target", "_blank");
+
+    const dialogRequest = waitForJson(page, "/api/v1/stack/stk-001", { events: "4" });
+    await page.getByRole("button", { name: "Open a stack detail dialog" }).click();
+    await dialogRequest;
+
+    const dialog = page.getByRole("dialog");
+    await expect(dialog).toContainText("stk-001");
+    await expect(dialog).toContainText("checkout");
+    await dialog.getByRole("button", { name: "Close" }).click();
+
+    await page.getByRole("button", { name: "Show the form before running" }).click();
+    const waitingDialog = page.getByRole("dialog");
+    await expect(waitingDialog.getByLabel("Id")).toHaveValue("");
+    await expect(waitingDialog).toContainText("Run the command to load a Clicky response.");
+    await waitingDialog.getByRole("button", { name: "Close" }).click();
+
+    const sameTabLink = page.getByRole("link", { name: "Navigate in this tab" });
+    await expect(sameTabLink).toHaveAttribute("href", /\/links\/commands\/stack_get\?/);
+    const sameTabHref = await sameTabLink.getAttribute("href");
+    expect(sameTabHref).toBeTruthy();
+    const sameTabUrl = new URL(sameTabHref!, "http://localhost");
+    expect(sameTabUrl.searchParams.get("id")).toBe("stk-002");
+    expect(sameTabUrl.searchParams.get("events")).toBe("2");
+    expect(sameTabUrl.searchParams.get("autoRun")).toBe("1");
+    await expect(page.getByRole("link", { name: "Open in new window" })).toHaveAttribute("target", "_blank");
+    await expect(page.getByRole("link", { name: "Open in new tab" })).toHaveAttribute("target", "_blank");
+
+    const deepLinkRequest = waitForJson(page, "/api/v1/stack/stk-001", { events: "3" });
+    await page.getByRole("button", { name: "Navigate inside Clicky" }).click();
+    await page.waitForURL((url) => {
+      return (
+        url.pathname === "/links/commands/stack_get" &&
+        url.searchParams.get("id") === "stk-001" &&
+        url.searchParams.get("events") === "3" &&
+        url.searchParams.get("autoRun") === "1"
+      );
+    });
+    await deepLinkRequest;
+    await expect(responseBody(page)).toContainText("stk-001");
+    await expect(responseBody(page)).toContainText("checkout");
+  });
+
   test("reflects a real restart mutation after reloading the stacks table", async ({
     page,
     request,

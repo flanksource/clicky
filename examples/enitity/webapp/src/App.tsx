@@ -1,13 +1,13 @@
-import { Link, Navigate, Route, Routes, useParams } from "react-router-dom";
+import { Link, Routes, Route, useLocation } from "react-router-dom";
 import {
-  OperationCatalog,
-  OperationCommandPage,
-  OperationEntityPage,
-  ThemeSwitcher,
+  EntityExplorerApp,
   type RenderLink,
 } from "@flanksource/clicky-ui";
 import { apiClient } from "./api";
-import { domainOrder, domains } from "./domains";
+import {
+  LinkExampleCommandPage,
+  LinkExamplesPage,
+} from "./LinkExamplesPage";
 
 const renderLink: RenderLink = ({ to, className, children, title, key }) => (
   <Link key={key} to={to} className={className} title={title}>
@@ -15,112 +15,62 @@ const renderLink: RenderLink = ({ to, className, children, title, key }) => (
   </Link>
 );
 
-function DomainPage() {
-  const { domainKey } = useParams<{ domainKey: string }>();
-  const spec = domainKey ? domains[domainKey] : undefined;
-  if (!spec) {
-    return (
-      <div className="p-6 text-sm text-muted-foreground">
-        Unknown domain: <code>{domainKey}</code>
-      </div>
-    );
-  }
-  return (
-    <OperationCatalog
-      definition={spec.definition}
-      entities={spec.entities}
-      allOperations={spec.allOperations}
-      operationIdPrefix={spec.operationIdPrefix}
-      listOperationId={spec.listOperationId}
-      detailOperationId={spec.detailOperationId}
-      client={apiClient}
-      renderLink={renderLink}
-    />
-  );
-}
-
-function CommandRoute() {
-  const { operationId } = useParams<{ operationId: string }>();
-  return (
-    <OperationCommandPage
-      client={apiClient}
-      operationId={operationId}
-      backHref="/explorer"
-      backLabel="Back to API Explorer"
-      renderLink={renderLink}
-    />
-  );
-}
-
-function EntityRoute() {
-  const { domainKey, id } = useParams<{ domainKey: string; id: string }>();
-  const spec = domainKey ? domains[domainKey] : undefined;
-
-  if (!spec) {
-    return (
-      <div className="p-6 text-sm text-muted-foreground">
-        Unknown domain: <code>{domainKey}</code>
-      </div>
-    );
-  }
-
-  return (
-    <OperationEntityPage
-      id={id}
-      definition={spec.definition}
-      entities={spec.entities}
-      allOperations={spec.allOperations}
-      operationIdPrefix={spec.operationIdPrefix}
-      listOperationId={spec.listOperationId}
-      detailOperationId={spec.detailOperationId}
-      client={apiClient}
-      renderLink={renderLink}
-      backHref={`/${domainKey}`}
-      backLabel={`Back to ${spec.definition.title}`}
-    />
-  );
-}
-
-function Sidebar() {
-  return (
-    <aside className="flex w-56 shrink-0 flex-col border-r border-border bg-muted/30 p-4">
-      <div className="mb-6">
-        <div className="text-sm font-semibold">Entity Demo</div>
-        <div className="text-xs text-muted-foreground">Clicky RPC + UI</div>
-      </div>
-      <nav className="flex flex-col gap-1">
-        {domainOrder.map((key) => {
-          const spec = domains[key];
-          return (
-            <Link
-              key={key}
-              to={`/${key}`}
-              className="rounded-md px-2 py-1.5 text-sm text-foreground hover:bg-accent"
-            >
-              {spec.definition.title}
-            </Link>
-          );
-        })}
-      </nav>
-      <div className="mt-auto pt-4">
-        <ThemeSwitcher />
-      </div>
-    </aside>
-  );
-}
-
 export function App() {
+  const location = useLocation();
+  const showingLinks = location.pathname.startsWith("/links");
+
   return (
-    <div className="flex h-full">
-      <Sidebar />
-      <main className="flex-1 overflow-auto p-6">
+    <div className="flex h-full min-h-0 flex-col bg-background">
+      <header className="border-b border-border/70 bg-background/90 backdrop-blur">
+        <div className="mx-auto flex w-full max-w-7xl items-center justify-between gap-4 px-6 py-3">
+          <div>
+            <div className="text-sm font-semibold tracking-tight">Clicky Entity Example</div>
+            <div className="text-xs text-muted-foreground">
+              Metadata-driven explorer plus interactive Link and LinkCommand demos
+            </div>
+          </div>
+          <nav className="flex items-center gap-1 rounded-full border border-border/70 bg-muted/40 p-1">
+            <Link
+              to="/stacks"
+              className={topNavLinkClass(!showingLinks)}
+            >
+              Explorer
+            </Link>
+            <Link
+              to="/links"
+              className={topNavLinkClass(showingLinks)}
+            >
+              Link Examples
+            </Link>
+          </nav>
+        </div>
+      </header>
+
+      <div className="min-h-0 flex-1">
         <Routes>
-          <Route path="/" element={<Navigate to="/stacks" replace />} />
-          <Route path="/commands/:operationId" element={<CommandRoute />} />
-          <Route path="/entity/:domainKey/:id" element={<EntityRoute />} />
-          <Route path="/:domainKey" element={<DomainPage />} />
+          <Route path="/links" element={<LinkExamplesPage />} />
+          <Route path="/links/commands/:operationId" element={<LinkExampleCommandPage />} />
+          <Route
+            path="*"
+            element={(
+              <EntityExplorerApp
+                client={apiClient}
+                pathname={location.pathname}
+                renderLink={renderLink}
+              />
+            )}
+          />
         </Routes>
-      </main>
+      </div>
     </div>
   );
+}
+
+function topNavLinkClass(active: boolean) {
+  return [
+    "rounded-full px-3 py-1.5 text-sm font-medium transition-colors",
+    active
+      ? "bg-foreground text-background"
+      : "text-foreground hover:bg-accent hover:text-accent-foreground",
+  ].join(" ");
 }

@@ -1,6 +1,6 @@
 @import "tailwindcss";
-@import "@flanksource/clicky-ui/styles.css";
-@source "../node_modules/@flanksource/clicky-ui/dist";
+@import "../../../../../clicky-ui/packages/ui/src/styles/tokens.css";
+@source "../../../../../clicky-ui/packages/ui/dist";
 
 html,
 body,

@@ -15,10 +15,24 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
+      "@flanksource/clicky-ui": path.resolve(
+        __dirname,
+        "../../../../clicky-ui/packages/ui/dist/index.mjs",
+      ),
+      "@flanksource/clicky-ui/styles.css": path.resolve(
+        __dirname,
+        "../../../../clicky-ui/packages/ui/src/styles/tokens.css",
+      ),
     },
-    dedupe: ["react", "react-dom"],
+    dedupe: ["react", "react-dom", "@tanstack/react-query"],
   },
   server: {
+    fs: {
+      allow: [
+        path.resolve(__dirname, "../../../../clicky-ui/packages/ui/dist"),
+        path.resolve(__dirname, "../../../../clicky-ui/packages/ui/src/styles"),
+      ],
+    },
     proxy: {
       "/api": apiTarget,
       "/health": apiTarget,

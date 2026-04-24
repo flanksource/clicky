@@ -34,6 +34,7 @@ type stack struct {
 	ID         string    `json:"id"`
 	Name       string    `json:"name"`
 	Team       string    `json:"team"`
+	ClusterID  string    `json:"clusterId"`
 	Status     string    `json:"status"`
 	Region     string    `json:"region"`
 	Tags       []string  `json:"tags,omitempty"`
@@ -45,26 +46,43 @@ type stack struct {
 func (s stack) GetID() string   { return s.ID }
 func (s stack) GetName() string { return s.Name }
 
-func (s stack) PrettyRow(_ interface{}) map[string]api.Text {
-	return map[string]api.Text{
-		"Name": {
-			Content: s.Name,
-			Style:   "font-semibold",
-		},
-		"Team": {
-			Content: labelFromCanonicalTeam(s.Team),
-		},
-		"Status": {
-			Content: labelFromCanonicalStatus(s.Status),
-			Style:   statusStyle(s.Status),
-		},
-		"Region": {
-			Content: s.Region,
-		},
-		"Tags": {
-			Content: strings.Join(s.Tags, ", "),
-			Style:   "text-slate-600",
-		},
+func (s stack) Columns() []api.ColumnDef {
+	return []api.ColumnDef{
+		{Name: "ID"},
+		{Name: "Name", Style: "font-semibold"},
+		{Name: "Team"},
+		{Name: "Cluster"},
+		{Name: "Status"},
+		{Name: "Region"},
+		{Name: "Tags", Style: "text-slate-600"},
+		{Name: "Version", Type: "int"},
+		{Name: "LastDeploy", Label: "Last deploy", Type: "date"},
+	}
+}
+
+func (s stack) Row() map[string]any {
+	teamID := strings.TrimPrefix(s.Team, "team/")
+	return map[string]any{
+		"ID": clicky.LinkCommand("stack/get").
+			WithArgs(s.ID).
+			WithAutoRun(true).
+			Append(s.ID, "text-sky-700 underline underline-offset-4"),
+		"Name": s.Name,
+		"Team": clicky.LinkCommand("team/get").
+			WithTarget(clicky.LinkTargetDialog).
+			WithArgs(teamID).
+			WithAutoRun(true).
+			Append(labelFromCanonicalTeam(s.Team), "text-sky-700 underline underline-offset-4"),
+		"Cluster": clicky.LinkCommand("cluster/get").
+			WithTarget(clicky.LinkTargetDialog).
+			WithArgs(s.ClusterID).
+			WithAutoRun(true).
+			Append(s.ClusterID, "text-sky-700 underline underline-offset-4"),
+		"Status":     api.Text{Content: labelFromCanonicalStatus(s.Status), Style: statusStyle(s.Status)},
+		"Region":     s.Region,
+		"Tags":       strings.Join(s.Tags, ", "),
+		"Version":    s.Version,
+		"LastDeploy": s.LastDeploy,
 	}
 }
 
@@ -75,8 +93,64 @@ type cluster struct {
 	Region   string `json:"region"`
 }
 
+type team struct {
+	ID    string `json:"id"`
+	Name  string `json:"name"`
+	Slug  string `json:"slug"`
+	Owner string `json:"owner"`
+}
+
+func (t team) GetID() string   { return t.ID }
+func (t team) GetName() string { return t.Name }
+
+func (t team) Columns() []api.ColumnDef {
+	return []api.ColumnDef{
+		{Name: "ID"},
+		{Name: "Name", Style: "font-semibold"},
+		{Name: "Slug"},
+		{Name: "Owner"},
+	}
+}
+
+func (t team) Row() map[string]any {
+	return map[string]any{
+		"ID": clicky.LinkCommand("team/get").
+			WithArgs(t.ID).
+			WithAutoRun(true).
+			Append(t.ID, "text-sky-700 underline underline-offset-4"),
+		"Name":  t.Name,
+		"Slug":  t.Slug,
+		"Owner": t.Owner,
+	}
+}
+
+type teamListOpts struct {
+	Owner string `flag:"owner" help:"Filter by team owner"`
+}
+
 func (c cluster) GetID() string   { return c.ID }
 func (c cluster) GetName() string { return c.Name }
+
+func (c cluster) Columns() []api.ColumnDef {
+	return []api.ColumnDef{
+		{Name: "ID"},
+		{Name: "Name", Style: "font-semibold"},
+		{Name: "Provider"},
+		{Name: "Region"},
+	}
+}
+
+func (c cluster) Row() map[string]any {
+	return map[string]any{
+		"ID": clicky.LinkCommand("cluster/get").
+			WithArgs(c.ID).
+			WithAutoRun(true).
+			Append(c.ID, "text-sky-700 underline underline-offset-4"),
+		"Name":     c.Name,
+		"Provider": c.Provider,
+		"Region":   c.Region,
+	}
+}
 
 type stackWindowOpts struct {
 	Tags []string  `flag:"tags" help:"Return only stacks containing all of these tags"`
@@ -154,6 +228,7 @@ type demoStore struct {
 	nextStackID  int
 	stacks       map[string]stack
 	clusters     map[string]cluster
+	teams        map[string]team
 	restartLog   []string
 	reconcileLog []string
 }
@@ -176,6 +251,7 @@ func (d *demoStore) reset() {
 			ID:         "stk-001",
 			Name:       "checkout",
 			Team:       "team/platform",
+			ClusterID:  "cls-001",
 			Status:     "status:healthy",
 			Region:     "eu-west-1",
 			Tags:       []string{"critical", "customer"},
@@ -186,6 +262,7 @@ func (d *demoStore) reset() {
 			ID:         "stk-002",
 			Name:       "billing",
 			Team:       "team/core",
+			ClusterID:  "cls-002",
 			Status:     "status:degraded",
 			Region:     "us-east-1",
 			Tags:       []string{"payments", "database"},
@@ -196,6 +273,7 @@ func (d *demoStore) reset() {
 			ID:         "stk-003",
 			Name:       "marketing-site",
 			Team:       "team/platform",
+			ClusterID:  "cls-003",
 			Status:     "status:paused",
 			Region:     "eu-west-1",
 			Tags:       []string{"public", "edge"},
@@ -209,6 +287,39 @@ func (d *demoStore) reset() {
 		"cls-002": {ID: "cls-002", Name: "payments-us1", Provider: "aws", Region: "us-east-1"},
 		"cls-003": {ID: "cls-003", Name: "labs-eu2", Provider: "gcp", Region: "europe-west2"},
 	}
+	d.teams = map[string]team{
+		"platform": {ID: "platform", Name: "Platform", Slug: "team/platform", Owner: "alex"},
+		"core":     {ID: "core", Name: "Core", Slug: "team/core", Owner: "jordan"},
+		"data":     {ID: "data", Name: "Data", Slug: "team/data", Owner: "sam"},
+	}
+}
+
+func (d *demoStore) listTeams(opts teamListOpts) ([]team, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	items := make([]team, 0, len(d.teams))
+	for _, item := range d.teams {
+		if opts.Owner != "" && !strings.EqualFold(item.Owner, opts.Owner) {
+			continue
+		}
+		items = append(items, item)
+	}
+	sort.Slice(items, func(i, j int) bool {
+		return items[i].ID < items[j].ID
+	})
+	return items, nil
+}
+
+func (d *demoStore) getTeam(id string) (any, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	item, ok := d.teams[id]
+	if !ok {
+		return nil, fmt.Errorf("team %q not found", id)
+	}
+	return item, nil
 }
 
 func (d *demoStore) counts() (int, int) {
@@ -721,6 +832,12 @@ func registerEntities(store *demoStore) {
 		List:   store.listClusters,
 		Get:    store.getCluster,
 	})
+
+	clicky.RegisterEntity(clicky.Entity[team, teamListOpts]{
+		Name: "team",
+		List: store.listTeams,
+		Get:  store.getTeam,
+	})
 }
 
 func registerSubCommands(store *demoStore) {
@@ -742,7 +859,7 @@ func registerSubCommands(store *demoStore) {
 
 // newServeUICommand wires the clicky RPC executor together with the Vite
 // webapp embedded above. The webapp consumes `@flanksource/clicky-ui`'s
-// `OperationCatalog` against `/api/openapi.json` and `/api/v1/...`.
+// metadata-driven `EntityExplorerApp` against `/api/openapi.json` and `/api/v1/...`.
 func newServeUICommand() *cobra.Command {
 	var (
 		host string
@@ -753,7 +870,7 @@ func newServeUICommand() *cobra.Command {
 		Use:   "serve-ui",
 		Short: "Start the HTTP API and embedded operation-catalog UI",
 		Long: `Start an HTTP server that exposes both the executor-backed OpenAPI endpoints
-and the embedded React UI built from clicky-ui's OperationCatalog component.
+and the embedded React UI built from clicky-ui's metadata-driven entity explorer.
 
 The API is served at /api/openapi.json + /api/v1/..., the UI at /. Build the
 Vite frontend with ` + "`cd webapp && pnpm install && pnpm build`" + ` before
@@ -768,7 +885,7 @@ compiling the Go binary so the embedded assets are current.`,
 			rootCmd := cmd.Root()
 			openAPIConfig := &rpc.OpenAPIConfig{
 				Title:       "Clicky Entity Example",
-				Description: "Entity example app with embedded OperationCatalog UI.",
+				Description: "Entity example app with embedded metadata-driven explorer UI.",
 				Version:     "1.0.0",
 			}
 			serveConfig := &rpc.ServeConfig{
@@ -787,6 +904,7 @@ compiling the Go binary so the embedded assets are current.`,
 
 			mux := http.NewServeMux()
 			server.RegisterRoutes(mux)
+			mux.HandleFunc("/api/examples/links", serveLinkExamples)
 
 			uiHandler, err := newWebappHandler()
 			if err != nil {
@@ -872,6 +990,173 @@ func serveIndex(w http.ResponseWriter, sub fs.FS) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-cache")
 	_, _ = w.Write(data)
+}
+
+func serveLinkExamples(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	payload, err := clicky.Format(linkExamplesDocument(), clicky.FormatOptions{Format: "clicky-json"})
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to render link examples: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json+clicky")
+	if r.Method == http.MethodHead {
+		return
+	}
+	_, _ = w.Write([]byte(payload))
+}
+
+func linkExamplesDocument() api.DescriptionList {
+	return api.DescriptionList{
+		Items: []api.KeyValuePair{
+			{
+				Key: "Plain link targets",
+				Value: api.DescriptionList{
+					Items: []api.KeyValuePair{
+						{
+							Key: "default",
+							Value: linkExampleValue(
+								clicky.Link("/stacks").Append("Open the stacks surface", "text-sky-700 underline underline-offset-4"),
+								"Uses a normal in-app anchor without forcing a specific browser target.",
+							),
+						},
+						{
+							Key: "_self",
+							Value: linkExampleValue(
+								clicky.Link("/clusters").WithTarget(clicky.LinkTargetSelf).
+									Append("Navigate to clusters in this tab", "text-sky-700 underline underline-offset-4"),
+								"Sets target=_self explicitly for same-tab navigation.",
+							),
+						},
+						{
+							Key: "_window",
+							Value: linkExampleValue(
+								clicky.Link("/explorer").WithTarget(clicky.LinkTargetWindow).
+									Append("Open the API explorer in a new window", "text-sky-700 underline underline-offset-4"),
+								"Renders as a browser new-context link using the _window target hint.",
+							),
+						},
+						{
+							Key: "_tab",
+							Value: linkExampleValue(
+								clicky.Link("/admin-stacks").WithTarget(clicky.LinkTargetTab).
+									Append("Open admin stacks in a new tab", "text-sky-700 underline underline-offset-4"),
+								"Uses the same browser new-context flow but advertises the _tab target intent.",
+							),
+						},
+					},
+				},
+			},
+			{
+				Key: "LinkCommand targets",
+				Value: api.DescriptionList{
+					Items: []api.KeyValuePair{
+						{
+							Key: "Dialog auto-run",
+							Value: linkExampleValue(
+								clicky.LinkCommand("stack/get").
+									WithTarget(clicky.LinkTargetDialog).
+									WithArgs("stk-001").
+									WithFlag("events", "4").
+									WithAutoRun(true).
+									Append("Open a stack detail dialog", "text-cyan-700 underline underline-offset-4"),
+								"Prefills id + events and runs immediately because every required parameter is already satisfied.",
+							),
+						},
+						{
+							Key: "Dialog waits for params",
+							Value: linkExampleValue(
+								clicky.LinkCommand("stack/get").
+									WithTarget(clicky.LinkTargetDialog).
+									WithAutoRun(true).
+									Append("Show the form before running", "text-cyan-700 underline underline-offset-4"),
+								"Leaves required params empty so the dialog opens prefilled but waits for a manual run.",
+							),
+						},
+						{
+							Key: "Hover",
+							Value: linkExampleValue(
+								clicky.LinkCommand("stack/get").
+									WithTarget(clicky.LinkTargetHover).
+									WithArgs("stk-002").
+									WithFlag("events", "2").
+									Append("Hover stack detail", "text-cyan-700 underline underline-offset-4"),
+								"Resolves and executes lazily inside a hover preview.",
+							),
+						},
+						{
+							Key: "Expand",
+							Value: linkExampleValue(
+								clicky.LinkCommand("stack/get").
+									WithTarget(clicky.LinkTargetExpand).
+									WithArgs("stk-001").
+									WithFlag("events", "1").
+									Append("Expand stack detail", "text-cyan-700 underline underline-offset-4"),
+								"Loads inline beneath the trigger without leaving the page.",
+							),
+						},
+						{
+							Key: "_clicky",
+							Value: linkExampleValue(
+								clicky.LinkCommand("stack/get").
+									WithTarget(clicky.LinkTargetClicky).
+									WithArgs("stk-001").
+									WithFlag("events", "3").
+									WithAutoRun(true).
+									Append("Navigate inside Clicky", "text-cyan-700 underline underline-offset-4"),
+								"Delegates navigation to the React host via commandRuntime.onNavigate.",
+							),
+						},
+						{
+							Key: "_self",
+							Value: linkExampleValue(
+								clicky.LinkCommand("stack/get").
+									WithTarget(clicky.LinkTargetSelf).
+									WithArgs("stk-002").
+									WithFlag("events", "2").
+									WithAutoRun(true).
+									Append("Navigate in this tab", "text-cyan-700 underline underline-offset-4"),
+								"Builds a deep-link URL that lands on a prefilled command page and auto-runs there.",
+							),
+						},
+						{
+							Key: "_window",
+							Value: linkExampleValue(
+								clicky.LinkCommand("stack/get").
+									WithTarget(clicky.LinkTargetWindow).
+									WithArgs("stk-001").
+									WithFlag("events", "5").
+									WithAutoRun(true).
+									Append("Open in new window", "text-cyan-700 underline underline-offset-4"),
+								"Uses the same deep-link URL builder but asks the browser for a new window context.",
+							),
+						},
+						{
+							Key: "_tab",
+							Value: linkExampleValue(
+								clicky.LinkCommand("stack/get").
+									WithTarget(clicky.LinkTargetTab).
+									WithArgs("stk-002").
+									WithFlag("events", "6").
+									WithAutoRun(true).
+									Append("Open in new tab", "text-cyan-700 underline underline-offset-4"),
+								"Produces a deep-link URL that opens the command page in a new tab.",
+							),
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+func linkExampleValue(link api.Textable, note string) api.Text {
+	return clicky.Text("").Add(link).Append(" ").Append(note, "text-slate-600")
 }
 
 // looksLikeAssetRequest returns true when the request targets a file with a
