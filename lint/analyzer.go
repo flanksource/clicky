@@ -31,6 +31,7 @@ func run(pass *analysis.Pass) (any, error) {
 	nodeFilter := []ast.Node{
 		(*ast.CompositeLit)(nil),
 		(*ast.FuncDecl)(nil),
+		(*ast.CallExpr)(nil),
 	}
 
 	ins.Preorder(nodeFilter, func(n ast.Node) {
@@ -39,6 +40,8 @@ func run(pass *analysis.Pass) (any, error) {
 			checkCompositeLiteral(pass, node)
 		case *ast.FuncDecl:
 			checkFuncReturnType(pass, node)
+		case *ast.CallExpr:
+			checkDirectStdout(pass, node)
 		}
 	})
 
