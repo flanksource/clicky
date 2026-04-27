@@ -11,7 +11,7 @@ require (
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/charmbracelet/x/ansi v0.11.6
 	github.com/creack/pty v1.1.24
-	github.com/flanksource/commons v1.50.3
+	github.com/flanksource/commons v1.51.0
 	github.com/flanksource/gomplate/v3 v3.24.77
 	github.com/go-xmlfmt/xmlfmt v1.1.3
 	github.com/goccy/go-yaml v1.19.2
@@ -49,7 +49,6 @@ require (
 	cel.dev/expr v0.25.1 // indirect
 	github.com/Masterminds/goutils v1.1.1 // indirect
 	github.com/Masterminds/semver/v3 v3.4.0 // indirect
-	github.com/Snawoot/go-http-digest-auth-client v1.1.3 // indirect
 	github.com/antchfx/xmlquery v1.5.1 // indirect
 	github.com/antchfx/xpath v1.3.6 // indirect
 	github.com/antlr4-go/antlr/v4 v4.13.1 // indirect
@@ -85,6 +84,7 @@ require (
 	github.com/dlclark/regexp2 v1.11.5 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/emirpasic/gods/v2 v2.0.0-alpha // indirect
+	github.com/erikgeiser/coninput v0.0.0-20211004153227-1c3628e74d0f // indirect
 	github.com/fatih/color v1.18.0 // indirect
 	github.com/flanksource/is-healthy v1.0.86 // indirect
 	github.com/flanksource/kubectl-neat v1.0.4 // indirect
@@ -120,6 +120,7 @@ require (
 	github.com/lufia/plan9stats v0.0.0-20211012122336-39d0f177ccd0 // indirect
 	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
+	github.com/mattn/go-localereader v0.0.1 // indirect
 	github.com/mattn/go-runewidth v0.0.20 // indirect
 	github.com/mitchellh/hashstructure/v2 v2.0.2 // indirect
 	github.com/mitchellh/reflectwalk v1.0.2 // indirect

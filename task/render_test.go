@@ -487,3 +487,121 @@ func TestStatusApply_PreservesIncomingStyle(t *testing.T) {
 		}
 	}
 }
+
+// Failed and warning tasks must never get collapsed into the "... N more"
+// summary, even when the success bucket pushes the pane over the terminal
+// height budget. Losing a failure behind a summary defeats the whole point
+// of the pane.
+func TestRenderLineCount_ProblemsAlwaysVisible(t *testing.T) {
+	api.SetTerminalLines(10)
+	t.Cleanup(func() { api.SetTerminalLines(-1) })
+
+	tm := newTestManager(1)
+	t.Cleanup(func() { close(tm.shutdown) })
+
+	addTask := func(name string, status Status) {
+		task := tm.newTask(name)
+		task.SetStatus(status)
+		if status != StatusPending && status != StatusRunning {
+			task.completed.Store(true)
+		}
+		task.dirty.Store(true)
+		tm.mu.Lock()
+		tm.tasks = append(tm.tasks, task)
+		tm.mu.Unlock()
+	}
+
+	// 20 successes would normally collapse to first + summary + last.
+	for i := 0; i < 20; i++ {
+		addTask(fmt.Sprintf("success-%d", i), StatusSuccess)
+	}
+	addTask("failed-A", StatusFailed)
+	addTask("failed-B", StatusFailed)
+	addTask("warn-C", StatusWarning)
+
+	stripped := text.StripANSI(tm.Pretty().String())
+	for _, want := range []string{"failed-A", "failed-B", "warn-C"} {
+		if !strings.Contains(stripped, want) {
+			t.Errorf("problem task %q must appear in rendered pane; output:\n%s", want, stripped)
+		}
+	}
+	// Success bucket should still collapse when it overflows.
+	if !strings.Contains(stripped, "more") {
+		t.Errorf("success bucket should collapse when it overflows; output:\n%s", stripped)
+	}
+}
+
+// Running tasks never get collapsed either — the user cares about what's
+// in flight right now.
+func TestRenderLineCount_RunningAlwaysVisible(t *testing.T) {
+	api.SetTerminalLines(8)
+	t.Cleanup(func() { api.SetTerminalLines(-1) })
+
+	tm := newTestManager(1)
+	t.Cleanup(func() { close(tm.shutdown) })
+
+	addTask := func(name string, status Status) {
+		task := tm.newTask(name)
+		task.SetStatus(status)
+		if status != StatusPending && status != StatusRunning {
+			task.completed.Store(true)
+		}
+		task.dirty.Store(true)
+		tm.mu.Lock()
+		tm.tasks = append(tm.tasks, task)
+		tm.mu.Unlock()
+	}
+
+	for i := 0; i < 15; i++ {
+		addTask(fmt.Sprintf("success-%d", i), StatusSuccess)
+	}
+	addTask("running-A", StatusRunning)
+	addTask("running-B", StatusRunning)
+
+	stripped := text.StripANSI(tm.Pretty().String())
+	for _, want := range []string{"running-A", "running-B"} {
+		if !strings.Contains(stripped, want) {
+			t.Errorf("running task %q must appear in rendered pane; output:\n%s", want, stripped)
+		}
+	}
+}
+
+// Problems sort before running, which sort before successes. Verifies the
+// pane ordering matches the priority contract.
+func TestRenderOrder_ProblemsThenRunningThenSuccess(t *testing.T) {
+	api.SetTerminalLines(40)
+	t.Cleanup(func() { api.SetTerminalLines(-1) })
+
+	tm := newTestManager(1)
+	t.Cleanup(func() { close(tm.shutdown) })
+
+	addTask := func(name string, status Status) {
+		task := tm.newTask(name)
+		task.SetStatus(status)
+		if status != StatusPending && status != StatusRunning {
+			task.completed.Store(true)
+		}
+		task.dirty.Store(true)
+		tm.mu.Lock()
+		tm.tasks = append(tm.tasks, task)
+		tm.mu.Unlock()
+	}
+
+	// Insertion order intentionally mixes the buckets so we verify the
+	// render re-groups rather than keeping raw insertion order.
+	addTask("success-early", StatusSuccess)
+	addTask("running-mid", StatusRunning)
+	addTask("failed-late", StatusFailed)
+
+	stripped := text.StripANSI(tm.Pretty().String())
+	idxFailed := strings.Index(stripped, "failed-late")
+	idxRunning := strings.Index(stripped, "running-mid")
+	idxSuccess := strings.Index(stripped, "success-early")
+	if idxFailed < 0 || idxRunning < 0 || idxSuccess < 0 {
+		t.Fatalf("all three tasks must appear; output:\n%s", stripped)
+	}
+	if !(idxFailed < idxRunning && idxRunning < idxSuccess) {
+		t.Errorf("expected order failed < running < success, got failed=%d running=%d success=%d\noutput:\n%s",
+			idxFailed, idxRunning, idxSuccess, stripped)
+	}
+}
