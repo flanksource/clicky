@@ -31,7 +31,7 @@ type Manager struct {
 	maxConcurrent int
 	semaphore     chan struct{}
 	retryConfig   RetryConfig
-	isInteractive bool
+	isInteractive atomic.Bool
 	renderer      *lipgloss.Renderer
 	styles        styleSet
 
@@ -110,9 +110,6 @@ func init() {
 		SetNoColor(true)
 	}
 
-	if IsForceInteractive() {
-		global.isInteractive = true
-	}
 }
 
 func isTestEnvironment() bool {
@@ -204,7 +201,6 @@ func newManagerWithConcurrency(maxConcurrent int) *Manager {
 		width:             width,
 		maxConcurrent:     maxConcurrent,
 		retryConfig:       DefaultRetryConfig(),
-		isInteractive:     isInteractive,
 		renderer:          renderer,
 		originalTermState: originalTermState,
 		gracefulTimeout:   10 * time.Second,
@@ -213,6 +209,7 @@ func newManagerWithConcurrency(maxConcurrent int) *Manager {
 		shutdown:          make(chan struct{}),
 		semaphore:         make(chan struct{}, maxConcurrent),
 	}
+	tm.isInteractive.Store(isInteractive)
 	tm.verbose.Store(verbose)
 
 	tm.styles.success = renderer.NewStyle().Foreground(lipgloss.Color("10"))
@@ -309,7 +306,7 @@ func IsNoRender() bool {
 func SetForceInteractive(force bool) {
 	global.forceInteractive.Store(force)
 	if force {
-		global.isInteractive = true
+		global.isInteractive.Store(true)
 	}
 }
 

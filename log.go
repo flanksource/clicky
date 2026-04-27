@@ -3,9 +3,19 @@ package clicky
 import (
 	"fmt"
 	"io"
+	"os"
 
 	"github.com/flanksource/commons/logger"
 )
+
+// loggerOutput returns the currently-active logger output, falling back to
+// os.Stderr if the logger has no writer configured.
+func loggerOutput() io.Writer {
+	if out := logger.GetOutput(); out != nil {
+		return out
+	}
+	return os.Stderr
+}
 
 // Println writes args separated by spaces and terminated by a newline to the
 // currently-active logger output. While a task renderer is active that
@@ -17,15 +27,13 @@ import (
 // renderer's tracking and leave stale frame lines stacked in the output.
 // The clickylint rule `direct-stdout-stderr` flags the bypasses.
 func Println(args ...any) {
-	out := logger.GetOutput()
-	_, _ = fmt.Fprintln(out, args...)
+	_, _ = fmt.Fprintln(loggerOutput(), args...)
 }
 
 // Printf formats and writes to the currently-active logger output. See
 // Println for the serialization guarantees.
 func Printf(format string, args ...any) {
-	out := logger.GetOutput()
-	_, _ = fmt.Fprintf(out, format, args...)
+	_, _ = fmt.Fprintf(loggerOutput(), format, args...)
 }
 
 // Fprintln writes args separated by spaces and terminated by a newline to
