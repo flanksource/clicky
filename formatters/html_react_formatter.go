@@ -104,6 +104,14 @@ type clickyNode struct {
 	Language        string            `json:"language,omitempty"`
 	Source          string            `json:"source,omitempty"`
 	HighlightedHTML string            `json:"highlightedHtml,omitempty"`
+	// Badge fields — set for Kind == "badge" (LabelBadge). Rendered by
+	// clicky-ui as <Badge variant="label" label={Value1} value={Value2} />.
+	BadgeLabel string `json:"badgeLabel,omitempty"`
+	BadgeValue string `json:"badgeValue,omitempty"`
+	BadgeColor string `json:"badgeColor,omitempty"`
+	BadgeText  string `json:"badgeText,omitempty"`
+	BadgeShape string `json:"badgeShape,omitempty"`
+	BadgeIcon  string `json:"badgeIcon,omitempty"`
 }
 
 func (f *HTMLReactFormatter) Format(data any, opts FormatOptions) (string, error) {
@@ -262,6 +270,10 @@ func convertTextable(t api.Textable) clickyNode {
 		return convertIcon(v)
 	case *apiicons.Icon:
 		return convertIcon(*v)
+	case api.LabelBadge:
+		return convertLabelBadge(v)
+	case *api.LabelBadge:
+		return convertLabelBadge(*v)
 	default:
 		return clickyNode{Kind: "html", Plain: t.String(), HTML: t.HTML()}
 	}
@@ -572,6 +584,19 @@ func convertKeyValuePair(pair api.KeyValuePair) clickyNode {
 				Value: convertAnyToNode(pair.Value),
 			},
 		},
+	}
+}
+
+func convertLabelBadge(b api.LabelBadge) clickyNode {
+	return clickyNode{
+		Kind:       "badge",
+		Plain:      b.String(),
+		BadgeLabel: b.Label,
+		BadgeValue: b.Value,
+		BadgeColor: b.Color,
+		BadgeText:  b.TextColor,
+		BadgeShape: b.Shape,
+		BadgeIcon:  b.Icon,
 	}
 }
 

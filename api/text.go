@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"sort"
@@ -40,6 +41,30 @@ type Textable interface {
 // where they won't execute.
 type StaticHTMLProvider interface {
 	StaticHTML() string
+}
+
+// DetailLevel controls how much of an entity's content Details renders.
+// Higher levels produce richer output; callers pick the level based on
+// verbosity flags or request query params.
+type DetailLevel int
+
+const (
+	// DetailSummary is the one-line identity view, equivalent to Pretty().
+	DetailSummary DetailLevel = iota
+	// DetailStandard is the default detail-page view: headline fields,
+	// labels, tags, properties, locations, metadata — but no heavy bodies.
+	DetailStandard
+	// DetailFull includes everything, including raw config bodies and
+	// other potentially large sections.
+	DetailFull
+)
+
+// Detailable is implemented by types that render a multi-section detail view.
+// The ctx carries DB / HTTP handles for lazy lookups (joined tables, counts);
+// implementations type-assert it to their richer context type (e.g.
+// duty/context.Context) and degrade gracefully when the assertion fails.
+type Detailable interface {
+	Details(ctx context.Context, level DetailLevel) Textable
 }
 
 func CompactList[T any](items []T) Textable {
