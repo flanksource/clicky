@@ -5,6 +5,41 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.21.6](https://github.com/flanksource/clicky/compare/v1.21.5...v1.21.6) (2026-04-27)
+
+
+### ⚠ BREAKING CHANGES
+
+* **formatters:** FormatWithOptions now delegates to FormatWithContext internally; custom FormatManager implementations should override FormatWithContext instead.
+* **api,ui,example:** stackWindowOpts now uses From and To time.Time fields instead of UpdatedSince and Window duration fields. Content-Type header for clicky-json format changed from application/clicky+json to application/json+clicky.
+
+Refs: entity demo tests, example app routing, API response handling
+* **formatters:** The Content-Type header for clicky JSON responses is now application/json+clicky instead of application/clicky+json. Clients should update their expectations, though the legacy format is still accepted in Accept headers.
+
+### ✨ Features
+
+* **api,rpc,entity:** Add Link types and entity operation annotations for OpenAPI ([3bf7d81](https://github.com/flanksource/clicky/commit/3bf7d81eaa910c0a9f80fda5b42da79fdb2e08b8))
+* **api,ui,example:** add time range filtering and entity detail page navigation ([0b78123](https://github.com/flanksource/clicky/commit/0b7812316e2917fd60872afb763315fee1babc97))
+* **api:** add LabelBadge type for two-part pill badges ([8874efb](https://github.com/flanksource/clicky/commit/8874efba4b9b327e0c89b8633211ff376ad1a530))
+* **entity-example:** add link and linkcommand examples page with deep-linking support ([d6d89b6](https://github.com/flanksource/clicky/commit/d6d89b6db93ff2ccf2e523e56de9405595932be3))
+* **entity:** Add filter lookup support for dynamic filter metadata and completions ([168e9b2](https://github.com/flanksource/clicky/commit/168e9b2f6b679c7d58b366d322eb86ee16713ff5))
+* **formatters:** add format callbacks and link/command support ([b19923a](https://github.com/flanksource/clicky/commit/b19923a7baf1af3c375b79293a0468956463cd76))
+* **formatters:** standardize clicky JSON content type to application/json+clicky ([a899d50](https://github.com/flanksource/clicky/commit/a899d50a0a8d3e2b0637ffa600edaca1e7cd23f8))
+* **prompt:** Add interactive prompt APIs with select, multi-select, and text input ([ad6a55d](https://github.com/flanksource/clicky/commit/ad6a55dcd247fbd44a3759bb9f45ba0ebc0b1f72))
+* **task,examples:** Add interactive prompt support and task terminal ownership management ([5218f72](https://github.com/flanksource/clicky/commit/5218f72d2bae065ea4b9d9a106f22ba1f04def54))
+* **task,lint,log:** add output capture and log serialization for clean task rendering ([6dc5e67](https://github.com/flanksource/clicky/commit/6dc5e67b80a661e04c5e4584c0d888bf75d78ee2))
+* **task:** improve task rendering with priority-based ordering and collapsing ([aaa5043](https://github.com/flanksource/clicky/commit/aaa5043d1e1db625199f73a1eacbadd40dd86965))
+
+
+### 🐛 Bug Fixes
+
+* address PR [#99](https://github.com/flanksource/clicky/issues/99) test failures and CodeRabbit review ([db4f748](https://github.com/flanksource/clicky/commit/db4f748f776ad092d0d2e8bc9f0e74ac7d81dc70))
+
+
+### 🔧 Maintenance
+
+* **examples:** remove legacy example files and update dependencies ([190395f](https://github.com/flanksource/clicky/commit/190395f744be83e39cb53db0970f355a3eb3abd1))
+
 ## [1.21.5](https://github.com/flanksource/clicky/compare/v1.21.4...v1.21.5) (2026-04-21)
 
 
