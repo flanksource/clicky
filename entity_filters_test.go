@@ -219,7 +219,7 @@ func TestEntityListFiltersResolveAndLookup(t *testing.T) {
 	var received entityFilterTestOpts
 
 	RegisterEntity(Entity[entityFilterTestEntity, entityFilterTestOpts]{
-		Name:    "filtered-entity",
+		Name: "filtered-entity",
 		Filters: []Filter[entityFilterTestOpts]{
 			ownerEntityFilter{},
 			statusEntityFilter{},

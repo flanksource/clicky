@@ -61,68 +61,97 @@ func (tm *Manager) Pretty() api.Text {
 	return tm.prettyFromTasks(taskSnapshot)
 }
 
-// prettyFromTasks formats a snapshot of tasks without needing locks
+// prettyFromTasks formats a snapshot of tasks without needing locks.
+//
+// Row selection follows a priority order so long task lists stay useful:
+//
+//  1. Problem tasks (failed / warning / cancelled) — always shown, never
+//     truncated. Hiding a failure behind "... N more" is the opposite of
+//     what the user needs at a glance.
+//  2. Running tasks — always shown, never truncated. The user almost
+//     always cares what's still in flight right now.
+//  3. Success tasks — filled in with whatever vertical budget is left
+//     after problem + running + pending. Collapsed with a "first + …
+//     N more + last" summary when they don't all fit.
+//  4. Pending tasks — up to 5 plus a summary line.
+//
+// The budget is the terminal height reported by api.GetTerminalLines().
+// When problem + running alone exceed the budget we still render all of
+// them (overflow is preferable to hiding signal the user can act on).
 func (tm *Manager) prettyFromTasks(tasks []*Task) api.Text {
 	if len(tasks) == 0 {
 		return api.Text{}
 	}
 
-	// Separate pending and non-pending tasks
-	var pendingTasks, nonPendingTasks []*Task
+	var problemTasks, runningTasks, successTasks, pendingTasks []*Task
 	for _, task := range tasks {
-		if task.Status() == StatusPending {
+		switch task.Status() {
+		case StatusPending:
 			pendingTasks = append(pendingTasks, task)
-		} else {
-			nonPendingTasks = append(nonPendingTasks, task)
+		case StatusRunning:
+			runningTasks = append(runningTasks, task)
+		case StatusFailed, StatusWarning, StatusCancelled, StatusFAIL, StatusERR:
+			problemTasks = append(problemTasks, task)
+		default:
+			successTasks = append(successTasks, task)
 		}
 	}
 
 	text := api.Text{Content: ""}
 
-	// Calculate how many pending lines will be shown
-	maxPending := 5
+	const maxPending = 5
 	pendingLines := len(pendingTasks)
 	if pendingLines > maxPending {
-		pendingLines = maxPending + 1 // visible tasks + summary line
+		pendingLines = maxPending + 1 // visible + summary line
 	}
 
-	// Calculate available lines for completed tasks
-	// Reserve space for pending tasks, use remaining terminal height for completed
 	termHeight := api.GetTerminalLines()
-	maxCompleted := termHeight - pendingLines
-	maxCompleted = max(maxCompleted, 3) // always show at least first, summary, and last
+	// Room left for success tasks after we reserve lines for the always-
+	// shown buckets. Keep at least 3 so the success block can still show
+	// first + summary + last when it overflows.
+	successBudget := termHeight - len(problemTasks) - len(runningTasks) - pendingLines
+	successBudget = max(successBudget, 3)
 
-	// Show completed tasks, collapsing if they exceed available space
-	if len(nonPendingTasks) > maxCompleted {
-		// Show first task
-		text.Children = append(text.Children, nonPendingTasks[0].Pretty().Append("\n", "").Indent(2))
-		// Show collapsed summary
-		remaining := len(nonPendingTasks) - 2
+	appendTask := func(t *Task) {
+		text.Children = append(text.Children, t.Pretty().Append("\n", "").Indent(2))
+	}
+	appendSummary := func(content string) {
 		text.Children = append(text.Children, api.Text{
-			Content: fmt.Sprintf("... and %d more\n", remaining),
+			Content: content,
 			Style:   "text-gray-400",
 		}.Indent(2))
-		// Show last task
-		text.Children = append(text.Children, nonPendingTasks[len(nonPendingTasks)-1].Pretty().Append("\n", "").Indent(2))
+	}
+
+	// 1. Problems first — users should see failures at the top of the pane.
+	for _, t := range problemTasks {
+		appendTask(t)
+	}
+
+	// 2. Running next — current in-flight work.
+	for _, t := range runningTasks {
+		appendTask(t)
+	}
+
+	// 3. Success tasks, collapsed if they don't fit.
+	if len(successTasks) > successBudget {
+		appendTask(successTasks[0])
+		appendSummary(fmt.Sprintf("... and %d more\n", len(successTasks)-2))
+		appendTask(successTasks[len(successTasks)-1])
 	} else {
-		for _, task := range nonPendingTasks {
-			text.Children = append(text.Children, task.Pretty().Append("\n", "").Indent(2))
+		for _, t := range successTasks {
+			appendTask(t)
 		}
 	}
 
-	// Show only first maxPending pending tasks if there are more
+	// 4. Pending last — queued work that hasn't started.
 	if len(pendingTasks) > maxPending {
 		for i := range maxPending {
-			text.Children = append(text.Children, pendingTasks[i].Pretty().Append("\n", "").Indent(2))
+			appendTask(pendingTasks[i])
 		}
-		remaining := len(pendingTasks) - maxPending
-		text.Children = append(text.Children, api.Text{
-			Content: fmt.Sprintf("... %d more pending\n", remaining),
-			Style:   "text-gray-400",
-		}.Indent(2))
+		appendSummary(fmt.Sprintf("... %d more pending\n", len(pendingTasks)-maxPending))
 	} else {
-		for _, task := range pendingTasks {
-			text.Children = append(text.Children, task.Pretty().Append("\n", "").Indent(2))
+		for _, t := range pendingTasks {
+			appendTask(t)
 		}
 	}
 
