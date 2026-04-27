@@ -33,7 +33,7 @@ func TestForceInteractiveBypassesTestEnvGuard(t *testing.T) {
 	if global.noColor.Load() {
 		t.Fatalf("expected noColor to remain false under force-interactive")
 	}
-	if !global.isInteractive {
+	if !global.isInteractive.Load() {
 		t.Fatalf("expected isInteractive=true after SetForceInteractive(true)")
 	}
 }

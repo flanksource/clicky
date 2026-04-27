@@ -334,7 +334,9 @@ func (c *Converter) generateRESTPath(cmd *cobra.Command, cmdPath string) string 
 	// restructure to /entity/{id}/action pattern.
 	// e.g., /api/v1/policy/recalculate with Use="recalculate <id>"
 	//    -> /api/v1/policy/{id}/recalculate
-	if cmd.Parent() != nil && !isCRUDOperation(cmd.Name()) {
+	// Only applies when the command is nested under a parent entity command
+	// (not at the top level under the root command).
+	if cmd.Parent() != nil && cmd.Parent().Parent() != nil && !isCRUDOperation(cmd.Name()) {
 		paramName := extractParameterName(cmd.Use)
 		if paramName != "" {
 			// Insert {id} before the action verb

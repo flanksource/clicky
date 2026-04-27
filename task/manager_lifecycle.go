@@ -15,14 +15,14 @@ func (tm *Manager) startRenderLoop() {
 	if tm.noRender.Load() {
 		return
 	}
-	if tm.isInteractive && !globalANSITerminal.tryAcquireTaskRenderer(tm) {
+	if tm.isInteractive.Load() && !globalANSITerminal.tryAcquireTaskRenderer(tm) {
 		return
 	}
 
 	tm.mu.Lock()
 	tm.stopRenderCh = make(chan struct{})
 	tm.renderDone = make(chan struct{})
-	tm.renderOwnsTTY = tm.isInteractive
+	tm.renderOwnsTTY = tm.isInteractive.Load()
 	tm.mu.Unlock()
 
 	// Route flanksource/commons/logger output through a writer that
@@ -71,7 +71,7 @@ func (tm *Manager) renderLoop() {
 	}()
 
 	output := tm.renderer.Output()
-	if tm.isInteractive {
+	if tm.isInteractive.Load() {
 		tm.bufferMutex.Lock()
 		output.HideCursor()
 		tm.bufferMutex.Unlock()
@@ -84,7 +84,7 @@ func (tm *Manager) renderLoop() {
 	for {
 		select {
 		case <-tm.stopRenderCh:
-			if tm.isInteractive {
+			if tm.isInteractive.Load() {
 				// Final in-place render so the visible frame reflects
 				// completed task states even if stop fired between ticks.
 				// interactiveRender atomically ClearLines(lastLines) then
@@ -97,7 +97,7 @@ func (tm *Manager) renderLoop() {
 			}
 			return
 		case <-ticker.C:
-			if tm.isInteractive {
+			if tm.isInteractive.Load() {
 				lastLines = tm.interactiveRender(lastLines)
 			} else {
 				tm.PlainRender()
@@ -125,7 +125,7 @@ func (tm *Manager) stopRender() {
 		// frame, doubling every summary line. PlainRender-based mode only
 		// prints dirty tasks per tick, so renderFinal is still needed to
 		// cover tasks that completed between the last tick and stop.
-		if !tm.noRender.Load() && !tm.isInteractive {
+		if !tm.noRender.Load() && !tm.isInteractive.Load() {
 			tm.renderFinal()
 		}
 		tm.cleanupTerminal()
@@ -136,7 +136,7 @@ func (tm *Manager) stopRender() {
 
 // cleanupTerminal restores terminal to a clean state
 func (tm *Manager) cleanupTerminal() {
-	if !tm.isInteractive || tm.noProgress.Load() || !tm.ownsRenderTerminal() {
+	if !tm.isInteractive.Load() || tm.noProgress.Load() || !tm.ownsRenderTerminal() {
 		return
 	}
 	output := tm.renderer.Output()

@@ -22,7 +22,7 @@ permissions:
   id-token: write
 
 env:
-  GO_VERSION: "1.25"
+  GO_VERSION: "1.26"
 
 jobs:
   semantic-release:

@@ -342,10 +342,10 @@ func startPromptHelper(t *testing.T, mode string) (*os.File, *capturedPTY, termi
 	cmd := exec.Command(promptHelperBinary)
 	cmd.Env = append(os.Environ(),
 		"PROMPT_MODE="+mode,
-		"TERM=xterm-256color",
+		"TERM=screen-256color",
 	)
 
-	ptmx, err := pty.Start(cmd)
+	ptmx, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: 24, Cols: 80})
 	require.NoError(t, err)
 
 	capture := &capturedPTY{}

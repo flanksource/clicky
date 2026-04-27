@@ -38,7 +38,14 @@ func (b LabelBadge) ANSI() string {
 }
 
 func (b LabelBadge) HTML() string {
-	classes := []string{"inline-flex", "items-center", "rounded-md", "text-xs"}
+	shape := "rounded-md"
+	switch b.Shape {
+	case "pill":
+		shape = "rounded-full"
+	case "square":
+		shape = "rounded-none"
+	}
+	classes := []string{"inline-flex", "items-center", shape, "text-xs"}
 	if b.Color != "" {
 		classes = append(classes, b.Color)
 	} else {
@@ -49,6 +56,9 @@ func (b LabelBadge) HTML() string {
 	}
 
 	var inner strings.Builder
+	if b.Icon != "" {
+		fmt.Fprintf(&inner, `<span class="px-1 iconify" data-icon="%s" aria-hidden="true"></span>`, html.EscapeString(b.Icon))
+	}
 	if b.Label != "" {
 		fmt.Fprintf(&inner, `<span class="px-1 font-medium opacity-70">%s</span>`, html.EscapeString(b.Label))
 	}

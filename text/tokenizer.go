@@ -23,22 +23,47 @@ var secretKeywords = []string{
 	"secret", "auth", "bearer", "authorization",
 }
 
-// stripANSI removes ANSI escape sequences from a string
-// StripANSI removes ANSI escape codes from a string
+// StripANSI removes ANSI escape codes from a string. It handles CSI
+// sequences (\x1b[...) terminated by any byte in 0x40-0x7E, OSC sequences
+// (\x1b]...) terminated by BEL or ST (\x1b\\), and standalone two-byte
+// escapes (\x1b X for X in 0x40-0x5F).
 func StripANSI(s string) string {
 	var result strings.Builder
+	result.Grow(len(s))
 	i := 0
 	for i < len(s) {
-		if i+2 < len(s) && s[i:i+2] == "\x1b[" {
-			// Find the end of the ANSI sequence (the 'm')
-			end := strings.IndexByte(s[i:], 'm')
-			if end != -1 {
-				i += end + 1
-				continue
-			}
+		if s[i] != 0x1b || i+1 >= len(s) {
+			result.WriteByte(s[i])
+			i++
+			continue
 		}
-		result.WriteByte(s[i])
-		i++
+		switch s[i+1] {
+		case '[':
+			j := i + 2
+			for j < len(s) && (s[j] < 0x40 || s[j] > 0x7E) {
+				j++
+			}
+			if j < len(s) {
+				j++
+			}
+			i = j
+		case ']':
+			j := i + 2
+			for j < len(s) {
+				if s[j] == 0x07 {
+					j++
+					break
+				}
+				if s[j] == 0x1b && j+1 < len(s) && s[j+1] == '\\' {
+					j += 2
+					break
+				}
+				j++
+			}
+			i = j
+		default:
+			i += 2
+		}
 	}
 	return result.String()
 }

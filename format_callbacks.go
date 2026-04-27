@@ -34,7 +34,10 @@ func FormatWithContext(ctx any, o any, opts ...FormatOptions) (string, error) {
 // MustFormatWithContext formats using the shared clicky formatter and panics on
 // error.
 func MustFormatWithContext(ctx any, o any, opts ...FormatOptions) string {
-	result, _ := Formatter.FormatWithContext(ctx, formatters.MergeOptions(append([]FormatOptions{defaultOpts}, opts...)...), o)
+	result, err := Formatter.FormatWithContext(ctx, formatters.MergeOptions(append([]FormatOptions{defaultOpts}, opts...)...), o)
+	if err != nil {
+		panic(err)
+	}
 	return result
 }
 

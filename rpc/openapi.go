@@ -468,13 +468,6 @@ func (g *OpenAPIGenerator) buildClickySpecMeta(operations []RPCOperation) *Click
 		return surfaces[i].Order < surfaces[j].Order
 	})
 
-	for index := range operations {
-		if operations[index].Clicky == nil {
-			continue
-		}
-		operations[index].Clicky.Surface = resolvedKeys[operations[index].Clicky.SurfaceID]
-	}
-
 	return &ClickySpecMeta{Surfaces: surfaces}
 }
 
