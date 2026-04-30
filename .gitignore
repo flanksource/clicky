@@ -90,3 +90,4 @@ ginkgo.report
 *.bak
 examples/uber_demo/uber_demo
 .gavel/
+examples/enitity/webapp/dist/
