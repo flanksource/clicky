@@ -1,6 +1,7 @@
 package clicky
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -124,6 +125,79 @@ func TestWrappedEntityPrettyAndHTMLFormatting(t *testing.T) {
 				if strings.Contains(output, unexpected) {
 					t.Fatalf("%s %s format unexpectedly contained %q in output:\n%s", tt.name, format, unexpected, output)
 				}
+			}
+		}
+	}
+}
+
+func TestWrappedEntityClickyRowsIncludeHiddenID(t *testing.T) {
+	testCases := []struct {
+		name   string
+		input  any
+		wantID string
+	}{
+		{
+			name: "table provider",
+			input: []entityWithID[sampleTableEntity]{
+				{ID: "table-id", Inner: sampleTableEntity{ID: "table-id", Name: "Disbursement", Status: "Ready"}},
+			},
+			wantID: "table-id",
+		},
+		{
+			name: "pretty row",
+			input: []entityWithID[samplePrettyRowEntity]{
+				{ID: "pretty-id", Inner: samplePrettyRowEntity{ID: "pretty-id", Name: "Claim", Status: "Queued"}},
+			},
+			wantID: "pretty-id",
+		},
+		{
+			name: "plain struct",
+			input: []entityWithID[samplePlainEntity]{
+				{ID: "plain-id", Inner: samplePlainEntity{ID: "plain-id", Name: "Inquiry", Status: "Active"}},
+			},
+			wantID: "plain-id",
+		},
+	}
+
+	for _, tt := range testCases {
+		output, err := Format(tt.input, FormatOptions{Format: "html-react"})
+		if err != nil {
+			t.Fatalf("%s html-react format failed: %v", tt.name, err)
+		}
+
+		var doc struct {
+			Node struct {
+				Columns []struct {
+					Name string `json:"name"`
+				} `json:"columns"`
+				Rows []struct {
+					Cells map[string]struct {
+						Plain string `json:"plain"`
+						Text  string `json:"text"`
+					} `json:"cells"`
+				} `json:"rows"`
+			} `json:"node"`
+		}
+		payload := output
+		const marker = `<script id="clicky-data" type="application/json">`
+		if start := strings.Index(output, marker); start >= 0 {
+			payload = output[start+len(marker):]
+			if end := strings.Index(payload, "</script>"); end >= 0 {
+				payload = payload[:end]
+			}
+		}
+		if err := json.Unmarshal([]byte(payload), &doc); err != nil {
+			t.Fatalf("%s html-react output is invalid JSON: %v\n%s", tt.name, err, output)
+		}
+		if len(doc.Node.Rows) != 1 {
+			t.Fatalf("%s expected one row, got %d", tt.name, len(doc.Node.Rows))
+		}
+		if got := doc.Node.Rows[0].Cells["_id"].Plain; got != tt.wantID {
+			t.Fatalf("%s _id plain = %q, want %q", tt.name, got, tt.wantID)
+		}
+		for _, column := range doc.Node.Columns {
+			if column.Name == "_id" {
+				t.Fatalf("%s _id should be available as row metadata, not a visible column", tt.name)
 			}
 		}
 	}

@@ -995,14 +995,23 @@ func (e entityWithID[T]) GetID() string   { return e.ID }
 func (e entityWithID[T]) GetName() string { return e.Inner.GetName() }
 
 func (e entityWithID[T]) Columns() []api.ColumnDef {
+	withID := func(columns []api.ColumnDef) []api.ColumnDef {
+		for _, column := range columns {
+			if column.Name == "_id" {
+				return columns
+			}
+		}
+		return append([]api.ColumnDef{api.Column("_id").Hidden().Build()}, columns...)
+	}
+
 	if tp, ok := any(e.Inner).(api.TableProvider); ok {
-		return tp.Columns()
+		return withID(tp.Columns())
 	}
 
 	if prettyRow, ok := entityPrettyRow(any(e.Inner), nil); ok {
 		columns := columnsFromPrettyRow(prettyRow)
 		if len(columns) > 0 {
-			return columns
+			return withID(columns)
 		}
 	}
 
@@ -1010,12 +1019,21 @@ func (e entityWithID[T]) Columns() []api.ColumnDef {
 	if !ok {
 		return nil
 	}
-	return columns
+	return withID(columns)
 }
 
 func (e entityWithID[T]) Row() map[string]any {
+	withID := func(row map[string]any) map[string]any {
+		next := make(map[string]any, len(row)+1)
+		next["_id"] = e.ID
+		for key, value := range row {
+			next[key] = value
+		}
+		return next
+	}
+
 	if tp, ok := any(e.Inner).(api.TableProvider); ok {
-		return tp.Row()
+		return withID(tp.Row())
 	}
 
 	if prettyRow, ok := entityPrettyRow(any(e.Inner), nil); ok {
@@ -1023,19 +1041,24 @@ func (e entityWithID[T]) Row() map[string]any {
 		for key, value := range prettyRow {
 			row[key] = value
 		}
-		return row
+		return withID(row)
 	}
 
 	_, row, ok := columnsAndRowFromStruct(any(e.Inner))
 	if !ok {
 		return nil
 	}
-	return row
+	return withID(row)
 }
 
 func (e entityWithID[T]) PrettyRow(opts interface{}) map[string]api.Text {
 	if row, ok := entityPrettyRow(any(e.Inner), opts); ok {
-		return row
+		next := make(map[string]api.Text, len(row)+1)
+		next["_id"] = api.Text{Content: e.ID}
+		for key, value := range row {
+			next[key] = value
+		}
+		return next
 	}
 
 	rowData := e.Row()

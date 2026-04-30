@@ -461,6 +461,12 @@ func convertTable(table *api.TextTable) clickyNode {
 			}
 			rowNode.Cells[column.Name] = clickyTextNode("")
 		}
+		for cellName, cell := range row {
+			if _, exists := rowNode.Cells[cellName]; exists {
+				continue
+			}
+			rowNode.Cells[cellName] = convertTypedValue(&cell, nil)
+		}
 
 		if rowIndex < len(table.RowDetail) && table.RowDetail[rowIndex] != nil {
 			detail := convertTextable(table.RowDetail[rowIndex])

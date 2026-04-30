@@ -4,7 +4,7 @@ go 1.26.1
 
 require (
 	github.com/flanksource/clicky v1.21.1
-	github.com/flanksource/commons v1.50.3
+	github.com/flanksource/commons v1.51.0
 	github.com/flanksource/gomplate/v3 v3.24.77
 	github.com/google/uuid v1.6.0
 	github.com/onsi/ginkgo/v2 v2.28.0

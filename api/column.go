@@ -149,6 +149,10 @@ func NewTableFrom[T TableProvider](items []T) TextTable {
 		row := TableRow{}
 
 		for _, col := range columns {
+			if val, exists := rowData[col.Name]; exists && col.Hidden {
+				row[col.Name] = TypedValue{Textable: Text{}.Add(convertToTextable(val))}
+				continue
+			}
 			if col.Hidden {
 				continue
 			}
