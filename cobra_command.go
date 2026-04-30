@@ -119,7 +119,7 @@ func AddNamedCommand[T any, R any](name string, parent *cobra.Command, opts T, f
 	parent.AddCommand(cmd)
 	SetCommandResponseMeta(cmd, ResponseOpenAPIMeta{Type: responseTypeOf[R]()})
 	if meta := GetCommandOpenAPIMeta(parent); meta != nil {
-		annotateEntityOperationCommand(cmd, parent, "action", "collection", name, "", false, false)
+		annotateEntityOperationCommand(cmd, parent, "action", "", "collection", name, "", false, false)
 	}
 
 	if namer, ok := optsValue.Interface().(Name); ok {

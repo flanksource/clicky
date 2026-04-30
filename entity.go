@@ -45,6 +45,7 @@ type EntityInfo struct {
 // EntityOperation represents a single CRUD operation.
 type EntityOperation struct {
 	Verb     string // "list", "get", "create", "update", "delete"
+	Method   string // Optional explicit HTTP method for generated RPC/OpenAPI routes.
 	DataFunc func(flags map[string]string, args []string) (any, error)
 	// FlagsType, when non-nil, binds typed flags from the given struct type
 	// onto the generated cobra command and collects their values into the
@@ -62,6 +63,7 @@ type EntityOperation struct {
 type ActionInfo struct {
 	Name     string
 	Short    string
+	Method   string
 	DataFunc func(flags map[string]string, args []string) (any, error)
 	// FlagsType, if non-nil, is the struct type whose `flag:"..."` tagged
 	// fields are registered as cobra flags on the generated action command
@@ -110,10 +112,11 @@ type EntityAction interface {
 }
 
 type actionSpec[R any] struct {
-	name  string
-	short string
-	run   func(id string, flags map[string]string) (R, error)
-	flags ActionFlags
+	name   string
+	short  string
+	method string
+	run    func(id string, flags map[string]string) (R, error)
+	flags  ActionFlags
 }
 
 // Action creates a typed custom operation on a single entity by ID.
@@ -136,10 +139,18 @@ func (a *actionSpec[R]) WithFlags(flags ActionFlags) *actionSpec[R] {
 	return a
 }
 
+// WithMethod overrides the inferred HTTP method for the generated RPC/OpenAPI
+// action route. Leave empty to keep the default inference behavior.
+func (a *actionSpec[R]) WithMethod(method string) *actionSpec[R] {
+	a.method = method
+	return a
+}
+
 func (a *actionSpec[R]) actionInfo() ActionInfo {
 	return ActionInfo{
 		Name:         a.name,
 		Short:        a.short,
+		Method:       a.method,
 		FlagsType:    actionFlagsType(a.flags),
 		ResponseType: responseTypeOf[R](),
 		DataFunc: func(flagMap map[string]string, args []string) (any, error) {
@@ -583,10 +594,11 @@ func generateEntityCLI(parent *cobra.Command, entity EntityInfo) {
 	for _, action := range entity.Actions {
 		generateIDCommand(entityCmd, action.Name, action.Short, EntityOperation{
 			Verb:         action.Name,
+			Method:       action.Method,
 			DataFunc:     action.DataFunc,
 			FlagsType:    action.FlagsType,
 			ResponseType: action.ResponseType,
-		}, entity.ValidArgs, "action", "entity", action.Name, "id", false, false)
+		}, entity.ValidArgs, "action", "", "entity", action.Name, "id", false, false)
 	}
 
 	for _, ba := range entity.BulkActions {
@@ -606,6 +618,7 @@ func generateEntitySubcommand(parent *cobra.Command, entity EntityInfo, op Entit
 			op,
 			entity.ValidArgs,
 			"get",
+			"",
 			"entity",
 			"",
 			"id",
@@ -624,6 +637,7 @@ func generateEntitySubcommand(parent *cobra.Command, entity EntityInfo, op Entit
 			op,
 			entity.ValidArgs,
 			"delete",
+			"",
 			"entity",
 			"",
 			"id",
@@ -657,7 +671,7 @@ func generateListCommand(parent *cobra.Command, entity EntityInfo, op EntityOper
 		op.BindCompletions(cmd)
 	}
 
-	annotateEntityOperationCommand(cmd, parent, "list", "collection", "", "", op.LookupFunc != nil, false)
+	annotateEntityOperationCommand(cmd, parent, "list", "", "collection", "", "", op.LookupFunc != nil, false)
 	parent.AddCommand(cmd)
 	dataFuncRegistry.Store(cmd, op.DataFunc)
 	SetCommandResponseMeta(cmd, ResponseOpenAPIMeta{
@@ -677,6 +691,7 @@ func generateIDCommand(
 	op EntityOperation,
 	validArgs func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective),
 	metaVerb string,
+	method string,
 	scope string,
 	actionName string,
 	idParam string,
@@ -719,7 +734,10 @@ func generateIDCommand(
 	if hasFlags {
 		bindTypeFlags(cmd, op.FlagsType)
 	}
-	annotateEntityOperationCommand(cmd, parent, metaVerb, scope, actionName, idParam, supportsLookup, supportsFilterMode)
+	if method == "" {
+		method = op.Method
+	}
+	annotateEntityOperationCommand(cmd, parent, metaVerb, method, scope, actionName, idParam, supportsLookup, supportsFilterMode)
 	parent.AddCommand(cmd)
 	dataFuncRegistry.Store(cmd, op.DataFunc)
 	SetCommandResponseMeta(cmd, ResponseOpenAPIMeta{
@@ -799,7 +817,7 @@ func generateBodyCommand(parent *cobra.Command, verb, short string, op EntityOpe
 		scope = "entity"
 		idParam = "id"
 	}
-	annotateEntityOperationCommand(cmd, parent, verb, scope, "", idParam, false, false)
+	annotateEntityOperationCommand(cmd, parent, verb, "", scope, "", idParam, false, false)
 	parent.AddCommand(cmd)
 	dataFuncRegistry.Store(cmd, op.DataFunc)
 	SetCommandResponseMeta(cmd, ResponseOpenAPIMeta{
@@ -846,7 +864,7 @@ func generateBulkActionCommand(parent *cobra.Command, ba BulkActionInfo) {
 		}
 	}
 
-	annotateEntityOperationCommand(cmd, parent, "action", "collection", ba.Name, "id", ba.LookupFunc != nil, ba.FilterFunc != nil)
+	annotateEntityOperationCommand(cmd, parent, "action", "", "collection", ba.Name, "id", ba.LookupFunc != nil, ba.FilterFunc != nil)
 	parent.AddCommand(cmd)
 	dataFuncRegistry.Store(cmd, execute)
 	SetCommandResponseMeta(cmd, ResponseOpenAPIMeta{Type: ba.ResponseType})

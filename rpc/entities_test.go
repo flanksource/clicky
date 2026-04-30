@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/flanksource/clicky"
+	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -68,6 +69,35 @@ func TestEntitiesHandler_ReturnsRegisteredEntities(t *testing.T) {
 	}
 	assert.True(t, verbs["list"], "list verb missing")
 	assert.True(t, verbs["get"], "get verb missing")
+}
+
+func TestEntityAction_ExplicitGETMethodUsesNestedEntityPath(t *testing.T) {
+	const name = "rpc-entities-action-get-test"
+	clicky.NewEntity[testEntity, testListOpts, testEntity](name).
+		List(func(_ testListOpts) ([]testEntity, error) {
+			return []testEntity{{ID: "1", Name: "one"}}, nil
+		}).
+		WithAction(
+			clicky.Action("records", func(id string, _ map[string]string) ([]testEntity, error) {
+				return []testEntity{{ID: id, Name: "record"}}, nil
+			}).WithShort("List records").WithMethod("GET"),
+		).
+		Register()
+
+	root := &cobra.Command{Use: "testapp"}
+	clicky.GenerateCLI(root)
+
+	service, err := NewConverter(DefaultConfig()).ConvertCommandTree(root)
+	require.NoError(t, err)
+
+	for _, op := range service.Operations {
+		if op.Clicky != nil && op.Clicky.Entity == name && op.Clicky.ActionName == "records" {
+			assert.Equal(t, "GET", op.Method)
+			assert.Equal(t, "/api/v1/"+name+"/{id}/records", op.Path)
+			return
+		}
+	}
+	t.Fatalf("expected records action for entity %q", name)
 }
 
 func TestEntitiesHandler_CORS(t *testing.T) {
