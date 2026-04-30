@@ -311,13 +311,13 @@ func (d *demoStore) listTeams(opts teamListOpts) ([]team, error) {
 	return items, nil
 }
 
-func (d *demoStore) getTeam(id string) (any, error) {
+func (d *demoStore) getTeam(id string) (team, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
 	item, ok := d.teams[id]
 	if !ok {
-		return nil, fmt.Errorf("team %q not found", id)
+		return team{}, fmt.Errorf("team %q not found", id)
 	}
 	return item, nil
 }
@@ -350,13 +350,13 @@ func (d *demoStore) listAdminStacks(opts stackListOpts) ([]stack, error) {
 	return items, nil
 }
 
-func (d *demoStore) getStack(id string, flags map[string]string) (any, error) {
+func (d *demoStore) getStack(id string, flags map[string]string) (stackDetail, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
 	item, ok := d.stacks[id]
 	if !ok {
-		return nil, fmt.Errorf("stack %q not found", id)
+		return stackDetail{}, fmt.Errorf("stack %q not found", id)
 	}
 
 	detail := stackDetail{
@@ -382,13 +382,13 @@ func (d *demoStore) getStack(id string, flags map[string]string) (any, error) {
 	return detail, nil
 }
 
-func (d *demoStore) getAdminStack(id string, flags map[string]string) (any, error) {
+func (d *demoStore) getAdminStack(id string, flags map[string]string) (stackDetail, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
 	item, ok := d.stacks[id]
 	if !ok {
-		return nil, fmt.Errorf("stack %q not found", id)
+		return stackDetail{}, fmt.Errorf("stack %q not found", id)
 	}
 
 	detail := stackDetail{
@@ -413,7 +413,7 @@ func (d *demoStore) getAdminStack(id string, flags map[string]string) (any, erro
 	return detail, nil
 }
 
-func (d *demoStore) createStack(body map[string]any) (any, error) {
+func (d *demoStore) createStack(body map[string]any) (stackDetail, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
@@ -436,16 +436,16 @@ func (d *demoStore) createStack(body map[string]any) (any, error) {
 		LastDeploy: time.Now().UTC(),
 	}
 	d.stacks[id] = item
-	return item, nil
+	return stackDetail{Stack: item}, nil
 }
 
-func (d *demoStore) updateStack(id string, body map[string]any) (any, error) {
+func (d *demoStore) updateStack(id string, body map[string]any) (stackDetail, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
 	item, ok := d.stacks[id]
 	if !ok {
-		return nil, fmt.Errorf("stack %q not found", id)
+		return stackDetail{}, fmt.Errorf("stack %q not found", id)
 	}
 
 	if value := stringValue(body["name"]); value != "" {
@@ -469,7 +469,7 @@ func (d *demoStore) updateStack(id string, body map[string]any) (any, error) {
 	item.Version++
 	item.LastDeploy = time.Now().UTC()
 	d.stacks[id] = item
-	return item, nil
+	return stackDetail{Stack: item}, nil
 }
 
 func (d *demoStore) deleteStack(id string) error {
@@ -483,13 +483,13 @@ func (d *demoStore) deleteStack(id string) error {
 	return nil
 }
 
-func (d *demoStore) restartStack(id string, flags map[string]string) (any, error) {
+func (d *demoStore) restartStack(id string, flags map[string]string) (actionResult, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
 	item, ok := d.stacks[id]
 	if !ok {
-		return nil, fmt.Errorf("stack %q not found", id)
+		return actionResult{}, fmt.Errorf("stack %q not found", id)
 	}
 	item.Status = "status:healthy"
 	item.Version++
@@ -509,13 +509,13 @@ func (d *demoStore) restartStack(id string, flags map[string]string) (any, error
 	}, nil
 }
 
-func (d *demoStore) reconcileStack(id string, flags map[string]string) (any, error) {
+func (d *demoStore) reconcileStack(id string, flags map[string]string) (actionResult, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
 	item, ok := d.stacks[id]
 	if !ok {
-		return nil, fmt.Errorf("stack %q not found", id)
+		return actionResult{}, fmt.Errorf("stack %q not found", id)
 	}
 	item.Status = "status:healthy"
 	d.stacks[id] = item
@@ -529,7 +529,7 @@ func (d *demoStore) reconcileStack(id string, flags map[string]string) (any, err
 	}, nil
 }
 
-func (d *demoStore) pauseStacks(ids []string, _ map[string]string) (any, error) {
+func (d *demoStore) pauseStacks(ids []string, _ map[string]string) (actionResult, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
@@ -537,7 +537,7 @@ func (d *demoStore) pauseStacks(ids []string, _ map[string]string) (any, error) 
 	for _, id := range ids {
 		item, ok := d.stacks[id]
 		if !ok {
-			return nil, fmt.Errorf("stack %q not found", id)
+			return actionResult{}, fmt.Errorf("stack %q not found", id)
 		}
 		item.Status = "status:paused"
 		item.Version++
@@ -552,7 +552,7 @@ func (d *demoStore) pauseStacks(ids []string, _ map[string]string) (any, error) 
 	}, nil
 }
 
-func (d *demoStore) pauseStacksByFilter(opts stackListOpts, _ map[string]string) (any, error) {
+func (d *demoStore) pauseStacksByFilter(opts stackListOpts, _ map[string]string) (actionResult, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
@@ -574,7 +574,7 @@ func (d *demoStore) pauseStacksByFilter(opts stackListOpts, _ map[string]string)
 	}, nil
 }
 
-func (d *demoStore) summarizeStacks(opts stackSummaryOpts) (any, error) {
+func (d *demoStore) summarizeStacks(opts stackSummaryOpts) (stackSummary, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
@@ -617,13 +617,13 @@ func (d *demoStore) listClusters(opts clusterListOpts) ([]cluster, error) {
 	return items, nil
 }
 
-func (d *demoStore) getCluster(id string) (any, error) {
+func (d *demoStore) getCluster(id string) (cluster, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
 	item, ok := d.clusters[id]
 	if !ok {
-		return nil, fmt.Errorf("cluster %q not found", id)
+		return cluster{}, fmt.Errorf("cluster %q not found", id)
 	}
 	return item, nil
 }
@@ -773,71 +773,45 @@ func registerEntities(store *demoStore) {
 		stackToFilter{},
 	}
 
-	clicky.RegisterEntity(clicky.Entity[stack, stackListOpts]{
-		Name:     "stack",
-		Aliases:  []string{"stacks", "svc"},
-		Filters:  stackFilters,
-		List:     store.listStacks,
-		GetFlags: inspectFlags{},
-		GetWithFlags: func(id string, flags map[string]string) (any, error) {
-			return store.getStack(id, flags)
-		},
-		Create: store.createStack,
-		Update: store.updateStack,
-		Delete: store.deleteStack,
-		Actions: []clicky.Action[stack]{
-			{
-				Name:  "restart",
-				Short: "Restart a stack and record synthetic audit metadata",
-				Flags: restartFlags{},
-				Run: func(id string, flags map[string]string) (any, error) {
-					return store.restartStack(id, flags)
-				},
+	clicky.NewEntity[stack, stackListOpts, stackDetail]("stack").
+		Aliases("stacks", "svc").
+		Filters(stackFilters...).
+		List(store.listStacks).
+		GetWithFlags(inspectFlags{}, store.getStack).
+		Create(store.createStack).
+		Update(store.updateStack).
+		Delete(store.deleteStack).
+		WithAction(
+			clicky.ActionWithFlags("restart", restartFlags{}, store.restartStack).
+				WithShort("Restart a stack and record synthetic audit metadata"),
+		).
+		WithBulkAction(
+			clicky.BulkActionWithFilter("pause", store.pauseStacks, store.pauseStacksByFilter).
+				WithShort("Pause stacks directly by id or indirectly through filter mode"),
+		).
+		Admin(clicky.Entity[stack, stackListOpts, stackDetail]{
+			Filters:      stackFilters,
+			List:         store.listAdminStacks,
+			GetFlags:     adminInspectFlags{},
+			GetWithFlags: store.getAdminStack,
+			Actions: []clicky.EntityAction{
+				clicky.Action("reconcile", store.reconcileStack).
+					WithShort("Force a synthetic admin reconcile for a stack"),
 			},
-		},
-		BulkActions: []clicky.BulkAction[stack, stackListOpts]{
-			{
-				Name:  "pause",
-				Short: "Pause stacks directly by id or indirectly through filter mode",
-				Run: func(ids []string, flags map[string]string) (any, error) {
-					return store.pauseStacks(ids, flags)
-				},
-				RunFilter: func(opts stackListOpts, flags map[string]string) (any, error) {
-					return store.pauseStacksByFilter(opts, flags)
-				},
-			},
-		},
-		Admin: &clicky.Entity[stack, stackListOpts]{
-			Filters:  stackFilters,
-			List:     store.listAdminStacks,
-			GetFlags: adminInspectFlags{},
-			GetWithFlags: func(id string, flags map[string]string) (any, error) {
-				return store.getAdminStack(id, flags)
-			},
-			Actions: []clicky.Action[stack]{
-				{
-					Name:  "reconcile",
-					Short: "Force a synthetic admin reconcile for a stack",
-					Run: func(id string, flags map[string]string) (any, error) {
-						return store.reconcileStack(id, flags)
-					},
-				},
-			},
-		},
-		ValidArgs: store.completeStackIDs,
-	})
+		}).
+		ValidArgs(store.completeStackIDs).
+		Register()
 
-	clicky.RegisterEntity(clicky.Entity[cluster, clusterListOpts]{
-		Parent: "catalog",
-		List:   store.listClusters,
-		Get:    store.getCluster,
-	})
+	clicky.NewEntity[cluster, clusterListOpts, cluster]("cluster").
+		Parent("catalog").
+		List(store.listClusters).
+		Get(store.getCluster).
+		Register()
 
-	clicky.RegisterEntity(clicky.Entity[team, teamListOpts]{
-		Name: "team",
-		List: store.listTeams,
-		Get:  store.getTeam,
-	})
+	clicky.NewEntity[team, teamListOpts, team]("team").
+		List(store.listTeams).
+		Get(store.getTeam).
+		Register()
 }
 
 func registerSubCommands(store *demoStore) {

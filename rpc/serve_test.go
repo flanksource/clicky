@@ -181,7 +181,8 @@ func TestSwaggerServer_handleSwaggerUI(t *testing.T) {
 	assert.Contains(t, body, "Test UI")
 	assert.Contains(t, body, "Test Description")
 	assert.Contains(t, body, "1.0.0")
-	assert.Contains(t, body, "swagger-ui-bundle.js")
+	assert.Contains(t, body, "@scalar/api-reference")
+	assert.Contains(t, body, "Scalar.createApiReference")
 	assert.Contains(t, body, "/api/openapi.json")
 }
 
@@ -328,7 +329,8 @@ func TestSwaggerServer_Integration(t *testing.T) {
 				"Integration Test API",
 				"Test API for integration testing",
 				"1.5.0",
-				"swagger-ui-bundle.js",
+				"@scalar/api-reference",
+				"Scalar.createApiReference",
 			},
 		},
 		{

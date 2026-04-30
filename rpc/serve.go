@@ -41,7 +41,7 @@ type ServeConfig struct {
 	Executor    *ExecutorConfig // Optional command execution configuration
 }
 
-// SwaggerServer serves Swagger UI documentation for the OpenAPI specification
+// SwaggerServer serves API reference documentation for the OpenAPI specification.
 type SwaggerServer struct {
 	config    *ServeConfig
 	rootCmd   *cobra.Command
@@ -120,7 +120,7 @@ func (s *SwaggerServer) Start(ctx context.Context) error {
 	serverErr := make(chan error, 1)
 	go func() {
 		fmt.Printf("🚀 OpenAPI documentation server starting on http://%s\n", addr)
-		fmt.Printf("📖 Swagger UI available at: http://%s/\n", addr)
+		fmt.Printf("📖 API explorer available at: http://%s/\n", addr)
 		fmt.Printf("📄 OpenAPI JSON spec: http://%s/api/openapi.json\n", addr)
 		fmt.Printf("📄 OpenAPI YAML spec: http://%s/api/openapi.yaml\n", addr)
 		if !s.config.SkipHealth {
@@ -159,7 +159,7 @@ func (s *SwaggerServer) Start(ctx context.Context) error {
 	}
 }
 
-// handleSwaggerUI serves the Swagger UI HTML page
+// handleSwaggerUI serves the API explorer HTML page.
 func (s *SwaggerServer) handleSwaggerUI(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path != "/" {
 		http.NotFound(w, r)
@@ -315,11 +315,11 @@ func newOpenAPIServeCommand(defaultConfig *OpenAPIConfig) *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "serve",
-		Short: "Start an HTTP server with Swagger UI documentation",
-		Long: `Start an HTTP server that serves interactive Swagger UI documentation for the CLI.
+		Short: "Start an HTTP server with interactive API documentation",
+		Long: `Start an HTTP server that serves interactive API documentation for the CLI.
 
 This command generates an OpenAPI specification from the current CLI command structure
-and serves it through a web interface using Swagger UI. The documentation is
+and serves it through a web interface. The documentation is
 generated dynamically and reflects the current state of the CLI commands.`,
 		Example: `  myapp openapi serve
   myapp openapi serve --port 3000 --open

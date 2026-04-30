@@ -1,0 +1,18 @@
+# Local catalog so pnpm can resolve the `catalog:` specifiers declared by
+# @flanksource/clicky-ui when it is linked via `file:`. The versions below
+# mirror clicky-ui's own pnpm-workspace.yaml. Keep them in sync when the
+# library dependency versions change.
+packages:
+  - "."
+
+catalogMode: prefer
+
+catalog:
+  "@scalar/api-reference-react": ^0.9.31
+  "@tanstack/react-query": ^5.66.8
+  "@radix-ui/react-slot": ^1.1.1
+  class-variance-authority: ^0.7.1
+  clsx: ^2.1.1
+  lucide-react: ^0.469.0
+  tailwind-merge: ^2.6.0
+  marked: ^15.0.0

@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/flanksource/clicky"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -443,6 +445,97 @@ func TestOpenAPIGenerator_GenerateFromCobra(t *testing.T) {
 
 	assert.True(t, foundCreate, "Should find user create operation")
 	assert.True(t, foundList, "Should find user list operation")
+}
+
+type openAPISchemaListItem struct {
+	ID        string            `json:"id"`
+	Name      string            `json:"name"`
+	CreatedAt time.Time         `json:"created_at"`
+	Tags      []string          `json:"tags,omitempty"`
+	Metadata  map[string]string `json:"metadata,omitempty"`
+	Hidden    string            `json:"-"`
+}
+
+func (i openAPISchemaListItem) GetID() string   { return i.ID }
+func (i openAPISchemaListItem) GetName() string { return i.Name }
+
+type openAPISchemaDetail struct {
+	ID       string  `json:"id"`
+	Name     string  `json:"name"`
+	Optional *string `json:"optional,omitempty"`
+	Secret   string  `pretty:"hide"`
+}
+
+type openAPIRestartResult struct {
+	Restarted bool `json:"restarted"`
+}
+
+type openAPIPauseResult struct {
+	Count int `json:"count"`
+}
+
+type openAPISchemaOpts struct{}
+
+func TestOpenAPIGenerator_EntityResponseSchemas(t *testing.T) {
+	const entityName = "openapi-schema-stack"
+	root := &cobra.Command{Use: "testapp"}
+
+	clicky.NewEntity[openAPISchemaListItem, openAPISchemaOpts, openAPISchemaDetail](entityName).
+		List(func(openAPISchemaOpts) ([]openAPISchemaListItem, error) {
+			return nil, nil
+		}).
+		Get(func(id string) (openAPISchemaDetail, error) {
+			return openAPISchemaDetail{ID: id, Name: id}, nil
+		}).
+		WithAction(clicky.Action("restart", func(id string, flags map[string]string) (openAPIRestartResult, error) {
+			return openAPIRestartResult{Restarted: true}, nil
+		})).
+		WithBulkAction(clicky.BulkAction("pause", func(ids []string, flags map[string]string) (openAPIPauseResult, error) {
+			return openAPIPauseResult{Count: len(ids)}, nil
+		})).
+		Register()
+
+	clicky.GenerateCLI(root)
+
+	spec, err := NewOpenAPIGenerator(nil).GenerateFromCobra(root)
+	require.NoError(t, err)
+
+	listOp := spec.Paths["/api/v1/"+entityName]["get"]
+	listSchema := requireResponseSchema(t, listOp)
+	require.Equal(t, "array", listSchema.Type)
+	require.NotNil(t, listSchema.Items)
+	assert.Equal(t, "object", listSchema.Items.Type)
+	assert.Contains(t, listSchema.Items.Properties, "_id")
+	assert.Contains(t, listSchema.Items.Properties, "created_at")
+	assert.Equal(t, "date-time", listSchema.Items.Properties["created_at"].Format)
+	assert.Equal(t, "array", listSchema.Items.Properties["tags"].Type)
+	assert.Equal(t, "object", listSchema.Items.Properties["metadata"].Type)
+	assert.NotContains(t, listSchema.Items.Properties, "Hidden")
+	assert.NotContains(t, listSchema.Items.Properties, "hidden")
+
+	getOp := spec.Paths["/api/v1/"+entityName+"/{id}"]["get"]
+	getSchema := requireResponseSchema(t, getOp)
+	assert.Contains(t, getSchema.Properties, "optional")
+	assert.True(t, getSchema.Properties["optional"].Nullable)
+	assert.NotContains(t, getSchema.Properties, "secret")
+
+	restartOp := spec.Paths["/api/v1/"+entityName+"/{id}/restart"]["post"]
+	restartSchema := requireResponseSchema(t, restartOp)
+	assert.Contains(t, restartSchema.Properties, "restarted")
+
+	pauseOp := spec.Paths["/api/v1/"+entityName+"/{id}/pause"]["post"]
+	pauseSchema := requireResponseSchema(t, pauseOp)
+	assert.Contains(t, pauseSchema.Properties, "count")
+}
+
+func requireResponseSchema(t *testing.T, op OpenAPIOperation) *OpenAPISchema {
+	t.Helper()
+	response, ok := op.Responses["200"]
+	require.True(t, ok, "200 response missing")
+	media, ok := response.Content["application/json"]
+	require.True(t, ok, "application/json response missing")
+	require.NotNil(t, media.Schema)
+	return media.Schema
 }
 
 func TestOpenAPISpec_ToJSON(t *testing.T) {

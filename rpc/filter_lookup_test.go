@@ -80,25 +80,24 @@ func TestSwaggerServer_FilterLookupRoutes(t *testing.T) {
 	root := &cobra.Command{Use: "testapp", Short: "test app"}
 
 	bulkExecutions := 0
-	clicky.RegisterEntity(clicky.Entity[rpcFilterEntity, rpcFilterOpts]{
+	clicky.RegisterEntity(clicky.Entity[rpcFilterEntity, rpcFilterOpts, rpcFilterEntity]{
 		Name:    "rpc-filter-entity",
 		Filters: []clicky.Filter[rpcFilterOpts]{rpcOwnerFilter{}, rpcStatusFilter{}},
 		List: func(opts rpcFilterOpts) ([]rpcFilterEntity, error) {
 			return []rpcFilterEntity{{ID: "1", Name: opts.Status}}, nil
 		},
-		BulkActions: []clicky.BulkAction[rpcFilterEntity, rpcFilterOpts]{
-			{
-				Name:  "bulk-suspend",
-				Short: "Suspend matching entities",
-				Run: func(ids []string, flags map[string]string) (any, error) {
+		BulkActions: []clicky.EntityBulkAction{
+			clicky.BulkActionWithFilter(
+				"bulk-suspend",
+				func(ids []string, flags map[string]string) (any, error) {
 					bulkExecutions++
 					return ids, nil
 				},
-				RunFilter: func(opts rpcFilterOpts, flags map[string]string) (any, error) {
+				func(opts rpcFilterOpts, flags map[string]string) (any, error) {
 					bulkExecutions++
 					return map[string]string{"status": opts.Status}, nil
 				},
-			},
+			).WithShort("Suspend matching entities"),
 		},
 	})
 	clicky.GenerateCLI(root)

@@ -25,12 +25,12 @@ func TestEntitiesHandler_ReturnsRegisteredEntities(t *testing.T) {
 	// Entity registry is a process-global; avoid colliding with other tests
 	// by registering a uniquely-named entity and only asserting on it.
 	const name = "rpc-entities-test"
-	clicky.RegisterEntity(clicky.Entity[testEntity, testListOpts]{
+	clicky.RegisterEntity(clicky.Entity[testEntity, testListOpts, testEntity]{
 		Name: name,
 		List: func(_ testListOpts) ([]testEntity, error) {
 			return []testEntity{{ID: "1", Name: "one"}}, nil
 		},
-		Get: func(id string) (any, error) {
+		Get: func(id string) (testEntity, error) {
 			return testEntity{ID: id, Name: id}, nil
 		},
 	})

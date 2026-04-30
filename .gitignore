@@ -72,6 +72,14 @@ clicky
 !task/ui/package.json
 !task/ui/package-lock.json
 !task/ui/tsconfig.json
+!examples/enitity/Taskfile.yaml
+!examples/enitity/webapp/index.html
+!examples/enitity/webapp/package.json
+!examples/enitity/webapp/pnpm-lock.yaml
+!examples/enitity/webapp/pnpm-workspace.yaml
+!examples/enitity/webapp/tsconfig.json
+!examples/enitity/webapp/dist/
+!examples/enitity/webapp/dist/index.html
 !.golangci.yaml
 .playwright-mcp/
 *-demo

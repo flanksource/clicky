@@ -184,6 +184,11 @@ func (c *Converter) ConvertCommand(cmd *cobra.Command) (*RPCOperation, error) {
 	if lf := clicky.GetLookupFunc(cmd); lf != nil {
 		operation.LookupFunc = lf
 	}
+	if meta := clicky.GetCommandResponseMeta(cmd); meta != nil {
+		operation.ResponseType = meta.Type
+		operation.ResponseArray = meta.Array
+		operation.ResponseEntityID = meta.EntityID
+	}
 
 	return operation, nil
 }

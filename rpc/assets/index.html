@@ -1,144 +1,103 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <title>{{.Title}} - API Documentation</title>
-    <link rel="stylesheet" type="text/css" href="https://unpkg.com/swagger-ui-dist@5.9.0/swagger-ui.css" />
-    <link rel="icon" type="image/png" href="https://unpkg.com/swagger-ui-dist@5.9.0/favicon-32x32.png" sizes="32x32" />
-    <link rel="icon" type="image/png" href="https://unpkg.com/swagger-ui-dist@5.9.0/favicon-16x16.png" sizes="16x16" />
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{{.Title}} - API Explorer</title>
     <style>
-        html {
-            box-sizing: border-box;
-            overflow: -moz-scrollbars-vertical;
-            overflow-y: scroll;
-        }
-        *, *:before, *:after {
-            box-sizing: inherit;
-        }
-        body {
-            margin:0;
-            background: #fafafa;
-        }
-        .swagger-ui .topbar {
-            background-color: #1976d2;
-        }
-        .swagger-ui .topbar .download-url-wrapper {
-            display: none;
-        }
-        .custom-header {
-            background: #1976d2;
-            color: white;
-            padding: 20px;
-            text-align: center;
-            margin-bottom: 20px;
-        }
-        .custom-header h1 {
+        html,
+        body,
+        #api-reference {
+            height: 100%;
             margin: 0;
-            font-size: 2em;
         }
-        .custom-header p {
-            margin: 10px 0 0 0;
-            opacity: 0.9;
+
+        body {
+            background: #fff;
         }
+
+        .api-header {
+            align-items: center;
+            background: #fff;
+            border-bottom: 1px solid #e5e7eb;
+            display: flex;
+            gap: 16px;
+            justify-content: space-between;
+            padding: 12px 20px;
+        }
+
+        .api-header h1 {
+            font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            font-size: 16px;
+            line-height: 1.2;
+            margin: 0;
+        }
+
+        .api-header p {
+            color: #6b7280;
+            font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            font-size: 12px;
+            margin: 4px 0 0;
+        }
+
         .spec-links {
-            text-align: center;
-            margin: 20px 0;
-            padding: 10px;
-            background: #e3f2fd;
-            border-radius: 4px;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
         }
+
         .spec-links a {
-            margin: 0 10px;
-            padding: 8px 16px;
-            background: #1976d2;
-            color: white;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            color: #111827;
+            font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            font-size: 12px;
+            padding: 6px 10px;
             text-decoration: none;
-            border-radius: 4px;
-            font-size: 14px;
         }
+
         .spec-links a:hover {
-            background: #1565c0;
+            background: #f3f4f6;
+        }
+
+        #api-reference {
+            height: calc(100% - 65px);
         }
     </style>
 </head>
 <body>
-    <div class="custom-header">
-        <h1>{{.Title}}</h1>
-        <p>{{.Description}}</p>
-        <p><strong>Version:</strong> {{.Version}} | <strong>Generated:</strong> {{.Timestamp}}</p>
-    </div>
+    <header class="api-header">
+        <div>
+            <h1>{{.Title}}</h1>
+            <p>{{.Description}} · Version {{.Version}} · Generated {{.Timestamp}}</p>
+        </div>
+        <nav class="spec-links" aria-label="Download OpenAPI specification">
+            <a href="/api/openapi.json" target="_blank" rel="noreferrer">JSON</a>
+            <a href="/api/openapi.yaml" target="_blank" rel="noreferrer">YAML</a>
+        </nav>
+    </header>
 
-    <div class="spec-links">
-        <strong>Download OpenAPI Specification:</strong>
-        <a href="/api/openapi.json" target="_blank">JSON Format</a>
-        <a href="/api/openapi.yaml" target="_blank">YAML Format</a>
-    </div>
+    <div id="api-reference"></div>
 
-    <div id="swagger-ui"></div>
-
-    <script src="https://unpkg.com/swagger-ui-dist@5.9.0/swagger-ui-bundle.js"></script>
-    <script src="https://unpkg.com/swagger-ui-dist@5.9.0/swagger-ui-standalone-preset.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"></script>
     <script>
-        window.onload = function() {
-            // Build a system
-            const ui = SwaggerUIBundle({
-                url: '/api/openapi.json',
-                dom_id: '#swagger-ui',
-                deepLinking: true,
-                presets: [
-                    SwaggerUIBundle.presets.apis,
-                    SwaggerUIStandalonePreset
-                ],
-                plugins: [
-                    SwaggerUIBundle.plugins.DownloadUrl
-                ],
-                layout: "StandaloneLayout",
-                validatorUrl: null, // Disable validator
-                docExpansion: "list", // Can be "list", "full", or "none"
-                operationsSorter: "alpha",
-                tagsSorter: "alpha",
-                filter: true,
-                showExtensions: true,
-                showCommonExtensions: true,
-                defaultModelsExpandDepth: 1,
-                defaultModelExpandDepth: 1,
-                displayRequestDuration: true,
-                tryItOutEnabled: true,
-                requestSnippetsEnabled: true,
-                requestSnippets: {
-                    generators: {
-                        curl_bash: {
-                            title: "cURL (bash)",
-                            syntax: "bash"
-                        },
-                        curl_powershell: {
-                            title: "cURL (PowerShell)",
-                            syntax: "powershell"
-                        },
-                        curl_cmd: {
-                            title: "cURL (CMD)",
-                            syntax: "bash"
-                        }
-                    },
-                    defaultExpanded: false,
-                    languages: null // All languages
-                }
+        const createReference = (url) =>
+            Scalar.createApiReference("#api-reference", {
+                url,
+                hideClientButton: false,
+                showSidebar: true,
             });
 
-            // Auto-refresh functionality for development
-            {{if .AutoRefresh}}
-            setInterval(function() {
-                fetch('/api/openapi.json')
-                    .then(response => response.json())
-                    .then(spec => {
-                        ui.specActions.updateSpec(JSON.stringify(spec));
-                    })
-                    .catch(error => {
-                        console.log('Auto-refresh failed:', error);
-                    });
-            }, 5000); // Refresh every 5 seconds
-            {{end}}
-        };
+        let reference = createReference("/api/openapi.json");
+
+        {{if .AutoRefresh}}
+        setInterval(function() {
+            if (reference && typeof reference.destroy === "function") {
+                reference.destroy();
+            }
+            reference = createReference("/api/openapi.json?refresh=" + Date.now());
+        }, 5000);
+        {{end}}
     </script>
 </body>
 </html>

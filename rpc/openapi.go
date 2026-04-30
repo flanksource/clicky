@@ -3,6 +3,7 @@ package rpc
 import (
 	"encoding/json"
 	"fmt"
+	"reflect"
 	"sort"
 	"strings"
 
@@ -120,15 +121,17 @@ type OpenAPIExample struct {
 
 // OpenAPISchema represents a schema in the OpenAPI spec
 type OpenAPISchema struct {
-	Type        string                    `json:"type,omitempty"`
-	Format      string                    `json:"format,omitempty"`
-	Description string                    `json:"description,omitempty"`
-	Enum        []interface{}             `json:"enum,omitempty"`
-	Default     interface{}               `json:"default,omitempty"`
-	Properties  map[string]*OpenAPISchema `json:"properties,omitempty"`
-	Required    []string                  `json:"required,omitempty"`
-	Items       *OpenAPISchema            `json:"items,omitempty"`
-	Example     interface{}               `json:"example,omitempty"`
+	Type                 string                    `json:"type,omitempty"`
+	Format               string                    `json:"format,omitempty"`
+	Description          string                    `json:"description,omitempty"`
+	Enum                 []interface{}             `json:"enum,omitempty"`
+	Default              interface{}               `json:"default,omitempty"`
+	Properties           map[string]*OpenAPISchema `json:"properties,omitempty"`
+	Required             []string                  `json:"required,omitempty"`
+	Items                *OpenAPISchema            `json:"items,omitempty"`
+	AdditionalProperties *OpenAPISchema            `json:"additionalProperties,omitempty"`
+	Nullable             bool                      `json:"nullable,omitempty"`
+	Example              interface{}               `json:"example,omitempty"`
 }
 
 // OpenAPIComponents contains reusable components
@@ -332,19 +335,7 @@ func (g *OpenAPIGenerator) convertOperationToOpenAPI(op RPCOperation) OpenAPIOpe
 		Description: "Successful operation",
 		Content: map[string]OpenAPIMediaType{
 			"application/json": {
-				Schema: &OpenAPISchema{
-					Type: "object",
-					Properties: map[string]*OpenAPISchema{
-						"success": {
-							Type:        "boolean",
-							Description: "Operation success status",
-						},
-						"message": {
-							Type:        "string",
-							Description: "Operation result message",
-						},
-					},
-				},
+				Schema: g.responseSchemaForOperation(op),
 			},
 		},
 	}
@@ -353,15 +344,7 @@ func (g *OpenAPIGenerator) convertOperationToOpenAPI(op RPCOperation) OpenAPIOpe
 		Description: "Bad Request",
 		Content: map[string]OpenAPIMediaType{
 			"application/json": {
-				Schema: &OpenAPISchema{
-					Type: "object",
-					Properties: map[string]*OpenAPISchema{
-						"error": {
-							Type:        "string",
-							Description: "Error message",
-						},
-					},
-				},
+				Schema: g.executionResponseSchema(),
 			},
 		},
 	}
@@ -370,20 +353,66 @@ func (g *OpenAPIGenerator) convertOperationToOpenAPI(op RPCOperation) OpenAPIOpe
 		Description: "Internal Server Error",
 		Content: map[string]OpenAPIMediaType{
 			"application/json": {
-				Schema: &OpenAPISchema{
-					Type: "object",
-					Properties: map[string]*OpenAPISchema{
-						"error": {
-							Type:        "string",
-							Description: "Error message",
-						},
-					},
-				},
+				Schema: g.executionResponseSchema(),
 			},
 		},
 	}
 
 	return openAPIOp
+}
+
+func (g *OpenAPIGenerator) executionResponseSchema() *OpenAPISchema {
+	return g.convertGoTypeToOpenAPI(reflect.TypeOf(ExecutionResponse{}))
+}
+
+func (g *OpenAPIGenerator) responseSchemaForOperation(op RPCOperation) *OpenAPISchema {
+	if op.ResponseType == nil {
+		return &OpenAPISchema{
+			Type: "object",
+			Properties: map[string]*OpenAPISchema{
+				"success": {
+					Type:        "boolean",
+					Description: "Operation success status",
+				},
+				"message": {
+					Type:        "string",
+					Description: "Operation result message",
+				},
+			},
+		}
+	}
+
+	schema := g.convertGoTypeToOpenAPI(op.ResponseType)
+	if op.ResponseEntityID {
+		addEntityIDSchema(schema)
+	}
+	if op.ResponseArray {
+		schema = &OpenAPISchema{
+			Type:  "array",
+			Items: schema,
+		}
+	}
+	return schema
+}
+
+func addEntityIDSchema(schema *OpenAPISchema) {
+	if schema == nil {
+		return
+	}
+	if schema.Type == "array" && schema.Items != nil {
+		addEntityIDSchema(schema.Items)
+		return
+	}
+	if schema.Type != "object" {
+		return
+	}
+	if schema.Properties == nil {
+		schema.Properties = map[string]*OpenAPISchema{}
+	}
+	schema.Properties["_id"] = &OpenAPISchema{
+		Type:        "string",
+		Description: "Clicky entity row identifier",
+	}
 }
 
 func (g *OpenAPIGenerator) buildClickySpecMeta(operations []RPCOperation) *ClickySpecMeta {

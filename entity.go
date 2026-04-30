@@ -50,9 +50,12 @@ type EntityOperation struct {
 	// onto the generated cobra command and collects their values into the
 	// flag map passed to DataFunc. Used by actions that implement
 	// ActionFlags; ignored for the built-in CRUD verbs.
-	FlagsType       reflect.Type
-	LookupFunc      func(flags map[string]string, args []string) (any, error)
-	BindCompletions func(cmd *cobra.Command)
+	FlagsType        reflect.Type
+	LookupFunc       func(flags map[string]string, args []string) (any, error)
+	BindCompletions  func(cmd *cobra.Command)
+	ResponseType     reflect.Type
+	ResponseArray    bool
+	ResponseEntityID bool
 }
 
 // ActionInfo is the type-erased representation of a single-entity action.
@@ -63,7 +66,8 @@ type ActionInfo struct {
 	// FlagsType, if non-nil, is the struct type whose `flag:"..."` tagged
 	// fields are registered as cobra flags on the generated action command
 	// and populated into the flag map passed to DataFunc.
-	FlagsType reflect.Type
+	FlagsType    reflect.Type
+	ResponseType reflect.Type
 }
 
 // BulkActionInfo is the type-erased representation of a bulk action.
@@ -75,6 +79,7 @@ type BulkActionInfo struct {
 	LookupFunc      func(flags map[string]string, args []string) (any, error)
 	ListType        reflect.Type
 	BindCompletions func(cmd *cobra.Command)
+	ResponseType    reflect.Type
 }
 
 // ActionFlags is a marker interface implemented by options structs that
@@ -98,29 +103,144 @@ type Filter[ListOpts any] interface {
 	Options(opts ListOpts) map[string]api.Textable
 }
 
-// Action represents a custom operation on a single entity by ID.
-type Action[T EntityItem] struct {
-	Name  string
-	Short string
-	Run   func(id string, flags map[string]string) (any, error)
-	// Flags, if non-nil, is an options struct value implementing ActionFlags.
-	// Its type's `flag:"..."` tags drive command-line flag registration, and
-	// the parsed values are passed into Run via the flags map.
-	Flags ActionFlags
+// EntityAction is the type-erased registration surface for custom entity
+// actions. Use Action or ActionWithFlags to construct values.
+type EntityAction interface {
+	actionInfo() ActionInfo
 }
 
-// BulkAction represents a custom operation on multiple entities.
-type BulkAction[T EntityItem, ListOpts any] struct {
-	Name      string
-	Short     string
-	Run       func(ids []string, flags map[string]string) (any, error)
-	RunFilter func(opts ListOpts, flags map[string]string) (any, error)
+type actionSpec[R any] struct {
+	name  string
+	short string
+	run   func(id string, flags map[string]string) (R, error)
+	flags ActionFlags
+}
+
+// Action creates a typed custom operation on a single entity by ID.
+func Action[R any](name string, fn func(id string, flags map[string]string) (R, error)) *actionSpec[R] {
+	return &actionSpec[R]{name: name, run: fn}
+}
+
+// ActionWithFlags creates a typed custom operation with typed action flags.
+func ActionWithFlags[R any](name string, flags ActionFlags, fn func(id string, flags map[string]string) (R, error)) *actionSpec[R] {
+	return &actionSpec[R]{name: name, flags: flags, run: fn}
+}
+
+func (a *actionSpec[R]) WithShort(short string) *actionSpec[R] {
+	a.short = short
+	return a
+}
+
+func (a *actionSpec[R]) WithFlags(flags ActionFlags) *actionSpec[R] {
+	a.flags = flags
+	return a
+}
+
+func (a *actionSpec[R]) actionInfo() ActionInfo {
+	return ActionInfo{
+		Name:         a.name,
+		Short:        a.short,
+		FlagsType:    actionFlagsType(a.flags),
+		ResponseType: responseTypeOf[R](),
+		DataFunc: func(flagMap map[string]string, args []string) (any, error) {
+			id := flagMap["id"]
+			if id == "" && len(args) > 0 {
+				id = args[0]
+			}
+			if id == "" {
+				return nil, fmt.Errorf("id is required")
+			}
+			return a.run(id, flagMap)
+		},
+	}
+}
+
+// EntityBulkAction is the type-erased registration surface for custom bulk
+// actions. Use BulkAction or BulkFilterAction to construct values.
+type EntityBulkAction interface {
+	bulkActionInfo(resolveOpts func(map[string]string) (any, error)) BulkActionInfo
+}
+
+type bulkActionSpec[R any] struct {
+	name       string
+	short      string
+	run        func(ids []string, flags map[string]string) (R, error)
+	filterFunc func(opts any, flags map[string]string) (R, error)
+	listType   reflect.Type
+}
+
+// BulkAction creates a typed custom operation on multiple entity IDs.
+func BulkAction[R any](name string, fn func(ids []string, flags map[string]string) (R, error)) *bulkActionSpec[R] {
+	return &bulkActionSpec[R]{name: name, run: fn}
+}
+
+// BulkFilterAction creates a typed custom operation that runs against a typed
+// filtered list selection instead of explicit IDs.
+func BulkFilterAction[ListOpts any, R any](name string, fn func(opts ListOpts, flags map[string]string) (R, error)) *bulkActionSpec[R] {
+	listType := reflect.TypeOf((*ListOpts)(nil)).Elem()
+	return &bulkActionSpec[R]{
+		name:     name,
+		listType: listType,
+		filterFunc: func(opts any, flagMap map[string]string) (R, error) {
+			typed, ok := opts.(ListOpts)
+			if !ok {
+				var zero R
+				return zero, fmt.Errorf("expected %s options, got %T", listType, opts)
+			}
+			return fn(typed, flagMap)
+		},
+	}
+}
+
+// BulkActionWithFilter creates a typed bulk action that supports both explicit
+// IDs and filtered selections.
+func BulkActionWithFilter[ListOpts any, R any](
+	name string,
+	run func(ids []string, flags map[string]string) (R, error),
+	runFilter func(opts ListOpts, flags map[string]string) (R, error),
+) *bulkActionSpec[R] {
+	action := BulkFilterAction(name, runFilter)
+	action.run = run
+	return action
+}
+
+func (b *bulkActionSpec[R]) WithShort(short string) *bulkActionSpec[R] {
+	b.short = short
+	return b
+}
+
+func (b *bulkActionSpec[R]) bulkActionInfo(resolveOpts func(map[string]string) (any, error)) BulkActionInfo {
+	info := BulkActionInfo{
+		Name:         b.name,
+		Short:        b.short,
+		ListType:     b.listType,
+		ResponseType: responseTypeOf[R](),
+	}
+	if b.run != nil {
+		info.DataFunc = func(flagMap map[string]string, args []string) (any, error) {
+			return b.run(args, flagMap)
+		}
+	} else {
+		info.DataFunc = func(flagMap map[string]string, args []string) (any, error) {
+			return nil, fmt.Errorf("bulk action %q requires filter mode", b.name)
+		}
+	}
+	if b.filterFunc != nil {
+		info.FilterFunc = func(flagMap map[string]string, args []string) (any, error) {
+			opts, err := resolveOpts(flagMap)
+			if err != nil {
+				return nil, err
+			}
+			return b.filterFunc(opts, flagMap)
+		}
+	}
+	return info
 }
 
 // Entity configures a CRUD resource. All function fields are optional.
 // T is the type returned by List and must implement EntityItem.
-// Get/Create/Update return any to allow different detail representations.
-type Entity[T EntityItem, ListOpts any] struct {
+// R is the type returned by Get/Create/Update.
+type Entity[T EntityItem, ListOpts any, R any] struct {
 	Name string
 	// Parent, when set, nests the entity's command under a parent cobra command
 	// with that name. The parent command is created lazily by GenerateCLI if it
@@ -129,7 +249,7 @@ type Entity[T EntityItem, ListOpts any] struct {
 	// Aliases applied to the generated entity cobra command.
 	Aliases []string
 	List    func(opts ListOpts) ([]T, error)
-	Get     func(id string) (any, error)
+	Get     func(id string) (R, error)
 	// GetFlags, when non-nil, is a zero-value struct value implementing
 	// ActionFlags whose `flag:"..."` tagged fields are registered as
 	// CLI flags on the generated `get` subcommand. The parsed values are
@@ -139,19 +259,19 @@ type Entity[T EntityItem, ListOpts any] struct {
 	// GetWithFlags wins. Set GetFlags to declare the flag schema and
 	// GetWithFlags to receive the typed values.
 	GetFlags     ActionFlags
-	GetWithFlags func(id string, flags map[string]string) (any, error)
-	Create       func(body map[string]any) (any, error)
-	Update       func(id string, body map[string]any) (any, error)
+	GetWithFlags func(id string, flags map[string]string) (R, error)
+	Create       func(body map[string]any) (R, error)
+	Update       func(id string, body map[string]any) (R, error)
 	Delete       func(id string) error
 	Filters      []Filter[ListOpts]
 
-	Actions     []Action[T]
-	BulkActions []BulkAction[T, ListOpts]
+	Actions     []EntityAction
+	BulkActions []EntityBulkAction
 
 	// Admin groups admin-only operations (inspect, configure, etc.)
 	// that produce different views/columns from the main CRUD operations.
 	// Generates subcommands under an "admin" subgroup and routes like /entity/admin/{verb}.
-	Admin *Entity[T, ListOpts]
+	Admin *Entity[T, ListOpts, R]
 
 	// ValidArgs provides shell completion for the ID argument.
 	ValidArgs func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective)
@@ -159,7 +279,7 @@ type Entity[T EntityItem, ListOpts any] struct {
 
 // RegisterEntity registers a CRUD entity. Call during init().
 // CLI commands and HTTP routes are generated later via GenerateCLI/GenerateRoutes.
-func RegisterEntity[T EntityItem, ListOpts any](e Entity[T, ListOpts]) {
+func RegisterEntity[T EntityItem, ListOpts any, R any](e Entity[T, ListOpts, R]) {
 	name := e.Name
 	if name == "" {
 		name = lo.KebabCase(reflect.TypeOf((*T)(nil)).Elem().Name())
@@ -188,15 +308,19 @@ func RegisterEntity[T EntityItem, ListOpts any](e Entity[T, ListOpts]) {
 				}
 				return withEntityIDs(items), nil
 			},
-			LookupFunc:      buildLookupFunc[ListOpts](e.Filters),
-			BindCompletions: buildFilterCompletionBinder[ListOpts](e.Filters),
+			LookupFunc:       buildLookupFunc[ListOpts](e.Filters),
+			BindCompletions:  buildFilterCompletionBinder[ListOpts](e.Filters),
+			ResponseType:     reflect.TypeOf((*T)(nil)).Elem(),
+			ResponseArray:    true,
+			ResponseEntityID: true,
 		})
 	}
 
 	if e.GetWithFlags != nil {
 		info.Operations = append(info.Operations, EntityOperation{
-			Verb:      "get",
-			FlagsType: actionFlagsType(e.GetFlags),
+			Verb:         "get",
+			FlagsType:    actionFlagsType(e.GetFlags),
+			ResponseType: responseTypeOf[R](),
 			DataFunc: func(flagMap map[string]string, args []string) (any, error) {
 				id := flagMap["id"]
 				if id == "" && len(args) > 0 {
@@ -210,7 +334,8 @@ func RegisterEntity[T EntityItem, ListOpts any](e Entity[T, ListOpts]) {
 		})
 	} else if e.Get != nil {
 		info.Operations = append(info.Operations, EntityOperation{
-			Verb: "get",
+			Verb:         "get",
+			ResponseType: responseTypeOf[R](),
 			DataFunc: func(flagMap map[string]string, args []string) (any, error) {
 				id := flagMap["id"]
 				if id == "" && len(args) > 0 {
@@ -226,7 +351,8 @@ func RegisterEntity[T EntityItem, ListOpts any](e Entity[T, ListOpts]) {
 
 	if e.Create != nil {
 		info.Operations = append(info.Operations, EntityOperation{
-			Verb: "create",
+			Verb:         "create",
+			ResponseType: responseTypeOf[R](),
 			DataFunc: func(flagMap map[string]string, args []string) (any, error) {
 				body := make(map[string]any)
 				for k, v := range flagMap {
@@ -239,7 +365,8 @@ func RegisterEntity[T EntityItem, ListOpts any](e Entity[T, ListOpts]) {
 
 	if e.Update != nil {
 		info.Operations = append(info.Operations, EntityOperation{
-			Verb: "update",
+			Verb:         "update",
+			ResponseType: responseTypeOf[R](),
 			DataFunc: func(flagMap map[string]string, args []string) (any, error) {
 				id := flagMap["id"]
 				if id == "" && len(args) > 0 {
@@ -276,43 +403,24 @@ func RegisterEntity[T EntityItem, ListOpts any](e Entity[T, ListOpts]) {
 	}
 
 	for _, action := range e.Actions {
-		a := action
-		info.Actions = append(info.Actions, ActionInfo{
-			Name:      a.Name,
-			Short:     a.Short,
-			FlagsType: actionFlagsType(a.Flags),
-			DataFunc: func(flagMap map[string]string, args []string) (any, error) {
-				id := flagMap["id"]
-				if id == "" && len(args) > 0 {
-					id = args[0]
-				}
-				if id == "" {
-					return nil, fmt.Errorf("id is required")
-				}
-				return a.Run(id, flagMap)
-			},
-		})
+		if action == nil {
+			continue
+		}
+		info.Actions = append(info.Actions, action.actionInfo())
 	}
 
 	listType := reflect.TypeOf((*ListOpts)(nil)).Elem()
 	for _, ba := range e.BulkActions {
-		b := ba
-		bai := BulkActionInfo{
-			Name:     b.Name,
-			Short:    b.Short,
-			ListType: listType,
-			DataFunc: func(flagMap map[string]string, args []string) (any, error) {
-				return b.Run(args, flagMap)
-			},
+		if ba == nil {
+			continue
 		}
-		if b.RunFilter != nil {
-			bai.FilterFunc = func(flagMap map[string]string, args []string) (any, error) {
-				opts, err := resolveEntityOpts[ListOpts](flagMap, e.Filters)
-				if err != nil {
-					return nil, err
-				}
-				return b.RunFilter(opts, flagMap)
-			}
+		bai := ba.bulkActionInfo(func(flagMap map[string]string) (any, error) {
+			return resolveEntityOpts[ListOpts](flagMap, e.Filters)
+		})
+		if bai.ListType == nil {
+			bai.ListType = listType
+		}
+		if bai.FilterFunc != nil {
 			bai.LookupFunc = buildLookupFunc[ListOpts](e.Filters)
 			bai.BindCompletions = buildFilterCompletionBinder[ListOpts](e.Filters)
 		}
@@ -344,16 +452,24 @@ func RegisterEntity[T EntityItem, ListOpts any](e Entity[T, ListOpts]) {
 					if err != nil {
 						return nil, err
 					}
-					return admin.List(opts)
+					items, err := admin.List(opts)
+					if err != nil {
+						return nil, err
+					}
+					return withEntityIDs(items), nil
 				},
-				LookupFunc:      buildLookupFunc[ListOpts](admin.Filters),
-				BindCompletions: buildFilterCompletionBinder[ListOpts](admin.Filters),
+				LookupFunc:       buildLookupFunc[ListOpts](admin.Filters),
+				BindCompletions:  buildFilterCompletionBinder[ListOpts](admin.Filters),
+				ResponseType:     reflect.TypeOf((*T)(nil)).Elem(),
+				ResponseArray:    true,
+				ResponseEntityID: true,
 			})
 		}
 		if admin.GetWithFlags != nil {
 			adminInfo.Operations = append(adminInfo.Operations, EntityOperation{
-				Verb:      "get",
-				FlagsType: actionFlagsType(admin.GetFlags),
+				Verb:         "get",
+				FlagsType:    actionFlagsType(admin.GetFlags),
+				ResponseType: responseTypeOf[R](),
 				DataFunc: func(flagMap map[string]string, args []string) (any, error) {
 					id := flagMap["id"]
 					if id == "" && len(args) > 0 {
@@ -367,7 +483,8 @@ func RegisterEntity[T EntityItem, ListOpts any](e Entity[T, ListOpts]) {
 			})
 		} else if admin.Get != nil {
 			adminInfo.Operations = append(adminInfo.Operations, EntityOperation{
-				Verb: "get",
+				Verb:         "get",
+				ResponseType: responseTypeOf[R](),
 				DataFunc: func(flagMap map[string]string, args []string) (any, error) {
 					id := flagMap["id"]
 					if id == "" && len(args) > 0 {
@@ -381,19 +498,10 @@ func RegisterEntity[T EntityItem, ListOpts any](e Entity[T, ListOpts]) {
 			})
 		}
 		for _, action := range admin.Actions {
-			a := action
-			adminInfo.Actions = append(adminInfo.Actions, ActionInfo{
-				Name:      a.Name,
-				Short:     a.Short,
-				FlagsType: actionFlagsType(a.Flags),
-				DataFunc: func(flagMap map[string]string, args []string) (any, error) {
-					id := flagMap["id"]
-					if id == "" && len(args) > 0 {
-						id = args[0]
-					}
-					return a.Run(id, flagMap)
-				},
-			})
+			if action == nil {
+				continue
+			}
+			adminInfo.Actions = append(adminInfo.Actions, action.actionInfo())
 		}
 		entityRegistryMu.Lock()
 		entityRegistry = append(entityRegistry, adminInfo)
@@ -474,9 +582,10 @@ func generateEntityCLI(parent *cobra.Command, entity EntityInfo) {
 
 	for _, action := range entity.Actions {
 		generateIDCommand(entityCmd, action.Name, action.Short, EntityOperation{
-			Verb:      action.Name,
-			DataFunc:  action.DataFunc,
-			FlagsType: action.FlagsType,
+			Verb:         action.Name,
+			DataFunc:     action.DataFunc,
+			FlagsType:    action.FlagsType,
+			ResponseType: action.ResponseType,
 		}, entity.ValidArgs, "action", "entity", action.Name, "id", false, false)
 	}
 
@@ -551,6 +660,11 @@ func generateListCommand(parent *cobra.Command, entity EntityInfo, op EntityOper
 	annotateEntityOperationCommand(cmd, parent, "list", "collection", "", "", op.LookupFunc != nil, false)
 	parent.AddCommand(cmd)
 	dataFuncRegistry.Store(cmd, op.DataFunc)
+	SetCommandResponseMeta(cmd, ResponseOpenAPIMeta{
+		Type:     op.ResponseType,
+		Array:    op.ResponseArray,
+		EntityID: op.ResponseEntityID,
+	})
 	if op.LookupFunc != nil {
 		lookupFuncRegistry.Store(cmd, op.LookupFunc)
 	}
@@ -608,6 +722,11 @@ func generateIDCommand(
 	annotateEntityOperationCommand(cmd, parent, metaVerb, scope, actionName, idParam, supportsLookup, supportsFilterMode)
 	parent.AddCommand(cmd)
 	dataFuncRegistry.Store(cmd, op.DataFunc)
+	SetCommandResponseMeta(cmd, ResponseOpenAPIMeta{
+		Type:     op.ResponseType,
+		Array:    op.ResponseArray,
+		EntityID: op.ResponseEntityID,
+	})
 }
 
 // actionFlagsType resolves an ActionFlags implementer to its concrete
@@ -683,6 +802,11 @@ func generateBodyCommand(parent *cobra.Command, verb, short string, op EntityOpe
 	annotateEntityOperationCommand(cmd, parent, verb, scope, "", idParam, false, false)
 	parent.AddCommand(cmd)
 	dataFuncRegistry.Store(cmd, op.DataFunc)
+	SetCommandResponseMeta(cmd, ResponseOpenAPIMeta{
+		Type:     op.ResponseType,
+		Array:    op.ResponseArray,
+		EntityID: op.ResponseEntityID,
+	})
 }
 
 func generateBulkActionCommand(parent *cobra.Command, ba BulkActionInfo) {
@@ -725,6 +849,7 @@ func generateBulkActionCommand(parent *cobra.Command, ba BulkActionInfo) {
 	annotateEntityOperationCommand(cmd, parent, "action", "collection", ba.Name, "id", ba.LookupFunc != nil, ba.FilterFunc != nil)
 	parent.AddCommand(cmd)
 	dataFuncRegistry.Store(cmd, execute)
+	SetCommandResponseMeta(cmd, ResponseOpenAPIMeta{Type: ba.ResponseType})
 	if ba.LookupFunc != nil {
 		lookupFuncRegistry.Store(cmd, ba.LookupFunc)
 	}
