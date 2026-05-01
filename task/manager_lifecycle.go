@@ -198,3 +198,21 @@ func (tm *Manager) releaseRenderTerminal() {
 		globalANSITerminal.releaseTaskRenderer(tm)
 	}
 }
+
+// IsInteractiveRenderActive reports whether the global task manager's
+// interactive render loop currently owns the terminal. Callers that
+// write to os.Stderr can consult this to drop writes that would
+// corrupt the live frame. The check is cheap (atomic load + RLock).
+//
+// Returns false when the manager is non-interactive (PlainRender mode),
+// before the renderer has acquired the TTY, or after stopRender has
+// released it.
+func IsInteractiveRenderActive() bool {
+	if global == nil {
+		return false
+	}
+	if !global.isInteractive.Load() {
+		return false
+	}
+	return global.ownsRenderTerminal()
+}
