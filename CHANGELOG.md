@@ -5,6 +5,49 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.21.8](https://github.com/flanksource/clicky/compare/v1.21.7...v1.21.8) (2026-05-01)
+
+
+### ⚠ BREAKING CHANGES
+
+* Entity type signature changed from Entity[T, ListOpts] to Entity[T, ListOpts, R]. Action and BulkAction are now factory functions returning interface types; update action definitions to use Action(), ActionWithFlags(), BulkAction(), BulkFilterAction(), or BulkActionWithFilter().
+
+* chore(gitignore): ignore entity webapp dist directory
+
+Add examples/enitity/webapp/dist/ to gitignore to prevent build artifacts from being tracked in version control.
+
+* feat(entity): Add explicit HTTP method override for entity operations
+
+Add optional Method field to EntityOperation and ActionInfo to allow explicit HTTP method specification for generated RPC/OpenAPI routes. This enables actions to override the default inferred HTTP method (e.g., using GET for a records action instead of the inferred POST).
+
+The Method field is propagated through the command annotation system and checked during HTTP method inference in the RPC converter, allowing fine-grained control over operation semantics.
+
+Includes test coverage for entity actions with explicit GET method using nested entity paths.
+
+* feat(task): Add stderr gating to prevent corruption during interactive render
+
+Introduce IsInteractiveRenderActive() to check if the task renderer owns the TTY, and GatedStderr() writer that silently drops writes when interactive rendering is active. This allows callers that emit to stderr (e.g., loggers, debug prints) to avoid corrupting the renderer's in-place frame without requiring explicit coordination.
+
+The gating is stateless and rechecks ownership per write, enabling writers captured before rendering starts to still gate correctly when the renderer later acquires the TTY.
+
+* feat(api): add stack trace parsing and rendering with source resolution
+
+Introduce comprehensive stack trace support with language-agnostic parsing, styled rendering, and extensible source resolution. Adds StackTrace, StackFrame types and ParseJavaStackTrace parser to api package, with public convenience wrappers in clicky root. Includes support for frame filtering, context lines, and max frame truncation.
+
+Also adds MultiFilter type for comma-separated flag values with include/exclude semantics, and fixes field value assignment to support type conversion in flags package.
+
+Updates cache debug output to use task.GatedStderr() instead of os.Stderr to prevent log lines from breaking interactive renderer frame accounting. Fixes recursive struct handling in OpenAPI schema generation by tracking visited types.
+
+Refs: stack trace rendering, source context, Java exception parsing
+
+* docs(api): replace example package names with generic examples
+
+Update documentation and test examples to use generic package names (com.example.admin) instead of specific internal package names (com.adminserver). This makes the codebase more suitable for public documentation and examples without exposing internal naming conventions.
+
+### ✨ Features
+
+* add entity response types, task stderr gating, and stack trace support ([#101](https://github.com/flanksource/clicky/issues/101)) ([0a2d157](https://github.com/flanksource/clicky/commit/0a2d157cba2928224e80588631d404b67b4e81ab))
+
 ## [1.21.7](https://github.com/flanksource/clicky/compare/v1.21.6...v1.21.7) (2026-04-30)
 
 
