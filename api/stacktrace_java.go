@@ -18,7 +18,7 @@ var (
 // "Caused by:" / "... N more" continuation markers, and frames whose
 // `(File:Line)` parenthesised location omits the line number, marks the
 // method as native, or wraps a JAR descriptor like
-// `(SomeClass.java:42) ~[oipa-1.0.jar:?]`.
+// `(SomeClass.java:42) ~[exampleapp-1.0.jar:?]`.
 //
 // Frames whose class belongs to a JDK / framework package
 // (java., javax., jdk., sun., com.sun.) are tagged with Runtime=true so
@@ -91,7 +91,7 @@ func parseJavaFrame(m []string) StackFrame {
 	case loc == "Unknown Source":
 		// no file/line info
 	default:
-		// strip jar descriptor like " ~[oipa.jar:?]"
+		// strip jar descriptor like " ~[exampleapp.jar:?]"
 		if idx := strings.Index(loc, " ~["); idx >= 0 {
 			loc = loc[:idx]
 		}

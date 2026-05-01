@@ -7,8 +7,8 @@ import (
 )
 
 const javaSample = `javax.persistence.PersistenceException: deadlock victim
-    at com.adminserver.pas.dal.ActivityDal.findNextPendingActivity(ActivityDal.java:241)
-    at com.adminserver.pas.bll.ClientBll.getNextPendingActivityExecutorBll(ClientBll.java:305)
+    at com.example.admin.pas.dal.ActivityDal.findNextPendingActivity(ActivityDal.java:241)
+    at com.example.admin.pas.bll.ClientBll.getNextPendingActivityExecutorBll(ClientBll.java:305)
     at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:628)
 Caused by: com.microsoft.sqlserver.jdbc.SQLServerException: deadlock victim
     ... 65 more`
@@ -24,7 +24,7 @@ func TestParseJavaStackTrace_Sample(t *testing.T) {
 	if got := len(s.Frames); got != 3 {
 		t.Fatalf("Frames = %d, want 3", got)
 	}
-	if s.Frames[0].Class != "com.adminserver.pas.dal.ActivityDal" {
+	if s.Frames[0].Class != "com.example.admin.pas.dal.ActivityDal" {
 		t.Fatalf("Frames[0].Class = %q", s.Frames[0].Class)
 	}
 	if s.Frames[0].Line != 241 {
@@ -52,7 +52,7 @@ func TestParseJavaStackTrace_NativeAndUnknown(t *testing.T) {
 
 func TestStackTrace_RenderIncludesFramesAndSources(t *testing.T) {
 	resolver := SourceResolverFunc(func(_ context.Context, frame StackFrame, ctxLines int) ([]string, int, string, bool) {
-		if frame.Class != "com.adminserver.pas.dal.ActivityDal" {
+		if frame.Class != "com.example.admin.pas.dal.ActivityDal" {
 			return nil, 0, "", false
 		}
 		return []string{"a", "b", "c", "d", "e"}, frame.Line - 2, "java", true
@@ -60,13 +60,13 @@ func TestStackTrace_RenderIncludesFramesAndSources(t *testing.T) {
 
 	s := ParseJavaStackTrace(javaSample,
 		WithSourceResolver(resolver),
-		WithStackInclude("com.adminserver."),
+		WithStackInclude("com.example.admin."),
 		WithStackContext(2),
 	)
 
 	rendered := s.Render().ANSI()
 	if !strings.Contains(rendered, "ActivityDal.findNextPendingActivity") {
-		t.Fatalf("expected OIPA frame in output, got:\n%s", rendered)
+		t.Fatalf("expected ExampleApp frame in output, got:\n%s", rendered)
 	}
 	if strings.Contains(rendered, "ThreadPoolExecutor") {
 		t.Fatalf("excluded JDK frame should not appear, got:\n%s", rendered)

@@ -178,7 +178,7 @@ var Badge = api.Badge
 // language-specific parser) when the language is known up front.
 //
 // Pass options like clicky.WithSourceResolver(r), clicky.WithStackContext(5),
-// or clicky.WithStackInclude("com.adminserver.") to attach inline source
+// or clicky.WithStackInclude("com.example.admin.") to attach inline source
 // context and filter frames.
 func StackTrace(input string, opts ...api.StackTraceOption) api.StackTrace {
 	return api.ParseJavaStackTrace(input, opts...)
