@@ -1,0 +1,67 @@
+version: "3"
+
+vars:
+  BINARY_NAME: entity-demo
+  HOST: '{{.HOST | default "127.0.0.1"}}'
+  PORT: '{{.PORT | default "8071"}}'
+
+tasks:
+  default:
+    desc: List available tasks
+    cmds:
+      - task --list
+
+  build:
+    desc: Build the entity demo binary
+    cmds:
+      - go build -o {{.BINARY_NAME}} .
+    sources:
+      - ./**/*.go
+      - ../go.mod
+      - ../go.sum
+      - webapp/dist/**
+    generates:
+      - ./{{.BINARY_NAME}}
+
+  test:
+    desc: Run entity demo Go tests
+    cmds:
+      - go test .
+
+  run:
+    desc: Run the entity demo CLI
+    deps: [build]
+    cmds:
+      - ./{{.BINARY_NAME}} {{.CLI_ARGS}}
+
+  serve:
+    desc: Serve the embedded entity demo UI
+    deps: [build]
+    cmds:
+      - ./{{.BINARY_NAME}} serve-ui --host {{.HOST}} --port {{.PORT}} {{.CLI_ARGS}}
+
+  webapp:build:
+    desc: Build the optional Vite webapp when webapp/package.json is present
+    dir: webapp
+    cmds:
+      - |
+        if [ ! -f package.json ]; then
+          echo "webapp/package.json not found; keeping existing embedded dist"
+          exit 0
+        fi
+        pnpm install
+        pnpm build
+
+  e2e:
+    desc: Run Playwright e2e tests for the entity demo
+    dir: e2e
+    cmds:
+      - npx playwright test {{.CLI_ARGS}}
+    env:
+      E2E_HOST: "{{.HOST}}"
+      E2E_PORT: "{{.PORT}}"
+
+  clean:
+    desc: Remove generated local artifacts
+    cmds:
+      - rm -f {{.BINARY_NAME}}

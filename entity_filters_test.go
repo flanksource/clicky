@@ -34,6 +34,10 @@ type entityFilterTestOpts struct {
 	To     time.Time `flag:"to"`
 }
 
+type entityMultiFilterTestOpts struct {
+	Status MultiFilter `flag:"status"`
+}
+
 type ownerEntityFilter struct{}
 
 func (ownerEntityFilter) Key() string   { return "owner" }
@@ -212,13 +216,34 @@ func TestBuildOptsSupportsRichTypes(t *testing.T) {
 	}
 }
 
+func TestBuildOptsSupportsMultiFilter(t *testing.T) {
+	opts, err := buildOpts[entityMultiFilterTestOpts](map[string]string{
+		"status": "ready,!failed",
+	})
+	if err != nil {
+		t.Fatalf("buildOpts returned error: %v", err)
+	}
+
+	if len(opts.Status) != 2 || opts.Status[0] != "ready" || opts.Status[1] != "!failed" {
+		t.Fatalf("expected multi filter values to be parsed, got %#v", opts.Status)
+	}
+}
+
+func TestLookupMetadataDetectsMultiFilter(t *testing.T) {
+	metadata := buildLookupMetadata[entityMultiFilterTestOpts]()
+	status := metadata["status"]
+	if !status.Multi || status.Type != "multi-filter" {
+		t.Fatalf("expected status to be a multi-filter, got %#v", status)
+	}
+}
+
 func TestEntityListFiltersResolveAndLookup(t *testing.T) {
 	resetEntityRegistry(t)
 	defer resetEntityRegistry(t)
 
 	var received entityFilterTestOpts
 
-	RegisterEntity(Entity[entityFilterTestEntity, entityFilterTestOpts]{
+	RegisterEntity(Entity[entityFilterTestEntity, entityFilterTestOpts, entityFilterTestEntity]{
 		Name: "filtered-entity",
 		Filters: []Filter[entityFilterTestOpts]{
 			ownerEntityFilter{},
@@ -350,24 +375,23 @@ func TestEntityBulkActionUsesResolvedFilters(t *testing.T) {
 
 	var received entityFilterTestOpts
 
-	RegisterEntity(Entity[entityFilterTestEntity, entityFilterTestOpts]{
+	RegisterEntity(Entity[entityFilterTestEntity, entityFilterTestOpts, entityFilterTestEntity]{
 		Name:    "filtered-bulk",
 		Filters: []Filter[entityFilterTestOpts]{ownerEntityFilter{}, statusEntityFilter{}},
-		BulkActions: []BulkAction[entityFilterTestEntity, entityFilterTestOpts]{
-			{
-				Name:  "bulk-suspend",
-				Short: "Suspend entities matched by filters",
-				Run: func(ids []string, flags map[string]string) (any, error) {
+		BulkActions: []EntityBulkAction{
+			BulkActionWithFilter(
+				"bulk-suspend",
+				func(ids []string, flags map[string]string) (any, error) {
 					return ids, nil
 				},
-				RunFilter: func(opts entityFilterTestOpts, flags map[string]string) (any, error) {
+				func(opts entityFilterTestOpts, flags map[string]string) (any, error) {
 					received = opts
 					return map[string]string{
 						"owner":  opts.Owner,
 						"status": opts.Status,
 					}, nil
 				},
-			},
+			).WithShort("Suspend entities matched by filters"),
 		},
 	})
 
@@ -409,7 +433,7 @@ func TestEntityListCommandsRegisterFilterCompletions(t *testing.T) {
 	resetEntityRegistry(t)
 	defer resetEntityRegistry(t)
 
-	RegisterEntity(Entity[entityFilterTestEntity, entityFilterTestOpts]{
+	RegisterEntity(Entity[entityFilterTestEntity, entityFilterTestOpts, entityFilterTestEntity]{
 		Name:    "completion-entity",
 		Filters: []Filter[entityFilterTestOpts]{ownerEntityFilter{}, statusEntityFilter{}},
 		List: func(opts entityFilterTestOpts) ([]entityFilterTestEntity, error) {
@@ -479,20 +503,19 @@ func TestEntityBulkCommandsRegisterFilterCompletions(t *testing.T) {
 	resetEntityRegistry(t)
 	defer resetEntityRegistry(t)
 
-	RegisterEntity(Entity[entityFilterTestEntity, entityFilterTestOpts]{
+	RegisterEntity(Entity[entityFilterTestEntity, entityFilterTestOpts, entityFilterTestEntity]{
 		Name:    "completion-bulk",
 		Filters: []Filter[entityFilterTestOpts]{ownerEntityFilter{}, statusEntityFilter{}},
-		BulkActions: []BulkAction[entityFilterTestEntity, entityFilterTestOpts]{
-			{
-				Name:  "bulk-suspend",
-				Short: "Suspend entities matched by filters",
-				Run: func(ids []string, flags map[string]string) (any, error) {
+		BulkActions: []EntityBulkAction{
+			BulkActionWithFilter(
+				"bulk-suspend",
+				func(ids []string, flags map[string]string) (any, error) {
 					return ids, nil
 				},
-				RunFilter: func(opts entityFilterTestOpts, flags map[string]string) (any, error) {
+				func(opts entityFilterTestOpts, flags map[string]string) (any, error) {
 					return nil, nil
 				},
-			},
+			).WithShort("Suspend entities matched by filters"),
 		},
 	})
 
@@ -546,7 +569,7 @@ func TestEntityValidArgsPropagateToGeneratedIDCommands(t *testing.T) {
 		return matches, cobra.ShellCompDirectiveNoFileComp
 	}
 
-	RegisterEntity(Entity[entityFilterTestEntity, entityFilterTestOpts]{
+	RegisterEntity(Entity[entityFilterTestEntity, entityFilterTestOpts, any]{
 		Name:      "id-completion-entity",
 		ValidArgs: validArgs,
 		Get: func(id string) (any, error) {
@@ -555,27 +578,19 @@ func TestEntityValidArgsPropagateToGeneratedIDCommands(t *testing.T) {
 		Delete: func(id string) error {
 			return nil
 		},
-		Actions: []Action[entityFilterTestEntity]{
-			{
-				Name:  "restart",
-				Short: "Restart one entity",
-				Run: func(id string, flags map[string]string) (any, error) {
-					return id, nil
-				},
-			},
+		Actions: []EntityAction{
+			Action("restart", func(id string, flags map[string]string) (any, error) {
+				return id, nil
+			}).WithShort("Restart one entity"),
 		},
-		Admin: &Entity[entityFilterTestEntity, entityFilterTestOpts]{
+		Admin: &Entity[entityFilterTestEntity, entityFilterTestOpts, any]{
 			Get: func(id string) (any, error) {
 				return id, nil
 			},
-			Actions: []Action[entityFilterTestEntity]{
-				{
-					Name:  "reconcile",
-					Short: "Reconcile one entity",
-					Run: func(id string, flags map[string]string) (any, error) {
-						return id, nil
-					},
-				},
+			Actions: []EntityAction{
+				Action("reconcile", func(id string, flags map[string]string) (any, error) {
+					return id, nil
+				}).WithShort("Reconcile one entity"),
 			},
 		},
 	})

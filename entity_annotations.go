@@ -13,6 +13,7 @@ const (
 	annotationClickyEntityAliases      = "clicky/entity-aliases"
 	annotationClickyEntityAdmin        = "clicky/entity-admin"
 	annotationClickyOperationVerb      = "clicky/operation-verb"
+	annotationClickyOperationMethod    = "clicky/operation-method"
 	annotationClickyOperationScope     = "clicky/operation-scope"
 	annotationClickyOperationAction    = "clicky/operation-action-name"
 	annotationClickyOperationIDParam   = "clicky/operation-id-param"
@@ -29,6 +30,7 @@ type CommandOpenAPIMeta struct {
 	Aliases            []string
 	Admin              bool
 	Verb               string
+	Method             string
 	Scope              string
 	ActionName         string
 	IDParam            string
@@ -47,6 +49,7 @@ func GetCommandOpenAPIMeta(cmd *cobra.Command) *CommandOpenAPIMeta {
 		Aliases:            splitAnnotationList(cmd.Annotations[annotationClickyEntityAliases]),
 		Admin:              parseAnnotationBool(cmd.Annotations[annotationClickyEntityAdmin]),
 		Verb:               cmd.Annotations[annotationClickyOperationVerb],
+		Method:             cmd.Annotations[annotationClickyOperationMethod],
 		Scope:              cmd.Annotations[annotationClickyOperationScope],
 		ActionName:         cmd.Annotations[annotationClickyOperationAction],
 		IDParam:            cmd.Annotations[annotationClickyOperationIDParam],
@@ -76,6 +79,7 @@ func annotateEntityOperationCommand(
 	cmd *cobra.Command,
 	parent *cobra.Command,
 	verb string,
+	method string,
 	scope string,
 	actionName string,
 	idParam string,
@@ -88,6 +92,7 @@ func annotateEntityOperationCommand(
 
 	inheritEntityAnnotations(cmd, parent)
 	setCommandAnnotation(cmd, annotationClickyOperationVerb, verb)
+	setCommandAnnotation(cmd, annotationClickyOperationMethod, strings.ToUpper(method))
 	setCommandAnnotation(cmd, annotationClickyOperationScope, scope)
 	setCommandAnnotation(cmd, annotationClickyOperationAction, actionName)
 	setCommandAnnotation(cmd, annotationClickyOperationIDParam, idParam)

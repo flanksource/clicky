@@ -71,8 +71,7 @@ func AssignFieldValue(structValue reflect.Value, fv *FlagValue, args []string, i
 				if val, err := loadFromStdin(); err != nil {
 					return err
 				} else {
-					fieldValue.Set(reflect.ValueOf(val))
-					return nil
+					return assignValue(fieldValue, val)
 				}
 			}
 
@@ -80,14 +79,20 @@ func AssignFieldValue(structValue reflect.Value, fv *FlagValue, args []string, i
 				if lines, err := loadLinesFromFileOrURL(val[0]); err != nil {
 					return err
 				} else {
-					fieldValue.Set(reflect.ValueOf(lines))
+					if err := assignValue(fieldValue, lines); err != nil {
+						return err
+					}
 				}
 			} else {
-				fieldValue.Set(reflect.ValueOf(val))
+				if err := assignValue(fieldValue, val); err != nil {
+					return err
+				}
 			}
 
 		case reflect.Int:
-			fieldValue.Set(reflect.ValueOf(*fv.IntSlicePtr))
+			if err := assignValue(fieldValue, *fv.IntSlicePtr); err != nil {
+				return err
+			}
 		}
 
 	default:
@@ -103,6 +108,19 @@ func AssignFieldValue(structValue reflect.Value, fv *FlagValue, args []string, i
 	}
 
 	return nil
+}
+
+func assignValue(fieldValue reflect.Value, value any) error {
+	val := reflect.ValueOf(value)
+	if val.Type().AssignableTo(fieldValue.Type()) {
+		fieldValue.Set(val)
+		return nil
+	}
+	if val.Type().ConvertibleTo(fieldValue.Type()) {
+		fieldValue.Set(val.Convert(fieldValue.Type()))
+		return nil
+	}
+	return fmt.Errorf("cannot assign %s to %s", val.Type(), fieldValue.Type())
 }
 
 // loadFromStdin reads lines from stdin

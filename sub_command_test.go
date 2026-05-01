@@ -26,6 +26,7 @@ func resetEntityRegistry(t *testing.T) {
 	entityRegistryMu.Unlock()
 	dataFuncRegistry = sync.Map{}
 	lookupFuncRegistry = sync.Map{}
+	responseMetaRegistry = sync.Map{}
 	pendingSubCommandsMu.Lock()
 	pendingSubCommands = nil
 	pendingSubCommandsMu.Unlock()
@@ -35,7 +36,7 @@ func TestEntityParentNesting(t *testing.T) {
 	resetEntityRegistry(t)
 	defer resetEntityRegistry(t)
 
-	RegisterEntity(Entity[nestedTestEntity, nestedTestOpts]{
+	RegisterEntity(Entity[nestedTestEntity, nestedTestOpts, nestedTestEntity]{
 		Name:   "snapshot",
 		Parent: "policy",
 		List: func(_ nestedTestOpts) ([]nestedTestEntity, error) {
@@ -66,7 +67,7 @@ func TestEntityAliases(t *testing.T) {
 	resetEntityRegistry(t)
 	defer resetEntityRegistry(t)
 
-	RegisterEntity(Entity[nestedTestEntity, nestedTestOpts]{
+	RegisterEntity(Entity[nestedTestEntity, nestedTestOpts, nestedTestEntity]{
 		Name:    "correspondence",
 		Aliases: []string{"osc"},
 		List: func(_ nestedTestOpts) ([]nestedTestEntity, error) {
@@ -87,7 +88,7 @@ func TestRegisterSubCommandUnderEntity(t *testing.T) {
 	resetEntityRegistry(t)
 	defer resetEntityRegistry(t)
 
-	RegisterEntity(Entity[nestedTestEntity, nestedTestOpts]{
+	RegisterEntity(Entity[nestedTestEntity, nestedTestOpts, nestedTestEntity]{
 		Name: "correspondence",
 		List: func(_ nestedTestOpts) ([]nestedTestEntity, error) {
 			return nil, nil

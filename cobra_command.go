@@ -95,7 +95,7 @@ func GetLookupFunc(cmd *cobra.Command) func(flags map[string]string, args []stri
 //	myapp list --since now-30d               # datamath
 //	echo -e "tag1\ntag2" | myapp list        # stdin
 //	myapp list --max-age 60d --json          # with formatting
-func AddCommand[T any](parent *cobra.Command, opts T, fn func(opts T) (any, error)) *cobra.Command {
+func AddCommand[T any, R any](parent *cobra.Command, opts T, fn func(opts T) (R, error)) *cobra.Command {
 	optsType := reflect.TypeOf(opts)
 	if optsType.Kind() != reflect.Struct {
 		panic("AddCommand requires a struct type for opts parameter")
@@ -104,7 +104,7 @@ func AddCommand[T any](parent *cobra.Command, opts T, fn func(opts T) (any, erro
 	return AddNamedCommand(name, parent, opts, fn)
 }
 
-func AddNamedCommand[T any](name string, parent *cobra.Command, opts T, fn func(opts T) (any, error)) *cobra.Command {
+func AddNamedCommand[T any, R any](name string, parent *cobra.Command, opts T, fn func(opts T) (R, error)) *cobra.Command {
 
 	optsType := reflect.TypeOf(opts)
 	if optsType.Kind() != reflect.Struct {
@@ -117,8 +117,9 @@ func AddNamedCommand[T any](name string, parent *cobra.Command, opts T, fn func(
 		Use: name,
 	}
 	parent.AddCommand(cmd)
+	SetCommandResponseMeta(cmd, ResponseOpenAPIMeta{Type: responseTypeOf[R]()})
 	if meta := GetCommandOpenAPIMeta(parent); meta != nil {
-		annotateEntityOperationCommand(cmd, parent, "action", "collection", name, "", false, false)
+		annotateEntityOperationCommand(cmd, parent, "action", "", "collection", name, "", false, false)
 	}
 
 	if namer, ok := optsValue.Interface().(Name); ok {

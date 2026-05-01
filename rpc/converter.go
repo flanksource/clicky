@@ -184,6 +184,11 @@ func (c *Converter) ConvertCommand(cmd *cobra.Command) (*RPCOperation, error) {
 	if lf := clicky.GetLookupFunc(cmd); lf != nil {
 		operation.LookupFunc = lf
 	}
+	if meta := clicky.GetCommandResponseMeta(cmd); meta != nil {
+		operation.ResponseType = meta.Type
+		operation.ResponseArray = meta.Array
+		operation.ResponseEntityID = meta.EntityID
+	}
 
 	return operation, nil
 }
@@ -267,6 +272,10 @@ func (c *Converter) walkCommands(cmd *cobra.Command, fn func(*cobra.Command) err
 
 // inferHTTPMethod attempts to infer appropriate HTTP method from command semantics
 func (c *Converter) inferHTTPMethod(cmd *cobra.Command, cmdPath string) string {
+	if meta := clicky.GetCommandOpenAPIMeta(cmd); meta != nil && meta.Method != "" {
+		return strings.ToUpper(meta.Method)
+	}
+
 	cmdLower := strings.ToLower(cmdPath)
 
 	// Check for common CRUD patterns

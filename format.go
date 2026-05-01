@@ -3,7 +3,6 @@ package clicky
 import (
 	"fmt"
 	"io"
-	"os"
 	"sort"
 	"strings"
 
@@ -33,7 +32,11 @@ var (
 // 	return &tree
 // }
 
-var logWriter = text.LineFilter(os.Stderr, text.RedactSecrets()).(io.StringWriter)
+// logWriter is the destination for clicky.Infof / Errorf / Warnf / SQL etc.
+// task.GatedStderr drops writes while the interactive renderer owns the
+// TTY so log lines cannot land mid-frame and break ClearLines accounting.
+// Off-renderer it forwards straight to os.Stderr.
+var logWriter = text.LineFilter(task.GatedStderr(), text.RedactSecrets()).(io.StringWriter)
 
 func RedactSecretValues(val ...string) {
 	logWriter = text.LineFilter(logWriter.(io.Writer), text.RedactSecrets(val...)).(io.StringWriter)
@@ -168,6 +171,40 @@ func Collapsed(label string, content api.Textable, styles ...string) api.Collaps
 var KeyValue = api.KeyValue
 var CodeBlock = api.CodeBlock
 var Badge = api.Badge
+
+// StackTrace parses a free-form runtime stack-trace string and returns a
+// styled, render-ready trace. The default parser is language-agnostic and
+// auto-detects Java traces; pass clicky.StackTraceJava (or another
+// language-specific parser) when the language is known up front.
+//
+// Pass options like clicky.WithSourceResolver(r), clicky.WithStackContext(5),
+// or clicky.WithStackInclude("com.example.admin.") to attach inline source
+// context and filter frames.
+func StackTrace(input string, opts ...api.StackTraceOption) api.StackTrace {
+	return api.ParseJavaStackTrace(input, opts...)
+}
+
+// StackTraceJava is the explicit Java parser. Equivalent to StackTrace today;
+// kept distinct so future non-Java parsers (Python, .NET) can plug in without
+// breaking callers that have explicitly opted into Java semantics.
+var StackTraceJava = api.ParseJavaStackTrace
+
+// SourceResolver is the extension point a StackTrace consults to populate
+// each frame with surrounding source lines. See api.SourceResolver for the
+// interface contract.
+type SourceResolver = api.SourceResolver
+
+// SourceResolverFunc adapts a plain function to SourceResolver.
+type SourceResolverFunc = api.SourceResolverFunc
+
+var (
+	WithSourceResolver        = api.WithSourceResolver
+	WithSourceResolverContext = api.WithSourceResolverContext
+	WithStackInclude          = api.WithStackInclude
+	WithStackExclude          = api.WithStackExclude
+	WithStackContext          = api.WithStackContext
+	WithMaxStackFrames        = api.WithMaxFrames
+)
 var LinkTargetDialog = api.LinkTargetDialog
 var LinkTargetHover = api.LinkTargetHover
 var LinkTargetExpand = api.LinkTargetExpand
