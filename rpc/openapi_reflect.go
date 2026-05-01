@@ -8,13 +8,19 @@ import (
 
 var timeType = reflect.TypeOf(time.Time{})
 
+// convertGoTypeToOpenAPI is the entry point: starts a fresh visited set so each
+// top-level conversion can revisit shared types without confusing siblings.
 func (g *OpenAPIGenerator) convertGoTypeToOpenAPI(t reflect.Type) *OpenAPISchema {
+	return g.convertGoTypeWithSeen(t, map[reflect.Type]struct{}{})
+}
+
+func (g *OpenAPIGenerator) convertGoTypeWithSeen(t reflect.Type, seen map[reflect.Type]struct{}) *OpenAPISchema {
 	if t == nil {
 		return &OpenAPISchema{Type: "object"}
 	}
 
 	for t.Kind() == reflect.Ptr {
-		schema := g.convertGoTypeToOpenAPI(t.Elem())
+		schema := g.convertGoTypeWithSeen(t.Elem(), seen)
 		schema.Nullable = true
 		return schema
 	}
@@ -46,15 +52,15 @@ func (g *OpenAPIGenerator) convertGoTypeToOpenAPI(t reflect.Type) *OpenAPISchema
 		}
 		return &OpenAPISchema{
 			Type:  "array",
-			Items: g.convertGoTypeToOpenAPI(t.Elem()),
+			Items: g.convertGoTypeWithSeen(t.Elem(), seen),
 		}
 	case reflect.Map:
 		return &OpenAPISchema{
 			Type:                 "object",
-			AdditionalProperties: g.convertGoTypeToOpenAPI(t.Elem()),
+			AdditionalProperties: g.convertGoTypeWithSeen(t.Elem(), seen),
 		}
 	case reflect.Struct:
-		return g.convertStructTypeToOpenAPI(t)
+		return g.convertStructTypeWithSeen(t, seen)
 	case reflect.Interface:
 		return &OpenAPISchema{
 			Type:        "object",
@@ -68,7 +74,18 @@ func (g *OpenAPIGenerator) convertGoTypeToOpenAPI(t reflect.Type) *OpenAPISchema
 	}
 }
 
-func (g *OpenAPIGenerator) convertStructTypeToOpenAPI(t reflect.Type) *OpenAPISchema {
+func (g *OpenAPIGenerator) convertStructTypeWithSeen(t reflect.Type, seen map[reflect.Type]struct{}) *OpenAPISchema {
+	if _, ok := seen[t]; ok {
+		// Self-referencing or mutually-recursive struct (e.g. Policy.Activities []Activity, Activity.Policy Policy).
+		// Return an opaque object schema to break the cycle.
+		return &OpenAPISchema{
+			Type:        "object",
+			Description: "Recursive reference to " + t.String(),
+		}
+	}
+	seen[t] = struct{}{}
+	defer delete(seen, t)
+
 	schema := &OpenAPISchema{
 		Type:       "object",
 		Properties: map[string]*OpenAPISchema{},
@@ -89,7 +106,7 @@ func (g *OpenAPIGenerator) convertStructTypeToOpenAPI(t reflect.Type) *OpenAPISc
 			fieldType = fieldType.Elem()
 		}
 		if field.Anonymous && name == "" && fieldType.Kind() == reflect.Struct && fieldType != timeType {
-			embedded := g.convertStructTypeToOpenAPI(fieldType)
+			embedded := g.convertStructTypeWithSeen(fieldType, seen)
 			for key, value := range embedded.Properties {
 				schema.Properties[key] = value
 			}
@@ -100,7 +117,7 @@ func (g *OpenAPIGenerator) convertStructTypeToOpenAPI(t reflect.Type) *OpenAPISc
 			name = field.Name
 		}
 
-		schema.Properties[name] = g.convertGoTypeToOpenAPI(field.Type)
+		schema.Properties[name] = g.convertGoTypeWithSeen(field.Type, seen)
 		if !omitempty && !isOptionalResponseField(field.Type) {
 			schema.Required = append(schema.Required, name)
 		}

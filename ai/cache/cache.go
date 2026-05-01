@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"github.com/flanksource/clicky/task"
 	"github.com/flanksource/commons/logger"
 	_ "github.com/mattn/go-sqlite3"
 )
@@ -206,7 +207,7 @@ func (c *Cache) Get(prompt, model string, temperature float64, maxTokens int) (*
 	_, _ = c.db.Exec("UPDATE ai_cache SET accessed_at = CURRENT_TIMESTAMP WHERE id = ?", entry.ID)
 
 	if c.config.Debug {
-		fmt.Fprintf(os.Stderr, "Cache hit for prompt hash %s (model: %s)\n", entry.PromptHash, model)
+		fmt.Fprintf(task.GatedStderr(), "Cache hit for prompt hash %s (model: %s)\n", entry.PromptHash, model)
 	}
 
 	return &entry, nil
@@ -250,7 +251,7 @@ func (c *Cache) Set(entry *Entry) error {
 	}
 
 	if c.config.Debug {
-		fmt.Fprintf(os.Stderr, "Cached response for prompt hash %s (model: %s, tokens: %d, cost: $%.6f)\n",
+		fmt.Fprintf(task.GatedStderr(), "Cached response for prompt hash %s (model: %s, tokens: %d, cost: $%.6f)\n",
 			entry.PromptHash, entry.Model, entry.TokensTotal, entry.CostUSD)
 	}
 
@@ -387,7 +388,7 @@ func (c *Cache) Clear(projectName string) error {
 
 	rows, _ := result.RowsAffected()
 	if c.config.Debug {
-		fmt.Fprintf(os.Stderr, "Cleared %d cache entries\n", rows)
+		fmt.Fprintf(task.GatedStderr(), "Cleared %d cache entries\n", rows)
 	}
 
 	return nil
@@ -403,13 +404,13 @@ func (c *Cache) cleanupExpired() {
 		result, err := c.db.Exec(query)
 		if err != nil {
 			if c.config.Debug {
-				fmt.Fprintf(os.Stderr, "Failed to cleanup expired entries: %v\n", err)
+				fmt.Fprintf(task.GatedStderr(), "Failed to cleanup expired entries: %v\n", err)
 			}
 			continue
 		}
 
 		if rows, _ := result.RowsAffected(); rows > 0 && c.config.Debug {
-			fmt.Fprintf(os.Stderr, "Cleaned up %d expired cache entries\n", rows)
+			fmt.Fprintf(task.GatedStderr(), "Cleaned up %d expired cache entries\n", rows)
 		}
 	}
 }

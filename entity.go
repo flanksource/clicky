@@ -20,6 +20,7 @@ import (
 var (
 	entityRegistry   []EntityInfo
 	entityRegistryMu sync.Mutex
+	multiFilterType  = reflect.TypeOf(MultiFilter{})
 )
 
 // EntityItem is the interface that all entity types must implement.
@@ -1069,6 +1070,8 @@ func describeLookupField(field flags.FieldInfo) entityLookupMetadata {
 	}
 
 	switch {
+	case fieldType == multiFilterType:
+		meta.Type = "multi-filter"
 	case fieldType.Kind() == reflect.Bool:
 		meta.Type = "bool"
 	case isNumericKind(fieldType.Kind()):

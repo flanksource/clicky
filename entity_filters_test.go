@@ -34,6 +34,10 @@ type entityFilterTestOpts struct {
 	To     time.Time `flag:"to"`
 }
 
+type entityMultiFilterTestOpts struct {
+	Status MultiFilter `flag:"status"`
+}
+
 type ownerEntityFilter struct{}
 
 func (ownerEntityFilter) Key() string   { return "owner" }
@@ -209,6 +213,27 @@ func TestBuildOptsSupportsRichTypes(t *testing.T) {
 
 	if opts.Owner != "platform" || opts.Status != "healthy" {
 		t.Fatalf("expected string fields to be populated, got %#v", opts)
+	}
+}
+
+func TestBuildOptsSupportsMultiFilter(t *testing.T) {
+	opts, err := buildOpts[entityMultiFilterTestOpts](map[string]string{
+		"status": "ready,!failed",
+	})
+	if err != nil {
+		t.Fatalf("buildOpts returned error: %v", err)
+	}
+
+	if len(opts.Status) != 2 || opts.Status[0] != "ready" || opts.Status[1] != "!failed" {
+		t.Fatalf("expected multi filter values to be parsed, got %#v", opts.Status)
+	}
+}
+
+func TestLookupMetadataDetectsMultiFilter(t *testing.T) {
+	metadata := buildLookupMetadata[entityMultiFilterTestOpts]()
+	status := metadata["status"]
+	if !status.Multi || status.Type != "multi-filter" {
+		t.Fatalf("expected status to be a multi-filter, got %#v", status)
 	}
 }
 
