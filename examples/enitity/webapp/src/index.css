@@ -1,5 +1,4 @@
 @import "tailwindcss";
-@import "../../../../../clicky-ui/packages/ui/src/styles/tokens.css";
 @source "../../../../../clicky-ui/packages/ui/dist";
 
 html,

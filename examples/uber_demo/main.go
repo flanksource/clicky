@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"os"
@@ -221,6 +222,19 @@ type UberDemo struct {
 
 	// Text style examples
 	TextStylesTable []TextStyleExample `json:"text_styles_table" pretty:"label=Text Styles & Transformations,format=table"`
+
+	// ==================== NEW TYPE SHOWCASES ====================
+	// Standalone Code value with auto-detected language (vs CodeBlock helper)
+	SampleCode api.Code `json:"sample_code" pretty:"label=Sample Code"`
+
+	// LabelBadge two-part pills (label + value)
+	LabelBadges api.TextList `json:"label_badges" pretty:"label=Label Badges,format=list"`
+
+	// Link / LinkCommand documentation hyperlinks
+	DocLinks api.TextList `json:"doc_links" pretty:"label=Documentation Links,format=list"`
+
+	// Parsed Java stack trace with source resolution
+	StackTrace api.StackTrace `json:"stack_trace" pretty:"label=Java Stack Trace"`
 }
 
 // createDemoData creates a comprehensive demo dataset
@@ -443,9 +457,110 @@ func createDemoData() *UberDemo {
 
 		// Text styles showcase
 		TextStylesTable: createTextStylesShowcase(),
+
+		// New type showcases
+		SampleCode:  createSampleCode(),
+		LabelBadges: createLabelBadges(),
+		DocLinks:    createDocLinks(),
+		StackTrace:  createSampleStackTrace(),
 	}
 
 	return &demo
+}
+
+// createSampleCode demonstrates api.Code with auto-detected language.
+func createSampleCode() api.Code {
+	return api.NewCode(`package main
+
+import "fmt"
+
+func main() {
+	fmt.Println("Hello, Clicky!")
+}`, "")
+}
+
+// createLabelBadges demonstrates api.LabelBadge variants.
+func createLabelBadges() api.TextList {
+	return api.TextList{
+		api.LabelBadge{Label: "env", Value: "prod", Color: "bg-blue-100", TextColor: "text-blue-800"},
+		api.LabelBadge{Label: "version", Value: "v1.21.7", Color: "bg-green-100", TextColor: "text-green-800", Shape: "pill"},
+		api.LabelBadge{Label: "status", Value: "healthy", Color: "bg-emerald-100", TextColor: "text-emerald-800", Icon: "mdi:check-circle"},
+		api.LabelBadge{Label: "region", Value: "us-east-1", Color: "bg-slate-100", TextColor: "text-slate-700", Shape: "square"},
+	}
+}
+
+// createDocLinks demonstrates clicky.Link with browser-target variants and clicky.LinkCommand.
+func createDocLinks() api.TextList {
+	return api.TextList{
+		clicky.Link("https://docs.flanksource.com").AddText("Flanksource Docs", "text-blue-600 underline"),
+		clicky.Link("https://github.com/flanksource/clicky").
+			WithTarget(api.LinkTargetTab).
+			AddText("Clicky on GitHub", "text-blue-600 underline"),
+		clicky.LinkCommand("uber-demo stack-trace").
+			AddText("Run stack-trace demo", "text-purple-600 underline"),
+	}
+}
+
+// javaSampleTrace mirrors api.stacktrace_test.go's javaSample so the demo
+// exercises the same parser path the unit tests cover.
+const javaSampleTrace = `javax.persistence.PersistenceException: deadlock victim
+    at com.example.admin.pas.dal.ActivityDal.findNextPendingActivity(ActivityDal.java:241)
+    at com.example.admin.pas.bll.ClientBll.getNextPendingActivityExecutorBll(ClientBll.java:305)
+    at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:628)
+Caused by: com.microsoft.sqlserver.jdbc.SQLServerException: deadlock victim
+    ... 65 more`
+
+// javaNullPointerTrace exercises Native and Unknown Source frame variants
+// alongside a regular caused-by chain. Used as the no-resolver showcase.
+const javaNullPointerTrace = `java.lang.NullPointerException: Cannot invoke "String.length()" because "s" is null
+    at com.example.app.UserService.validate(UserService.java:88)
+    at com.example.app.UserController.register(UserController.java:42)
+    at sun.reflect.NativeMethodAccessorImpl.invoke0(Native Method)
+    at sun.reflect.NativeMethodAccessorImpl.invoke(Unknown Source)
+    at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1149)
+Caused by: java.lang.IllegalStateException: missing username
+    at com.example.app.RequestParser.parse(RequestParser.java:17)`
+
+// fakeJavaSourceResolver returns synthetic source lines for com.example.* frames
+// so the rendered trace shows the focal-line highlight without needing on-disk
+// Java sources. Production code would point at a real source tree or decompiler.
+func fakeJavaSourceResolver() clicky.SourceResolverFunc {
+	snippets := map[string][]string{
+		"com.example.admin.pas.dal.ActivityDal": {
+			"public Activity findNextPendingActivity() {",
+			"    Query q = em.createNamedQuery(\"Activity.findNextPending\");",
+			"    q.setLockMode(LockModeType.PESSIMISTIC_WRITE);",
+			"    return q.getSingleResult();",
+			"}",
+		},
+		"com.example.admin.pas.bll.ClientBll": {
+			"public Executor getNextPendingActivityExecutorBll() {",
+			"    Activity next = activityDal.findNextPendingActivity();",
+			"    return executorFactory.create(next);",
+			"}",
+		},
+	}
+	return func(_ context.Context, frame api.StackFrame, _ int) ([]string, int, string, bool) {
+		lines, ok := snippets[frame.Class]
+		if !ok {
+			return nil, 0, "", false
+		}
+		// Place the focal line in the middle of the snippet for a visible highlight.
+		startLine := frame.Line - len(lines)/2
+		if startLine < 1 {
+			startLine = 1
+		}
+		return lines, startLine, "java", true
+	}
+}
+
+// createSampleStackTrace parses the fixture and attaches a fake source resolver.
+func createSampleStackTrace() api.StackTrace {
+	return clicky.StackTrace(javaSampleTrace,
+		clicky.WithStackInclude("com.example."),
+		clicky.WithStackContext(2),
+		clicky.WithSourceResolver(fakeJavaSourceResolver()),
+	)
 }
 
 // createIconsShowcase creates a comprehensive showcase of all available icons
@@ -701,11 +816,6 @@ type SalesTable struct {
 func showAll(opts AllOptions) (any, error) {
 	demo := createDemoData()
 
-	// Debug: check if FileSystem is set
-	fmt.Fprintf(os.Stderr, "[DEBUG showAll] FileSystem nil? %v\n", demo.FileSystem == nil)
-
-	clicky.Infof(clicky.MustFormat(*demo.FileSystem, clicky.FormatOptions{Pretty: true, Format: "pretty"}))
-	// Conditionally include showcases based on flags
 	if !opts.IncludeIcons {
 		demo.IconsTable = nil
 	}
@@ -722,7 +832,6 @@ func showAll(opts AllOptions) (any, error) {
 		demo.Orders = nil
 	}
 
-	fmt.Fprintf(os.Stderr, "[DEBUG showAll after filtering] FileSystem nil? %v\n", demo.FileSystem == nil)
 	return demo, nil
 }
 
@@ -1168,6 +1277,42 @@ func showNilHandling(opts NilHandlingOptions) (any, error) {
 	return createNilHandlingShowcase(), nil
 }
 
+// StackTraceOptions for the stack-trace subcommand.
+type StackTraceOptions struct {
+	Context int `flag:"context" help:"Source context lines per frame" default:"3"`
+	Max     int `flag:"max-frames" help:"Maximum frames to render (0 = all)" default:"0"`
+}
+
+// StackTraceShowcase renders multiple traces side by side so the demo covers
+// resolved vs. unresolved frames and runtime/native frame variants.
+type StackTraceShowcase struct {
+	WithSource    api.StackTrace `json:"with_source" pretty:"label=With Source Resolution"`
+	WithoutSource api.StackTrace `json:"without_source" pretty:"label=Headers Only (no resolver)"`
+	NativeFrames  api.StackTrace `json:"native_frames" pretty:"label=Native + Unknown Source frames"`
+}
+
+func showStackTrace(opts StackTraceOptions) (any, error) {
+	resolvedOpts := []api.StackTraceOption{
+		clicky.WithStackInclude("com.example."),
+		clicky.WithStackContext(opts.Context),
+		clicky.WithSourceResolver(fakeJavaSourceResolver()),
+	}
+	if opts.Max > 0 {
+		resolvedOpts = append(resolvedOpts, clicky.WithMaxStackFrames(opts.Max))
+	}
+
+	headersOnlyOpts := []api.StackTraceOption{clicky.WithStackInclude("com.example.")}
+	if opts.Max > 0 {
+		headersOnlyOpts = append(headersOnlyOpts, clicky.WithMaxStackFrames(opts.Max))
+	}
+
+	return StackTraceShowcase{
+		WithSource:    clicky.StackTrace(javaSampleTrace, resolvedOpts...),
+		WithoutSource: clicky.StackTrace(javaNullPointerTrace, headersOnlyOpts...),
+		NativeFrames:  clicky.StackTrace(javaNullPointerTrace),
+	}, nil
+}
+
 // ComponentsOptions for the components showcase command
 type ComponentsOptions struct{}
 
@@ -1450,6 +1595,7 @@ func main() {
 	clicky.AddNamedCommand("components", rootCmd, ComponentsOptions{}, showComponents)
 	clicky.AddNamedCommand("collapsible-rows", rootCmd, CollapsibleRowOptions{}, showCollapsibleRows)
 	clicky.AddNamedCommand("column-builder", rootCmd, ColumnBuilderOptions{}, showColumnBuilder)
+	clicky.AddNamedCommand("stack-trace", rootCmd, StackTraceOptions{}, showStackTrace)
 
 	clicky.BindAllFlags(rootCmd.PersistentFlags())
 

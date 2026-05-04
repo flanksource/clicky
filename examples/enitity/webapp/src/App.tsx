@@ -1,13 +1,13 @@
 import { Link, Routes, Route, useLocation } from "react-router-dom";
+import { EntityExplorerApp } from "@flanksource/clicky-ui/api-explorer";
 import {
-  EntityExplorerApp,
+  DensitySwitcher,
+  Icon,
+  ThemeSwitcher,
   type RenderLink,
 } from "@flanksource/clicky-ui";
 import { apiClient } from "./api";
-import {
-  LinkExampleCommandPage,
-  LinkExamplesPage,
-} from "./LinkExamplesPage";
+import { LinkExampleCommandPage, LinkExamplesPage } from "./LinkExamplesPage";
 
 const renderLink: RenderLink = ({ to, className, children, title, key }) => (
   <Link key={key} to={to} className={className} title={title}>
@@ -29,20 +29,26 @@ export function App() {
               Metadata-driven explorer plus interactive Link and LinkCommand demos
             </div>
           </div>
-          <nav className="flex items-center gap-1 rounded-full border border-border/70 bg-muted/40 p-1">
-            <Link
-              to="/stacks"
-              className={topNavLinkClass(!showingLinks)}
+          <div className="flex items-center gap-3">
+            <nav
+              role="tablist"
+              aria-label="Top sections"
+              className="flex items-center gap-1 rounded-full border border-border/70 bg-muted/40 p-1"
             >
-              Explorer
-            </Link>
-            <Link
-              to="/links"
-              className={topNavLinkClass(showingLinks)}
-            >
-              Link Examples
-            </Link>
-          </nav>
+              <Link to="/stacks" className={topNavLinkClass(!showingLinks)} role="tab">
+                <Icon name="ph:squares-four" className="text-muted-foreground" />
+                Explorer
+              </Link>
+              <Link to="/links" className={topNavLinkClass(showingLinks)} role="tab">
+                <Icon name="ph:link" className="text-muted-foreground" />
+                Link Examples
+              </Link>
+            </nav>
+            <div className="flex items-center gap-1 rounded-full border border-border/70 bg-muted/40 p-1">
+              {showingLinks ? <ThemeSwitcher /> : null}
+              <DensitySwitcher />
+            </div>
+          </div>
         </div>
       </header>
 
@@ -52,13 +58,13 @@ export function App() {
           <Route path="/links/commands/:operationId" element={<LinkExampleCommandPage />} />
           <Route
             path="*"
-            element={(
+            element={
               <EntityExplorerApp
                 client={apiClient}
                 pathname={location.pathname}
                 renderLink={renderLink}
               />
-            )}
+            }
           />
         </Routes>
       </div>
@@ -68,7 +74,7 @@ export function App() {
 
 function topNavLinkClass(active: boolean) {
   return [
-    "rounded-full px-3 py-1.5 text-sm font-medium transition-colors",
+    "inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium transition-colors",
     active
       ? "bg-foreground text-background"
       : "text-foreground hover:bg-accent hover:text-accent-foreground",
