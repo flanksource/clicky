@@ -495,6 +495,22 @@ func (s *MCPServer) handleToolsCall(ctx context.Context, req JSONRPCRequest) (*J
 		}, nil
 	}
 
+	// Built-in tools (Command == nil) go through their dedicated handler.
+	if tool.Command == nil {
+		result, err := s.executeBuiltin(tool, params.Arguments)
+		if err != nil {
+			return &JSONRPCResponse{
+				JSONRPC: "2.0",
+				ID:      req.ID,
+				Result: ToolCallResult{
+					Content: []ContentBlock{{Type: "text", Text: fmt.Sprintf("Tool execution failed: %v", err)}},
+					IsError: true,
+				},
+			}, nil
+		}
+		return &JSONRPCResponse{JSONRPC: "2.0", ID: req.ID, Result: result}, nil
+	}
+
 	// Execute the tool using TaskManager
 	result, err := s.executeToolWithTaskManager(ctx, tool, params.Arguments)
 	if err != nil {
@@ -518,6 +534,27 @@ func (s *MCPServer) handleToolsCall(ctx context.Context, req JSONRPCRequest) (*J
 		ID:      req.ID,
 		Result:  result,
 	}, nil
+}
+
+// executeBuiltin handles tools registered without a backing cobra.Command.
+// Currently just discover-tools. Returns a single text ContentBlock.
+func (s *MCPServer) executeBuiltin(tool *ToolDefinition, args map[string]interface{}) (*ToolCallResult, error) {
+	switch tool.Name {
+	case discoverToolsName:
+		opts := s.config.Tools.Format
+		if raw, ok := args["format"]; ok {
+			if str, ok := raw.(string); ok && str != "" {
+				clone := formatters.FormatOptions{Format: str}
+				opts = &clone
+			}
+		}
+		text := RenderDiscoverToolsString(s.registry.GetTools(), opts)
+		return &ToolCallResult{
+			Content: []ContentBlock{{Type: "text", Text: text}},
+		}, nil
+	default:
+		return nil, fmt.Errorf("unknown built-in tool: %s", tool.Name)
+	}
 }
 
 // executeToolWithTaskManager executes a tool using the TaskManager
@@ -902,3 +939,4 @@ func (s *MCPServer) handlePromptsGet(req JSONRPCRequest) (*JSONRPCResponse, erro
 		Result:  response,
 	}, nil
 }
+
