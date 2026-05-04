@@ -1,6 +1,7 @@
 package clicky
 
 import (
+	"encoding/csv"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -22,6 +23,27 @@ var (
 	entityRegistryMu sync.Mutex
 	multiFilterType  = reflect.TypeOf(MultiFilter{})
 )
+
+// flagMapValue returns the string form of f suitable for round-tripping
+// through buildOpts (which calls flag.Value.Set). For slice-valued flags
+// pflag's Value.String() wraps the CSV in brackets like "[a,b,c]", and
+// re-Setting that string makes the brackets part of the first element.
+// SliceValue gives us the underlying []string so we can re-encode as the
+// plain CSV that Set expects.
+func flagMapValue(f *pflag.Flag) string {
+	if sv, ok := f.Value.(pflag.SliceValue); ok {
+		items := sv.GetSlice()
+		if len(items) == 0 {
+			return ""
+		}
+		var b strings.Builder
+		w := csv.NewWriter(&b)
+		_ = w.Write(items)
+		w.Flush()
+		return strings.TrimSuffix(b.String(), "\n")
+	}
+	return f.Value.String()
+}
 
 // EntityItem is the interface that all entity types must implement.
 type EntityItem interface {
@@ -655,7 +677,7 @@ func generateListCommand(parent *cobra.Command, entity EntityInfo, op EntityOper
 		RunE: func(c *cobra.Command, args []string) error {
 			flagMap := make(map[string]string)
 			c.Flags().Visit(func(f *pflag.Flag) {
-				flagMap[f.Name] = f.Value.String()
+				flagMap[f.Name] = flagMapValue(f)
 			})
 			result, err := op.DataFunc(flagMap, args)
 			if err != nil {
@@ -713,7 +735,7 @@ func generateIDCommand(
 			if hasFlags {
 				flagMap = make(map[string]string)
 				c.Flags().Visit(func(f *pflag.Flag) {
-					flagMap[f.Name] = f.Value.String()
+					flagMap[f.Name] = flagMapValue(f)
 				})
 			}
 			result, err := op.DataFunc(flagMap, args)
@@ -770,7 +792,7 @@ func generateBodyCommand(parent *cobra.Command, verb, short string, op EntityOpe
 		RunE: func(c *cobra.Command, args []string) error {
 			flagMap := make(map[string]string)
 			c.Flags().Visit(func(f *pflag.Flag) {
-				flagMap[f.Name] = f.Value.String()
+				flagMap[f.Name] = flagMapValue(f)
 			})
 
 			// For update, first arg is ID
@@ -843,7 +865,7 @@ func generateBulkActionCommand(parent *cobra.Command, ba BulkActionInfo) {
 		RunE: func(c *cobra.Command, args []string) error {
 			flagMap := make(map[string]string)
 			c.Flags().Visit(func(f *pflag.Flag) {
-				flagMap[f.Name] = f.Value.String()
+				flagMap[f.Name] = flagMapValue(f)
 			})
 
 			// Use filter mode if --filter flag is set and FilterFunc exists
@@ -903,7 +925,7 @@ func buildFilterCompletionBinder[T any](filters []Filter[T]) func(cmd *cobra.Com
 					if f.Name == filter.Key() {
 						return
 					}
-					flagMap[f.Name] = f.Value.String()
+					flagMap[f.Name] = flagMapValue(f)
 				})
 
 				opts, err := resolveEntityOpts[T](flagMap, filters)
