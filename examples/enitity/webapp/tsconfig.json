@@ -17,9 +17,12 @@
     "forceConsistentCasingInFileNames": true,
     "baseUrl": ".",
     "paths": {
-      "@flanksource/clicky-ui": ["../../../../clicky-ui/packages/ui/dist/index.d.mts"],
+      "@flanksource/clicky-ui": ["../../../../clicky-ui/packages/ui/dist/index.d.ts"],
+      "@flanksource/clicky-ui/api-explorer": [
+        "../../../../clicky-ui/packages/ui/dist/api-explorer.d.ts"
+      ],
       "@flanksource/clicky-ui/styles.css": [
-        "../../../../clicky-ui/packages/ui/src/styles/tokens.css"
+        "../../../../clicky-ui/packages/ui/dist/styles.css"
       ],
       "@/*": ["./src/*"]
     }
