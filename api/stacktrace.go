@@ -13,16 +13,17 @@ import (
 // SourceResolver implementations may use as a lookup key (e.g., for Java
 // `decompile` output) when no usable File path is available.
 type StackFrame struct {
-	Class           string
-	Method          string
-	File            string
-	Line            int
-	Native          bool
-	Runtime         bool
-	Annotation      string
-	SourceLines     []string
-	SourceStartLine int
-	SourceLanguage  string
+	Class             string
+	Method            string
+	File              string
+	Line              int
+	Native            bool
+	Runtime           bool
+	Annotation        string
+	SourceLines       []string
+	SourceLineNumbers []int
+	SourceStartLine   int
+	SourceLanguage    string
 }
 
 // StackTrace is a parsed runtime stack trace. It carries the high-level
@@ -219,12 +220,163 @@ func (s StackTrace) String() string {
 	return s.Render().ANSI()
 }
 
-// ANSI / HTML / Markdown delegate to the assembled Text so a StackTrace is a
-// drop-in Textable for any clicky formatter.
+// ANSI / Pretty / Markdown delegate to the assembled Text so a StackTrace is a
+// drop-in Textable for any clicky formatter. HTML uses a dedicated structured
+// renderer (renderHTML) so frames and source context get semantic blocks and
+// monospaced layout instead of a single whitespace-collapsed line.
 func (s StackTrace) ANSI() string     { return s.Render().ANSI() }
-func (s StackTrace) HTML() string     { return s.Render().HTML() }
+func (s StackTrace) HTML() string     { return s.renderHTML() }
 func (s StackTrace) Markdown() string { return s.Render().Markdown() }
 func (s StackTrace) Pretty() Text     { return s.Render() }
+
+// renderHTML produces a structured HTML block for the stack trace:
+//
+//   - Exception header in a red banner.
+//   - One <div class="stack-frame"> per kept frame, with the frame header
+//     (class.method + file:line) and an optional source-context <pre> below.
+//   - Source-context lines render as a single <pre class="stack-source"> with
+//     a left-gutter line number column and the focal line marked via
+//     `font-bold text-red-700 bg-red-50` instead of an ASCII ">>>" prefix.
+//   - When the frame's SourceLanguage is known, source lines pass through
+//     Code.HTML() for syntax highlighting; otherwise they render as escaped
+//     plain text.
+//
+// Tailwind classes are emitted directly (the Mission Control HTML formatter
+// already loads Tailwind), so no inline styles are needed.
+func (s StackTrace) renderHTML() string {
+	var b strings.Builder
+	// Per-element margin (rather than parent space-y-*) so header-only frames
+	// can stack tightly while exception/cause/source-bearing cards keep gap.
+	b.WriteString(`<div class="stack-trace font-mono text-xs leading-tight">`)
+
+	if s.ExceptionClass != "" || s.Message != "" {
+		header := s.ExceptionClass
+		if s.Message != "" {
+			if header != "" {
+				header += ": "
+			}
+			header += s.Message
+		}
+		fmt.Fprintf(&b, `<div class="stack-exception font-bold text-red-700 bg-red-50 border border-red-200 rounded px-2 mb-1">%s</div>`, htmlEscapeString(header))
+	}
+
+	for _, cause := range s.CausedBy {
+		fmt.Fprintf(&b, `<div class="stack-cause text-orange-700 bg-orange-50 border-l-2 border-orange-300 px-2 py-0.5 mb-1"><span class="font-semibold">Caused by:</span> %s</div>`, htmlEscapeString(cause))
+	}
+
+	rendered := 0
+	for _, f := range s.Frames {
+		if !s.frameKept(f) {
+			continue
+		}
+		if s.options.maxFrames > 0 && rendered >= s.options.maxFrames {
+			break
+		}
+		s.renderHTMLFrame(&b, f)
+		rendered++
+	}
+
+	b.WriteString(`</div>`)
+	return b.String()
+}
+
+// renderHTMLFrame emits one frame. Frames with source context render as a
+// bordered card so the source block sits inside its own boundary; frames
+// without source render as a flat row so a stack of header-only frames reads
+// as a single coalesced list rather than a column of empty cards.
+func (s StackTrace) renderHTMLFrame(b *strings.Builder, f StackFrame) {
+	hasSource := len(f.SourceLines) > 0 && f.SourceStartLine > 0
+
+	textClass := "text-slate-800"
+	if f.Runtime {
+		textClass = "text-slate-500"
+	}
+
+	if hasSource {
+		wrapperClass := "stack-frame border border-slate-200 rounded overflow-hidden mb-1"
+		if f.Runtime {
+			wrapperClass = "stack-frame border border-slate-100 rounded overflow-hidden opacity-75 mb-1"
+		}
+		fmt.Fprintf(b, `<div class="%s">`, wrapperClass)
+		fmt.Fprintf(b, `<div class="stack-frame-header %s flex flex-wrap items-baseline gap-x-1 px-2 py-0.5 bg-slate-50 border-b border-slate-200">`, textClass)
+	} else {
+		flatClass := "stack-frame-row flex flex-wrap items-baseline gap-x-1 px-2"
+		if f.Runtime {
+			flatClass += " opacity-75"
+		}
+		fmt.Fprintf(b, `<div class="%s %s">`, flatClass, textClass)
+	}
+
+	fmt.Fprintf(b, `<span class="font-semibold">%s.<span class="text-blue-700">%s</span></span>`,
+		htmlEscapeString(f.Class), htmlEscapeString(f.Method))
+
+	if f.File != "" {
+		loc := f.File
+		if f.Line > 0 {
+			loc = fmt.Sprintf("%s:%d", f.File, f.Line)
+		}
+		fmt.Fprintf(b, `<span class="text-slate-500">(%s)</span>`, htmlEscapeString(loc))
+	}
+	if f.Native {
+		b.WriteString(`<span class="italic text-slate-500">[native]</span>`)
+	}
+	if f.Annotation != "" {
+		fmt.Fprintf(b, `<span class="italic text-slate-500">— %s</span>`, htmlEscapeString(f.Annotation))
+	}
+
+	if hasSource {
+		b.WriteString(`</div>`)
+		s.renderHTMLSource(b, f)
+		b.WriteString(`</div>`)
+	} else {
+		b.WriteString(`</div>`)
+	}
+}
+
+func (s StackTrace) renderHTMLSource(b *strings.Builder, f StackFrame) {
+	b.WriteString(`<div class="stack-source bg-slate-50">`)
+	for idx, src := range f.SourceLines {
+		line := f.SourceStartLine + idx
+		if idx < len(f.SourceLineNumbers) && f.SourceLineNumbers[idx] > 0 {
+			line = f.SourceLineNumbers[idx]
+		}
+		// Every row carries a 2px left border so the focal row's red marker
+		// doesn't shift the gutter/code columns relative to surrounding rows.
+		// Non-focal rows use a transparent border to reserve the same width.
+		rowClass := "flex border-l-2 border-transparent"
+		gutterClass := "stack-source-gutter w-10 flex-none px-1 text-right text-slate-400 select-none border-r border-slate-200"
+		codeClass := "stack-source-code px-2 whitespace-pre overflow-x-auto flex-1"
+		if s.options.highlightLine && line == f.Line {
+			rowClass = "flex border-l-2 border-red-400 bg-red-50"
+			gutterClass = "stack-source-gutter w-10 flex-none px-1 text-right text-red-600 font-bold select-none border-r border-red-200"
+			codeClass = "stack-source-code px-2 whitespace-pre overflow-x-auto flex-1 font-bold text-red-700"
+		}
+		fmt.Fprintf(b, `<div class="%s"><span class="%s">%d</span><span class="%s">%s</span></div>`,
+			rowClass, gutterClass, line, codeClass, renderHTMLSourceContent(src, f.SourceLanguage))
+	}
+	b.WriteString(`</div>`)
+}
+
+// renderHTMLSourceContent returns syntax-highlighted HTML for a single source
+// line when a language is known; otherwise the line is HTML-escaped. Each
+// chroma-tokenised <span> is preserved so multi-line highlighting stays
+// consistent across rows.
+func renderHTMLSourceContent(line, language string) string {
+	if language == "" {
+		return htmlEscapeString(line)
+	}
+	highlighted := strings.TrimRight(NewCode(line, language).HTML(), "\n")
+	// chroma's HTML formatter wraps output in `<pre class="chroma">…</pre>`
+	// (sometimes with a `<code>` inside); strip those so the line sits inline.
+	highlighted = strings.TrimPrefix(highlighted, `<pre class="chroma">`)
+	highlighted = strings.TrimPrefix(highlighted, `<code>`)
+	highlighted = strings.TrimSuffix(highlighted, `</pre>`)
+	highlighted = strings.TrimSuffix(highlighted, `</code>`)
+	if strings.TrimSpace(highlighted) == "" {
+		return htmlEscapeString(line)
+	}
+	return highlighted
+}
 
 func renderFrameHeader(f StackFrame) Text {
 	style := "font-semibold"
@@ -255,6 +407,9 @@ func appendSourceLines(out Text, f StackFrame, opts stackTraceOptions) Text {
 	}
 	for idx, src := range f.SourceLines {
 		line := f.SourceStartLine + idx
+		if idx < len(f.SourceLineNumbers) && f.SourceLineNumbers[idx] > 0 {
+			line = f.SourceLineNumbers[idx]
+		}
 		out = out.Add(Text{Content: "\n"})
 		marker := "    "
 		style := "text-muted-foreground"

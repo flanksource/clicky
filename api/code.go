@@ -112,7 +112,7 @@ func (c Code) HTML() string {
 	}
 
 	if strings.Trim(c.Language, ".") == "xml" {
-		c.Content = xmlfmt.FormatXML(c.Content, "", "  ")
+		c.Content = formatXMLBestEffort(c.Content)
 	}
 
 	lexer := getLexer(c.Language)
@@ -144,6 +144,17 @@ func (c Code) HTML() string {
 	}
 
 	return buf.String()
+}
+
+func formatXMLBestEffort(content string) (formatted string) {
+	defer func() {
+		if recover() != nil || strings.TrimSpace(formatted) == "" {
+			formatted = content
+		}
+	}()
+
+	formatted = xmlfmt.FormatXML(content, "", "  ")
+	return formatted
 }
 
 // Markdown returns the source code as a Markdown code block with language tag.

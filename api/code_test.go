@@ -269,6 +269,21 @@ func TestCode_HTML(t *testing.T) {
 	}
 }
 
+func TestCodeHTML_XMLFormatterPanicFallsBackToHighlightedContent(t *testing.T) {
+	code := Code{
+		Content:  `<AddressScreen><Events><Event TYPE="ONLOAD"><ActionSet><Condition IF="1=1"></Condition></ActionSet></Event></Events></AddressScreen>`,
+		Language: "xml",
+	}
+
+	got := code.HTML()
+	if !strings.Contains(got, "AddressScreen") {
+		t.Fatalf("Code.HTML() should preserve original XML after formatter failure, got %s", got)
+	}
+	if !strings.Contains(got, `class=`) {
+		t.Fatalf("Code.HTML() should still use Chroma highlighting after formatter failure, got %s", got)
+	}
+}
+
 func TestCode_Markdown(t *testing.T) {
 	tests := []struct {
 		name string
