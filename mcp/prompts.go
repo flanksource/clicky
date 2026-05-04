@@ -253,10 +253,21 @@ func (r *PromptRegistry) SaveToFile(path string) error {
 	return nil
 }
 
-// GetPromptsPath returns the default prompts file path
+// GetPromptsPath returns the default prompts file path for the legacy
+// shared "clicky" namespace. New callers should use GetPromptsPathFor
+// with the host application's name.
 func GetPromptsPath() string {
+	return GetPromptsPathFor("clicky")
+}
+
+// GetPromptsPathFor returns the default prompts file path for the given
+// application name (e.g. "gavel" -> ~/.config/gavel/mcp-prompts.json).
+func GetPromptsPathFor(appName string) string {
+	if appName == "" {
+		appName = "clicky"
+	}
 	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".config", "clicky", "mcp-prompts.json")
+	return filepath.Join(home, ".config", appName, "mcp-prompts.json")
 }
 
 // ListPromptsResponse represents the MCP prompts/list response

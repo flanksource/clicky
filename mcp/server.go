@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/flanksource/clicky/formatters"
 	"github.com/flanksource/clicky/task"
 	flanksourceContext "github.com/flanksource/commons/context"
 	"github.com/spf13/cobra"
@@ -31,8 +32,8 @@ func NewMCPServer(config *Config, rootCmd *cobra.Command) *MCPServer {
 	promptRegistry := NewPromptRegistry(config)
 	promptRegistry.LoadDefaults()
 
-	// Try to load custom prompts
-	promptsPath := GetPromptsPath()
+	// Try to load custom prompts (per-app, keyed off the root command name).
+	promptsPath := GetPromptsPathFor(rootCmd.Name())
 	if _, err := os.Stat(promptsPath); err == nil {
 		if err := promptRegistry.LoadFromFile(promptsPath); err != nil {
 			// Log error but continue with empty registry
@@ -291,6 +292,22 @@ func (s *MCPServer) handleToolsCall(ctx context.Context, req JSONRPCRequest) (*J
 		}, nil
 	}
 
+	// Built-in tools (Command == nil) go through their dedicated handler.
+	if tool.Command == nil {
+		result, err := s.executeBuiltin(tool, params.Arguments)
+		if err != nil {
+			return &JSONRPCResponse{
+				JSONRPC: "2.0",
+				ID:      req.ID,
+				Result: ToolCallResult{
+					Content: []ContentBlock{{Type: "text", Text: fmt.Sprintf("Tool execution failed: %v", err)}},
+					IsError: true,
+				},
+			}, nil
+		}
+		return &JSONRPCResponse{JSONRPC: "2.0", ID: req.ID, Result: result}, nil
+	}
+
 	// Execute the tool using TaskManager
 	result, err := s.executeToolWithTaskManager(ctx, tool, params.Arguments)
 	if err != nil {
@@ -314,6 +331,27 @@ func (s *MCPServer) handleToolsCall(ctx context.Context, req JSONRPCRequest) (*J
 		ID:      req.ID,
 		Result:  result,
 	}, nil
+}
+
+// executeBuiltin handles tools registered without a backing cobra.Command.
+// Currently just discover-tools. Returns a single text ContentBlock.
+func (s *MCPServer) executeBuiltin(tool *ToolDefinition, args map[string]interface{}) (*ToolCallResult, error) {
+	switch tool.Name {
+	case discoverToolsName:
+		opts := s.config.Tools.Format
+		if raw, ok := args["format"]; ok {
+			if str, ok := raw.(string); ok && str != "" {
+				clone := formatters.FormatOptions{Format: str}
+				opts = &clone
+			}
+		}
+		text := RenderDiscoverToolsString(s.registry.GetTools(), opts)
+		return &ToolCallResult{
+			Content: []ContentBlock{{Type: "text", Text: text}},
+		}, nil
+	default:
+		return nil, fmt.Errorf("unknown built-in tool: %s", tool.Name)
+	}
 }
 
 // executeToolWithTaskManager executes a tool using the TaskManager
@@ -356,6 +394,11 @@ func (s *MCPServer) executeToolWithTaskManager(ctx context.Context, tool *ToolDe
 				t.Errorf("Failed to apply arguments: %v", err)
 				return nil, err
 			}
+
+			// Apply server-wide format overrides (e.g. forcing Markdown
+			// without ANSI for AI clients). Best-effort: tools that don't
+			// declare matching flags are left alone.
+			applyFormatOverride(tool.Command, s.config.Tools.Format)
 
 			// Capture output by redirecting stdout and stderr
 			oldStdout := os.Stdout
@@ -491,6 +534,56 @@ func (s *MCPServer) confirmToolExecution(toolName string, args map[string]interf
 	return true
 }
 
+// applyFormatOverride sets --format and --no-color on cmd to match the
+// MCP server's configured format. Silently no-ops when the flag is absent
+// (not every command supports clicky's standard format flags).
+func applyFormatOverride(cmd *cobra.Command, opts *formatters.FormatOptions) {
+	if opts == nil {
+		return
+	}
+	if name := formatName(opts); name != "" {
+		setFlagBestEffort(cmd, "format", name)
+	}
+	if opts.NoColor {
+		setFlagBestEffort(cmd, "no-color", "true")
+	}
+}
+
+// formatName picks the canonical format name from FormatOptions.
+// Boolean toggles win over the Format string when both are set.
+func formatName(opts *formatters.FormatOptions) string {
+	switch {
+	case opts.Markdown:
+		return "markdown"
+	case opts.JSON:
+		return "json"
+	case opts.YAML:
+		return "yaml"
+	case opts.CSV:
+		return "csv"
+	case opts.HTML:
+		return "html"
+	case opts.PDF:
+		return "pdf"
+	case opts.Slack:
+		return "slack"
+	case opts.Pretty:
+		return "pretty"
+	}
+	return strings.TrimSpace(strings.ToLower(opts.Format))
+}
+
+func setFlagBestEffort(cmd *cobra.Command, name, value string) {
+	flag := cmd.Flags().Lookup(name)
+	if flag == nil {
+		flag = cmd.PersistentFlags().Lookup(name)
+	}
+	if flag == nil {
+		return
+	}
+	_ = flag.Value.Set(value)
+}
+
 // applyArgsToCommand applies arguments to cobra command flags
 func (s *MCPServer) applyArgsToCommand(cmd *cobra.Command, args map[string]interface{}) error {
 	// Reset command flags to defaults
@@ -546,20 +639,6 @@ func (s *MCPServer) applyArgsToCommand(cmd *cobra.Command, args map[string]inter
 func (s *MCPServer) handlePromptsList(req JSONRPCRequest) (*JSONRPCResponse, error) {
 	prompts := s.promptRegistry.List()
 
-	// Add a special prompt that helps with tool discovery
-	prompts = append(prompts, &Prompt{
-		Name:        "discover-tools",
-		Description: "Discover how to use available tools",
-		Template: `Please analyze the available tools and show me:
-1. What each tool does
-2. The appropriate arguments for each tool
-3. Common use cases and examples
-4. How to combine tools for complex tasks
-
-Focus on the most useful tools for common operations.`,
-		Tags: []string{"discovery", "tools", "help"},
-	})
-
 	response := &ListPromptsResponse{
 		Prompts: make([]Prompt, len(prompts)),
 	}
@@ -607,60 +686,6 @@ func (s *MCPServer) handlePromptsGet(req JSONRPCRequest) (*JSONRPCResponse, erro
 		}, nil
 	}
 
-	// Handle special discover-tools prompt
-	if params.Name == "discover-tools" {
-		tools := s.registry.GetTools()
-
-		// Build a comprehensive prompt about available tools
-		var toolDescriptions []string
-		for name, tool := range tools {
-			desc := fmt.Sprintf("**%s**: %s", name, tool.Description)
-
-			// Add parameter information
-			if len(tool.InputSchema.Properties) > 0 {
-				desc += "\n  Parameters:"
-				for param, prop := range tool.InputSchema.Properties {
-					required := ""
-					for _, req := range tool.InputSchema.Required {
-						if req == param {
-							required = " (required)"
-							break
-						}
-					}
-					desc += fmt.Sprintf("\n    - %s: %s%s", param, prop.Description, required)
-				}
-			}
-
-			toolDescriptions = append(toolDescriptions, desc)
-		}
-
-		content := fmt.Sprintf(`Here are the available tools you can use:
-
-%s
-
-To use a tool, call it with the appropriate arguments. For example:
-- Use the 'help' tool to get general help
-- Use specific tools with their required parameters
-
-What would you like to do with these tools?`, strings.Join(toolDescriptions, "\n\n"))
-
-		response := &GetPromptResponse{
-			Description: "Discover available tools and their usage",
-			Messages: []PromptMessage{
-				{
-					Role:    "user",
-					Content: content,
-				},
-			},
-		}
-
-		return &JSONRPCResponse{
-			JSONRPC: "2.0",
-			ID:      req.ID,
-			Result:  response,
-		}, nil
-	}
-
 	// Get the regular prompt
 	prompt, exists := s.promptRegistry.Get(params.Name)
 	if !exists {
@@ -683,3 +708,4 @@ What would you like to do with these tools?`, strings.Join(toolDescriptions, "\n
 		Result:  response,
 	}, nil
 }
+

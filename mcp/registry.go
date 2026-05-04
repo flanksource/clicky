@@ -2,6 +2,7 @@ package mcp
 
 import (
 	"fmt"
+	"path"
 	"regexp"
 	"strings"
 
@@ -86,7 +87,44 @@ func (r *ToolRegistry) NewMcpToolWithConfig(rpcOp *rpc.RPCOperation) *ToolDefini
 		tool.Description = override
 	}
 
+	applyIgnoredParams(tool, r.config.Tools.IgnoredParams)
+
 	return tool
+}
+
+// applyIgnoredParams strips matched parameter names from tool.InputSchema's
+// Properties and Required, in place. Names in rules may carry a leading
+// "--" (CLI form) or be bare; both are normalised to bare keys, matching
+// how the RPC converter populates Schema.Properties.
+func applyIgnoredParams(tool *ToolDefinition, rules []IgnoredParamRule) {
+	if len(rules) == 0 || tool == nil {
+		return
+	}
+	ignored := map[string]bool{}
+	for _, rule := range rules {
+		matched, err := path.Match(rule.ToolGlob, tool.Name)
+		if err != nil || !matched {
+			continue
+		}
+		for _, p := range rule.Params {
+			ignored[strings.TrimPrefix(p, "--")] = true
+		}
+	}
+	if len(ignored) == 0 {
+		return
+	}
+	for name := range ignored {
+		delete(tool.InputSchema.Properties, name)
+	}
+	if len(tool.InputSchema.Required) > 0 {
+		filtered := tool.InputSchema.Required[:0]
+		for _, r := range tool.InputSchema.Required {
+			if !ignored[r] {
+				filtered = append(filtered, r)
+			}
+		}
+		tool.InputSchema.Required = filtered
+	}
 }
 
 // NewToolRegistry creates a new tool registry
@@ -94,12 +132,38 @@ func NewToolRegistry(config *Config) *ToolRegistry {
 	// Create RPC converter with default config
 	rpcConfig := rpc.DefaultConfig()
 
-	return &ToolRegistry{
+	r := &ToolRegistry{
 		config:       config,
 		tools:        make(map[string]*ToolDefinition),
 		rpcConverter: rpc.NewConverter(rpcConfig),
 	}
+	r.registerBuiltins()
+	return r
 }
+
+// registerBuiltins adds tools that aren't backed by a cobra command.
+// These have a nil Command field; handleToolsCall dispatches them
+// through executeBuiltin instead of executeToolWithTaskManager.
+func (r *ToolRegistry) registerBuiltins() {
+	r.tools[discoverToolsName] = &ToolDefinition{
+		Name:        discoverToolsName,
+		Title:       "Discover MCP Tools",
+		Description: "Returns a catalogue of every registered MCP tool, with parameters, defaults, and constraints. Use this before invoking unfamiliar tools.",
+		InputSchema: Schema{
+			Type: "object",
+			Properties: map[string]Property{
+				"format": {
+					Type:        "string",
+					Description: "Output format. Defaults to the server's configured format.",
+					Enum:        []string{"markdown", "ansi", "plain"},
+				},
+			},
+			Required: []string{},
+		},
+	}
+}
+
+const discoverToolsName = "discover-tools"
 
 // RegisterCommand registers a cobra command as an MCP tool
 func (r *ToolRegistry) RegisterCommand(cmd *cobra.Command) error {

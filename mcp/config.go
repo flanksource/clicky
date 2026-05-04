@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+
+	"github.com/flanksource/clicky/formatters"
 )
 
 // Config holds MCP server configuration
@@ -62,6 +64,26 @@ type ToolsConfig struct {
 
 	// Override descriptions for specific commands
 	Descriptions map[string]string `json:"descriptions,omitempty"`
+
+	// IgnoredParams strips parameters (flags or positional names) from
+	// the MCP-facing tool schema. Each rule applies to tools whose name
+	// matches ToolGlob (path.Match semantics; "*" matches all). Names
+	// in Params may include the "--" prefix or omit it.
+	// MCP-only — does not affect OpenAPI generation.
+	IgnoredParams []IgnoredParamRule `json:"ignored_params,omitempty"`
+
+	// Format overrides the format/color settings of every tool execution
+	// by setting the corresponding cobra flags on the command before it
+	// runs. Useful for forcing Markdown without ANSI for AI clients.
+	Format *formatters.FormatOptions `json:"format,omitempty"`
+}
+
+// IgnoredParamRule describes a per-tool parameter exclusion. ToolGlob
+// uses path.Match syntax, so "*" matches everything, "ai *" matches all
+// subcommands of "ai", and an exact name like "status" matches only itself.
+type IgnoredParamRule struct {
+	ToolGlob string   `json:"tool_glob"`
+	Params   []string `json:"params"`
 }
 
 // DefaultConfig returns a secure default configuration
@@ -130,8 +152,21 @@ func SaveConfig(config *Config, configPath string) error {
 	return nil
 }
 
-// GetConfigPath returns the default config file path
+// GetConfigPath returns the default config file path for the legacy
+// shared "clicky" namespace. New callers should use GetConfigPathFor with
+// the host application's name so multiple clicky-based MCP servers don't
+// stomp on each other's config files.
 func GetConfigPath() string {
+	return GetConfigPathFor("clicky")
+}
+
+// GetConfigPathFor returns the default config file path for the given
+// application name. A clicky-based MCP server should pass its CLI name
+// (e.g. "gavel") so each app gets its own ~/.config/<app>/mcp-config.json.
+func GetConfigPathFor(appName string) string {
+	if appName == "" {
+		appName = "clicky"
+	}
 	home, _ := os.UserHomeDir()
-	return filepath.Join(home, ".config", "clicky", "mcp-config.json")
+	return filepath.Join(home, ".config", appName, "mcp-config.json")
 }

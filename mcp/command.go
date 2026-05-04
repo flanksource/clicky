@@ -17,7 +17,6 @@ import (
 // CommandOptions holds options for MCP command creation
 type CommandOptions struct {
 	ConfigPath    string
-	Verbose       bool
 	Transport     string
 	Address       string
 	Port          int
@@ -59,11 +58,24 @@ The MCP command group provides functionality to:
 	mcpCmd.AddCommand(newConfigCommand(opts))
 	mcpCmd.AddCommand(newPromptCommand(opts))
 
-	// Global MCP flags
+	// Global MCP flags. Verbose output is controlled by clicky's existing
+	// --loglevel/-v flag and the VERBOSE/DEBUG env vars honored by the server,
+	// so we don't redeclare a --verbose flag here (it would clash with -v
+	// shorthand on hosts that bind clicky.Flags on the root command).
 	mcpCmd.PersistentFlags().StringVar(&opts.ConfigPath, "config", "", "Path to MCP configuration file")
-	mcpCmd.PersistentFlags().BoolVarP(&opts.Verbose, "verbose", "v", false, "Enable verbose output")
 
 	return mcpCmd
+}
+
+// rootAppName walks up to the root cobra command and returns its Name(),
+// which is the host application's CLI name (e.g. "gavel"). Used to namespace
+// per-app config so multiple clicky-based MCP servers don't share one file.
+func rootAppName(cmd *cobra.Command) string {
+	root := cmd
+	for root.Parent() != nil {
+		root = root.Parent()
+	}
+	return root.Name()
 }
 
 // newServeCommand creates the serve subcommand
@@ -84,7 +96,7 @@ Examples:
 			// Load configuration
 			configPath := opts.ConfigPath
 			if configPath == "" {
-				configPath = GetConfigPath()
+				configPath = GetConfigPathFor(rootAppName(cmd))
 			}
 
 			config, err := LoadConfig(configPath)
@@ -105,6 +117,10 @@ Examples:
 				}
 				config.Tools.Exclude = append(config.Tools.Exclude, ic.Tools.Exclude...)
 				config.Tools.Include = append(config.Tools.Include, ic.Tools.Include...)
+				config.Tools.IgnoredParams = append(config.Tools.IgnoredParams, ic.Tools.IgnoredParams...)
+				if ic.Tools.Format != nil {
+					config.Tools.Format = ic.Tools.Format
+				}
 			}
 
 			// Apply command-line overrides
@@ -176,7 +192,7 @@ security settings, and transport options.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			configPath := opts.ConfigPath
 			if configPath == "" {
-				configPath = GetConfigPath()
+				configPath = GetConfigPathFor(rootAppName(cmd))
 			}
 
 			config, err := LoadConfig(configPath)
@@ -332,15 +348,17 @@ Prompts provide pre-configured templates that guide AI assistants in:
 
 Examples:
   app mcp prompt                       # List all available prompts
-  app mcp prompt discover-tools        # Show the tool discovery prompt
   app mcp prompt --list-tags           # List all prompt tags
   app mcp prompt --tag workflow        # List prompts tagged as 'workflow'
-  app mcp prompt --save custom.json    # Save prompts to file`,
+  app mcp prompt --save custom.json    # Save prompts to file
+
+Tool discovery has moved: use 'app mcp tools discover' (or call the
+'discover-tools' MCP tool) instead of 'app mcp prompt discover-tools'.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Load configuration
 			configPath := opts.ConfigPath
 			if configPath == "" {
-				configPath = GetConfigPath()
+				configPath = GetConfigPathFor(rootAppName(cmd))
 			}
 
 			config, err := LoadConfig(configPath)
@@ -359,7 +377,7 @@ Examples:
 			promptRegistry.LoadDefaults()
 
 			// Try to load custom prompts
-			promptsPath := GetPromptsPath()
+			promptsPath := GetPromptsPathFor(rootAppName(cmd))
 			if _, err := os.Stat(promptsPath); err == nil {
 				if err := promptRegistry.LoadFromFile(promptsPath); err != nil {
 					fmt.Printf("Warning: failed to load prompts from %s: %v\n", promptsPath, err)
@@ -399,73 +417,12 @@ Examples:
 					return fmt.Errorf("no prompts found with tag: %s", byTag)
 				}
 			} else if len(args) == 0 {
-				// List all prompts
 				prompts = promptRegistry.List()
-
-				// Add special discover-tools prompt
-				prompts = append(prompts, &Prompt{
-					Name:        "discover-tools",
-					Description: "Discover how to use available tools (shows all tools with their arguments)",
-					Tags:        []string{"discovery", "tools", "help"},
-				})
 			}
 
 			// Handle specific prompt
 			if len(args) > 0 {
 				promptName := args[0]
-
-				// Handle special discover-tools prompt
-				if promptName == "discover-tools" {
-					// Create tool registry to get available tools
-					toolRegistry := NewToolRegistry(config)
-					if err := toolRegistry.RegisterCommandTree(rootCmd); err != nil {
-						fmt.Printf("Warning: failed to register command tree: %v\n", err)
-					}
-					tools := toolRegistry.GetTools()
-
-					fmt.Println(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("14")).
-						Render("Tool Discovery Prompt"))
-					fmt.Println()
-					fmt.Println("This prompt helps AI assistants understand all available tools.")
-					fmt.Println()
-					fmt.Println(lipgloss.NewStyle().Foreground(lipgloss.Color("12")).
-						Render("Available Tools:"))
-					fmt.Println()
-
-					for name, tool := range tools {
-						fmt.Printf("  %s\n", lipgloss.NewStyle().Bold(true).Render(name))
-						fmt.Printf("    %s\n", tool.Description)
-
-						if len(tool.InputSchema.Properties) > 0 {
-							fmt.Println("    Parameters:")
-							for param, prop := range tool.InputSchema.Properties {
-								required := ""
-								for _, req := range tool.InputSchema.Required {
-									if req == param {
-										required = " (required)"
-										break
-									}
-								}
-								fmt.Printf("      • %s: %s%s\n", param, prop.Description, required)
-								if prop.Default != nil {
-									fmt.Printf("        Default: %v\n", prop.Default)
-								}
-							}
-						}
-						fmt.Println()
-					}
-
-					if showExample {
-						fmt.Println(lipgloss.NewStyle().Foreground(lipgloss.Color("12")).
-							Render("Example Usage:"))
-						fmt.Println()
-						fmt.Println("When an AI assistant uses this prompt, it will receive detailed")
-						fmt.Println("information about all available tools, their parameters, and how")
-						fmt.Println("to use them effectively.")
-					}
-
-					return nil
-				}
 
 				// Get regular prompt
 				prompt, exists := promptRegistry.Get(promptName)
@@ -606,3 +563,4 @@ Examples:
 
 	return cmd
 }
+
