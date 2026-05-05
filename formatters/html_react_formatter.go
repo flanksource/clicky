@@ -71,39 +71,61 @@ type clickyTreeItem struct {
 	Children []clickyTreeItem `json:"children,omitempty"`
 }
 
+type clickyStackFrame struct {
+	FunctionName      string   `json:"functionName,omitempty"`
+	DisplayName       string   `json:"displayName,omitempty"`
+	File              string   `json:"file,omitempty"`
+	Line              int      `json:"line,omitempty"`
+	Location          string   `json:"location,omitempty"`
+	Kind              string   `json:"kind,omitempty"`
+	Runtime           bool     `json:"runtime,omitempty"`
+	NativeMethod      bool     `json:"nativeMethod,omitempty"`
+	AnnotationText    string   `json:"annotationText,omitempty"`
+	Class             string   `json:"class,omitempty"`
+	Method            string   `json:"method,omitempty"`
+	SourceLines       []string `json:"sourceLines,omitempty"`
+	SourceLineNumbers []int    `json:"sourceLineNumbers,omitempty"`
+	SourceStartLine   int      `json:"sourceStartLine,omitempty"`
+	SourceLanguage    string   `json:"sourceLanguage,omitempty"`
+}
+
 type clickyNode struct {
-	Kind            string            `json:"kind"`
-	Plain           string            `json:"plain,omitempty"`
-	Style           *clickyStyle      `json:"style,omitempty"`
-	Text            string            `json:"text,omitempty"`
-	Children        []clickyNode      `json:"children,omitempty"`
-	Tooltip         *clickyNode       `json:"tooltip,omitempty"`
-	HTML            string            `json:"html,omitempty"`
-	Inline          bool              `json:"inline,omitempty"`
-	Ordered         bool              `json:"ordered,omitempty"`
-	Unstyled        bool              `json:"unstyled,omitempty"`
-	Bullet          *clickyNode       `json:"bullet,omitempty"`
-	Items           []clickyNode      `json:"items,omitempty"`
-	Fields          []clickyField     `json:"fields,omitempty"`
-	Columns         []clickyColumn    `json:"columns,omitempty"`
-	Rows            []clickyRow       `json:"rows,omitempty"`
-	Roots           []clickyTreeItem  `json:"roots,omitempty"`
-	Label           *clickyNode       `json:"label,omitempty"`
-	Content         *clickyNode       `json:"content,omitempty"`
-	Href            string            `json:"href,omitempty"`
-	Target          string            `json:"target,omitempty"`
-	Command         string            `json:"command,omitempty"`
-	Args            []string          `json:"args,omitempty"`
-	Flags           map[string]string `json:"flags,omitempty"`
-	AutoRun         bool              `json:"autoRun,omitempty"`
-	ID              string            `json:"id,omitempty"`
-	Payload         string            `json:"payload,omitempty"`
-	Variant         string            `json:"variant,omitempty"`
-	Iconify         string            `json:"iconify,omitempty"`
-	Unicode         string            `json:"unicode,omitempty"`
-	Language        string            `json:"language,omitempty"`
-	Source          string            `json:"source,omitempty"`
-	HighlightedHTML string            `json:"highlightedHtml,omitempty"`
+	Kind            string             `json:"kind"`
+	Plain           string             `json:"plain,omitempty"`
+	Style           *clickyStyle       `json:"style,omitempty"`
+	Text            string             `json:"text,omitempty"`
+	Children        []clickyNode       `json:"children,omitempty"`
+	Tooltip         *clickyNode        `json:"tooltip,omitempty"`
+	HTML            string             `json:"html,omitempty"`
+	Inline          bool               `json:"inline,omitempty"`
+	Ordered         bool               `json:"ordered,omitempty"`
+	Unstyled        bool               `json:"unstyled,omitempty"`
+	Bullet          *clickyNode        `json:"bullet,omitempty"`
+	Items           []clickyNode       `json:"items,omitempty"`
+	Fields          []clickyField      `json:"fields,omitempty"`
+	Columns         []clickyColumn     `json:"columns,omitempty"`
+	Rows            []clickyRow        `json:"rows,omitempty"`
+	Roots           []clickyTreeItem   `json:"roots,omitempty"`
+	Label           *clickyNode        `json:"label,omitempty"`
+	Content         *clickyNode        `json:"content,omitempty"`
+	Href            string             `json:"href,omitempty"`
+	Target          string             `json:"target,omitempty"`
+	Command         string             `json:"command,omitempty"`
+	Args            []string           `json:"args,omitempty"`
+	Flags           map[string]string  `json:"flags,omitempty"`
+	AutoRun         bool               `json:"autoRun,omitempty"`
+	ID              string             `json:"id,omitempty"`
+	Payload         string             `json:"payload,omitempty"`
+	Variant         string             `json:"variant,omitempty"`
+	Iconify         string             `json:"iconify,omitempty"`
+	Unicode         string             `json:"unicode,omitempty"`
+	Language        string             `json:"language,omitempty"`
+	Source          string             `json:"source,omitempty"`
+	HighlightedHTML string             `json:"highlightedHtml,omitempty"`
+	ExceptionClass  string             `json:"exceptionClass,omitempty"`
+	Message         string             `json:"message,omitempty"`
+	CausedBy        []string           `json:"causedBy,omitempty"`
+	Frames          []clickyStackFrame `json:"frames,omitempty"`
 	// Badge fields — set for Kind == "badge" (LabelBadge). Rendered by
 	// clicky-ui as <Badge variant="label" label={Value1} value={Value2} />.
 	BadgeLabel string `json:"badgeLabel,omitempty"`
@@ -220,6 +242,10 @@ func convertTextable(t api.Textable) clickyNode {
 		return convertList(v)
 	case *api.List:
 		return convertList(*v)
+	case api.StackTrace:
+		return convertStackTrace(v)
+	case *api.StackTrace:
+		return convertStackTrace(*v)
 	case api.TextMap:
 		return convertTextMap(v, nil)
 	case *api.TextMap:
@@ -520,6 +546,59 @@ func convertCode(code api.Code) clickyNode {
 	}
 }
 
+func convertStackTrace(trace api.StackTrace) clickyNode {
+	node := clickyNode{
+		Kind:           "stacktrace",
+		Plain:          trace.String(),
+		ExceptionClass: trace.ExceptionClass,
+		Message:        trace.Message,
+		CausedBy:       append([]string(nil), trace.CausedBy...),
+		Language:       trace.Language,
+	}
+	if node.Language == "" {
+		node.Language = "java"
+	}
+	for _, frame := range trace.Frames {
+		functionName := frame.Class
+		if frame.Method != "" {
+			if functionName != "" {
+				functionName += "."
+			}
+			functionName += frame.Method
+		}
+		location := frame.File
+		if frame.Line > 0 {
+			if location != "" {
+				location += fmt.Sprintf(":%d", frame.Line)
+			} else {
+				location = fmt.Sprintf(":%d", frame.Line)
+			}
+		}
+		kind := "user"
+		if frame.Runtime {
+			kind = "runtime"
+		}
+		node.Frames = append(node.Frames, clickyStackFrame{
+			FunctionName:      functionName,
+			DisplayName:       functionName,
+			File:              frame.File,
+			Line:              frame.Line,
+			Location:          location,
+			Kind:              kind,
+			Runtime:           frame.Runtime,
+			NativeMethod:      frame.Native,
+			AnnotationText:    frame.Annotation,
+			Class:             frame.Class,
+			Method:            frame.Method,
+			SourceLines:       append([]string(nil), frame.SourceLines...),
+			SourceLineNumbers: append([]int(nil), frame.SourceLineNumbers...),
+			SourceStartLine:   frame.SourceStartLine,
+			SourceLanguage:    frame.SourceLanguage,
+		})
+	}
+	return node
+}
+
 func convertCollapsed(collapsed api.Collapsed) clickyNode {
 	label := clickyNode{
 		Kind:  "text",
@@ -762,7 +841,7 @@ func buildReactHTML(jsonData string) string {
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Clicky</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@flanksource/clicky-ui@latest/src/styles/tokens.css" />
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@flanksource/clicky-ui@^0.2.1/src/styles/tokens.css" />
     <script src="https://code.iconify.design/iconify-icon/2.1.0/iconify-icon.min.js"></script>
     <link id="prism-light" rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism.min.css" />
     <link id="prism-dark" rel="stylesheet" href="https://cdn.jsdelivr.net/npm/prismjs@1.29.0/themes/prism-tomorrow.min.css" disabled />
@@ -819,7 +898,7 @@ func buildReactHTML(jsonData string) string {
           "react/jsx-runtime": "https://esm.sh/preact@10.24.3/jsx-runtime",
           "react-dom": "https://esm.sh/preact@10.24.3/compat",
           "react-dom/client": "https://esm.sh/preact@10.24.3/compat",
-          "@flanksource/clicky-ui": "https://esm.sh/@flanksource/clicky-ui@latest?alias=react:preact/compat,react-dom:preact/compat&deps=preact@10.24.3&external=preact"
+          "@flanksource/clicky-ui": "https://esm.sh/@flanksource/clicky-ui@^0.2.1?alias=react:preact/compat,react-dom:preact/compat&deps=preact@10.24.3&external=preact"
         }
       }
     </script>
@@ -833,7 +912,7 @@ func buildReactHTML(jsonData string) string {
 	b.WriteString(`</script>
     <script type="module">
       import { h, render } from "preact";
-      import { Clicky } from "@flanksource/clicky-ui";
+      import { Clicky, StackTrace } from "@flanksource/clicky-ui";
 
       const LANGUAGE_ALIASES = { sh: "bash", shell: "bash", yml: "yaml", ts: "typescript", js: "javascript", py: "python" };
       function highlightCodeBlocks(root) {
@@ -860,9 +939,40 @@ func buildReactHTML(jsonData string) string {
         }
       }
 
+      function stackTraceInput(node) {
+        return {
+          exceptionClass: node.exceptionClass,
+          message: node.message,
+          causedBy: node.causedBy ?? [],
+          frames: node.frames ?? [],
+          language: node.language || "java",
+        };
+      }
+      function isStackTraceMap(node) {
+        if (!node || node.kind !== "map" || !Array.isArray(node.fields) || node.fields.length === 0) return false;
+        return node.fields.every(f => f && f.value && f.value.kind === "stacktrace");
+      }
+      function renderStackTraceSection(field, idx) {
+        const label = field?.label ?? field?.name ?? "";
+        return h("section", { key: idx, className: "stack-trace-section space-y-1" },
+          label ? h("h3", { className: "text-sm font-semibold text-slate-700" }, label) : null,
+          h(StackTrace, { input: stackTraceInput(field.value), className: "space-y-1" })
+        );
+      }
+      function buildRoot(data) {
+        const node = data?.node;
+        if (node?.kind === "stacktrace") {
+          return h(StackTrace, { input: stackTraceInput(node), className: "space-y-1" });
+        }
+        if (isStackTraceMap(node)) {
+          return h("div", { className: "space-y-3" }, node.fields.map(renderStackTraceSection));
+        }
+        return h(Clicky, { data });
+      }
+
       const output = document.getElementById("root");
       const data = JSON.parse(document.getElementById("clicky-data").textContent);
-      render(h(Clicky, { data }), output);
+      render(buildRoot(data), output);
       highlightCodeBlocks(output);
       new MutationObserver(() => highlightCodeBlocks(output)).observe(output, { childList: true, subtree: true });
     </script>
