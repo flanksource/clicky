@@ -309,6 +309,41 @@ func TestHTMLReactConvertRichTextables(t *testing.T) {
 	}
 }
 
+func TestHTMLReactConvertStackTrace(t *testing.T) {
+	trace := api.NewStackTrace()
+	trace.ExceptionClass = "java.lang.RuntimeException"
+	trace.Message = "boom"
+	trace.Language = "java"
+	trace.Frames = []api.StackFrame{
+		{
+			Class:           "com.example.pas.AddressScreen",
+			Method:          "load",
+			File:            "AddressScreen.java",
+			Line:            42,
+			SourceLines:     []string{"class AddressScreen {", "  void load() { throw boom; }"},
+			SourceStartLine: 41,
+			SourceLanguage:  "java",
+		},
+	}
+
+	node := convertTextable(trace)
+	if node.Kind != "stacktrace" {
+		t.Fatalf("expected stacktrace node, got %s", node.Kind)
+	}
+	if node.ExceptionClass != "java.lang.RuntimeException" || node.Message != "boom" {
+		t.Fatalf("expected exception metadata, got %#v", node)
+	}
+	if len(node.Frames) != 1 {
+		t.Fatalf("expected one frame, got %d", len(node.Frames))
+	}
+	if node.Frames[0].FunctionName != "com.example.pas.AddressScreen.load" {
+		t.Fatalf("expected function name to be preserved, got %q", node.Frames[0].FunctionName)
+	}
+	if len(node.Frames[0].SourceLines) != 2 || node.Frames[0].SourceStartLine != 41 {
+		t.Fatalf("expected source context to be preserved, got %#v", node.Frames[0])
+	}
+}
+
 func TestHTMLReactBuildHTML(t *testing.T) {
 	html := buildReactHTML(`{"version":1,"node":{"kind":"text","text":"hello"}}`)
 
@@ -316,6 +351,7 @@ func TestHTMLReactBuildHTML(t *testing.T) {
 		"clicky-data",
 		`id="root"`,
 		"@flanksource/clicky-ui",
+		"StackTrace",
 		"importmap",
 		`data-theme="light"`,
 		"tokens.css",

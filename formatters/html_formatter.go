@@ -138,6 +138,24 @@ func (f *HTMLFormatter) getCSS() string {
 	return css
 }
 
+// wrapHTMLBody wraps a pre-rendered HTML fragment in the same shell the
+// Pretty branch uses, so callers that have produced their own structured
+// HTML (e.g. StackTrace.HTML) get the surrounding Tailwind chrome and CSS
+// links without re-implementing the boilerplate.
+func (f *HTMLFormatter) wrapHTMLBody(body string) string {
+	if !f.IncludeCSS {
+		return body
+	}
+	var result strings.Builder
+	result.WriteString(f.getCSS())
+	result.WriteString("        <div class=\"bg-white rounded-lg shadow p-6\">\n")
+	result.WriteString("            ")
+	result.WriteString(body)
+	result.WriteString("\n        </div>\n")
+	result.WriteString("    </div>\n</body>\n</html>")
+	return result.String()
+}
+
 // getPDFCSS returns PDF-specific style overrides
 func (f *HTMLFormatter) getPDFCSS() string {
 	return `
@@ -171,6 +189,17 @@ func (f *HTMLFormatter) format(in interface{}, options FormatOptions) (string, e
 	// This handles single TreeNode structs like ASTNode that need recursive rendering
 	if treeNode, ok := in.(api.TreeNode); ok {
 		return f.formatSingleTreeNode(treeNode), nil
+	}
+
+	// StackTrace ships its own structured HTML renderer (semantic frame blocks,
+	// monospaced gutter, syntax-highlighted source) that the generic
+	// Text-tree-via-Pretty path cannot reproduce. Handle it before the Pretty
+	// branch so the richer output wins.
+	if trace, ok := in.(api.StackTrace); ok {
+		return f.wrapHTMLBody(trace.HTML()), nil
+	}
+	if trace, ok := in.(*api.StackTrace); ok {
+		return f.wrapHTMLBody(trace.HTML()), nil
 	}
 
 	// Check if input implements Pretty interface
