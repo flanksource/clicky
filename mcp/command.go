@@ -9,6 +9,7 @@ import (
 	"syscall"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/flanksource/clicky/formatters"
 	"github.com/spf13/cobra"
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
@@ -57,6 +58,7 @@ The MCP command group provides functionality to:
 	mcpCmd.AddCommand(newInstallCommand(opts))
 	mcpCmd.AddCommand(newConfigCommand(opts))
 	mcpCmd.AddCommand(newPromptCommand(opts))
+	mcpCmd.AddCommand(newToolsCommand(opts))
 
 	// Global MCP flags. Verbose output is controlled by clicky's existing
 	// --loglevel/-v flag and the VERBOSE/DEBUG env vars honored by the server,
@@ -99,28 +101,9 @@ Examples:
 				configPath = GetConfigPathFor(rootAppName(cmd))
 			}
 
-			config, err := LoadConfig(configPath)
+			config, err := loadCommandConfig(configPath, opts.InitialConfig)
 			if err != nil {
 				return fmt.Errorf("failed to load configuration: %w", err)
-			}
-
-			// Merge initial config (from NewCommandWithConfig)
-			if ic := opts.InitialConfig; ic != nil {
-				if ic.Name != "" {
-					config.Name = ic.Name
-				}
-				if ic.Version != "" {
-					config.Version = ic.Version
-				}
-				if ic.Tools.AutoExpose {
-					config.Tools.AutoExpose = true
-				}
-				config.Tools.Exclude = append(config.Tools.Exclude, ic.Tools.Exclude...)
-				config.Tools.Include = append(config.Tools.Include, ic.Tools.Include...)
-				config.Tools.IgnoredParams = append(config.Tools.IgnoredParams, ic.Tools.IgnoredParams...)
-				if ic.Tools.Format != nil {
-					config.Tools.Format = ic.Tools.Format
-				}
 			}
 
 			// Apply command-line overrides
@@ -195,7 +178,7 @@ security settings, and transport options.`,
 				configPath = GetConfigPathFor(rootAppName(cmd))
 			}
 
-			config, err := LoadConfig(configPath)
+			config, err := loadCommandConfig(configPath, opts.InitialConfig)
 			if err != nil {
 				return fmt.Errorf("failed to load configuration: %w", err)
 			}
@@ -204,6 +187,128 @@ security settings, and transport options.`,
 			return nil
 		},
 	}
+}
+
+// newToolsCommand creates the tools subcommand: pretty-prints the tools and
+// parameters that this MCP server would expose for the host CLI, honoring
+// the same Exclude/Include/IgnoreParams/Format settings used at runtime.
+func newToolsCommand(opts *CommandOptions) *cobra.Command {
+	var format string
+	cmd := &cobra.Command{
+		Use:   "tools",
+		Short: "Show the MCP tools this CLI exposes, with parameters and defaults",
+		Long: `Render the catalogue of MCP tools that 'mcp serve' would publish.
+
+The output reflects the same Exclude / Include / IgnoreParams settings
+configured by the host application or via the on-disk config file, so it
+doubles as a dry-run for what AI clients will see.
+
+Output defaults to ANSI-colored ('pretty'); pass --format to override.`,
+		Example: `  app mcp tools                # ANSI-colored catalogue (default)
+  app mcp tools --format markdown
+  app mcp tools --format plain`,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			configPath := opts.ConfigPath
+			if configPath == "" {
+				configPath = GetConfigPathFor(rootAppName(cmd))
+			}
+			config, err := loadCommandConfig(configPath, opts.InitialConfig)
+			if err != nil {
+				return fmt.Errorf("failed to load configuration: %w", err)
+			}
+
+			rootCmd := cmd.Root()
+
+			registry := NewToolRegistry(config)
+			if err := registry.RegisterCommandTree(rootCmd); err != nil {
+				return fmt.Errorf("failed to register command tree: %w", err)
+			}
+
+			renderOpts := &formatters.FormatOptions{Format: format}
+			out := RenderDiscoverToolsString(registry.GetTools(), renderOpts)
+			fmt.Fprintln(cmd.OutOrStdout(), out)
+			return nil
+		},
+	}
+	cmd.Flags().StringVar(&format, "format", "pretty", "Output format: pretty, markdown, or plain")
+	return cmd
+}
+
+func loadCommandConfig(configPath string, initial *Config) (*Config, error) {
+	config, err := LoadConfig(configPath)
+	if err != nil {
+		return nil, err
+	}
+	mergeInitialConfig(config, initial)
+	return config, nil
+}
+
+// mergeInitialConfig applies host-provided MCP defaults from
+// NewCommandWithConfig. These values intentionally win over the persisted file:
+// they describe the embedding application contract, while the file supplies
+// user-managed additions.
+func mergeInitialConfig(config *Config, initial *Config) {
+	if config == nil || initial == nil {
+		return
+	}
+	if initial.Name != "" {
+		config.Name = initial.Name
+	}
+	if initial.Description != "" {
+		config.Description = initial.Description
+	}
+	if initial.Version != "" {
+		config.Version = initial.Version
+	}
+	if initial.Transport.Type != "" {
+		config.Transport.Type = initial.Transport.Type
+	}
+	if initial.Transport.Address != "" {
+		config.Transport.Address = initial.Transport.Address
+	}
+	if initial.Transport.Port != 0 {
+		config.Transport.Port = initial.Transport.Port
+	}
+
+	config.Security.RequireConfirmation = initial.Security.RequireConfirmation
+	config.Security.AuditLog = initial.Security.AuditLog
+	if initial.Security.TimeoutSeconds != 0 {
+		config.Security.TimeoutSeconds = initial.Security.TimeoutSeconds
+	}
+	config.Security.AllowedCommands = appendUniqueStrings(config.Security.AllowedCommands, initial.Security.AllowedCommands...)
+	config.Security.BlockedCommands = appendUniqueStrings(config.Security.BlockedCommands, initial.Security.BlockedCommands...)
+
+	if initial.Tools.AutoExpose {
+		config.Tools.AutoExpose = true
+	}
+	config.Tools.Exclude = appendUniqueStrings(config.Tools.Exclude, initial.Tools.Exclude...)
+	config.Tools.Include = appendUniqueStrings(config.Tools.Include, initial.Tools.Include...)
+	config.Tools.IgnoredParams = append(config.Tools.IgnoredParams, initial.Tools.IgnoredParams...)
+	if initial.Tools.Format != nil {
+		config.Tools.Format = initial.Tools.Format
+	}
+	for name, desc := range initial.Tools.Descriptions {
+		if config.Tools.Descriptions == nil {
+			config.Tools.Descriptions = map[string]string{}
+		}
+		config.Tools.Descriptions[name] = desc
+	}
+}
+
+func appendUniqueStrings(base []string, values ...string) []string {
+	for _, value := range values {
+		found := false
+		for _, existing := range base {
+			if existing == value {
+				found = true
+				break
+			}
+		}
+		if !found {
+			base = append(base, value)
+		}
+	}
+	return base
 }
 
 // displayServerInfo shows server startup information
@@ -563,4 +668,3 @@ Tool discovery has moved: use 'app mcp tools discover' (or call the
 
 	return cmd
 }
-

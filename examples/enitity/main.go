@@ -19,6 +19,8 @@ import (
 	"github.com/flanksource/clicky"
 	"github.com/flanksource/clicky/api"
 	"github.com/flanksource/clicky/extensions"
+	"github.com/flanksource/clicky/formatters"
+	"github.com/flanksource/clicky/mcp"
 	"github.com/flanksource/clicky/rpc"
 	"github.com/spf13/cobra"
 )
@@ -1172,6 +1174,20 @@ and the executor-backed OpenAPI serve mode from the same registrations.`,
 	})
 
 	rootCmd.AddCommand(newServeUICommand())
+
+	// Expose every entity command as an MCP tool so the same registrations
+	// drive a Claude/Cursor-compatible server. Demonstrates the fluent
+	// Builder API: hide infra-only commands, strip flags that don't make
+	// sense over MCP, and force Markdown-without-color output so AI
+	// clients receive predictable, parseable text.
+	rootCmd.AddCommand(
+		mcp.NewMcpServer(rootCmd).
+			AutoExpose().
+			WithExclude("serve-ui").
+			IgnoreParams("*", "--host", "--port").
+			WithFormat(formatters.FormatOptions{Markdown: true, NoColor: true}).
+			Command(),
+	)
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)

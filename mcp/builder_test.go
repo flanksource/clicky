@@ -97,4 +97,16 @@ func TestBuilder_Command(t *testing.T) {
 	if cmd.Use != "mcp" {
 		t.Errorf("expected Use=mcp, got %q", cmd.Use)
 	}
+
+	want := map[string]bool{"serve": false, "config": false, "prompt": false, "tools": false, "install": false}
+	for _, sub := range cmd.Commands() {
+		if _, expected := want[sub.Name()]; expected {
+			want[sub.Name()] = true
+		}
+	}
+	for name, found := range want {
+		if !found {
+			t.Errorf("expected mcp subcommand %q to be registered", name)
+		}
+	}
 }

@@ -5,14 +5,18 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
+	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/flanksource/clicky/formatters"
 	"github.com/flanksource/clicky/task"
 	flanksourceContext "github.com/flanksource/commons/context"
+	"github.com/google/uuid"
 	"github.com/spf13/cobra"
 
 	"github.com/flanksource/clicky"
@@ -74,8 +78,8 @@ func (s *MCPServer) Start(ctx context.Context) error {
 	switch s.config.Transport.Type {
 	case "stdio":
 		return s.startStdioServer(ctx)
-	case "http":
-		return s.startHTTPServer(ctx)
+	case "http", "sse":
+		return s.startSSEServer(ctx)
 	default:
 		return fmt.Errorf("unsupported transport type: %s", s.config.Transport.Type)
 	}
@@ -130,10 +134,179 @@ func (s *MCPServer) startStdioServer(ctx context.Context) error {
 	}
 }
 
-// startHTTPServer starts the server using HTTP transport (placeholder)
-func (s *MCPServer) startHTTPServer(ctx context.Context) error {
-	// TODO: Implement HTTP transport
-	return fmt.Errorf("HTTP transport not yet implemented")
+// sseSession holds the per-client state for an active SSE connection. The
+// SSE GET handler owns the events channel and pumps events to the wire; the
+// POST handler dispatches a JSON-RPC request and writes the response back
+// onto events. closed prevents a slow client from blocking the handler
+// after the stream has gone away.
+type sseSession struct {
+	id     string
+	events chan []byte
+
+	mu     sync.Mutex
+	closed bool
+}
+
+func (s *sseSession) send(payload []byte) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return false
+	}
+	select {
+	case s.events <- payload:
+		return true
+	default:
+		return false
+	}
+}
+
+func (s *sseSession) close() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return
+	}
+	s.closed = true
+	close(s.events)
+}
+
+// startSSEServer starts the server using SSE transport. It exposes:
+//   - GET  /sse                          — opens an event stream and emits an
+//     `endpoint` event whose data is the relative URL the client should POST
+//     JSON-RPC requests to.
+//   - POST /messages?session_id=<uuid>   — dispatches one JSON-RPC request
+//     and pushes the response back onto the corresponding SSE stream as a
+//     `message` event.
+//
+// This matches the MCP SSE transport contract used by Claude Desktop and
+// other clients.
+func (s *MCPServer) startSSEServer(ctx context.Context) error {
+	addr := s.config.Transport.Address
+	if addr == "" {
+		addr = "127.0.0.1"
+	}
+	port := s.config.Transport.Port
+	if port == 0 {
+		port = 8080
+	}
+	listenAddr := fmt.Sprintf("%s:%d", addr, port)
+
+	sessions := &sync.Map{} // session_id -> *sseSession
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("/sse", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodGet {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		flusher, ok := w.(http.Flusher)
+		if !ok {
+			http.Error(w, "streaming unsupported", http.StatusInternalServerError)
+			return
+		}
+
+		session := &sseSession{
+			id:     uuid.NewString(),
+			events: make(chan []byte, 16),
+		}
+		sessions.Store(session.id, session)
+		defer func() {
+			sessions.Delete(session.id)
+			session.close()
+		}()
+
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("Connection", "keep-alive")
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+
+		endpoint := fmt.Sprintf("/messages?session_id=%s", session.id)
+		fmt.Fprintf(w, "event: endpoint\ndata: %s\n\n", endpoint)
+		flusher.Flush()
+
+		clientGone := r.Context().Done()
+		serverGone := ctx.Done()
+		keepalive := time.NewTicker(15 * time.Second)
+		defer keepalive.Stop()
+
+		for {
+			select {
+			case <-clientGone:
+				return
+			case <-serverGone:
+				return
+			case <-keepalive.C:
+				fmt.Fprintf(w, ": keepalive\n\n")
+				flusher.Flush()
+			case payload, ok := <-session.events:
+				if !ok {
+					return
+				}
+				fmt.Fprintf(w, "event: message\ndata: %s\n\n", payload)
+				flusher.Flush()
+			}
+		}
+	})
+
+	mux.HandleFunc("/messages", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+		sessionID := r.URL.Query().Get("session_id")
+		raw, ok := sessions.Load(sessionID)
+		if !ok {
+			http.Error(w, "unknown session_id", http.StatusNotFound)
+			return
+		}
+		session := raw.(*sseSession)
+
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			http.Error(w, "read error", http.StatusBadRequest)
+			return
+		}
+
+		response, err := s.handleJSONRPCRequest(r.Context(), string(body))
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		w.WriteHeader(http.StatusAccepted)
+
+		if response == nil {
+			return
+		}
+		payload, err := json.Marshal(response)
+		if err != nil {
+			log.Printf("Error marshaling SSE response: %v", err)
+			return
+		}
+		if !session.send(payload) {
+			log.Printf("Failed to deliver SSE response for session %s", sessionID)
+		}
+	})
+
+	srv := &http.Server{
+		Addr:              listenAddr,
+		Handler:           mux,
+		ReadHeaderTimeout: 10 * time.Second,
+	}
+
+	go func() {
+		<-ctx.Done()
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = srv.Shutdown(shutdownCtx)
+	}()
+
+	fmt.Fprintf(os.Stderr, "MCP SSE server listening on http://%s/sse\n", listenAddr)
+	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		return fmt.Errorf("SSE server failed: %w", err)
+	}
+	return nil
 }
 
 // JSONRPCRequest represents an MCP JSON-RPC request
@@ -292,22 +465,6 @@ func (s *MCPServer) handleToolsCall(ctx context.Context, req JSONRPCRequest) (*J
 		}, nil
 	}
 
-	// Built-in tools (Command == nil) go through their dedicated handler.
-	if tool.Command == nil {
-		result, err := s.executeBuiltin(tool, params.Arguments)
-		if err != nil {
-			return &JSONRPCResponse{
-				JSONRPC: "2.0",
-				ID:      req.ID,
-				Result: ToolCallResult{
-					Content: []ContentBlock{{Type: "text", Text: fmt.Sprintf("Tool execution failed: %v", err)}},
-					IsError: true,
-				},
-			}, nil
-		}
-		return &JSONRPCResponse{JSONRPC: "2.0", ID: req.ID, Result: result}, nil
-	}
-
 	// Execute the tool using TaskManager
 	result, err := s.executeToolWithTaskManager(ctx, tool, params.Arguments)
 	if err != nil {
@@ -331,27 +488,6 @@ func (s *MCPServer) handleToolsCall(ctx context.Context, req JSONRPCRequest) (*J
 		ID:      req.ID,
 		Result:  result,
 	}, nil
-}
-
-// executeBuiltin handles tools registered without a backing cobra.Command.
-// Currently just discover-tools. Returns a single text ContentBlock.
-func (s *MCPServer) executeBuiltin(tool *ToolDefinition, args map[string]interface{}) (*ToolCallResult, error) {
-	switch tool.Name {
-	case discoverToolsName:
-		opts := s.config.Tools.Format
-		if raw, ok := args["format"]; ok {
-			if str, ok := raw.(string); ok && str != "" {
-				clone := formatters.FormatOptions{Format: str}
-				opts = &clone
-			}
-		}
-		text := RenderDiscoverToolsString(s.registry.GetTools(), opts)
-		return &ToolCallResult{
-			Content: []ContentBlock{{Type: "text", Text: text}},
-		}, nil
-	default:
-		return nil, fmt.Errorf("unknown built-in tool: %s", tool.Name)
-	}
 }
 
 // executeToolWithTaskManager executes a tool using the TaskManager
