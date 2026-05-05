@@ -91,3 +91,4 @@ ginkgo.report
 examples/uber_demo/uber_demo
 .gavel/
 examples/enitity/webapp/dist/
+examples/enitity/enitity
