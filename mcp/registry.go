@@ -132,38 +132,12 @@ func NewToolRegistry(config *Config) *ToolRegistry {
 	// Create RPC converter with default config
 	rpcConfig := rpc.DefaultConfig()
 
-	r := &ToolRegistry{
+	return &ToolRegistry{
 		config:       config,
 		tools:        make(map[string]*ToolDefinition),
 		rpcConverter: rpc.NewConverter(rpcConfig),
 	}
-	r.registerBuiltins()
-	return r
 }
-
-// registerBuiltins adds tools that aren't backed by a cobra command.
-// These have a nil Command field; handleToolsCall dispatches them
-// through executeBuiltin instead of executeToolWithTaskManager.
-func (r *ToolRegistry) registerBuiltins() {
-	r.tools[discoverToolsName] = &ToolDefinition{
-		Name:        discoverToolsName,
-		Title:       "Discover MCP Tools",
-		Description: "Returns a catalogue of every registered MCP tool, with parameters, defaults, and constraints. Use this before invoking unfamiliar tools.",
-		InputSchema: Schema{
-			Type: "object",
-			Properties: map[string]Property{
-				"format": {
-					Type:        "string",
-					Description: "Output format. Defaults to the server's configured format.",
-					Enum:        []string{"markdown", "ansi", "plain"},
-				},
-			},
-			Required: []string{},
-		},
-	}
-}
-
-const discoverToolsName = "discover-tools"
 
 // RegisterCommand registers a cobra command as an MCP tool
 func (r *ToolRegistry) RegisterCommand(cmd *cobra.Command) error {

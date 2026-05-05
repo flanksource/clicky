@@ -674,4 +674,3 @@ Tool discovery has moved: use 'app mcp tools' (or call the
 
 	return cmd
 }
-
