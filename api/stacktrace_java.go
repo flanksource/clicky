@@ -85,10 +85,10 @@ func ParseJavaStackTrace(input string, opts ...StackTraceOption) StackTrace {
 func parseJavaFrame(m []string) StackFrame {
 	f := StackFrame{Class: m[1], Method: m[2]}
 	loc := strings.TrimSpace(m[3])
-	switch {
-	case loc == "Native Method":
+	switch loc {
+	case "Native Method":
 		f.Native = true
-	case loc == "Unknown Source":
+	case "Unknown Source":
 		// no file/line info
 	default:
 		// strip jar descriptor like " ~[exampleapp.jar:?]"
