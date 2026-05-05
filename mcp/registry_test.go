@@ -123,16 +123,9 @@ func TestRegistry_RegisterCommand_AppliesIgnoredParams(t *testing.T) {
 	}
 }
 
-func TestRegistry_BuiltinDiscoverToolsRegistered(t *testing.T) {
+func TestRegistry_NoDiscoverToolsBuiltin(t *testing.T) {
 	r := NewToolRegistry(DefaultConfig())
-	tool, ok := r.GetTool(discoverToolsName)
-	if !ok {
-		t.Fatal("discover-tools built-in not registered")
-	}
-	if tool.Command != nil {
-		t.Errorf("discover-tools must have nil Command (built-in marker)")
-	}
-	if _, ok := tool.InputSchema.Properties["format"]; !ok {
-		t.Errorf("discover-tools should expose a 'format' parameter")
+	if _, ok := r.GetTool("discover-tools"); ok {
+		t.Fatal("discover-tools must not be exposed as a regular MCP tool; it lives under `mcp tools`")
 	}
 }
