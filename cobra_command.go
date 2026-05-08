@@ -243,7 +243,7 @@ func AddNamedCommand[T any, R any](name string, parent *cobra.Command, opts T, f
 		// Call the function
 		result, err := fn(optsValue.Interface().(T))
 		if err != nil {
-			logger.GetSlogLogger().WithSkipReportLevel(1).Errorf("Command %s failed: %v", name, err)
+			logger.GetSlogLogger().WithSkipReportLevel(2).Errorf("Command %s failed: %w", name, err)
 			return err
 		}
 
