@@ -1309,7 +1309,7 @@ func showStackTrace(opts StackTraceOptions) (any, error) {
 	return StackTraceShowcase{
 		WithSource:    clicky.StackTrace(javaSampleTrace, resolvedOpts...),
 		WithoutSource: clicky.StackTrace(javaNullPointerTrace, headersOnlyOpts...),
-		NativeFrames:  clicky.StackTrace(javaNullPointerTrace),
+		NativeFrames:  clicky.StackTrace(javaNullPointerTrace, headersOnlyOpts...),
 	}, nil
 }
 

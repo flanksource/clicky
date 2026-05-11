@@ -4,10 +4,12 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"sync"
@@ -18,6 +20,7 @@ import (
 	flanksourceContext "github.com/flanksource/commons/context"
 	"github.com/google/uuid"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 
 	"github.com/flanksource/clicky"
 )
@@ -29,7 +32,10 @@ type MCPServer struct {
 	promptRegistry *PromptRegistry
 	rootCmd        *cobra.Command
 	verbose        bool
+	execMu         sync.Mutex
 }
+
+const maxSSEMessageBytes = 1 << 20
 
 // NewMCPServer creates a new MCP server
 func NewMCPServer(config *Config, rootCmd *cobra.Command) *MCPServer {
@@ -200,6 +206,10 @@ func (s *MCPServer) startSSEServer(ctx context.Context) error {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
+		if !sameOriginOrNoOrigin(r) {
+			http.Error(w, "forbidden origin", http.StatusForbidden)
+			return
+		}
 		flusher, ok := w.(http.Flusher)
 		if !ok {
 			http.Error(w, "streaming unsupported", http.StatusInternalServerError)
@@ -219,7 +229,6 @@ func (s *MCPServer) startSSEServer(ctx context.Context) error {
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.Header().Set("Cache-Control", "no-cache")
 		w.Header().Set("Connection", "keep-alive")
-		w.Header().Set("Access-Control-Allow-Origin", "*")
 
 		endpoint := fmt.Sprintf("/messages?session_id=%s", session.id)
 		fmt.Fprintf(w, "event: endpoint\ndata: %s\n\n", endpoint)
@@ -254,6 +263,10 @@ func (s *MCPServer) startSSEServer(ctx context.Context) error {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
+		if !sameOriginOrNoOrigin(r) {
+			http.Error(w, "forbidden origin", http.StatusForbidden)
+			return
+		}
 		sessionID := r.URL.Query().Get("session_id")
 		raw, ok := sessions.Load(sessionID)
 		if !ok {
@@ -262,8 +275,13 @@ func (s *MCPServer) startSSEServer(ctx context.Context) error {
 		}
 		session := raw.(*sseSession)
 
-		body, err := io.ReadAll(r.Body)
+		body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxSSEMessageBytes))
 		if err != nil {
+			var maxErr *http.MaxBytesError
+			if errors.As(err, &maxErr) {
+				http.Error(w, "request body too large", http.StatusRequestEntityTooLarge)
+				return
+			}
 			http.Error(w, "read error", http.StatusBadRequest)
 			return
 		}
@@ -307,6 +325,18 @@ func (s *MCPServer) startSSEServer(ctx context.Context) error {
 		return fmt.Errorf("SSE server failed: %w", err)
 	}
 	return nil
+}
+
+func sameOriginOrNoOrigin(r *http.Request) bool {
+	origin := r.Header.Get("Origin")
+	if origin == "" {
+		return true
+	}
+	u, err := url.Parse(origin)
+	if err != nil || u.Host == "" {
+		return false
+	}
+	return strings.EqualFold(u.Host, r.Host)
 }
 
 // JSONRPCRequest represents an MCP JSON-RPC request
@@ -520,6 +550,9 @@ func (s *MCPServer) executeToolWithTaskManager(ctx context.Context, tool *ToolDe
 	// Create a task for the tool execution
 	task := clicky.StartTask(fmt.Sprintf("MCP: %s", tool.Name),
 		func(ctx flanksourceContext.Context, t *clicky.Task) (interface{}, error) {
+			s.execMu.Lock()
+			defer s.execMu.Unlock()
+
 			// Set up command arguments
 			if tool.Command == nil {
 				return nil, fmt.Errorf("tool command not available")
@@ -710,20 +743,16 @@ func formatName(opts *formatters.FormatOptions) string {
 }
 
 func setFlagBestEffort(cmd *cobra.Command, name, value string) {
-	flag := cmd.Flags().Lookup(name)
-	if flag == nil {
-		flag = cmd.PersistentFlags().Lookup(name)
-	}
+	flag := lookupCommandFlag(cmd, name)
 	if flag == nil {
 		return
 	}
-	_ = flag.Value.Set(value)
+	_ = setCommandFlag(flag, value)
 }
 
 // applyArgsToCommand applies arguments to cobra command flags
 func (s *MCPServer) applyArgsToCommand(cmd *cobra.Command, args map[string]interface{}) error {
-	// Reset command flags to defaults
-	cmd.ResetFlags()
+	resetCommandState(cmd)
 
 	// Apply each argument
 	for key, value := range args {
@@ -740,35 +769,64 @@ func (s *MCPServer) applyArgsToCommand(cmd *cobra.Command, args map[string]inter
 		}
 
 		// Find the flag
-		flag := cmd.Flags().Lookup(key)
+		flag := lookupCommandFlag(cmd, key)
 		if flag == nil {
-			// Try persistent flags
-			flag = cmd.PersistentFlags().Lookup(key)
-			if flag == nil {
-				return fmt.Errorf("unknown flag: %s", key)
-			}
+			return fmt.Errorf("unknown flag: %s", key)
 		}
 
 		// Set the flag value
 		switch v := value.(type) {
 		case bool:
-			if v {
-				if err := flag.Value.Set("true"); err != nil {
-					return fmt.Errorf("failed to set flag %s: %w", key, err)
-				}
+			if err := setCommandFlag(flag, fmt.Sprintf("%t", v)); err != nil {
+				return fmt.Errorf("failed to set flag %s: %w", key, err)
 			}
 		case string:
-			if err := flag.Value.Set(v); err != nil {
+			if err := setCommandFlag(flag, v); err != nil {
 				return fmt.Errorf("failed to set flag %s: %w", key, err)
 			}
 		default:
-			if err := flag.Value.Set(fmt.Sprintf("%v", v)); err != nil {
+			if err := setCommandFlag(flag, fmt.Sprintf("%v", v)); err != nil {
 				return fmt.Errorf("failed to set flag %s: %w", key, err)
 			}
 		}
 	}
 
 	return nil
+}
+
+func setCommandFlag(flag *pflag.Flag, value string) error {
+	if err := flag.Value.Set(value); err != nil {
+		return err
+	}
+	flag.Changed = true
+	return nil
+}
+
+func lookupCommandFlag(cmd *cobra.Command, name string) *pflag.Flag {
+	if flag := cmd.Flags().Lookup(name); flag != nil {
+		return flag
+	}
+	if flag := cmd.PersistentFlags().Lookup(name); flag != nil {
+		return flag
+	}
+	return cmd.InheritedFlags().Lookup(name)
+}
+
+func resetCommandState(cmd *cobra.Command) {
+	cmd.SetArgs(nil)
+	resetFlagSet(cmd.Flags())
+	resetFlagSet(cmd.PersistentFlags())
+	resetFlagSet(cmd.InheritedFlags())
+}
+
+func resetFlagSet(flags *pflag.FlagSet) {
+	if flags == nil {
+		return
+	}
+	flags.VisitAll(func(flag *pflag.Flag) {
+		_ = flag.Value.Set(flag.DefValue)
+		flag.Changed = false
+	})
 }
 
 // handlePromptsList handles the MCP prompts/list request
@@ -844,4 +902,3 @@ func (s *MCPServer) handlePromptsGet(req JSONRPCRequest) (*JSONRPCResponse, erro
 		Result:  response,
 	}, nil
 }
-

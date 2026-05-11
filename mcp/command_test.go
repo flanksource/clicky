@@ -1,10 +1,13 @@
 package mcp
 
 import (
+	"bytes"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/flanksource/clicky/formatters"
+	"github.com/spf13/cobra"
 )
 
 func TestLoadCommandConfigMergesInitialHostDefaults(t *testing.T) {
@@ -59,6 +62,38 @@ func TestLoadCommandConfigMergesInitialHostDefaults(t *testing.T) {
 	}
 	if config.Tools.Format == nil || !config.Tools.Format.Markdown || !config.Tools.Format.NoColor {
 		t.Fatalf("Format override not merged: %#v", config.Tools.Format)
+	}
+}
+
+func TestToolsCommandUsesConfiguredFormatWhenFlagOmitted(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "mcp-config.json")
+	initial := DefaultConfig()
+	initial.Tools.AutoExpose = true
+	initial.Tools.Format = &formatters.FormatOptions{Markdown: true, NoColor: true}
+
+	root := &cobra.Command{Use: "app"}
+	root.AddCommand(&cobra.Command{
+		Use:   "status",
+		Short: "Show status",
+		Run:   func(*cobra.Command, []string) {},
+	})
+	root.AddCommand(NewCommandWithConfig(initial))
+
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+	root.SetArgs([]string{"mcp", "--config", path, "tools"})
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("execute mcp tools: %v", err)
+	}
+
+	got := out.String()
+	if !strings.Contains(got, "**status**") {
+		t.Fatalf("expected markdown formatted tool name, got:\n%s", got)
+	}
+	if strings.Contains(got, "\x1b[") {
+		t.Fatalf("expected configured markdown/no-color format, got ANSI:\n%s", got)
 	}
 }
 

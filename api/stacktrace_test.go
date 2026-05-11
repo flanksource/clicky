@@ -87,6 +87,24 @@ func TestStackTrace_NoResolverRendersHeadersOnly(t *testing.T) {
 	}
 }
 
+func TestStackTrace_RendersExplicitSourceLineNumbersWithoutStartLine(t *testing.T) {
+	s := NewStackTrace()
+	s.Frames = []StackFrame{{
+		Class:             "com.example.App",
+		Method:            "run",
+		File:              "App.java",
+		Line:              42,
+		SourceLines:       []string{"before();", "run();", "after();"},
+		SourceLineNumbers: []int{41, 42, 43},
+		SourceLanguage:    "java",
+	}}
+
+	out := s.Render().ANSI()
+	if !strings.Contains(out, "42: run();") {
+		t.Fatalf("expected explicit source line number in output, got:\n%s", out)
+	}
+}
+
 func TestStackTrace_MaxFramesTruncates(t *testing.T) {
 	s := ParseJavaStackTrace(javaSample, WithMaxFrames(1))
 	out := s.Render().ANSI()

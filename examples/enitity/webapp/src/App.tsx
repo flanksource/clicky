@@ -31,15 +31,22 @@ export function App() {
           </div>
           <div className="flex items-center gap-3">
             <nav
-              role="tablist"
               aria-label="Top sections"
               className="flex items-center gap-1 rounded-full border border-border/70 bg-muted/40 p-1"
             >
-              <Link to="/stacks" className={topNavLinkClass(!showingLinks)} role="tab">
+              <Link
+                to="/stacks"
+                className={topNavLinkClass(!showingLinks)}
+                aria-current={!showingLinks ? "page" : undefined}
+              >
                 <Icon name="ph:squares-four" className="text-muted-foreground" />
                 Explorer
               </Link>
-              <Link to="/links" className={topNavLinkClass(showingLinks)} role="tab">
+              <Link
+                to="/links"
+                className={topNavLinkClass(showingLinks)}
+                aria-current={showingLinks ? "page" : undefined}
+              >
                 <Icon name="ph:link" className="text-muted-foreground" />
                 Link Examples
               </Link>

@@ -285,7 +285,7 @@ func (s StackTrace) renderHTML() string {
 // without source render as a flat row so a stack of header-only frames reads
 // as a single coalesced list rather than a column of empty cards.
 func (s StackTrace) renderHTMLFrame(b *strings.Builder, f StackFrame) {
-	hasSource := len(f.SourceLines) > 0 && f.SourceStartLine > 0
+	hasSource := frameHasSource(f)
 
 	textClass := "text-slate-800"
 	if f.Runtime {
@@ -336,10 +336,7 @@ func (s StackTrace) renderHTMLFrame(b *strings.Builder, f StackFrame) {
 func (s StackTrace) renderHTMLSource(b *strings.Builder, f StackFrame) {
 	b.WriteString(`<div class="stack-source bg-slate-50">`)
 	for idx, src := range f.SourceLines {
-		line := f.SourceStartLine + idx
-		if idx < len(f.SourceLineNumbers) && f.SourceLineNumbers[idx] > 0 {
-			line = f.SourceLineNumbers[idx]
-		}
+		line := frameSourceLineNumber(f, idx)
 		// Every row carries a 2px left border so the focal row's red marker
 		// doesn't shift the gutter/code columns relative to surrounding rows.
 		// Non-focal rows use a transparent border to reserve the same width.
@@ -402,14 +399,11 @@ func renderFrameHeader(f StackFrame) Text {
 }
 
 func appendSourceLines(out Text, f StackFrame, opts stackTraceOptions) Text {
-	if len(f.SourceLines) == 0 || f.SourceStartLine <= 0 {
+	if !frameHasSource(f) {
 		return out
 	}
 	for idx, src := range f.SourceLines {
-		line := f.SourceStartLine + idx
-		if idx < len(f.SourceLineNumbers) && f.SourceLineNumbers[idx] > 0 {
-			line = f.SourceLineNumbers[idx]
-		}
+		line := frameSourceLineNumber(f, idx)
 		out = out.Add(Text{Content: "\n"})
 		marker := "    "
 		style := "text-muted-foreground"
@@ -420,6 +414,31 @@ func appendSourceLines(out Text, f StackFrame, opts stackTraceOptions) Text {
 		out = out.Add(Text{Content: fmt.Sprintf("%s%4d: %s", marker, line, src), Style: style})
 	}
 	return out
+}
+
+func frameHasSource(f StackFrame) bool {
+	if len(f.SourceLines) == 0 {
+		return false
+	}
+	if f.SourceStartLine > 0 {
+		return true
+	}
+	for _, line := range f.SourceLineNumbers {
+		if line > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+func frameSourceLineNumber(f StackFrame, idx int) int {
+	if idx < len(f.SourceLineNumbers) && f.SourceLineNumbers[idx] > 0 {
+		return f.SourceLineNumbers[idx]
+	}
+	if f.SourceStartLine > 0 {
+		return f.SourceStartLine + idx
+	}
+	return idx + 1
 }
 
 // NewStackTrace returns an empty trace with options applied. Language-specific
