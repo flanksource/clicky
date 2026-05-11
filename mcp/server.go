@@ -902,4 +902,3 @@ func (s *MCPServer) handlePromptsGet(req JSONRPCRequest) (*JSONRPCResponse, erro
 		Result:  response,
 	}, nil
 }
-
