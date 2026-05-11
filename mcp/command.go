@@ -203,7 +203,7 @@ The output reflects the same Exclude / Include / IgnoreParams settings
 configured by the host application or via the on-disk config file, so it
 doubles as a dry-run for what AI clients will see.
 
-Output defaults to ANSI-colored ('pretty'); pass --format to override.`,
+Output uses the configured runtime format; pass --format to override.`,
 		Example: `  app mcp tools                # ANSI-colored catalogue (default)
   app mcp tools --format markdown
   app mcp tools --format plain`,
@@ -224,13 +224,19 @@ Output defaults to ANSI-colored ('pretty'); pass --format to override.`,
 				return fmt.Errorf("failed to register command tree: %w", err)
 			}
 
-			renderOpts := &formatters.FormatOptions{Format: format}
+			renderOpts := config.Tools.Format
+			if renderOpts == nil {
+				renderOpts = &formatters.FormatOptions{Pretty: true}
+			}
+			if cmd.Flags().Changed("format") {
+				renderOpts = &formatters.FormatOptions{Format: format}
+			}
 			out := RenderDiscoverToolsString(registry.GetTools(), renderOpts)
 			fmt.Fprintln(cmd.OutOrStdout(), out)
 			return nil
 		},
 	}
-	cmd.Flags().StringVar(&format, "format", "pretty", "Output format: pretty, markdown, or plain")
+	cmd.Flags().StringVar(&format, "format", "", "Output format: pretty, markdown, or plain")
 	return cmd
 }
 
@@ -457,7 +463,7 @@ Examples:
   app mcp prompt --tag workflow        # List prompts tagged as 'workflow'
   app mcp prompt --save custom.json    # Save prompts to file
 
-Tool discovery has moved: use 'app mcp tools discover' (or call the
+Tool discovery has moved: use 'app mcp tools' (or call the
 'discover-tools' MCP tool) instead of 'app mcp prompt discover-tools'.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Load configuration

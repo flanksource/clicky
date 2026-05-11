@@ -73,9 +73,11 @@ Examples:
 			serveArgs := []string{"mcp", "serve"}
 			if transport == "sse" {
 				serveArgs = append(serveArgs, "--transport", "sse")
-				if port > 0 {
-					serveArgs = append(serveArgs, "--port", fmt.Sprintf("%d", port))
+				p := port
+				if p == 0 {
+					p = 8080
 				}
+				serveArgs = append(serveArgs, "--port", fmt.Sprintf("%d", p))
 			}
 
 			endpoint := url
@@ -302,10 +304,8 @@ func removeCodexSection(content, name string) string {
 	return strings.TrimRight(strings.Join(out, "\n"), "\n")
 }
 
-// renderCodexBlock emits a `[mcp_servers.<name>]` section. Codex only
-// supports stdio in its config schema, so sse installs are rejected
-// upstream by writeCodexTOML's caller — but if the user passes sse anyway
-// we still emit a `url` field so a future codex release can pick it up.
+// renderCodexBlock emits a `[mcp_servers.<name>]` section. Stdio entries carry
+// command+args; SSE entries carry the endpoint URL.
 func renderCodexBlock(e serverEntry) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "[mcp_servers.%s]\n", e.Name)
@@ -333,7 +333,9 @@ func resolveBinaryPath(rootName string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to find executable path: %w", err)
 	}
-	binPath, _ = filepath.EvalSymlinks(binPath)
+	if resolved, err := filepath.EvalSymlinks(binPath); err == nil {
+		binPath = resolved
+	}
 	if p, err := exec.LookPath(rootName); err == nil {
 		binPath = p
 	}

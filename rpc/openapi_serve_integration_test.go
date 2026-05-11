@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -364,7 +365,7 @@ func TestOpenAPIServe_E2E_WithBinary(t *testing.T) {
 	serverPort, cleanup := startClickyServer(t, binaryPath)
 	defer cleanup()
 
-	baseURL := fmt.Sprintf("http://localhost:%d", serverPort)
+	baseURL := fmt.Sprintf("http://127.0.0.1:%d", serverPort)
 	t.Logf("Testing against clicky server at %s", baseURL)
 
 	// Test the server is up and running
@@ -785,14 +786,13 @@ func buildClickyBinary(t *testing.T) string {
 func startClickyServer(t *testing.T, binaryPath string) (int, func()) {
 	t.Helper()
 
-	// Use a fixed port for simplicity in testing
-	port := 8899 // Use a specific port to avoid port extraction issues
+	port := freeTCPPort(t)
 
-	// Start the server with fixed port and executor enabled
+	// Start the server with executor enabled.
 	cmd := exec.Command(binaryPath, "openapi", "serve",
 		"--port", fmt.Sprintf("%d", port),
 		"--enable-executor",
-		"--host", "localhost")
+		"--host", "127.0.0.1")
 
 	// Capture stdout and stderr for debugging
 	stdout, err := cmd.StdoutPipe()
@@ -808,7 +808,7 @@ func startClickyServer(t *testing.T, binaryPath string) (int, func()) {
 	ready := false
 	for i := 0; i < 20; i++ {
 		time.Sleep(500 * time.Millisecond)
-		resp, err := http.Get(fmt.Sprintf("http://localhost:%d/health", port))
+		resp, err := http.Get(fmt.Sprintf("http://127.0.0.1:%d/health", port))
 		if err == nil {
 			resp.Body.Close()
 			ready = true
@@ -849,6 +849,16 @@ func startClickyServer(t *testing.T, binaryPath string) (int, func()) {
 	}
 
 	return port, cleanup
+}
+
+func freeTCPPort(t *testing.T) int {
+	t.Helper()
+
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	defer func() { _ = l.Close() }()
+
+	return l.Addr().(*net.TCPAddr).Port
 }
 
 // extractPortFromOutput reads the server output to find which port it's using

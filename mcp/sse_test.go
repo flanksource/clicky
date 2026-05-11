@@ -88,32 +88,79 @@ func TestSSEServer_InitializeRoundTrip(t *testing.T) {
 	}
 }
 
+func TestSameOriginOrNoOrigin(t *testing.T) {
+	cases := []struct {
+		name   string
+		origin string
+		host   string
+		want   bool
+	}{
+		{name: "no origin", host: "127.0.0.1:8080", want: true},
+		{name: "same origin", origin: "http://127.0.0.1:8080", host: "127.0.0.1:8080", want: true},
+		{name: "different port", origin: "http://127.0.0.1:3000", host: "127.0.0.1:8080", want: false},
+		{name: "different host", origin: "http://example.com", host: "127.0.0.1:8080", want: false},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			req, err := http.NewRequest(http.MethodGet, "http://"+tc.host+"/sse", nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			req.Host = tc.host
+			if tc.origin != "" {
+				req.Header.Set("Origin", tc.origin)
+			}
+			if got := sameOriginOrNoOrigin(req); got != tc.want {
+				t.Fatalf("sameOriginOrNoOrigin() = %v, want %v", got, tc.want)
+			}
+		})
+	}
+}
+
 // readSSEEvent advances the reader until it sees `event: <wantEvent>`
 // followed by a `data:` line, and returns the data payload. Fails the
 // test if the stream ends or 5s pass without the event.
 func readSSEEvent(t *testing.T, r *bufio.Reader, wantEvent string) string {
 	t.Helper()
-	deadline := time.Now().Add(5 * time.Second)
-	var pendingEvent string
-	for time.Now().Before(deadline) {
-		line, err := r.ReadString('\n')
-		if err != nil {
-			t.Fatalf("SSE read: %v", err)
-		}
-		line = strings.TrimRight(line, "\r\n")
-		switch {
-		case strings.HasPrefix(line, "event: "):
-			pendingEvent = strings.TrimPrefix(line, "event: ")
-		case strings.HasPrefix(line, "data: "):
-			data := strings.TrimPrefix(line, "data: ")
-			if pendingEvent == wantEvent {
-				return data
-			}
-			pendingEvent = ""
-		}
+	type result struct {
+		data string
+		err  error
 	}
-	t.Fatalf("timed out waiting for SSE event %q", wantEvent)
-	return ""
+	done := make(chan result, 1)
+	go func() {
+		var pendingEvent string
+		for {
+			line, err := r.ReadString('\n')
+			if err != nil {
+				done <- result{err: err}
+				return
+			}
+			line = strings.TrimRight(line, "\r\n")
+			switch {
+			case strings.HasPrefix(line, "event: "):
+				pendingEvent = strings.TrimPrefix(line, "event: ")
+			case strings.HasPrefix(line, "data: "):
+				data := strings.TrimPrefix(line, "data: ")
+				if pendingEvent == wantEvent {
+					done <- result{data: data}
+					return
+				}
+				pendingEvent = ""
+			}
+		}
+	}()
+
+	select {
+	case got := <-done:
+		if got.err != nil {
+			t.Fatalf("SSE read: %v", got.err)
+		}
+		return got.data
+	case <-time.After(5 * time.Second):
+		t.Fatalf("timed out waiting for SSE event %q", wantEvent)
+		return ""
+	}
 }
 
 // freePort grabs and immediately releases an OS-assigned TCP port. The

@@ -44,24 +44,36 @@ func TestBindAllFlagsToCommand_GroupsHelpOutput(t *testing.T) {
 		{"Format flags:", "--json"},
 	}
 	for _, tc := range cases {
-		section := sectionAfter(out, tc.section)
+		section := flagSection(out, tc.section)
 		if !strings.Contains(section, tc.flag) {
 			t.Errorf("expected %q under %q section; section was:\n%s", tc.flag, tc.section, section)
 		}
 	}
 }
 
-// sectionAfter returns the substring of help output starting at heading and
-// ending at the next blank line, used to assert flags land in the right group.
-func sectionAfter(help, heading string) string {
-	idx := strings.Index(help, heading)
-	if idx < 0 {
+// flagSection returns the lines belonging to heading. It stops at the next
+// flags heading instead of relying on blank-line separators, so the assertions
+// fail if flags slide into a later group.
+func flagSection(help, heading string) string {
+	lines := strings.Split(help, "\n")
+	start := -1
+	for i, line := range lines {
+		if strings.TrimSpace(line) == heading {
+			start = i
+			break
+		}
+	}
+	if start < 0 {
 		return ""
 	}
-	rest := help[idx:]
-	end := strings.Index(rest, "\n\n")
-	if end < 0 {
-		return rest
+
+	out := []string{lines[start]}
+	for _, line := range lines[start+1:] {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasSuffix(trimmed, "flags:") {
+			break
+		}
+		out = append(out, line)
 	}
-	return rest[:end]
+	return strings.Join(out, "\n")
 }

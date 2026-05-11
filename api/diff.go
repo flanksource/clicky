@@ -69,16 +69,20 @@ func (d Diff) ANSI() string {
 	for i, line := range lines {
 		switch {
 		case strings.HasPrefix(line, "+++"), strings.HasPrefix(line, "---"):
-			lines[i] = color.New(color.Bold).Sprint(line)
+			lines[i] = ansiStyle(line, "1")
 		case strings.HasPrefix(line, "@@"):
-			lines[i] = color.CyanString(line)
+			lines[i] = ansiStyle(line, "36")
 		case strings.HasPrefix(line, "+"):
-			lines[i] = color.GreenString(line)
+			lines[i] = ansiStyle(line, "32")
 		case strings.HasPrefix(line, "-"):
-			lines[i] = color.RedString(line)
+			lines[i] = ansiStyle(line, "31")
 		}
 	}
 	return strings.Join(lines, "\n")
+}
+
+func ansiStyle(s, code string) string {
+	return "\x1b[" + code + "m" + s + "\x1b[0m"
 }
 
 // HTML wraps the unified diff in a <pre> block with per-line span classes
