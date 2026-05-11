@@ -5,6 +5,10 @@ GOLANGCI_LINT ?= $(LOCALBIN)/golangci-lint
 ## Tool Versions
 GOLANGCI_LINT_VERSION ?= v2.8.0
 
+GIT_COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
+BUILD_DATE ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
+LDFLAGS ?= -X main.commit=$(GIT_COMMIT) -X main.date=$(BUILD_DATE)
+
 .PHONY: test build clean install task-ui
 
 
@@ -21,7 +25,7 @@ test-coverage:
 
 # Build the binary
 build:
-	go build -o clicky ./cmd/clicky/
+	go build -ldflags "$(LDFLAGS)" -o clicky ./cmd/clicky/
 
 # Build the task-ui frontend bundle (Preact + Vite → single IIFE)
 task-ui:

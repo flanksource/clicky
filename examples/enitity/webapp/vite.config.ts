@@ -17,7 +17,6 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
-      "@flanksource/clicky-ui/api-explorer": path.join(clickyUiDist, "api-explorer.js"),
       "@flanksource/clicky-ui/styles.css": path.join(clickyUiDist, "styles.css"),
       "@flanksource/clicky-ui": path.join(clickyUiDist, "index.js"),
     },
