@@ -1,7 +1,7 @@
 import { Link, Routes, Route, useLocation } from "react-router-dom";
-import { EntityExplorerApp } from "@flanksource/clicky-ui/api-explorer";
 import {
   DensitySwitcher,
+  EntityExplorerApp,
   Icon,
   ThemeSwitcher,
   type RenderLink,
