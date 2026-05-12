@@ -5,6 +5,36 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.21.9](https://github.com/flanksource/clicky/compare/v1.21.8...v1.21.9) (2026-05-12)
+
+
+### ♻️ Code Refactoring
+
+* **api,mcp,rpc:** extract helper functions and improve code organization ([f85ce24](https://github.com/flanksource/clicky/commit/f85ce248eb44808aaf0590856c96c1233ff83a03))
+* **api:** simplify switch statement in parseJavaFrame ([fc8746a](https://github.com/flanksource/clicky/commit/fc8746a3dc8495f07d1d6025fb30f54aec7d34a0))
+
+
+### ✨ Features
+
+* **api,flags:** add unified diff rendering and grouped flag help output ([06e98ad](https://github.com/flanksource/clicky/commit/06e98adcbdfe4c4bced613d1bc3c92cc7d15d9b9))
+* **api:** add stack trace parsing and rendering with source resolution ([a76d8ec](https://github.com/flanksource/clicky/commit/a76d8ecbecef68009b4d7ee34d93da6d0d1e119f))
+* **api:** Add structured HTML rendering for stack traces with syntax highlighting ([3e6e880](https://github.com/flanksource/clicky/commit/3e6e880e9c3895332fbd5c8bb0c94eb158c161d1))
+* **entity:** add hidden _id column to wrapped entities ([43aca2c](https://github.com/flanksource/clicky/commit/43aca2c10e03c08bab6db98ea84362f396b6b363))
+* **examples:** Add syntax highlighting and stack trace rendering support ([cd1558a](https://github.com/flanksource/clicky/commit/cd1558abad79dd467471a1ef10cb900541fabe7e))
+* **formatters:** add StackTrace rendering support to HTML formatters ([6beea3b](https://github.com/flanksource/clicky/commit/6beea3b4a1e20086316b40593595203a762391b1))
+* **mcp:** Add fluent Builder API and discover-tools MCP tool ([9cb5cb9](https://github.com/flanksource/clicky/commit/9cb5cb964e37147e2d22bccff68c89c1e4997ad9))
+* **mcp:** add SSE transport, tools command, and multi-client install support ([9345367](https://github.com/flanksource/clicky/commit/9345367ddf29b9d0bbf1eb60da3f9add27493df3))
+
+
+### 📦 Build System
+
+* **makefile:** add git commit and build date to binary via ldflags ([04f17df](https://github.com/flanksource/clicky/commit/04f17df0c43337c9d09ea29de792ed1a682788b4))
+
+
+### 🔧 Maintenance
+
+* **deps:** clean up unused dependencies in go.sum ([6b74c36](https://github.com/flanksource/clicky/commit/6b74c36624f1c7679fb03f40d9770840c47f9856))
+
 ## [1.21.8](https://github.com/flanksource/clicky/compare/v1.21.7...v1.21.8) (2026-05-01)
 
 
