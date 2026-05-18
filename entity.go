@@ -93,6 +93,11 @@ type ActionInfo struct {
 	// and populated into the flag map passed to DataFunc.
 	FlagsType    reflect.Type
 	ResponseType reflect.Type
+	// OptionalID, when true, makes the positional <id> argument optional on
+	// the generated action command — the action is invokable with no
+	// argument (and the `id` passed to the run func is empty). Use for
+	// actions whose target is supplied entirely through flags.
+	OptionalID bool
 }
 
 // BulkActionInfo is the type-erased representation of a bulk action.
@@ -135,11 +140,12 @@ type EntityAction interface {
 }
 
 type actionSpec[R any] struct {
-	name   string
-	short  string
-	method string
-	run    func(id string, flags map[string]string) (R, error)
-	flags  ActionFlags
+	name       string
+	short      string
+	method     string
+	run        func(id string, flags map[string]string) (R, error)
+	flags      ActionFlags
+	optionalID bool
 }
 
 // Action creates a typed custom operation on a single entity by ID.
@@ -169,6 +175,14 @@ func (a *actionSpec[R]) WithMethod(method string) *actionSpec[R] {
 	return a
 }
 
+// WithOptionalID makes the positional <id> argument optional on the
+// generated action command. Use for actions whose target is supplied
+// entirely through flags; the `id` passed to the run func is then empty.
+func (a *actionSpec[R]) WithOptionalID() *actionSpec[R] {
+	a.optionalID = true
+	return a
+}
+
 func (a *actionSpec[R]) actionInfo() ActionInfo {
 	return ActionInfo{
 		Name:         a.name,
@@ -176,12 +190,13 @@ func (a *actionSpec[R]) actionInfo() ActionInfo {
 		Method:       a.method,
 		FlagsType:    actionFlagsType(a.flags),
 		ResponseType: responseTypeOf[R](),
+		OptionalID:   a.optionalID,
 		DataFunc: func(flagMap map[string]string, args []string) (any, error) {
 			id := flagMap["id"]
 			if id == "" && len(args) > 0 {
 				id = args[0]
 			}
-			if id == "" {
+			if id == "" && !a.optionalID {
 				return nil, fmt.Errorf("id is required")
 			}
 			return a.run(id, flagMap)
@@ -621,7 +636,7 @@ func generateEntityCLI(parent *cobra.Command, entity EntityInfo) {
 			DataFunc:     action.DataFunc,
 			FlagsType:    action.FlagsType,
 			ResponseType: action.ResponseType,
-		}, entity.ValidArgs, "action", "", "entity", action.Name, "id", false, false)
+		}, entity.ValidArgs, "action", "", "entity", action.Name, "id", false, false, action.OptionalID)
 	}
 
 	for _, ba := range entity.BulkActions {
@@ -647,6 +662,7 @@ func generateEntitySubcommand(parent *cobra.Command, entity EntityInfo, op Entit
 			"id",
 			false,
 			false,
+			false,
 		)
 	case "create":
 		generateBodyCommand(parent, "create", fmt.Sprintf("Create a %s", entity.Name), op)
@@ -664,6 +680,7 @@ func generateEntitySubcommand(parent *cobra.Command, entity EntityInfo, op Entit
 			"entity",
 			"",
 			"id",
+			false,
 			false,
 			false,
 		)
@@ -720,16 +737,23 @@ func generateIDCommand(
 	idParam string,
 	supportsLookup bool,
 	supportsFilterMode bool,
+	optionalID bool,
 ) {
 	hasFlags := op.FlagsType != nil
-	use := fmt.Sprintf("%s <id>", verb)
+	idToken := "<id>"
+	args := cobra.ExactArgs(1)
+	if optionalID {
+		idToken = "[id]"
+		args = cobra.MaximumNArgs(1)
+	}
+	use := fmt.Sprintf("%s %s", verb, idToken)
 	if hasFlags {
-		use = fmt.Sprintf("%s <id> [flags]", verb)
+		use = fmt.Sprintf("%s %s [flags]", verb, idToken)
 	}
 	cmd := &cobra.Command{
 		Use:   use,
 		Short: short,
-		Args:  cobra.ExactArgs(1),
+		Args:  args,
 		RunE: func(c *cobra.Command, args []string) error {
 			var flagMap map[string]string
 			if hasFlags {

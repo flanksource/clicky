@@ -624,3 +624,76 @@ func TestEntityValidArgsPropagateToGeneratedIDCommands(t *testing.T) {
 		}
 	}
 }
+
+func TestActionWithOptionalIDAcceptsNoPositionalArg(t *testing.T) {
+	resetEntityRegistry(t)
+	defer resetEntityRegistry(t)
+
+	RegisterEntity(Entity[entityFilterTestEntity, entityFilterTestOpts, any]{
+		Name: "optional-id-entity",
+		Get:  func(id string) (any, error) { return id, nil },
+		Actions: []EntityAction{
+			Action("scan", func(id string, _ map[string]string) (any, error) {
+				return id, nil
+			}).WithShort("Scan with no id").WithOptionalID(),
+			Action("restart", func(id string, _ map[string]string) (any, error) {
+				return id, nil
+			}).WithShort("Restart one entity"),
+		},
+	})
+
+	root := &cobra.Command{Use: "root"}
+	GenerateCLI(root)
+
+	scan, _, err := root.Find([]string{"optional-id-entity", "scan"})
+	if err != nil || scan == nil {
+		t.Fatalf("expected to find scan command, got err=%v", err)
+	}
+	// The optional-id action accepts zero args but still rejects more than one.
+	if err := scan.Args(scan, nil); err != nil {
+		t.Fatalf("optional-id action must accept zero args, got: %v", err)
+	}
+	if err := scan.Args(scan, []string{"x", "y"}); err == nil {
+		t.Fatalf("optional-id action must still reject more than one arg")
+	}
+	if scan.Use != "scan [id]" {
+		t.Fatalf("optional-id action use should show [id], got %q", scan.Use)
+	}
+
+	// A normal action still forces exactly one positional arg.
+	restart, _, err := root.Find([]string{"optional-id-entity", "restart"})
+	if err != nil || restart == nil {
+		t.Fatalf("expected to find restart command, got err=%v", err)
+	}
+	if err := restart.Args(restart, nil); err == nil {
+		t.Fatalf("a normal action must still require its id arg")
+	}
+	if restart.Use != "restart <id>" {
+		t.Fatalf("normal action use should show <id>, got %q", restart.Use)
+	}
+}
+
+func TestActionInfoOptionalIDSkipsIDRequiredCheck(t *testing.T) {
+	var gotID = "sentinel"
+	spec := Action("scan", func(id string, _ map[string]string) (any, error) {
+		gotID = id
+		return id, nil
+	}).WithOptionalID()
+
+	// The DataFunc must not error on a missing id when OptionalID is set;
+	// the run func receives an empty id.
+	if _, err := spec.actionInfo().DataFunc(map[string]string{}, nil); err != nil {
+		t.Fatalf("optional-id DataFunc must not require an id: %v", err)
+	}
+	if gotID != "" {
+		t.Fatalf("expected empty id passed to run func, got %q", gotID)
+	}
+
+	// Without WithOptionalID the missing-id check still fires.
+	plain := Action("restart", func(id string, _ map[string]string) (any, error) {
+		return id, nil
+	})
+	if _, err := plain.actionInfo().DataFunc(map[string]string{}, nil); err == nil {
+		t.Fatalf("a normal action must still reject a missing id")
+	}
+}
