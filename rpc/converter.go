@@ -250,6 +250,18 @@ func (c *Converter) shouldConvertCommand(cmd *cobra.Command) bool {
 	if cmd.Parent() == nil || (cmd.Run == nil && cmd.RunE == nil) {
 		return false
 	}
+	// Skip an entity's `list` subcommand when its parent entity-root is itself
+	// runnable as a list shortcut (parent has RunE, an entity annotation, and
+	// no operation verb). Both produce the same GET /api/v1/<entity>, and the
+	// parent is the canonical endpoint that mirrors the CLI.
+	if meta := clicky.GetCommandOpenAPIMeta(cmd); meta != nil && meta.Verb == "list" {
+		parent := cmd.Parent()
+		if parent != nil && (parent.RunE != nil || parent.Run != nil) {
+			if parentMeta := clicky.GetCommandOpenAPIMeta(parent); parentMeta != nil && parentMeta.Verb == "" && parentMeta.Entity != "" {
+				return false
+			}
+		}
+	}
 	return true
 }
 
@@ -272,8 +284,18 @@ func (c *Converter) walkCommands(cmd *cobra.Command, fn func(*cobra.Command) err
 
 // inferHTTPMethod attempts to infer appropriate HTTP method from command semantics
 func (c *Converter) inferHTTPMethod(cmd *cobra.Command, cmdPath string) string {
-	if meta := clicky.GetCommandOpenAPIMeta(cmd); meta != nil && meta.Method != "" {
-		return strings.ToUpper(meta.Method)
+	if meta := clicky.GetCommandOpenAPIMeta(cmd); meta != nil {
+		if meta.Method != "" {
+			return strings.ToUpper(meta.Method)
+		}
+		// Entity-root command (annotated with entity name but no operation verb).
+		// It mirrors the CLI: typing `xero-cli accounts` lists, so the matching
+		// REST endpoint is GET /api/v1/accounts. Without this, the cmdPath
+		// "accounts" matches no CRUD keyword below and falls through to
+		// DefaultMethod (POST), colliding with the entity's `create` subcommand.
+		if meta.Verb == "" && meta.Entity != "" {
+			return "GET"
+		}
 	}
 
 	cmdLower := strings.ToLower(cmdPath)

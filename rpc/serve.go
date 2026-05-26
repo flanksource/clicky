@@ -43,11 +43,12 @@ type ServeConfig struct {
 
 // SwaggerServer serves API reference documentation for the OpenAPI specification.
 type SwaggerServer struct {
-	config    *ServeConfig
-	rootCmd   *cobra.Command
-	generator *OpenAPIGenerator
-	server    *http.Server
-	executor  *CommandExecutor // Optional command executor
+	config       *ServeConfig
+	rootCmd      *cobra.Command
+	generator    *OpenAPIGenerator
+	converterCfg *Config // Converter config used to build executor routes; reused when (re)generating the spec.
+	server       *http.Server
+	executor     *CommandExecutor // Optional command executor
 }
 
 // TemplateData holds data for rendering the HTML template
@@ -69,9 +70,18 @@ func NewSwaggerServer(config *ServeConfig, rootCmd *cobra.Command, openAPIConfig
 		generator: generator,
 	}
 
-	// Initialize executor if enabled
+	// Initialize executor if enabled. Honor ExecutorConfig.PathPrefix so the
+	// converter — which is the source of both the OpenAPI paths and the
+	// ServeMux patterns — mounts the executor under the configured prefix
+	// instead of the hardcoded "/api/v1". Without this override the prefix
+	// only affected the runtime executor and the registered routes silently
+	// stayed under "/api/v1", colliding with anything else mounted there.
 	if config.Executor != nil && config.Executor.Enabled {
-		converter := NewConverter(DefaultConfig())
+		server.converterCfg = DefaultConfig()
+		if prefix := strings.TrimRight(config.Executor.PathPrefix, "/"); prefix != "" {
+			server.converterCfg.PathPrefix = prefix
+		}
+		converter := NewConverter(server.converterCfg)
 		service, err := converter.ConvertCommandTree(rootCmd)
 		if err != nil {
 			fmt.Printf("⚠️  Warning: Failed to build executor command tree: %v\n", err)
@@ -94,6 +104,51 @@ func (s *SwaggerServer) RegisterRoutes(mux *http.ServeMux) {
 		mux.HandleFunc("/health", s.handleHealth)
 	}
 
+	if s.executor != nil {
+		s.registerExecutionRoutes(mux)
+	}
+}
+
+// HandleOpenAPIJSON serves the OpenAPI 3 spec as JSON. Exported so callers
+// that compose their own mux (and want to wrap or override this endpoint)
+// can re-mount it without going through RegisterRoutes.
+func (s *SwaggerServer) HandleOpenAPIJSON(w http.ResponseWriter, r *http.Request) {
+	s.handleOpenAPIJSON(w, r)
+}
+
+// HandleOpenAPIYAML serves the OpenAPI 3 spec as YAML. See HandleOpenAPIJSON.
+func (s *SwaggerServer) HandleOpenAPIYAML(w http.ResponseWriter, r *http.Request) {
+	s.handleOpenAPIYAML(w, r)
+}
+
+// HandleEntities serves the entity metadata endpoint. Exported so callers
+// composing their own mux can register it independently of RegisterRoutes.
+func (s *SwaggerServer) HandleEntities(w http.ResponseWriter, r *http.Request) {
+	s.handleEntities(w, r)
+}
+
+// HandleHealth serves the liveness probe. Exported for the same reason as
+// HandleEntities.
+func (s *SwaggerServer) HandleHealth(w http.ResponseWriter, r *http.Request) {
+	s.handleHealth(w, r)
+}
+
+// ConverterConfig returns the converter Config used to build the executor's
+// routes (path prefix, default method, etc.). Callers that re-run
+// GenerateFromCobraWithConfig outside this server — e.g. to merge a separate
+// OpenAPI document with the executor spec — should pass this value so the
+// regenerated paths match the actually-registered ServeMux patterns. Returns
+// nil when the server was constructed without an executor.
+func (s *SwaggerServer) ConverterConfig() *Config {
+	return s.converterCfg
+}
+
+// RegisterExecutionRoutes registers only the dynamic executor patterns
+// derived from the RPC service (one method+path per operation). Exported so
+// callers that want everything from RegisterRoutes except the openapi
+// handlers (because they intend to wrap /api/openapi.json with a merge
+// across multiple specs) can opt in route-by-route.
+func (s *SwaggerServer) RegisterExecutionRoutes(mux *http.ServeMux) {
 	if s.executor != nil {
 		s.registerExecutionRoutes(mux)
 	}
@@ -198,7 +253,7 @@ func (s *SwaggerServer) handleSwaggerUI(w http.ResponseWriter, r *http.Request) 
 
 // handleOpenAPIJSON serves the OpenAPI specification in JSON format
 func (s *SwaggerServer) handleOpenAPIJSON(w http.ResponseWriter, r *http.Request) {
-	spec, err := s.generator.GenerateFromCobra(s.rootCmd)
+	spec, err := s.generator.GenerateFromCobraWithConfig(s.rootCmd, s.converterCfg)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to generate OpenAPI spec: %v", err), http.StatusInternalServerError)
 		return
@@ -223,7 +278,7 @@ func (s *SwaggerServer) handleOpenAPIJSON(w http.ResponseWriter, r *http.Request
 
 // handleOpenAPIYAML serves the OpenAPI specification in YAML format
 func (s *SwaggerServer) handleOpenAPIYAML(w http.ResponseWriter, r *http.Request) {
-	spec, err := s.generator.GenerateFromCobra(s.rootCmd)
+	spec, err := s.generator.GenerateFromCobraWithConfig(s.rootCmd, s.converterCfg)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to generate OpenAPI spec: %v", err), http.StatusInternalServerError)
 		return

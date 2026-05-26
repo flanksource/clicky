@@ -1,12 +1,14 @@
 package clicky
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"reflect"
 	"strings"
 	"sync"
 
+	"github.com/flanksource/clicky/api"
 	"github.com/flanksource/clicky/flags"
 	"github.com/flanksource/commons/logger"
 	"github.com/samber/lo"
@@ -243,7 +245,19 @@ func AddNamedCommand[T any, R any](name string, parent *cobra.Command, opts T, f
 		// Call the function
 		result, err := fn(optsValue.Interface().(T))
 		if err != nil {
-			logger.GetSlogLogger().WithSkipReportLevel(2).Errorf("Command %s failed: %w", name, err)
+			// An error that carries a clicky rendering interface
+			// (Pretty/Textable/Tree*) is rendered through the same format
+			// pipeline as a success result — honouring --format — instead of
+			// being collapsed to its Error() line. The error is still
+			// returned so cobra exits non-zero.
+			if rich, ok := renderableError(err); ok {
+				if specErr := Flags.ParseFormatSpec(); specErr != nil {
+					return specErr
+				}
+				PrintAndWriteSinks(rich, Flags.FormatOptions)
+			} else {
+				logger.GetSlogLogger().WithSkipReportLevel(2).Errorf("Command %s failed: %v", name, err)
+			}
 			return err
 		}
 
@@ -265,6 +279,21 @@ func isStdinAvailable() bool {
 		return false
 	}
 	return (stat.Mode() & os.ModeCharDevice) == 0
+}
+
+// renderableError reports whether err — or any error in its Unwrap chain —
+// carries a clicky rendering interface (Pretty / Textable / Tree*), so the
+// command runner can render it through the format pipeline instead of just
+// logging Error(). The chain is walked so a fmt-wrapped rich error still
+// renders. The returned value is the matched error, ready to hand to
+// PrintAndWriteSinks.
+func renderableError(err error) (any, bool) {
+	for e := err; e != nil; e = errors.Unwrap(e) {
+		if api.TryTypedValue(e) != nil {
+			return e, true
+		}
+	}
+	return nil, false
 }
 
 type Name interface {
