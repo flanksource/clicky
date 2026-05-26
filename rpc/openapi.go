@@ -271,8 +271,22 @@ func (g *OpenAPIGenerator) GenerateFromService(service *RPCService) *OpenAPISpec
 }
 
 // GenerateFromCobra generates an OpenAPI spec directly from a Cobra command tree
+// using the default converter Config. Equivalent to GenerateFromCobraWithConfig
+// with a nil config.
 func (g *OpenAPIGenerator) GenerateFromCobra(rootCmd *cobra.Command) (*OpenAPISpec, error) {
-	converter := NewConverter(DefaultConfig())
+	return g.GenerateFromCobraWithConfig(rootCmd, nil)
+}
+
+// GenerateFromCobraWithConfig generates an OpenAPI spec from a Cobra command
+// tree using the supplied converter Config (path prefix, default method, tags).
+// Pass nil to fall back to DefaultConfig. Callers that mount the executor under
+// a non-default PathPrefix (see ExecutorConfig.PathPrefix) MUST use this so the
+// generated spec paths match the actually-registered ServeMux patterns.
+func (g *OpenAPIGenerator) GenerateFromCobraWithConfig(rootCmd *cobra.Command, cfg *Config) (*OpenAPISpec, error) {
+	if cfg == nil {
+		cfg = DefaultConfig()
+	}
+	converter := NewConverter(cfg)
 	service, err := converter.ConvertCommandTree(rootCmd)
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert commands to RPC service: %w", err)
