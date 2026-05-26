@@ -354,13 +354,13 @@ func (t *Task) SetStatus(status Status) {
 	defer t.mu.Unlock()
 
 	switch status {
-	case StatusSuccess, StatusCancelled, StatusFailed:
+	case StatusSuccess, StatusCancelled, StatusFailed, StatusWarning:
 		t.endTime = time.Now()
 		if t.cancel != nil {
 			t.cancel()
 			t.cancel = nil
 		}
-	case StatusPending, StatusRunning, StatusWarning, StatusPASS, StatusFAIL, StatusERR, StatusSKIP:
+	case StatusPending, StatusRunning, StatusPASS, StatusFAIL, StatusERR, StatusSKIP:
 		// These statuses don't require special cleanup
 	}
 	t.status = status
