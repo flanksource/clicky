@@ -5,6 +5,48 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.21.10](https://github.com/flanksource/clicky/compare/v1.21.9...v1.21.10) (2026-05-27)
+
+
+### ♻️ Code Refactoring
+
+* **api,mcp,rpc:** extract helper functions and improve code organization ([1f17265](https://github.com/flanksource/clicky/commit/1f1726550675e064b311c96d2e45ef5d175d9162))
+
+
+### ✨ Features
+
+* **api,flags:** add unified diff rendering and grouped flag help output ([afc89b1](https://github.com/flanksource/clicky/commit/afc89b1de08c179be88ef529df5ac0cbfbc9c304))
+* **api:** add stack trace parsing and rendering with source resolution ([074bef2](https://github.com/flanksource/clicky/commit/074bef245e1befcb58efeb80fdd440dc541269af))
+* **entity:** add hidden _id column to wrapped entities ([e0ba5da](https://github.com/flanksource/clicky/commit/e0ba5daee66acb514fcef7f6516194eb9a618e7d))
+* **entity:** add WithOptionalID for actions with flag-supplied targets ([85849dc](https://github.com/flanksource/clicky/commit/85849dc85f27ea5ce1f339127b91eab67edf8550))
+* **examples:** Add syntax highlighting and stack trace rendering support ([0ef7feb](https://github.com/flanksource/clicky/commit/0ef7febd3496051526ef530e3de3ac2ee0fdd845))
+* **mcp:** Add fluent Builder API and discover-tools MCP tool ([2f9a4da](https://github.com/flanksource/clicky/commit/2f9a4dae40bd66e0fae9a1ada1d10598d20dc7cc))
+* **mcp:** add SSE transport, tools command, and multi-client install support ([693f311](https://github.com/flanksource/clicky/commit/693f311ebcb748cc860c1e9c17176391a6e5cb0d))
+* **rpc,cobra:** Support rich error rendering and configurable converter paths ([98a40f9](https://github.com/flanksource/clicky/commit/98a40f944b18a07c837c590968df208e3cc9222a))
+
+
+### 🐛 Bug Fixes
+
+* **task:** treat StatusWarning as terminal state to freeze endTime ([8634866](https://github.com/flanksource/clicky/commit/86348660f8aebf4125d8d5991551a863f32cb950))
+
+
+### 📚 Documentation
+
+* **readme:** simplify and restructure README for clarity and brevity ([3ef7aba](https://github.com/flanksource/clicky/commit/3ef7aba737d9bbf6bf478c511dc99373042bfc8f))
+
+
+### 📦 Build System
+
+* **makefile:** add git commit and build date to binary via ldflags ([d9a3536](https://github.com/flanksource/clicky/commit/d9a3536359edfdf5e3e99e65e38cc38e8975afe0))
+
+
+### 🔧 Maintenance
+
+* **deps:** clean up unused dependencies in go.sum ([93dfe02](https://github.com/flanksource/clicky/commit/93dfe023c858cd3e78b29d00f2ce781d9cdaef28))
+* **deps:** update dependencies to latest versions ([63987c5](https://github.com/flanksource/clicky/commit/63987c5b8b34375d791cb6da199585c551184827))
+* **deps:** update dependencies to latest versions ([4999a86](https://github.com/flanksource/clicky/commit/4999a86655f35ef73e1aa79e0a5bcecd20669e9d))
+* **deps:** update Go dependencies in examples module ([73dd9f9](https://github.com/flanksource/clicky/commit/73dd9f9bfb71f860c9401f6b9c7920767d8f6b5d))
+
 ## [1.21.9](https://github.com/flanksource/clicky/compare/v1.21.8...v1.21.9) (2026-05-12)
 
 
