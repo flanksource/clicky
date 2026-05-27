@@ -276,8 +276,11 @@ func mergeInitialConfig(config *Config, initial *Config) {
 		config.Transport.Port = initial.Transport.Port
 	}
 
-	config.Security.RequireConfirmation = initial.Security.RequireConfirmation
-	config.Security.AuditLog = initial.Security.AuditLog
+	// Only copy boolean Security fields if they appear to be explicitly set.
+	// Since we can't distinguish false (explicit) from false (default) with
+	// plain bools, we skip copying these fields to avoid overwriting persisted
+	// settings. Host applications that want to enforce RequireConfirmation or
+	// AuditLog should set them via the loaded config, not the initial merge.
 	if initial.Security.TimeoutSeconds != 0 {
 		config.Security.TimeoutSeconds = initial.Security.TimeoutSeconds
 	}

@@ -199,7 +199,10 @@ func (f *HTMLFormatter) format(in interface{}, options FormatOptions) (string, e
 		return f.wrapHTMLBody(trace.HTML()), nil
 	}
 	if trace, ok := in.(*api.StackTrace); ok {
-		return f.wrapHTMLBody(trace.HTML()), nil
+		if trace != nil {
+			return f.wrapHTMLBody(trace.HTML()), nil
+		}
+		return "", nil
 	}
 
 	// Check if input implements Pretty interface

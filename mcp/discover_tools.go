@@ -50,8 +50,16 @@ func renderToolText(name string, tool *ToolDefinition) api.Text {
 		Append(name, "font-bold text-yellow-400").
 		Append("\n")
 
+	if tool == nil {
+		return t.Append("No definition available.\n\n", "italic text-gray-500")
+	}
+
 	if tool.Description != "" {
 		t = t.Append(tool.Description, "text-gray-300").Append("\n")
+	}
+
+	if tool.InputSchema == nil {
+		return t.Append("No parameters.\n\n", "italic text-gray-500")
 	}
 
 	props := tool.InputSchema.Properties

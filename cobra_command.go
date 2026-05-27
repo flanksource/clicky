@@ -288,10 +288,21 @@ func isStdinAvailable() bool {
 // renders. The returned value is the matched error, ready to hand to
 // PrintAndWriteSinks.
 func renderableError(err error) (any, bool) {
-	for e := err; e != nil; e = errors.Unwrap(e) {
+	for e := err; e != nil; {
 		if api.TryTypedValue(e) != nil {
 			return e, true
 		}
+		// Check if this error wraps multiple errors (joined errors)
+		if unwrapper, ok := e.(interface{ Unwrap() []error }); ok {
+			for _, child := range unwrapper.Unwrap() {
+				if result, found := renderableError(child); found {
+					return result, true
+				}
+			}
+			return nil, false
+		}
+		// Continue with single-error chain
+		e = errors.Unwrap(e)
 	}
 	return nil, false
 }

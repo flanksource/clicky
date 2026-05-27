@@ -786,69 +786,80 @@ func buildClickyBinary(t *testing.T) string {
 func startClickyServer(t *testing.T, binaryPath string) (int, func()) {
 	t.Helper()
 
-	port := freeTCPPort(t)
+	maxRetries := 5
+	var lastErr error
 
-	// Start the server with executor enabled.
-	cmd := exec.Command(binaryPath, "openapi", "serve",
-		"--port", fmt.Sprintf("%d", port),
-		"--enable-executor",
-		"--host", "127.0.0.1")
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		port := freeTCPPort(t)
 
-	// Capture stdout and stderr for debugging
-	stdout, err := cmd.StdoutPipe()
-	require.NoError(t, err)
+		// Start the server with executor enabled.
+		cmd := exec.Command(binaryPath, "openapi", "serve",
+			"--port", fmt.Sprintf("%d", port),
+			"--enable-executor",
+			"--host", "127.0.0.1")
 
-	stderr, err := cmd.StderrPipe()
-	require.NoError(t, err)
+		// Capture stdout and stderr for debugging
+		stdout, err := cmd.StdoutPipe()
+		require.NoError(t, err)
 
-	err = cmd.Start()
-	require.NoError(t, err)
+		stderr, err := cmd.StderrPipe()
+		require.NoError(t, err)
 
-	// Wait for server to be ready
-	ready := false
-	for i := 0; i < 20; i++ {
-		time.Sleep(500 * time.Millisecond)
-		resp, err := http.Get(fmt.Sprintf("http://127.0.0.1:%d/health", port))
-		if err == nil {
-			resp.Body.Close()
-			ready = true
-			break
-		}
-	}
-	if !ready {
-		cleanup := func() {
-			if cmd.Process != nil {
-				_ = cmd.Process.Kill()
-				_ = cmd.Wait()
+		err = cmd.Start()
+		require.NoError(t, err)
+
+		// Wait for server to be ready
+		ready := false
+		for i := 0; i < 20; i++ {
+			time.Sleep(500 * time.Millisecond)
+			resp, err := http.Get(fmt.Sprintf("http://127.0.0.1:%d/health", port))
+			if err == nil {
+				resp.Body.Close()
+				ready = true
+				break
 			}
+			lastErr = err
 		}
-		cleanup()
-		t.Fatal("Server failed to start within 10 seconds")
-	}
 
-	// Read and log server output for debugging
-	go func() {
-		scanner := bufio.NewScanner(stdout)
-		for scanner.Scan() {
-			t.Logf("Server stdout: %s", scanner.Text())
+		if ready {
+			// Read and log server output for debugging
+			go func() {
+				scanner := bufio.NewScanner(stdout)
+				for scanner.Scan() {
+					t.Logf("Server stdout: %s", scanner.Text())
+				}
+			}()
+
+			go func() {
+				scanner := bufio.NewScanner(stderr)
+				for scanner.Scan() {
+					t.Logf("Server stderr: %s", scanner.Text())
+				}
+			}()
+
+			cleanup := func() {
+				if cmd.Process != nil {
+					_ = cmd.Process.Kill()
+					_ = cmd.Wait()
+				}
+			}
+
+			return port, cleanup
 		}
-	}()
 
-	go func() {
-		scanner := bufio.NewScanner(stderr)
-		for scanner.Scan() {
-			t.Logf("Server stderr: %s", scanner.Text())
-		}
-	}()
-
-	cleanup := func() {
+		// Server failed to start, clean up and retry
+		t.Logf("Server startup attempt %d failed on port %d: %v", attempt+1, port, lastErr)
 		if cmd.Process != nil {
 			_ = cmd.Process.Kill()
 			_ = cmd.Wait()
 		}
+
+		// Wait a bit before retry to let the port be fully released
+		time.Sleep(500 * time.Millisecond)
 	}
 
-	return port, cleanup
+	t.Fatalf("Server failed to start after %d attempts, last error: %v", maxRetries, lastErr)
+	return 0, nil // unreachable
 }
 
 func freeTCPPort(t *testing.T) int {

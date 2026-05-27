@@ -63,9 +63,9 @@ Examples:
 			for rootCmd.Parent() != nil {
 				rootCmd = rootCmd.Parent()
 			}
-			serverName := rootCmd.Use
+			serverName := rootCmd.Name()
 
-			binPath, err := resolveBinaryPath(rootCmd.Use)
+			binPath, err := resolveBinaryPath(rootCmd.Name())
 			if err != nil {
 				return err
 			}

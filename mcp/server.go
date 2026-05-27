@@ -336,7 +336,11 @@ func sameOriginOrNoOrigin(r *http.Request) bool {
 	if err != nil || u.Host == "" {
 		return false
 	}
-	return strings.EqualFold(u.Host, r.Host)
+	requestScheme := "http"
+	if r.TLS != nil {
+		requestScheme = "https"
+	}
+	return strings.EqualFold(u.Scheme, requestScheme) && strings.EqualFold(u.Host, r.Host)
 }
 
 // JSONRPCRequest represents an MCP JSON-RPC request

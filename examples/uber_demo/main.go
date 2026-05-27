@@ -1306,10 +1306,15 @@ func showStackTrace(opts StackTraceOptions) (any, error) {
 		headersOnlyOpts = append(headersOnlyOpts, clicky.WithMaxStackFrames(opts.Max))
 	}
 
+	nativeOpts := []api.StackTraceOption{}
+	if opts.Max > 0 {
+		nativeOpts = append(nativeOpts, clicky.WithMaxStackFrames(opts.Max))
+	}
+
 	return StackTraceShowcase{
 		WithSource:    clicky.StackTrace(javaSampleTrace, resolvedOpts...),
 		WithoutSource: clicky.StackTrace(javaNullPointerTrace, headersOnlyOpts...),
-		NativeFrames:  clicky.StackTrace(javaNullPointerTrace, headersOnlyOpts...),
+		NativeFrames:  clicky.StackTrace(javaNullPointerTrace, nativeOpts...),
 	}, nil
 }
 
