@@ -90,3 +90,17 @@ var _ = Describe("WithoutEmptyColumns", func() {
 		Expect(func() { table.ANSI() }).NotTo(Panic())
 	})
 })
+
+var _ = Describe("TextTable Markdown pipe escaping", func() {
+	It("escapes a literal pipe in a cell so the GFM table stays intact", func() {
+		t := TextTable{
+			Headers:    TextList{Text{Content: "A"}, Text{Content: "B"}},
+			FieldNames: []string{"a", "b"},
+			Rows: []TableRow{
+				{"a": TypedValue{Textable: Text{Content: "x|y"}}, "b": TypedValue{Textable: Text{Content: "ok"}}},
+			},
+		}
+		Expect(t.Markdown()).To(ContainSubstring(`x\|y`))
+		Expect(t.Markdown()).NotTo(ContainSubstring(`| x|y |`))
+	})
+})

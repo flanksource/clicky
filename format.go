@@ -160,6 +160,13 @@ func Textf(content string, args ...any) api.Text {
 	}
 }
 
+// WithKey wraps a Textable with a data key. The result renders identically to
+// value in every format but serializes to JSON as {key: value}. Callers reading
+// the key for their own serialization can type-assert to api.Keyed.
+func WithKey(key string, value api.Textable) api.Keyed {
+	return api.Keyed{Key: key, Value: value}
+}
+
 func Collapsed(label string, content api.Textable, styles ...string) api.Collapsed {
 	return api.Collapsed{
 		Label:   label,
