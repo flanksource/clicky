@@ -120,8 +120,24 @@ func AddNamedCommand[T any, R any](name string, parent *cobra.Command, opts T, f
 	}
 	parent.AddCommand(cmd)
 	SetCommandResponseMeta(cmd, ResponseOpenAPIMeta{Type: responseTypeOf[R]()})
+
+	// Filterable opts contribute the same lookup/completion surface as an
+	// Entity's Filters slice — typed dropdowns / typeaheads on the web UI and
+	// shell completions on the CLI — but scoped to one subcommand. Subcommand
+	// pages on the entity explorer share the entity's Filters by default; this
+	// hook lets a subcommand publish a *different* filter set when its CLI
+	// flag surface differs from the parent list view (e.g. a
+	// `<entity> activities` listing that drops identifier filters its parent
+	// list exposes, because they are already pinned by the positional id).
+	var subFilters []Filter[T]
+	if carrier, ok := optsValue.Interface().(Filterable[T]); ok {
+		subFilters = carrier.Filters()
+	}
 	if meta := GetCommandOpenAPIMeta(parent); meta != nil {
-		annotateEntityOperationCommand(cmd, parent, "action", "", "collection", name, "", false, false)
+		annotateEntityOperationCommand(cmd, parent, "action", "", "collection", name, "", len(subFilters) > 0, false)
+	}
+	if len(subFilters) > 0 {
+		lookupFuncRegistry.Store(cmd, buildLookupFunc[T](subFilters))
 	}
 
 	if namer, ok := optsValue.Interface().(Name); ok {
@@ -191,26 +207,29 @@ func AddNamedCommand[T any, R any](name string, parent *cobra.Command, opts T, f
 		cmd.Args = cobra.NoArgs
 	}
 
-	// Register data func for RPC direct invocation (bypasses stdout capture)
-	dataFuncRegistry.Store(cmd, func(flagMap map[string]string, args []string) (any, error) {
-		// Set cobra flags from the map (same as executor.ExecuteCommand does)
-		for k, v := range flagMap {
-			if flag := cmd.Flags().Lookup(k); flag != nil {
-				_ = flag.Value.Set(v)
-				flag.Changed = true
-			}
+	// Wire shell completions for any Filterable subcommand. The binder skips
+	// flag names the opts struct does not actually expose, so a filter list
+	// can over-declare without breaking less-restrictive subcommands.
+	if len(subFilters) > 0 {
+		if binder := buildFilterCompletionBinder[T](subFilters); binder != nil {
+			binder(cmd)
 		}
+	}
 
-		// Build opts struct from the now-set flags (same as RunE does)
+	// Register data func for RPC direct invocation (bypasses stdout capture).
+	//
+	// The HTTP path parses each request directly into a fresh opts struct
+	// rather than routing through the cobra command's pflag pointers. Pflag
+	// pointers are shared across every invocation of the same command, and
+	// pflag slice values append on Set once flag.Changed is true — so the
+	// shared path would leak state and corrupt concurrent requests. The
+	// CLI path (cmd.RunE below) keeps pflag because cobra owns its
+	// lifecycle and one process invocation == one Run.
+	capturedFields := append([]flags.FieldInfo(nil), fieldInfos...)
+	dataFuncRegistry.Store(cmd, func(flagMap map[string]string, args []string) (any, error) {
 		optsValue := reflect.New(optsType).Elem()
-		for _, fv := range flagValues {
-			argsToPass := []string(nil)
-			if fv.IsArgs {
-				argsToPass = args
-			}
-			if err := flags.AssignFieldValue(optsValue, fv, argsToPass, false); err != nil {
-				return nil, err
-			}
+		if err := flags.PopulateFromRequest(optsValue, capturedFields, flagMap, args); err != nil {
+			return nil, err
 		}
 		return fn(optsValue.Interface().(T))
 	})

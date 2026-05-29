@@ -506,7 +506,7 @@ func (t TextTable) Markdown() string {
 				values = append(values, "")
 				continue
 			}
-			values = append(values, TransformerMarkdown(cell))
+			values = append(values, escapeMarkdownPipes(TransformerMarkdown(cell)))
 		}
 
 		if err := table.Append(values...); err != nil {
@@ -520,6 +520,13 @@ func (t TextTable) Markdown() string {
 	}
 
 	return "\n" + buf.String()
+}
+
+// escapeMarkdownPipes escapes a literal pipe so a cell value does not break the
+// GFM table layout. The tablewriter markdown renderer does not escape pipes, so
+// callers that put `|` in cell content rely on this.
+func escapeMarkdownPipes(s string) string {
+	return strings.ReplaceAll(s, "|", "\\|")
 }
 
 type TextTransformer func(t Textable) string
