@@ -122,3 +122,49 @@ func TestRegisterSubCommandCreatesParent(t *testing.T) {
 		t.Fatalf("expected process under lazily-created correspondence, got err=%v", err)
 	}
 }
+
+// TestRegisterSubCommandPathAware exercises the slash-delimited parentName
+// form: the subcommand must attach to the grandchild named by the path,
+// reusing entity-generated intermediates rather than creating siblings.
+func TestRegisterSubCommandPathAware(t *testing.T) {
+	resetEntityRegistry(t)
+	defer resetEntityRegistry(t)
+
+	RegisterEntity(Entity[nestedTestEntity, nestedTestOpts, nestedTestEntity]{
+		Name:   "accounts",
+		Parent: "xero",
+		List: func(_ nestedTestOpts) ([]nestedTestEntity, error) {
+			return nil, nil
+		},
+	})
+
+	create := &cobra.Command{Use: "create"}
+	RegisterSubCommand("xero/accounts", create)
+
+	autoCreated := &cobra.Command{Use: "leaf"}
+	RegisterSubCommand("billing/policy", autoCreated)
+
+	root := &cobra.Command{Use: "root"}
+	GenerateCLI(root)
+
+	found, _, err := root.Find([]string{"xero", "accounts", "create"})
+	if err != nil || found == nil || found.Name() != "create" {
+		t.Fatalf("expected create under xero/accounts, got %v err=%v", found, err)
+	}
+
+	// Reuses the entity-generated xero parent, doesn't shadow it with a sibling.
+	xeroChildren := 0
+	for _, c := range root.Commands() {
+		if c.Name() == "xero" {
+			xeroChildren++
+		}
+	}
+	if xeroChildren != 1 {
+		t.Fatalf("expected exactly one xero child of root, got %d", xeroChildren)
+	}
+
+	leaf, _, err := root.Find([]string{"billing", "policy", "leaf"})
+	if err != nil || leaf == nil || leaf.Name() != "leaf" {
+		t.Fatalf("expected leaf under auto-created billing/policy, got %v err=%v", leaf, err)
+	}
+}

@@ -680,3 +680,101 @@ func getMethodNames(pathItem OpenAPIPath) []string {
 	}
 	return methods
 }
+
+func TestParamRole(t *testing.T) {
+	tests := []struct {
+		name           string
+		param          RPCParameter
+		supportsLookup bool
+		isListOp       bool
+		want           string
+	}{
+		{
+			name:     "limit query on list op",
+			param:    RPCParameter{Name: "limit", In: "query"},
+			isListOp: true,
+			want:     "limit",
+		},
+		{
+			name:     "offset query on list op",
+			param:    RPCParameter{Name: "offset", In: "query"},
+			isListOp: true,
+			want:     "offset",
+		},
+		{
+			name:     "since query on list op",
+			param:    RPCParameter{Name: "since", In: "query"},
+			isListOp: true,
+			want:     "time-from",
+		},
+		{
+			name:     "from query on list op",
+			param:    RPCParameter{Name: "from", In: "query"},
+			isListOp: true,
+			want:     "time-from",
+		},
+		{
+			name:     "to query on list op",
+			param:    RPCParameter{Name: "to", In: "query"},
+			isListOp: true,
+			want:     "time-to",
+		},
+		{
+			name:     "until query on list op",
+			param:    RPCParameter{Name: "until", In: "query"},
+			isListOp: true,
+			want:     "time-to",
+		},
+		{
+			name:           "named query on lookup list op becomes filter",
+			param:          RPCParameter{Name: "name", In: "query"},
+			supportsLookup: true,
+			isListOp:       true,
+			want:           "filter",
+		},
+		{
+			name:     "named query on list op without lookup gets no role",
+			param:    RPCParameter{Name: "name", In: "query"},
+			isListOp: true,
+			want:     "",
+		},
+		{
+			name:           "named query on non-list op with lookup gets no role",
+			param:          RPCParameter{Name: "name", In: "query"},
+			supportsLookup: true,
+			want:           "",
+		},
+		{
+			name:     "limit query on non-list op gets no role",
+			param:    RPCParameter{Name: "limit", In: "query"},
+			isListOp: false,
+			want:     "",
+		},
+		{
+			name:           "path parameter gets no role even when filterable name",
+			param:          RPCParameter{Name: "name", In: "path"},
+			supportsLookup: true,
+			isListOp:       true,
+			want:           "",
+		},
+		{
+			name:           "body parameter gets no role",
+			param:          RPCParameter{Name: "limit", In: "body"},
+			supportsLookup: true,
+			isListOp:       true,
+			want:           "",
+		},
+		{
+			name:     "uppercase LIMIT still detected",
+			param:    RPCParameter{Name: "LIMIT", In: "query"},
+			isListOp: true,
+			want:     "limit",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := paramRole(tt.param, tt.supportsLookup, tt.isListOp)
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
