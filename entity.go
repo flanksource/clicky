@@ -133,6 +133,55 @@ type Filter[ListOpts any] interface {
 	Options(opts ListOpts) map[string]api.Textable
 }
 
+// Filterable is implemented by AddNamedCommand options structs that want to
+// expose typed filter lookups (dropdowns/typeaheads on the web UI, shell
+// completions on the CLI) on the subcommand itself rather than inheriting
+// only the parent entity's Filters slice. The same Filter[T] values that back
+// an Entity's Filters slice work here; AddNamedCommand stores a LookupFunc
+// in the lookupFuncRegistry and binds completions whenever an opts struct
+// satisfies this interface.
+//
+// Use this whenever a subcommand's flag surface diverges from its parent
+// list view — typically when a positional argument pins one or more
+// identifier filters and the subcommand only exposes the orthogonal
+// (status, type, date range) lenses.
+type Filterable[T any] interface {
+	Filters() []Filter[T]
+}
+
+// LiftFilters adapts a Filter[Inner] slice so the same picker definitions
+// work against an outer struct that embeds (or otherwise reaches) the inner
+// filter struct. The project func extracts a *Inner from any *Outer the
+// filter system hands us; lookup keys, labels, options, and selected-value
+// reads/writes flow through unchanged. Use this to keep picker constructors
+// scoped to the inner filter type while letting subcommand options structs —
+// which also carry positional args, behaviour flags, etc. — satisfy
+// Filterable[Outer].
+func LiftFilters[Outer any, Inner any](
+	filters []Filter[Inner],
+	project func(*Outer) *Inner,
+) []Filter[Outer] {
+	out := make([]Filter[Outer], 0, len(filters))
+	for _, f := range filters {
+		out = append(out, liftedFilter[Outer, Inner]{inner: f, project: project})
+	}
+	return out
+}
+
+type liftedFilter[Outer any, Inner any] struct {
+	inner   Filter[Inner]
+	project func(*Outer) *Inner
+}
+
+func (l liftedFilter[Outer, Inner]) Key() string   { return l.inner.Key() }
+func (l liftedFilter[Outer, Inner]) Label() string { return l.inner.Label() }
+func (l liftedFilter[Outer, Inner]) Lookup(opts *Outer) (map[string]api.Textable, error) {
+	return l.inner.Lookup(l.project(opts))
+}
+func (l liftedFilter[Outer, Inner]) Options(opts Outer) map[string]api.Textable {
+	return l.inner.Options(*l.project(&opts))
+}
+
 // EntityAction is the type-erased registration surface for custom entity
 // actions. Use Action or ActionWithFlags to construct values.
 type EntityAction interface {

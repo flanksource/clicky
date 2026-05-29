@@ -76,12 +76,30 @@ type OpenAPIOperation struct {
 
 // OpenAPIParameter represents a parameter in the OpenAPI spec
 type OpenAPIParameter struct {
-	Name        string         `json:"name"`
-	In          string         `json:"in"`
-	Description string         `json:"description,omitempty"`
-	Required    bool           `json:"required,omitempty"`
-	Schema      *OpenAPISchema `json:"schema,omitempty"`
-	Example     interface{}    `json:"example,omitempty"`
+	Name        string               `json:"name"`
+	In          string               `json:"in"`
+	Description string               `json:"description,omitempty"`
+	Required    bool                 `json:"required,omitempty"`
+	Schema      *OpenAPISchema       `json:"schema,omitempty"`
+	Example     interface{}          `json:"example,omitempty"`
+	Clicky      *ClickyParameterMeta `json:"x-clicky,omitempty"`
+}
+
+// ClickyParameterMeta carries UI hints for a single OpenAPI parameter so the
+// explorer can route it to the right widget instead of treating every query
+// param as a free-text input. Role is derived from the parameter name plus
+// the operation's lookup capability — see paramRole.
+type ClickyParameterMeta struct {
+	// Role tells the UI how to render this parameter. Empty means "no
+	// special handling". Recognised values:
+	//   - "filter"     — show as a filter pill in the DataTable's FilterBar
+	//                    (entity .Filters(...) keys or any list-op query param
+	//                    when the op declares SupportsLookup).
+	//   - "limit"      — drives DataTable pagination's pageSize.
+	//   - "offset"     — drives DataTable pagination's page.
+	//   - "time-from"  — left edge of a time-range picker.
+	//   - "time-to"    — right edge of a time-range picker.
+	Role string `json:"role,omitempty"`
 }
 
 // OpenAPIRequestBody represents a request body in the OpenAPI spec
@@ -317,6 +335,8 @@ func (g *OpenAPIGenerator) convertOperationToOpenAPI(op RPCOperation) OpenAPIOpe
 	}
 
 	// Convert parameters
+	supportsLookup := op.Clicky != nil && op.Clicky.SupportsLookup
+	isListOp := op.Clicky != nil && op.Clicky.Verb == "list"
 	for _, param := range op.Parameters {
 		openAPIParam := OpenAPIParameter{
 			Name:        param.Name,
@@ -328,6 +348,9 @@ func (g *OpenAPIGenerator) convertOperationToOpenAPI(op RPCOperation) OpenAPIOpe
 				Description: param.Description,
 				Default:     param.Default,
 			}),
+		}
+		if role := paramRole(param, supportsLookup, isListOp); role != "" {
+			openAPIParam.Clicky = &ClickyParameterMeta{Role: role}
 		}
 		openAPIOp.Parameters = append(openAPIOp.Parameters, openAPIParam)
 	}
@@ -373,6 +396,43 @@ func (g *OpenAPIGenerator) convertOperationToOpenAPI(op RPCOperation) OpenAPIOpe
 	}
 
 	return openAPIOp
+}
+
+// paramRole classifies a parameter so the UI can route it to the right widget
+// (pagination footer, time-range picker, filter pill) instead of falling back
+// to a generic text input. Returns "" when the parameter has no special role.
+//
+// Pagination roles ("limit", "offset") apply only on list operations because
+// non-list ops that happen to take a literal `limit` flag would otherwise be
+// hijacked. Time-range roles trigger on the conventional `since`/`from` and
+// `to`/`until` names used across the codebase.
+//
+// "filter" is assigned to any remaining query-string parameter on a list op
+// that declares SupportsLookup — that flag is the signal that the entity
+// registered explicit Filter[ListOpts] entries, so every non-pagination query
+// param maps to a filter chip. Non-query params (path/body/header) and params
+// on non-lookup ops get no role.
+func paramRole(param RPCParameter, supportsLookup, isListOp bool) string {
+	if param.In != "query" {
+		return ""
+	}
+	name := strings.ToLower(param.Name)
+	if isListOp {
+		switch name {
+		case "limit":
+			return "limit"
+		case "offset":
+			return "offset"
+		case "since", "from":
+			return "time-from"
+		case "to", "until":
+			return "time-to"
+		}
+	}
+	if isListOp && supportsLookup {
+		return "filter"
+	}
+	return ""
 }
 
 func (g *OpenAPIGenerator) executionResponseSchema() *OpenAPISchema {
