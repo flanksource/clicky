@@ -102,6 +102,8 @@ func ParsePrettyTagWithName(fieldName, tag string) PrettyField {
 				field.FormatOptions["dir"] = part
 			case "compact":
 				field.CompactItems = true
+			case "short":
+				field.Short = true
 			case "no_icons":
 				if field.TreeOptions == nil {
 					field.TreeOptions = DefaultTreeOptions()

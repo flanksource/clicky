@@ -23,6 +23,24 @@ func SafeDerefPointer(val reflect.Value) (reflect.Value, bool) {
 	return val.Elem(), false
 }
 
+// shortTextable returns the PrettyShort() rendering of a field value when it
+// implements PrettyShort, or nil otherwise. It is the render hook for the
+// `short` pretty-tag. Nil pointers (including a typed nil whose PrettyShort has
+// a value receiver) return nil rather than panicking, so a `short`-tagged
+// relation that is absent renders as empty.
+func shortTextable(val reflect.Value) Textable {
+	if !val.IsValid() || !val.CanInterface() {
+		return nil
+	}
+	if val.Kind() == reflect.Ptr && val.IsNil() {
+		return nil
+	}
+	if ps, ok := val.Interface().(PrettyShort); ok {
+		return ps.PrettyShort()
+	}
+	return nil
+}
+
 // jsonFieldName returns the JSON field name from a struct field's tag,
 // falling back to the struct field name if no valid json tag is present.
 func jsonFieldName(f reflect.StructField) string {
@@ -315,6 +333,15 @@ func (p *StructParser) ParseDataWithSchema(data interface{}, schema *PrettyObjec
 			fieldVal = fieldVal.Elem()
 		}
 
+		// `short` tag: render the field via its value's PrettyShort() (a
+		// compact self-link) instead of Pretty()/Textable.
+		if field.Short {
+			if short := shortTextable(fieldVal); short != nil {
+				values[field.Name] = TypedValue{Textable: short}
+				continue
+			}
+		}
+
 		// Try TryTypedValue first - handles TableProvider, TreeNode, Textable, etc.
 		if fieldVal.CanInterface() {
 			if tv := TryTypedValue(fieldVal.Interface()); tv != nil {
@@ -483,6 +510,13 @@ func (p *StructParser) parseTableData(val reflect.Value, field PrettyField) Text
 			if fieldVal.IsValid() {
 				if fieldVal.Kind() == reflect.Interface && !fieldVal.IsNil() {
 					fieldVal = fieldVal.Elem()
+				}
+				// `short` tag: render the cell via its value's PrettyShort().
+				if tableField.Short {
+					if short := shortTextable(fieldVal); short != nil {
+						row[tableField.Name] = TypedValue{Textable: short}
+						continue
+					}
 				}
 				// Use tableField.Parse to apply type-specific formatting (dates, currency, etc.)
 				fieldValue, err := tableField.Parse(fieldVal.Interface())

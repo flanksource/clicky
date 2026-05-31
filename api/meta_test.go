@@ -88,6 +88,23 @@ func (t testTextable) ANSI() string     { return t.Value }
 func (t testTextable) HTML() string     { return t.Value }
 func (t testTextable) Markdown() string { return t.Value }
 
+// testPrettyLink implements BOTH Pretty and Textable, with Pretty() returning
+// a Link. This mirrors models.EntityLink: TryTypedValue must honor Pretty()
+// (yielding the Link) rather than treating the value as a bare Textable that
+// would serialize as a struct/map node.
+type testPrettyLink struct {
+	Href  string
+	Label string
+}
+
+func (t testPrettyLink) Pretty() Text {
+	return Text{}.Add(Link{Href: t.Href, Content: Text{Content: t.Label}})
+}
+func (t testPrettyLink) String() string   { return t.Label }
+func (t testPrettyLink) ANSI() string     { return t.Label }
+func (t testPrettyLink) HTML() string     { return t.Pretty().HTML() }
+func (t testPrettyLink) Markdown() string { return t.Pretty().Markdown() }
+
 var _ = Describe("PrettyData", func() {
 	Describe("IsEmpty", func() {
 		It("returns true for nil PrettyData", func() {
@@ -306,6 +323,21 @@ var _ = Describe("TextTable marshaling", func() {
 			data, err := yaml.Marshal(emptyTable)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(string(data)).To(Equal("[]\n"))
+		})
+	})
+
+	Describe("Pretty precedence over Textable", func() {
+		It("uses Pretty() for a value implementing both Pretty and Textable", func() {
+			// EntityLink-style value: Pretty() returns a Link. The result must
+			// carry the rendered Link, not the bare struct, so it serializes as
+			// a link node rather than a {href,label} field map.
+			result := TryTypedValue(testPrettyLink{Href: "/entity/client/abc", Label: "GL Scheme G0796016"})
+
+			Expect(result).NotTo(BeNil())
+			Expect(result.Textable).NotTo(BeNil())
+			html := result.Textable.HTML()
+			Expect(html).To(ContainSubstring(`href="/entity/client/abc"`))
+			Expect(html).To(ContainSubstring("GL Scheme G0796016"))
 		})
 	})
 })
