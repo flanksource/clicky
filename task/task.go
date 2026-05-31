@@ -13,6 +13,7 @@ import (
 	"github.com/flanksource/commons/logger"
 	"github.com/flanksource/commons/text"
 	"github.com/samber/lo"
+	"golang.org/x/sync/semaphore"
 
 	"github.com/flanksource/clicky/api"
 	"github.com/flanksource/clicky/formatters"
@@ -608,6 +609,17 @@ func (t *Task) Duration() time.Duration {
 // IsGroup returns false for Task
 func (t *Task) IsGroup() bool {
 	return false
+}
+
+// groupSem returns the concurrency semaphore of the task's parent group, or nil
+// if the task is ungrouped or its group has no concurrency limit. Group.sem is
+// assigned once in StartGroup before any task is added and never mutated, so no
+// lock is needed.
+func (t *Task) groupSem() *semaphore.Weighted {
+	if t.parent == nil {
+		return nil
+	}
+	return t.parent.sem
 }
 
 // getDuration returns formatted duration string

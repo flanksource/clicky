@@ -66,6 +66,15 @@ func WithFunc(fn func(flanksourceContext.Context, *Task) error) Option {
 	}
 }
 
+// withParent links a task to its group before it is enqueued, so the worker can
+// read the group's concurrency semaphore (Task.groupSem) at dequeue time. It is
+// unexported because only TypedGroup.Add should set the parent.
+func withParent(g *Group) Option {
+	return func(t *Task) {
+		t.parent = g
+	}
+}
+
 // WithModel sets the model name for the task
 func WithModel(modelName string) Option {
 	return func(t *Task) {
