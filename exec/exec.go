@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/flanksource/clicky/api"
@@ -60,6 +61,30 @@ type Process struct {
 	// For streaming and capturing output
 	captureOutput *ExecLogger
 	// For verbose / error logging
+
+	// mu guards the fields written by Run() (cmd, exitCode, Err, Started,
+	// running) so that supervisor goroutines can safely call IsRunning,
+	// Pid, KillTree, Result, etc. concurrently with an in-flight Run(). The
+	// lock is only ever held for brief field reads/writes — never across the
+	// blocking cmd.Run()/cmd.Wait() calls — so probes never block on the
+	// subprocess lifetime.
+	mu sync.RWMutex
+	// running reflects whether the subprocess is currently executing. Read by
+	// IsRunning instead of peeking cmd.ProcessState, which os/exec only
+	// publishes safely after Wait() returns.
+	running bool
+	// pid is clicky's own copy of cmd.Process.Pid, captured under mu right
+	// after cmd.Start(). Probes (Pid/KillTree) read this instead of
+	// cmd.Process, whose fields os/exec mutates without a lock we control.
+	pid int
+	// completed / succeeded are clicky-owned copies of cmd.ProcessState's
+	// terminal status, captured under mu once Wait() returns. Probes
+	// (Result/IsOK/Status) read these instead of cmd.ProcessState, which
+	// os/exec writes during Wait() without a lock we control. completed is
+	// true whenever the process finished (normal exit OR signal); succeeded is
+	// true only for a clean zero-exit.
+	completed bool
+	succeeded bool
 
 	Started *time.Time
 	cmd     *exec.Cmd
@@ -234,8 +259,8 @@ func WithDebug() WrapperOption {
 	})
 }
 
-func (p Process) clone() Process {
-	cloned := Process{
+func (p *Process) clone() *Process {
+	cloned := &Process{
 		Cwd:              p.Cwd,
 		Cmd:              p.Cmd,
 		Args:             make([]string, len(p.Args)),
@@ -279,7 +304,7 @@ func (p *Process) AsWrapper() WrapperFunc {
 		for _, arg := range args {
 			switch v := arg.(type) {
 			case WrapperOption:
-				v.apply(&newProc)
+				v.apply(newProc)
 			case string:
 				stringArgs = append(stringArgs, v)
 			default:
@@ -317,25 +342,39 @@ func (p *Process) WithShell(shell string) *Process {
 }
 
 func (p *Process) Result() *ExecResult {
+	// Snapshot all mutable state in a single critical section so the result is
+	// internally consistent even if Run() is publishing terminal state
+	// concurrently. captureOutput, Cmd and Args are not mutated after Run
+	// begins, so they're read outside the lock.
+	p.mu.RLock()
+	procErr := p.Err
+	started := p.Started
+	pid := p.pid
+	completed := p.completed
+	exitCode := -1
+	if p.exitCode != nil {
+		exitCode = *p.exitCode
+	}
+	p.mu.RUnlock()
 
 	r := &ExecResult{
 		Stdout:   p.captureOutput.GetStdout(),
 		Stderr:   p.captureOutput.GetStderr(),
-		ExitCode: p.ExitCode(),
-		Error:    p.Err,
-		Started:  p.Started,
+		ExitCode: exitCode,
+		Error:    procErr,
+		Started:  started,
 		Command:  p.Cmd,
 		Args:     p.Args,
 		short:    p.Short(),
 		process:  p,
 	}
 
-	if p.cmd != nil && p.cmd.ProcessState != nil {
-		if p.Err == nil {
+	if completed {
+		if procErr == nil {
 			r.Status = "success"
-		} else if strings.Contains(p.Err.Error(), "timed out") {
+		} else if strings.Contains(procErr.Error(), "timed out") {
 			r.Status = "timeout"
-		} else if strings.Contains(p.Err.Error(), "permission denied") {
+		} else if strings.Contains(procErr.Error(), "permission denied") {
 			r.Status = "permission denied"
 		} else {
 			r.Status = "failed"
@@ -344,12 +383,10 @@ func (p *Process) Result() *ExecResult {
 		r.Status = "pending"
 	}
 
-	if p.cmd != nil && p.cmd.Process != nil {
-		r.PID = p.cmd.Process.Pid
-	}
+	r.PID = pid
 
-	if p.Started != nil {
-		r.Duration = time.Since(*p.Started)
+	if started != nil {
+		r.Duration = time.Since(*started)
 	}
 	return r
 }
@@ -359,11 +396,11 @@ func (e *ExecResult) Refresh() *ExecResult {
 	return e.process.Result()
 }
 
-func (p Process) Out() string {
+func (p *Process) Out() string {
 	return p.captureOutput.GetOutput()
 }
 
-func (p Process) Pretty() api.Text {
+func (p *Process) Pretty() api.Text {
 	return p.Result().Pretty()
 }
 
@@ -399,10 +436,9 @@ func (p *Process) WithProcessGroup() *Process {
 // Pid returns the OS pid of the running subprocess, or 0 if it hasn't
 // started yet. Safe to call concurrently with Run().
 func (p *Process) Pid() int {
-	if p.cmd != nil && p.cmd.Process != nil {
-		return p.cmd.Process.Pid
-	}
-	return 0
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	return p.pid
 }
 
 // KillTree terminates the subprocess and every descendant. Prefer this over
@@ -411,15 +447,21 @@ func (p *Process) Pid() int {
 // is atomic (POSIX: SIGKILL to -pgid; Windows: TerminateJobObject); otherwise
 // KillTree falls back to a gopsutil-style descendant walk, which is racy.
 func (p *Process) KillTree() error {
-	if p.cmd == nil || p.cmd.Process == nil {
+	p.mu.RLock()
+	pid, newGroup := p.pid, p.newProcessGroup
+	p.mu.RUnlock()
+	if pid == 0 {
 		return nil
 	}
-	return killTree(p.cmd.Process.Pid, p.newProcessGroup)
+	return killTree(pid, newGroup)
 }
 
-func (p Process) Name() string {
-	if p.cmd != nil {
-		return p.cmd.Path
+func (p *Process) Name() string {
+	p.mu.RLock()
+	cmd := p.cmd
+	p.mu.RUnlock()
+	if cmd != nil {
+		return cmd.Path
 	}
 	return p.Cmd
 }
@@ -434,26 +476,26 @@ func (p *Process) Start() error {
 }
 
 // MustStop attempts to gracefully stop a process, after which it is forcefully killed
-func (p Process) MustStop(timeout time.Duration) error {
+func (p *Process) MustStop(timeout time.Duration) error {
 	if err := p.Terminate(); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (p Process) Stop() error {
+func (p *Process) Stop() error {
 	return p.Terminate()
 }
 
-func (p Process) GetOutput() string {
+func (p *Process) GetOutput() string {
 	return p.captureOutput.GetOutput()
 }
 
-func (p Process) GetStdout() string {
+func (p *Process) GetStdout() string {
 	return p.captureOutput.GetStdout()
 }
 
-func (p Process) GetStderr() string {
+func (p *Process) GetStderr() string {
 	return p.captureOutput.GetStderr()
 }
 
@@ -477,13 +519,16 @@ func (p *Process) Debug() *Process {
 	return p
 }
 
-func (p Process) Short() api.Text {
+func (p *Process) Short() api.Text {
 	path, args, _ := p.parseCommand()
 
 	t := api.Text{Content: lo.CoalesceOrEmpty(p.Shell, path), Style: "font-bold text-orange-600"}
 
-	if p.cmd != nil && p.cmd.Process != nil {
-		t = t.Space().Append("[", "text-muted").Append(p.cmd.Process.Pid).Append("]", "text-muted")
+	p.mu.RLock()
+	pid := p.pid
+	p.mu.RUnlock()
+	if pid != 0 {
+		t = t.Space().Append("[", "text-muted").Append(pid).Append("]", "text-muted")
 	}
 	if p.Shell != "" {
 		t = t.Space().Append(p.Shell)
@@ -636,52 +681,91 @@ func (p *Process) Run() *Process {
 	p.log.Tracef(api.Text{}.Append("run", "text-muted").Append(icons.MinimalArrow, "text-muted").Space().Add(p.Short()).ANSI())
 
 	now := time.Now()
+	p.mu.Lock()
 	p.Started = &now
 	p.cmd = cmd
+	p.mu.Unlock()
 
-	// Handle timeout if configured
+	// Start (not Run) so the pid is published the moment os/exec sets
+	// cmd.Process, before the blocking Wait(). This lets probes read p.pid
+	// (a clicky-owned field) instead of cmd.Process, which os/exec mutates
+	// without a lock we control.
+	var runErr error
+	if startErr := cmd.Start(); startErr != nil {
+		p.mu.Lock()
+		p.Err = startErr
+		p.mu.Unlock()
+		return p
+	}
+	p.mu.Lock()
+	p.running = true
+	if cmd.Process != nil {
+		p.pid = cmd.Process.Pid
+	}
+	p.mu.Unlock()
+
+	// Wait for completion. The lock is intentionally NOT held across Wait():
+	// probes (IsRunning/Pid/KillTree) must stay responsive for the whole
+	// subprocess lifetime.
 	if p.Timeout > 0 {
 		resultChan := make(chan error, 1)
 		go func() {
-			resultChan <- cmd.Run()
+			resultChan <- cmd.Wait()
 		}()
 
 		select {
 		case err := <-resultChan:
-			p.Err = err
+			runErr = err
 		case <-time.After(p.Timeout):
 			_ = p.Kill(5 * time.Second)
-			p.Err = fmt.Errorf("command timed out after %v", api.Human(time.Since(*p.Started).String()))
+			// Wait for the Wait() goroutine to return so os/exec has finished
+			// mutating cmd.ProcessState before we read it below — otherwise the
+			// classification read races the in-flight Wait().
+			<-resultChan
+			runErr = fmt.Errorf("command timed out after %v", api.Human(time.Since(*p.Started).String()))
 		}
 	} else {
-		p.Err = cmd.Run()
+		runErr = cmd.Wait()
 	}
 
-	// Set exit code from ProcessState
-	if p.cmd != nil && p.cmd.ProcessState != nil {
-		p.exitCode = lo.ToPtr(p.cmd.ProcessState.ExitCode())
+	// Classify the error before publishing. Reading ProcessState here is safe:
+	// cmd.Wait() has returned, so os/exec is done mutating it.
+	var exitCode *int
+	completed, succeeded := false, false
+	if cmd.ProcessState != nil {
+		exitCode = lo.ToPtr(cmd.ProcessState.ExitCode())
+		completed = true
+		succeeded = cmd.ProcessState.Success()
 	}
-
-	if p.Err != nil {
-		p.log.Debugf(p.Short().Append(" finished with ").Append(p.Err, "text-red-500").ANSI())
+	if runErr != nil {
+		p.log.Debugf(p.Short().Append(" finished with ").Append(runErr, "text-red-500").ANSI())
 	}
-	switch v := p.Err.(type) {
-	case *exec.ExitError:
-		// nil out error if non-zero exit codes are not considered errors
-		if p.SucceedOnNonZero {
-			p.Err = nil
-		} else {
+	if v, ok := runErr.(*exec.ExitError); ok {
+		switch {
+		case p.SucceedOnNonZero:
 			// non-zero exit codes are not considered errors
-			p.Err = fmt.Errorf("exit code: %d", *p.exitCode)
+			runErr = nil
+		case exitCode != nil:
+			runErr = fmt.Errorf("exit code: %d", *exitCode)
 		}
 		// Enhance fork/exec permission errors with better messages
 		if v.ExitCode() == 126 {
-			p.Err = fmt.Errorf("permission denied: %s", p.Cmd)
+			runErr = fmt.Errorf("permission denied: %s", p.Cmd)
 		}
 		if v.ExitCode() == 127 {
-			p.Err = fmt.Errorf("command not found: %s", p.Cmd)
+			runErr = fmt.Errorf("command not found: %s", p.Cmd)
 		}
 	}
+
+	// Publish terminal state under the lock so concurrent readers observe a
+	// consistent (running=false, Err, exitCode, exited, succeeded) tuple.
+	p.mu.Lock()
+	p.running = false
+	p.Err = runErr
+	p.exitCode = exitCode
+	p.completed = completed
+	p.succeeded = succeeded
+	p.mu.Unlock()
 
 	p.log.Tracef(p.Pretty().ANSI())
 
@@ -689,36 +773,37 @@ func (p *Process) Run() *Process {
 }
 
 func (p *Process) ExitCode() int {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
 	if p.exitCode != nil {
 		return *p.exitCode
-	}
-	if p.cmd != nil && p.cmd.ProcessState != nil {
-		p.exitCode = lo.ToPtr(p.cmd.ProcessState.ExitCode())
 	}
 	return -1
 }
 
 func (p *Process) IsRunning() bool {
-	if p.cmd == nil || p.cmd.Process == nil || p.Err != nil {
-		return false
-	}
-
-	if p.cmd.ProcessState != nil {
-		return !p.cmd.ProcessState.Exited()
-	}
-
-	return true
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	// running is the authoritative signal: it is true only while the
+	// subprocess is executing. Peeking cmd.ProcessState would race, since
+	// os/exec publishes it without synchronization a caller can observe.
+	return p.running && p.pid != 0
 }
 
 func (p *Process) IsOK() bool {
-	return p.Err == nil && p.cmd != nil && p.cmd.ProcessState != nil && p.cmd.ProcessState.Success()
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	return p.Err == nil && p.completed && p.succeeded
 }
 
 func (p *Process) Wait() error {
-	if p.cmd == nil {
+	p.mu.RLock()
+	cmd := p.cmd
+	p.mu.RUnlock()
+	if cmd == nil {
 		return nil
 	}
-	return p.cmd.Wait()
+	return cmd.Wait()
 }
 
 func (p *Process) Terminate() error {
@@ -727,8 +812,12 @@ func (p *Process) Terminate() error {
 	}
 	p.log.Infof(api.Text{}.Add(icons.Stop).Space().Append("Terminating process: ").Add(p.Short()).ANSI())
 
+	p.mu.RLock()
+	proc := p.cmd.Process
+	p.mu.RUnlock()
+
 	// Send interrupt signal
-	if err := p.cmd.Process.Signal(os.Interrupt); err != nil {
+	if err := proc.Signal(os.Interrupt); err != nil {
 		p.log.Errorf(api.Text{}.Add(icons.Fail).Space().Append(" failed to signal ").Add(p.Short()).Append(err, "text-red-500").ANSI())
 		return err
 	}
@@ -757,13 +846,17 @@ func (p *Process) Kill(timeout time.Duration) error {
 
 	p.log.Infof("Killing process: %s with timeout %v", p.Short().ANSI(), timeout)
 
-	if err := p.cmd.Process.Signal(os.Interrupt); err != nil {
+	p.mu.RLock()
+	proc := p.cmd.Process
+	p.mu.RUnlock()
+
+	if err := proc.Signal(os.Interrupt); err != nil {
 		return err
 	}
 
 	done := make(chan error, 1)
 	go func() {
-		_, err := p.cmd.Process.Wait()
+		_, err := proc.Wait()
 		done <- err
 	}()
 
@@ -776,10 +869,13 @@ func (p *Process) Kill(timeout time.Duration) error {
 }
 
 func (p *Process) ForceKill() error {
-	if p.cmd == nil || p.cmd.Process == nil {
+	p.mu.RLock()
+	cmd := p.cmd
+	p.mu.RUnlock()
+	if cmd == nil || cmd.Process == nil {
 		return nil
 	}
-	return p.cmd.Process.Kill()
+	return cmd.Process.Kill()
 }
 
 // WaitForStdout waits for a specific message to appear in the process stdout
@@ -789,8 +885,12 @@ func (p *Process) WaitForStdout(message string, timeout time.Duration) error {
 
 	for time.Now().Before(deadline) {
 		// Check if process has exited with error
-		if p.cmd != nil && p.cmd.ProcessState != nil && !p.cmd.ProcessState.Success() {
-			return fmt.Errorf("process exited with error: %v", p.Err)
+		p.mu.RLock()
+		failed := p.completed && !p.succeeded
+		procErr := p.Err
+		p.mu.RUnlock()
+		if failed {
+			return fmt.Errorf("process exited with error: %v", procErr)
 		}
 
 		// Check stdout buffer for the message
