@@ -65,7 +65,11 @@ func StopTask(id string) bool {
 	return false
 }
 
-// ClearTasks removes all completed tasks from the task list
+// ClearTasks removes all completed tasks (and groups) from the registry,
+// keeping only those still pending or running. Groups must be pruned too:
+// SnapshotAll iterates global.groups, so a leftover completed group would keep
+// surfacing its (now-removed) tasks — e.g. a stale "Running tests" group whose
+// task IDs no longer resolve, causing StopTask lookups to fail.
 func ClearTasks() {
 	global.mu.Lock()
 	defer global.mu.Unlock()
@@ -80,8 +84,15 @@ func ClearTasks() {
 			activeTasks = append(activeTasks, task)
 		}
 	}
-
 	global.tasks = activeTasks
+
+	var activeGroups []*Group
+	for _, group := range global.groups {
+		if s := group.Status(); s == StatusPending || s == StatusRunning {
+			activeGroups = append(activeGroups, group)
+		}
+	}
+	global.groups = activeGroups
 }
 
 // WaitSilent waits for all tasks to complete without displaying results

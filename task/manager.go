@@ -457,10 +457,10 @@ func (tm *Manager) StartWithResult(name string, taskFunc func(flanksourceContext
 		if result != nil {
 			t.resultType = reflect.TypeOf(result)
 		}
+		t.err = err
 		t.mu.Unlock()
 
 		if err != nil {
-			t.err = err
 			return err
 		}
 		return nil
