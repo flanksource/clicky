@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.21.12](https://github.com/flanksource/clicky/compare/v1.21.11...v1.21.12) (2026-05-31)
+
+
+### ✨ Features
+
+* **flags:** support comma-delimited shorthand in flag tags ([e498bb0](https://github.com/flanksource/clicky/commit/e498bb040a47fe314d52dcb9cc9d6da74cf1930f))
+
+
+### 🔧 Maintenance
+
+* bump gomplate and is-healthy for kubernetes v0.36.1 ([ac2b3d1](https://github.com/flanksource/clicky/commit/ac2b3d17cc8077cfda1a3aeda17b36d272f9f95e))
+
 ## [1.21.11](https://github.com/flanksource/clicky/compare/v1.21.10...v1.21.11) (2026-05-31)
 
 
