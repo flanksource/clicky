@@ -47,6 +47,27 @@ jobs:
         with:
           node-version: "20"
 
+      # Build and commit the embedded task-ui bundle (taskui.js) so the release
+      # commit/tag carries it. It is gitignored build output, so without this a
+      # downstream module fetching clicky by tag/SHA fails task/ui/assets.go's
+      # `//go:embed dist/taskui.js` with "no matching files found".
+      - name: Build and commit task-ui bundle
+        if: github.event.inputs.dry-run != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.FLANKBOT }}
+        run: |
+          make task-ui
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -f task/ui/dist/taskui.js
+          if ! git diff --cached --quiet; then
+            git commit -m "chore(embed): rebuild task-ui bundle [skip ci]"
+            git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git"
+            git push origin HEAD:${{ github.ref_name }}
+          else
+            echo "task-ui bundle unchanged"
+          fi
+
       - name: Semantic Release
         id: semantic
         uses: cycjimmy/semantic-release-action@v4

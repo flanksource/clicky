@@ -1,2 +1,5 @@
 dist/
+# Keep the embedded bundle tracked (task/ui/assets.go embeds it).
+!dist/
+!dist/taskui.js
 node_modules/

@@ -44,6 +44,11 @@ dist/
 *.tar.gz
 *.zip
 
+# Note: task/ui/dist/taskui.js is committed (it is `//go:embed`-ed by
+# task/ui/assets.go so downstream modules can build). The un-ignore rule
+# lives in task/ui/.gitignore, which the broad dist/ rule there would
+# otherwise shadow.
+
 # Test coverage files
 coverage.out
 coverage.html
