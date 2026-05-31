@@ -3,6 +3,7 @@ package flags
 import (
 	"fmt"
 	"reflect"
+	"strings"
 )
 
 // ParseStructFields recursively parses struct fields including embedded structs
@@ -42,14 +43,24 @@ func parseStructFieldsRecursive(structType reflect.Type, fieldPath []int, fields
 			}
 		}
 
-		// Check for flag tag on this field
-		flagName := field.Tag.Get("flag")
+		// Check for flag tag on this field. The flag tag may carry a
+		// comma-delimited shorthand, e.g. `flag:"limit,l"` → --limit | -l.
+		flagName, commaShort := splitFlagTag(field.Tag.Get("flag"))
 		isArgs := field.Tag.Get("args") == "true"
 		isStdin := field.Tag.Get("stdin") == "true"
 
 		// Skip fields that don't have flag, args, or stdin tags
 		if (flagName == "" || flagName == "-") && !isArgs && !isStdin {
 			continue
+		}
+
+		// An explicit short tag takes precedence over the comma-derived alias.
+		shortFlag := field.Tag.Get("short")
+		if shortFlag == "" {
+			shortFlag = commaShort
+		}
+		if l := len([]rune(shortFlag)); l > 1 {
+			return fmt.Errorf("field %s: flag shorthand %q must be a single character", field.Name, shortFlag)
 		}
 
 		// Extract flag metadata
@@ -60,7 +71,7 @@ func parseStructFieldsRecursive(structType reflect.Type, fieldPath []int, fields
 			FlagName:     flagName,
 			Help:         field.Tag.Get("help"),
 			DefaultValue: field.Tag.Get("default"),
-			ShortFlag:    field.Tag.Get("short"),
+			ShortFlag:    shortFlag,
 			Required:     field.Tag.Get("required") == "true",
 			IsStdin:      isStdin,
 			IsArgs:       isArgs,
@@ -70,6 +81,17 @@ func parseStructFieldsRecursive(structType reflect.Type, fieldPath []int, fields
 	}
 
 	return nil
+}
+
+// splitFlagTag splits a flag tag into its long name and optional single-char
+// shorthand, e.g. "limit,l" → ("limit", "l"). Whitespace around each part is
+// trimmed. A tag with no comma yields an empty shorthand.
+func splitFlagTag(tag string) (name, short string) {
+	long, rest, found := strings.Cut(tag, ",")
+	if !found {
+		return strings.TrimSpace(long), ""
+	}
+	return strings.TrimSpace(long), strings.TrimSpace(rest)
 }
 
 // GetFieldByPath navigates through embedded structs using field indices

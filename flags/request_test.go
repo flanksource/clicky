@@ -13,11 +13,11 @@ import (
 )
 
 type reqOpts struct {
-	Slice   []string `flag:"slice"`
-	IntList []int    `flag:"ints"`
-	Name    string   `flag:"name"`
-	Count   int      `flag:"count" default:"42"`
-	Verbose bool     `flag:"verbose"`
+	Slice   []string          `flag:"slice"`
+	IntList []int             `flag:"ints"`
+	Name    string            `flag:"name"`
+	Count   int               `flag:"count" default:"42"`
+	Verbose bool              `flag:"verbose"`
 	MaxAge  duration.Duration `flag:"max-age" default:"7d"`
 	Since   time.Time         `flag:"since"`
 }

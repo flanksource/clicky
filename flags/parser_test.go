@@ -54,6 +54,27 @@ type Args struct {
 	Values []string `args:"true" help:"List of values"`
 }
 
+type CommaShorthandOptions struct {
+	Limit int `flag:"limit,l" help:"Max results"`
+}
+
+type NoShorthandOptions struct {
+	Limit int `flag:"limit" help:"Max results"`
+}
+
+type ExplicitShortWinsOptions struct {
+	Limit int `flag:"limit,l" short:"x" help:"Max results"`
+}
+
+type MultiCharShorthandOptions struct {
+	Limit int `flag:"limit,lim" help:"Max results"`
+}
+
+type DisabledFlagOptions struct {
+	Limit  int `flag:"-" help:"Disabled"`
+	Active int `flag:"active" help:"Active"`
+}
+
 var _ = Describe("Flags", func() {
 	Context("when parsing args struct", func() {
 		It("should extract args field correctly", func() {
@@ -63,6 +84,44 @@ var _ = Describe("Flags", func() {
 
 			By("verifying args field")
 			Expect(fields[0].IsArgs).To(BeTrue())
+		})
+	})
+
+	Context("when parsing comma-delimited shorthand", func() {
+		It("should split flag tag into long name and shorthand", func() {
+			fields, err := ParseStructFields(reflect.TypeOf(CommaShorthandOptions{}))
+			Expect(err).ToNot(HaveOccurred())
+			Expect(fields).To(HaveLen(1))
+			Expect(fields[0].FlagName).To(Equal("limit"))
+			Expect(fields[0].ShortFlag).To(Equal("l"))
+		})
+
+		It("should leave shorthand empty when no comma is present", func() {
+			fields, err := ParseStructFields(reflect.TypeOf(NoShorthandOptions{}))
+			Expect(err).ToNot(HaveOccurred())
+			Expect(fields).To(HaveLen(1))
+			Expect(fields[0].FlagName).To(Equal("limit"))
+			Expect(fields[0].ShortFlag).To(BeEmpty())
+		})
+
+		It("should let an explicit short tag take precedence over the comma alias", func() {
+			fields, err := ParseStructFields(reflect.TypeOf(ExplicitShortWinsOptions{}))
+			Expect(err).ToNot(HaveOccurred())
+			Expect(fields).To(HaveLen(1))
+			Expect(fields[0].FlagName).To(Equal("limit"))
+			Expect(fields[0].ShortFlag).To(Equal("x"))
+		})
+
+		It("should reject a multi-character shorthand", func() {
+			_, err := ParseStructFields(reflect.TypeOf(MultiCharShorthandOptions{}))
+			Expect(err).To(MatchError(ContainSubstring("must be a single character")))
+		})
+
+		It("should still skip a flag disabled with '-'", func() {
+			fields, err := ParseStructFields(reflect.TypeOf(DisabledFlagOptions{}))
+			Expect(err).ToNot(HaveOccurred())
+			Expect(fields).To(HaveLen(1))
+			Expect(fields[0].FlagName).To(Equal("active"))
 		})
 	})
 
