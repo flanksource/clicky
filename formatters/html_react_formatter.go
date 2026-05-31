@@ -26,12 +26,18 @@ type HTMLReactFormatter struct{}
 // payload is the same shape consumed by @flanksource/clicky-ui's <Clicky data={...} />.
 type ClickyJSONFormatter struct{}
 
-type clickyDocument struct {
+// ClickyDocument is the {version:1, node:{…}} envelope consumed by
+// @flanksource/clicky-ui's <Clicky data={…} /> component. It is built from a
+// PrettyData tree (clicky-json / html-react formatters) or directly from a
+// Textable via NewClickyDocument. Every field below is concrete (no interfaces),
+// so the document round-trips through encoding/json (Marshal and Unmarshal) with
+// the stock codec — callers can persist it and reload it without loss.
+type ClickyDocument struct {
 	Version int        `json:"version"`
-	Node    clickyNode `json:"node"`
+	Node    ClickyNode `json:"node"`
 }
 
-type clickyStyle struct {
+type ClickyStyle struct {
 	ClassName       string `json:"className,omitempty"`
 	Color           string `json:"color,omitempty"`
 	BackgroundColor string `json:"backgroundColor,omitempty"`
@@ -47,31 +53,31 @@ type clickyStyle struct {
 	Monospace       bool   `json:"monospace,omitempty"`
 }
 
-type clickyField struct {
+type ClickyField struct {
 	Name  string     `json:"name"`
 	Label string     `json:"label,omitempty"`
-	Value clickyNode `json:"value"`
+	Value ClickyNode `json:"value"`
 }
 
-type clickyColumn struct {
+type ClickyColumn struct {
 	Name   string      `json:"name"`
 	Label  string      `json:"label,omitempty"`
-	Header *clickyNode `json:"header,omitempty"`
+	Header *ClickyNode `json:"header,omitempty"`
 	Align  string      `json:"align,omitempty"`
 }
 
-type clickyRow struct {
-	Cells  map[string]clickyNode `json:"cells"`
-	Detail *clickyNode           `json:"detail,omitempty"`
+type ClickyRow struct {
+	Cells  map[string]ClickyNode `json:"cells"`
+	Detail *ClickyNode           `json:"detail,omitempty"`
 }
 
-type clickyTreeItem struct {
+type ClickyTreeItem struct {
 	ID       string           `json:"id"`
-	Label    clickyNode       `json:"label"`
-	Children []clickyTreeItem `json:"children,omitempty"`
+	Label    ClickyNode       `json:"label"`
+	Children []ClickyTreeItem `json:"children,omitempty"`
 }
 
-type clickyStackFrame struct {
+type ClickyStackFrame struct {
 	FunctionName      string   `json:"functionName,omitempty"`
 	DisplayName       string   `json:"displayName,omitempty"`
 	File              string   `json:"file,omitempty"`
@@ -89,25 +95,25 @@ type clickyStackFrame struct {
 	SourceLanguage    string   `json:"sourceLanguage,omitempty"`
 }
 
-type clickyNode struct {
+type ClickyNode struct {
 	Kind            string             `json:"kind"`
 	Plain           string             `json:"plain,omitempty"`
-	Style           *clickyStyle       `json:"style,omitempty"`
+	Style           *ClickyStyle       `json:"style,omitempty"`
 	Text            string             `json:"text,omitempty"`
-	Children        []clickyNode       `json:"children,omitempty"`
-	Tooltip         *clickyNode        `json:"tooltip,omitempty"`
+	Children        []ClickyNode       `json:"children,omitempty"`
+	Tooltip         *ClickyNode        `json:"tooltip,omitempty"`
 	HTML            string             `json:"html,omitempty"`
 	Inline          bool               `json:"inline,omitempty"`
 	Ordered         bool               `json:"ordered,omitempty"`
 	Unstyled        bool               `json:"unstyled,omitempty"`
-	Bullet          *clickyNode        `json:"bullet,omitempty"`
-	Items           []clickyNode       `json:"items,omitempty"`
-	Fields          []clickyField      `json:"fields,omitempty"`
-	Columns         []clickyColumn     `json:"columns,omitempty"`
-	Rows            []clickyRow        `json:"rows,omitempty"`
-	Roots           []clickyTreeItem   `json:"roots,omitempty"`
-	Label           *clickyNode        `json:"label,omitempty"`
-	Content         *clickyNode        `json:"content,omitempty"`
+	Bullet          *ClickyNode        `json:"bullet,omitempty"`
+	Items           []ClickyNode       `json:"items,omitempty"`
+	Fields          []ClickyField      `json:"fields,omitempty"`
+	Columns         []ClickyColumn     `json:"columns,omitempty"`
+	Rows            []ClickyRow        `json:"rows,omitempty"`
+	Roots           []ClickyTreeItem   `json:"roots,omitempty"`
+	Label           *ClickyNode        `json:"label,omitempty"`
+	Content         *ClickyNode        `json:"content,omitempty"`
 	Href            string             `json:"href,omitempty"`
 	Target          string             `json:"target,omitempty"`
 	Command         string             `json:"command,omitempty"`
@@ -125,7 +131,7 @@ type clickyNode struct {
 	ExceptionClass  string             `json:"exceptionClass,omitempty"`
 	Message         string             `json:"message,omitempty"`
 	CausedBy        []string           `json:"causedBy,omitempty"`
-	Frames          []clickyStackFrame `json:"frames,omitempty"`
+	Frames          []ClickyStackFrame `json:"frames,omitempty"`
 	// Badge fields — set for Kind == "badge" (LabelBadge). Rendered by
 	// clicky-ui as <Badge variant="label" label={Value1} value={Value2} />.
 	BadgeLabel string `json:"badgeLabel,omitempty"`
@@ -177,14 +183,14 @@ func clickyDocumentJSON(data any, opts FormatOptions, indent bool) ([]byte, erro
 	return json.Marshal(payload)
 }
 
-func convertPrettyData(pd *api.PrettyData) clickyDocument {
-	return clickyDocument{
+func convertPrettyData(pd *api.PrettyData) ClickyDocument {
+	return ClickyDocument{
 		Version: 1,
 		Node:    convertTypedValue(&pd.TypedValue, pd.Schema),
 	}
 }
 
-func convertTypedValue(tv *api.TypedValue, schema *api.PrettyObject) clickyNode {
+func convertTypedValue(tv *api.TypedValue, schema *api.PrettyObject) ClickyNode {
 	if tv == nil {
 		return clickyTextNode("")
 	}
@@ -212,7 +218,7 @@ func convertTypedValue(tv *api.TypedValue, schema *api.PrettyObject) clickyNode 
 	return clickyTextNode(tv.String())
 }
 
-func convertTextable(t api.Textable) clickyNode {
+func convertTextable(t api.Textable) ClickyNode {
 	switch v := t.(type) {
 	case api.Text:
 		return convertText(v)
@@ -279,11 +285,11 @@ func convertTextable(t api.Textable) clickyNode {
 	case *api.ButtonGroup:
 		return convertButtonGroup(*v)
 	case api.HtmlElement:
-		return clickyNode{Kind: "html", Plain: v.String(), HTML: v.HTML()}
+		return ClickyNode{Kind: "html", Plain: v.String(), HTML: v.HTML()}
 	case *api.HtmlElement:
-		return clickyNode{Kind: "html", Plain: v.String(), HTML: v.HTML()}
+		return ClickyNode{Kind: "html", Plain: v.String(), HTML: v.HTML()}
 	case api.Comment:
-		return clickyNode{Kind: "comment", Plain: string(v), Text: string(v)}
+		return ClickyNode{Kind: "comment", Plain: string(v), Text: string(v)}
 	case api.KeyValuePair:
 		return convertKeyValuePair(v)
 	case *api.KeyValuePair:
@@ -301,16 +307,16 @@ func convertTextable(t api.Textable) clickyNode {
 	case *api.LabelBadge:
 		return convertLabelBadge(*v)
 	default:
-		return clickyNode{Kind: "html", Plain: t.String(), HTML: t.HTML()}
+		return ClickyNode{Kind: "html", Plain: t.String(), HTML: t.HTML()}
 	}
 }
 
-func convertText(text api.Text) clickyNode {
+func convertText(text api.Text) ClickyNode {
 	return convertInlineTextNode("text", text)
 }
 
-func convertInlineTextNode(kind string, text api.Text) clickyNode {
-	node := clickyNode{
+func convertInlineTextNode(kind string, text api.Text) ClickyNode {
+	node := ClickyNode{
 		Kind:  kind,
 		Plain: text.String(),
 		Text:  text.Content,
@@ -329,14 +335,14 @@ func convertInlineTextNode(kind string, text api.Text) clickyNode {
 	return node
 }
 
-func convertLink(link api.Link) clickyNode {
+func convertLink(link api.Link) ClickyNode {
 	node := convertInlineTextNode("link", link.Content)
 	node.Href = link.Href
 	node.Target = string(link.Target)
 	return node
 }
 
-func convertLinkCommand(link api.LinkCommand) clickyNode {
+func convertLinkCommand(link api.LinkCommand) ClickyNode {
 	node := convertInlineTextNode("link-command", link.Content)
 	node.Command = link.Command
 	node.Target = string(link.Target)
@@ -353,8 +359,8 @@ func convertLinkCommand(link api.LinkCommand) clickyNode {
 	return node
 }
 
-func convertList(list api.List) clickyNode {
-	node := clickyNode{
+func convertList(list api.List) ClickyNode {
+	node := ClickyNode{
 		Kind:     "list",
 		Plain:    list.String(),
 		Ordered:  list.Numbered || list.Ordered,
@@ -374,72 +380,72 @@ func convertList(list api.List) clickyNode {
 	return node
 }
 
-func convertTextList(list api.TextList) clickyNode {
-	node := clickyNode{Kind: "list", Plain: list.String()}
+func convertTextList(list api.TextList) ClickyNode {
+	node := ClickyNode{Kind: "list", Plain: list.String()}
 	for _, item := range list {
 		node.Items = append(node.Items, convertTextable(item))
 	}
 	return node
 }
 
-func convertTextMap(tm api.TextMap, schema *api.PrettyObject) clickyNode {
-	fields := make([]clickyField, 0, len(tm))
+func convertTextMap(tm api.TextMap, schema *api.PrettyObject) ClickyNode {
+	fields := make([]ClickyField, 0, len(tm))
 	for _, key := range orderedFieldNames(schema, mapKeysTextMap(tm)) {
 		value, ok := tm[key]
 		if !ok {
 			continue
 		}
-		fields = append(fields, clickyField{
+		fields = append(fields, ClickyField{
 			Name:  key,
 			Label: clickySchemaFieldLabel(schema, key),
 			Value: convertTextable(value),
 		})
 	}
-	return clickyNode{Kind: "map", Plain: tm.String(), Fields: fields}
+	return ClickyNode{Kind: "map", Plain: tm.String(), Fields: fields}
 }
 
-func convertTypedMap(tm *api.TypedMap, schema *api.PrettyObject) clickyNode {
+func convertTypedMap(tm *api.TypedMap, schema *api.PrettyObject) ClickyNode {
 	if tm == nil {
-		return clickyNode{Kind: "map"}
+		return ClickyNode{Kind: "map"}
 	}
 
-	fields := make([]clickyField, 0, len(*tm))
+	fields := make([]ClickyField, 0, len(*tm))
 	for _, key := range orderedFieldNames(schema, mapKeysTypedMap(*tm)) {
 		value, ok := (*tm)[key]
 		if !ok {
 			continue
 		}
-		fields = append(fields, clickyField{
+		fields = append(fields, ClickyField{
 			Name:  key,
 			Label: clickySchemaFieldLabel(schema, key),
 			Value: convertTypedValue(&value, nil),
 		})
 	}
-	return clickyNode{Kind: "map", Plain: tm.String(), Fields: fields}
+	return ClickyNode{Kind: "map", Plain: tm.String(), Fields: fields}
 }
 
-func convertTypedList(tl *api.TypedList) clickyNode {
+func convertTypedList(tl *api.TypedList) ClickyNode {
 	if tl == nil {
-		return clickyNode{Kind: "list"}
+		return ClickyNode{Kind: "list"}
 	}
 
-	node := clickyNode{Kind: "list", Plain: tl.String()}
+	node := ClickyNode{Kind: "list", Plain: tl.String()}
 	for _, item := range *tl {
 		node.Items = append(node.Items, convertTypedValue(&item, nil))
 	}
 	return node
 }
 
-func convertTable(table *api.TextTable) clickyNode {
+func convertTable(table *api.TextTable) ClickyNode {
 	if table == nil {
-		return clickyNode{Kind: "table"}
+		return ClickyNode{Kind: "table"}
 	}
 
-	node := clickyNode{Kind: "table", Plain: table.String()}
+	node := ClickyNode{Kind: "table", Plain: table.String()}
 
 	if len(table.Headers) > 0 {
 		for i, header := range table.Headers {
-			column := clickyColumn{}
+			column := ClickyColumn{}
 			if i < len(table.FieldNames) && table.FieldNames[i] != "" {
 				column.Name = table.FieldNames[i]
 			} else if i < len(table.Columns) && table.Columns[i].Name != "" {
@@ -462,7 +468,7 @@ func convertTable(table *api.TextTable) clickyNode {
 		}
 	} else {
 		for _, columnDef := range table.Columns {
-			column := clickyColumn{
+			column := ClickyColumn{
 				Name:  columnDef.Name,
 				Label: columnDef.Label,
 				Align: alignFromStyle(columnDef.Style),
@@ -475,7 +481,7 @@ func convertTable(table *api.TextTable) clickyNode {
 	}
 
 	for rowIndex, row := range table.Rows {
-		rowNode := clickyRow{Cells: map[string]clickyNode{}}
+		rowNode := ClickyRow{Cells: map[string]ClickyNode{}}
 		for _, column := range node.Columns {
 			if cell, ok := row[column.Name]; ok {
 				rowNode.Cells[column.Name] = convertTypedValue(&cell, nil)
@@ -505,12 +511,12 @@ func convertTable(table *api.TextTable) clickyNode {
 	return node
 }
 
-func convertTree(tree *api.TextTree) clickyNode {
+func convertTree(tree *api.TextTree) ClickyNode {
 	if tree == nil {
-		return clickyNode{Kind: "tree"}
+		return ClickyNode{Kind: "tree"}
 	}
 
-	node := clickyNode{Kind: "tree", Plain: tree.String()}
+	node := ClickyNode{Kind: "tree", Plain: tree.String()}
 	if tree.Node == nil {
 		for index, child := range tree.Children {
 			node.Roots = append(node.Roots, convertTreeItem(&child, fmt.Sprintf("root-%d", index)))
@@ -522,8 +528,8 @@ func convertTree(tree *api.TextTree) clickyNode {
 	return node
 }
 
-func convertTreeItem(tree *api.TextTree, id string) clickyTreeItem {
-	item := clickyTreeItem{
+func convertTreeItem(tree *api.TextTree, id string) ClickyTreeItem {
+	item := ClickyTreeItem{
 		ID:    id,
 		Label: convertTextable(tree.Node),
 	}
@@ -535,8 +541,8 @@ func convertTreeItem(tree *api.TextTree, id string) clickyTreeItem {
 	return item
 }
 
-func convertCode(code api.Code) clickyNode {
-	return clickyNode{
+func convertCode(code api.Code) ClickyNode {
+	return ClickyNode{
 		Kind:            "code",
 		Plain:           code.String(),
 		Style:           convertTextStyle(code.Style, api.Class{}, true),
@@ -546,8 +552,8 @@ func convertCode(code api.Code) clickyNode {
 	}
 }
 
-func convertStackTrace(trace api.StackTrace) clickyNode {
-	node := clickyNode{
+func convertStackTrace(trace api.StackTrace) ClickyNode {
+	node := ClickyNode{
 		Kind:           "stacktrace",
 		Plain:          trace.String(),
 		ExceptionClass: trace.ExceptionClass,
@@ -578,7 +584,7 @@ func convertStackTrace(trace api.StackTrace) clickyNode {
 		if frame.Runtime {
 			kind = "runtime"
 		}
-		node.Frames = append(node.Frames, clickyStackFrame{
+		node.Frames = append(node.Frames, ClickyStackFrame{
 			FunctionName:      functionName,
 			DisplayName:       functionName,
 			File:              frame.File,
@@ -599,18 +605,18 @@ func convertStackTrace(trace api.StackTrace) clickyNode {
 	return node
 }
 
-func convertCollapsed(collapsed api.Collapsed) clickyNode {
-	label := clickyNode{
+func convertCollapsed(collapsed api.Collapsed) ClickyNode {
+	label := ClickyNode{
 		Kind:  "text",
 		Plain: collapsed.Label,
 		Text:  collapsed.Label,
 		Style: convertTextStyle(collapsed.Style, api.Class{}, false),
 	}
 	if collapsed.Icon != nil {
-		label.Children = append([]clickyNode{convertIcon(*collapsed.Icon)}, label.Children...)
+		label.Children = append([]ClickyNode{convertIcon(*collapsed.Icon)}, label.Children...)
 	}
 
-	node := clickyNode{
+	node := ClickyNode{
 		Kind:  "collapsed",
 		Plain: collapsed.String(),
 		Label: &label,
@@ -624,9 +630,9 @@ func convertCollapsed(collapsed api.Collapsed) clickyNode {
 	return node
 }
 
-func convertButton(button api.Button) clickyNode {
+func convertButton(button api.Button) ClickyNode {
 	label := clickyTextNode(button.Label)
-	return clickyNode{
+	return ClickyNode{
 		Kind:    "button",
 		Plain:   button.String(),
 		Label:   &label,
@@ -637,16 +643,16 @@ func convertButton(button api.Button) clickyNode {
 	}
 }
 
-func convertButtonGroup(group api.ButtonGroup) clickyNode {
-	node := clickyNode{Kind: "button-group", Plain: group.String()}
+func convertButtonGroup(group api.ButtonGroup) ClickyNode {
+	node := ClickyNode{Kind: "button-group", Plain: group.String()}
 	for _, button := range group.Buttons {
 		node.Items = append(node.Items, convertButton(button))
 	}
 	return node
 }
 
-func convertIcon(icon apiicons.Icon) clickyNode {
-	return clickyNode{
+func convertIcon(icon apiicons.Icon) ClickyNode {
+	return ClickyNode{
 		Kind:    "icon",
 		Plain:   icon.String(),
 		Style:   convertTextStyle(icon.Style, api.Class{}, false),
@@ -655,14 +661,14 @@ func convertIcon(icon apiicons.Icon) clickyNode {
 	}
 }
 
-func convertKeyValuePair(pair api.KeyValuePair) clickyNode {
+func convertKeyValuePair(pair api.KeyValuePair) ClickyNode {
 	if pair.IsEmpty() {
-		return clickyNode{Kind: "map"}
+		return ClickyNode{Kind: "map"}
 	}
-	return clickyNode{
+	return ClickyNode{
 		Kind:  "map",
 		Plain: pair.String(),
-		Fields: []clickyField{
+		Fields: []ClickyField{
 			{
 				Name:  pair.Key,
 				Label: pair.Key,
@@ -672,8 +678,8 @@ func convertKeyValuePair(pair api.KeyValuePair) clickyNode {
 	}
 }
 
-func convertLabelBadge(b api.LabelBadge) clickyNode {
-	return clickyNode{
+func convertLabelBadge(b api.LabelBadge) ClickyNode {
+	return ClickyNode{
 		Kind:       "badge",
 		Plain:      b.String(),
 		BadgeLabel: b.Label,
@@ -685,13 +691,13 @@ func convertLabelBadge(b api.LabelBadge) clickyNode {
 	}
 }
 
-func convertDescriptionList(list api.DescriptionList) clickyNode {
-	node := clickyNode{Kind: "map", Plain: list.String()}
+func convertDescriptionList(list api.DescriptionList) ClickyNode {
+	node := ClickyNode{Kind: "map", Plain: list.String()}
 	for _, item := range list.Items {
 		if item.IsEmpty() {
 			continue
 		}
-		node.Fields = append(node.Fields, clickyField{
+		node.Fields = append(node.Fields, ClickyField{
 			Name:  item.Key,
 			Label: item.Key,
 			Value: convertAnyToNode(item.Value),
@@ -700,19 +706,19 @@ func convertDescriptionList(list api.DescriptionList) clickyNode {
 	return node
 }
 
-func convertAnyToNode(value any) clickyNode {
+func convertAnyToNode(value any) ClickyNode {
 	if typed := api.TryTypedValue(value); typed != nil {
 		return convertTypedValue(typed, nil)
 	}
 	return clickyTextNode(fmt.Sprintf("%v", value))
 }
 
-func clickyTextNode(text string) clickyNode {
-	return clickyNode{Kind: "text", Plain: text, Text: text}
+func clickyTextNode(text string) ClickyNode {
+	return ClickyNode{Kind: "text", Plain: text, Text: text}
 }
 
-func convertTextStyle(styleStr string, class api.Class, monospace bool) *clickyStyle {
-	style := clickyStyle{
+func convertTextStyle(styleStr string, class api.Class, monospace bool) *ClickyStyle {
+	style := ClickyStyle{
 		ClassName: strings.TrimSpace(styleStr),
 		Monospace: monospace || strings.Contains(styleStr, "font-mono"),
 	}
@@ -749,7 +755,7 @@ func convertTextStyle(styleStr string, class api.Class, monospace bool) *clickyS
 		}
 	}
 
-	if style == (clickyStyle{}) {
+	if style == (ClickyStyle{}) {
 		return nil
 	}
 

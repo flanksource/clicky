@@ -365,3 +365,101 @@ func TestHTMLReactBuildHTML(t *testing.T) {
 		}
 	}
 }
+
+// entityLinkLike mirrors models.EntityLink: it implements BOTH Pretty (which
+// returns a Link) and Textable. When it is a struct field it must serialize as
+// a single link node, not a {kind,guid,name} field map.
+type entityLinkLike struct {
+	Kind string `json:"kind"`
+	GUID string `json:"guid"`
+	Name string `json:"name"`
+}
+
+func (l entityLinkLike) Pretty() api.Text {
+	return api.Text{}.Add(api.Link{Href: "/entity/" + l.Kind + "/" + l.GUID, Content: api.Text{Content: l.Name}})
+}
+func (l entityLinkLike) String() string   { return l.Name }
+func (l entityLinkLike) ANSI() string     { return l.Name }
+func (l entityLinkLike) HTML() string     { return l.Pretty().HTML() }
+func (l entityLinkLike) Markdown() string { return l.Pretty().Markdown() }
+
+// TestClickyJSONEntityLinkFieldRendersAsLink pins the EntityLink fix: a struct
+// field whose type implements both Pretty and Textable serializes as a "link"
+// node (honoring Pretty), not a nested "map" of its struct fields.
+func TestClickyJSONEntityLinkFieldRendersAsLink(t *testing.T) {
+	type detail struct {
+		Name             string         `json:"name"`
+		ClientEntityLink entityLinkLike `json:"clientEntityLink"`
+	}
+	d := detail{
+		Name:             "Scheme",
+		ClientEntityLink: entityLinkLike{Kind: "client", GUID: "abc-123", Name: "GL Scheme G0796016"},
+	}
+
+	out, err := (&ClickyJSONFormatter{}).Format(d, FormatOptions{})
+	if err != nil {
+		t.Fatalf("format: %v", err)
+	}
+	if !strings.Contains(out, `"link"`) {
+		t.Errorf("expected a link node, got:\n%s", out)
+	}
+	if !strings.Contains(out, "/entity/client/abc-123") {
+		t.Errorf("expected clientEntityLink href in output, got:\n%s", out)
+	}
+	if !strings.Contains(out, "GL Scheme G0796016") {
+		t.Errorf("expected link label in output, got:\n%s", out)
+	}
+	// The field must NOT degrade to a map exposing its kind/guid/name fields.
+	if strings.Contains(out, `"guid"`) {
+		t.Errorf("clientEntityLink leaked struct fields (rendered as a map), got:\n%s", out)
+	}
+}
+
+// shortLinkLike implements PrettyShort (a compact self-link) AND Pretty (a
+// fuller block). The `short` tag must select PrettyShort.
+type shortLinkLike struct {
+	Kind string `json:"kind"`
+	GUID string `json:"guid"`
+	Name string `json:"name"`
+}
+
+func (l shortLinkLike) PrettyShort() api.Textable {
+	return api.Text{}.Add(api.Link{Href: "/entity/" + l.Kind + "/" + l.GUID, Content: api.Text{Content: l.Name}})
+}
+func (l shortLinkLike) Pretty() api.Text {
+	return api.Text{Content: "FULL-DETAIL-BLOCK-" + l.Name}
+}
+
+// TestClickyJSONShortTagRendersPrettyShort pins the `short` pretty-tag: a field
+// tagged `pretty:",short"` renders via PrettyShort() (a link node), while the
+// same value without the tag renders via Pretty() (the full block).
+func TestClickyJSONShortTagRendersPrettyShort(t *testing.T) {
+	type shortDetail struct {
+		Plan shortLinkLike `json:"plan" pretty:",short"`
+	}
+	out, err := (&ClickyJSONFormatter{}).Format(
+		shortDetail{Plan: shortLinkLike{Kind: "plan", GUID: "p-1", Name: "Life Plan"}},
+		FormatOptions{})
+	if err != nil {
+		t.Fatalf("format: %v", err)
+	}
+	if !strings.Contains(out, `"link"`) || !strings.Contains(out, "/entity/plan/p-1") {
+		t.Errorf("short tag: expected a link node to the plan, got:\n%s", out)
+	}
+	if strings.Contains(out, "FULL-DETAIL-BLOCK") {
+		t.Errorf("short tag: expected PrettyShort, not Pretty's full block, got:\n%s", out)
+	}
+
+	type plainDetail struct {
+		Plan shortLinkLike `json:"plan"`
+	}
+	plain, err := (&ClickyJSONFormatter{}).Format(
+		plainDetail{Plan: shortLinkLike{Kind: "plan", GUID: "p-1", Name: "Life Plan"}},
+		FormatOptions{})
+	if err != nil {
+		t.Fatalf("format: %v", err)
+	}
+	if !strings.Contains(plain, "FULL-DETAIL-BLOCK-Life Plan") {
+		t.Errorf("without short tag: expected Pretty's full block, got:\n%s", plain)
+	}
+}
