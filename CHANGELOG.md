@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.21.11](https://github.com/flanksource/clicky/compare/v1.21.10...v1.21.11) (2026-05-31)
+
+
+### ✨ Features
+
+* **api:** add Admonition and Keyed types for structured content rendering ([7a04589](https://github.com/flanksource/clicky/commit/7a0458939175a9597a129011e8daebb988b79307))
+* **api:** Add PrettyShort interface for compact cell rendering and Link JSON payload support ([7702184](https://github.com/flanksource/clicky/commit/770218495b38eafa706ad31ac68c0962db836543))
+* **entity,flags,rpc:** Add filter lifting, HTTP request population, and UI parameter roles ([0023d43](https://github.com/flanksource/clicky/commit/0023d438d1e625e5f280a1860fc763828be28120))
+* **formatters:** Add ClickyDocument and ClickyText for direct Textable serialization ([db93e8d](https://github.com/flanksource/clicky/commit/db93e8d327b1bd59866e3f19ec6c2831103bb87f))
+
+
+### 🐛 Bug Fixes
+
+* **task:** enforce group concurrency at dequeue time instead of task body ([006f3b4](https://github.com/flanksource/clicky/commit/006f3b40034e8238c8dbd42128b470ec6791dcca))
+
 ## [1.21.10](https://github.com/flanksource/clicky/compare/v1.21.9...v1.21.10) (2026-05-27)
 
 
