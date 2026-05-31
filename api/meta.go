@@ -379,6 +379,7 @@ type TextMap map[string]Textable
 type FieldMeta struct {
 	Name         string
 	CompactItems bool
+	Short        bool
 	Format       string
 }
 
@@ -504,14 +505,19 @@ func TryTypedValue(o any) *TypedValue {
 		return &TypedValue{TypedMap: &v}
 	case TypedList:
 		return &TypedValue{TypedList: &v}
-	case Textable:
-		return &TypedValue{Textable: v}
 	case TreeNode:
 		return &TypedValue{Tree: lo.ToPtr(NewTree(v))}
 	case TreeMixin:
 		return &TypedValue{Tree: lo.ToPtr(NewTree(v.Tree()))}
+	// Pretty must be checked before Textable: a type implementing both (e.g.
+	// an EntityLink whose Pretty() returns a Link) controls its own rendered
+	// node via Pretty(), so honor that rather than treating the bare value as
+	// Textable and serializing it as a struct/map. This mirrors the slice path
+	// below, which already checks Pretty before Textable.
 	case Pretty:
 		return &TypedValue{Textable: v.Pretty()}
+	case Textable:
+		return &TypedValue{Textable: v}
 	case []TableMixin:
 		return &TypedValue{Table: lo.ToPtr(NewTable(v))}
 	case []TableRowMixin2:

@@ -1,6 +1,9 @@
 package api
 
-import "fmt"
+import (
+	"encoding/json"
+	"fmt"
+)
 
 type LinkTarget string
 
@@ -18,10 +21,23 @@ type Link struct {
 	Href    string
 	Target  LinkTarget
 	Content Text
+	// JSON is an optional structured payload carried alongside the link. Unlike
+	// Text, a Link serializes to a structured object (see MarshalJSON), so this
+	// payload survives JSON encoding and reaches structured-JSON consumers (e.g.
+	// a web UI that renders an <a> from the href and uses the payload for
+	// client-side navigation). It is ignored by String/ANSI/Markdown/HTML.
+	JSON any
 }
 
 func NewLink(href string) Link {
 	return Link{Href: href}
+}
+
+// WithJSON attaches a structured payload to the link. The payload is emitted by
+// MarshalJSON under the "json" key; it does not affect text rendering.
+func (l Link) WithJSON(v any) Link {
+	l.JSON = v
+	return l
 }
 
 func (l Link) Add(child Textable) Link {
@@ -117,6 +133,30 @@ func (l Link) HTML() string {
 	}
 	target, rel := htmlLinkTargetAttributes(l.Target)
 	return fmt.Sprintf(`<a href="%s"%s%s>%s</a>`, htmlEscapeString(l.Href), target, rel, content)
+}
+
+// MarshalJSON serializes a Link as a structured object so its href and payload
+// survive JSON encoding. This is deliberately richer than Text.MarshalJSON
+// (which flattens to a plain string): a structured-JSON consumer can render the
+// link as an anchor and use the payload for navigation. Only non-empty fields
+// are emitted.
+func (l Link) MarshalJSON() ([]byte, error) {
+	out := map[string]any{"text": l.Content.String()}
+	if l.Href != "" {
+		out["href"] = l.Href
+	}
+	if l.Target != "" {
+		out["target"] = string(l.Target)
+	}
+	if l.Content.Tooltip != nil {
+		if tip := l.Content.Tooltip.String(); tip != "" {
+			out["tooltip"] = tip
+		}
+	}
+	if l.JSON != nil {
+		out["json"] = l.JSON
+	}
+	return json.Marshal(out)
 }
 
 type LinkCommand struct {

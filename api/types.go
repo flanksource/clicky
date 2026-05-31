@@ -24,6 +24,16 @@ type PrettyFull interface {
 	PrettyFull() Textable
 }
 
+// PrettyShort enables objects to provide a compact, single-line representation
+// for use in table cells (typically a self-link), distinct from Pretty()'s
+// fuller detail view. Cell renderers prefer PrettyShort() over Pretty() when a
+// value implements it; everything else renders via Pretty()/Textable unchanged.
+// It returns a Textable so an implementer can hand back a value type (e.g. a
+// link struct that itself implements Textable) without an extra render call.
+type PrettyShort interface {
+	PrettyShort() Textable
+}
+
 // PrettyRow enables structs to provide custom table row representation with fine-grained control
 // over columns and cell formatting based on output format options.
 // The opts parameter should be of type formatters.FormatOptions.
@@ -61,6 +71,10 @@ type PrettyField struct {
 	// For custom rendering
 	RenderFunc   RenderFunc `json:"-" yaml:"-"`
 	CompactItems bool       `json:"compact_items,omitempty" yaml:"compact_items,omitempty"`
+	// Short renders the field via its value's PrettyShort() (a compact
+	// self-link, typically) instead of Pretty()/Textable, in the struct,
+	// table, and clicky+json printers. Set by the `short` pretty-tag flag.
+	Short bool `json:"short,omitempty" yaml:"short,omitempty"`
 }
 
 // TableOptions configures tabular data presentation including column definitions,

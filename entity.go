@@ -1412,6 +1412,8 @@ func columnsAndRowFromStruct(inner any) ([]api.ColumnDef, map[string]any, bool) 
 
 func addPrettyRowValue(cell api.Text, value any) api.Text {
 	switch v := value.(type) {
+	case api.PrettyShort:
+		return cell.Add(v.PrettyShort())
 	case api.Textable:
 		return cell.Add(v)
 	case api.Pretty:

@@ -194,6 +194,8 @@ func convertToTextable(val any) Textable {
 	}
 
 	switch v := val.(type) {
+	case PrettyShort:
+		return v.PrettyShort()
 	case Textable:
 		return v
 	case Pretty:
