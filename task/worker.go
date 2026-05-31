@@ -51,9 +51,24 @@ func (w *worker) run() {
 				continue
 			}
 
+			// Gate on group concurrency at dequeue time. If the group's permit
+			// pool is saturated, do not occupy a worker slot — re-enqueue with a
+			// short delay and let this worker pick up other work.
+			sem := task.groupSem()
+			if sem != nil && !sem.TryAcquire(1) {
+				w.manager.taskQueue.EnqueueWithDelay(task, 50*time.Millisecond)
+				continue
+			}
+
 			w.manager.workersActive.Add(1)
 
 			func() {
+				// Release the group permit on ALL exit paths (success, failure,
+				// retry, timeout, panic). Registered first so it runs last,
+				// after the recover defer records terminal status.
+				if sem != nil {
+					defer sem.Release(1)
+				}
 				defer func() {
 					if r := recover(); r != nil {
 						task.mu.Lock()

@@ -61,6 +61,56 @@ func TestGroupConcurrency(t *testing.T) {
 	assert.Equal(t, 5, len(results), "Expected all 5 tasks to complete")
 }
 
+// TestGroupConcurrencySlots proves the concurrency limit is enforced at
+// dequeue time, not inside the task body: a saturated concurrency=1 group must
+// not hold worker slots blocked on its semaphore. We assert (1) only one serial
+// body runs at a time and (2) an independent task still runs WHILE the serial
+// group is busy — which fails if all workers are stuck blocking on the serial
+// semaphore (the pre-fix behavior).
+func TestGroupConcurrencySlots(t *testing.T) {
+	serial := StartGroup[int]("Serial", WithConcurrency(1))
+
+	var serialActive, serialMaxActive int64
+	var serialRunning atomic.Bool
+	for i := 0; i < 4; i++ {
+		serial.Add(
+			"S"+string(rune('A'+i)),
+			func(ctx flanksourceContext.Context, t *Task) (int, error) {
+				a := atomic.AddInt64(&serialActive, 1)
+				for {
+					c := atomic.LoadInt64(&serialMaxActive)
+					if a <= c || atomic.CompareAndSwapInt64(&serialMaxActive, c, a) {
+						break
+					}
+				}
+				serialRunning.Store(true)
+				time.Sleep(100 * time.Millisecond)
+				atomic.AddInt64(&serialActive, -1)
+				return 0, nil
+			},
+		)
+	}
+
+	var otherRanDuringSerial atomic.Bool
+	other := StartGroup[int]("Other")
+	other.Add(
+		"Other",
+		func(ctx flanksourceContext.Context, t *Task) (int, error) {
+			// Let the serial group claim its single permit and start first.
+			time.Sleep(20 * time.Millisecond)
+			otherRanDuringSerial.Store(serialRunning.Load())
+			return 0, nil
+		},
+	)
+
+	serial.WaitFor()
+	other.WaitFor()
+
+	assert.Equal(t, int64(1), serialMaxActive, "serial group must run exactly 1 body at a time")
+	assert.True(t, otherRanDuringSerial.Load(),
+		"independent task must run while the serial group is busy; workers must not be blocked on the serial semaphore")
+}
+
 func TestGroupNoConcurrencyLimit(t *testing.T) {
 	// Create a group without concurrency limit (default behavior)
 	group := StartGroup[int]("No Limit Test")

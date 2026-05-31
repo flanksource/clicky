@@ -43,28 +43,18 @@ func (g TypedGroup[T]) Add(name string, taskFunc func(flanksourceContext.Context
 	g.mu.Lock()
 	defer g.mu.Unlock()
 
-	// Wrap the task function with semaphore acquire/release if concurrency is limited
-	wrappedTaskFunc := taskFunc
-	if g.sem != nil {
-		wrappedTaskFunc = func(ctx flanksourceContext.Context, t *Task) (T, error) {
-			// Acquire semaphore permit
-			if err := g.sem.Acquire(ctx, 1); err != nil {
-				var zero T
-				return zero, err
-			}
-			defer g.sem.Release(1)
-
-			// Execute the original task function
-			return taskFunc(ctx, t)
-		}
-	}
-
-	// Create the task using the group's manager with wrapped function
-	task := StartTask(name, wrappedTaskFunc, opts...)
+	// Concurrency is enforced by the worker at dequeue time via the group's
+	// semaphore (see worker.run / Task.groupSem); wrapping the task function to
+	// acquire here would double-acquire the same permit (deadlock at N=1).
+	//
+	// The parent must be set BEFORE StartTask enqueues the task, otherwise a
+	// worker could dequeue and run it ungated while parent is still nil. The
+	// withParent option is applied inside newTask, before enqueue; it is
+	// prepended so a caller-supplied option cannot override it.
+	task := StartTask(name, taskFunc, append([]Option{withParent(g.Group)}, opts...)...)
 
 	// Add to the group's items
 	g.Items = append(g.Items, task)
-	task.parent = g.Group
 
 	// Update start time if this is the first item or it started earlier
 	task.mu.Lock()
