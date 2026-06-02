@@ -21,7 +21,7 @@ import (
 )
 
 // opTimeout caps any single round-trip so recording or querying metrics never
-// stalls the caller. Mirrors oipa-cli's cache l2OpTimeout.
+// stalls the caller. Mirrors the cache l2OpTimeout used by callers.
 const opTimeout = 250 * time.Millisecond
 
 const defaultRetention = 7 * 24 * time.Hour
