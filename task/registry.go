@@ -10,6 +10,13 @@ import (
 // it from the global manager. Live runs are never GC'd.
 const runRetention = 10 * time.Minute
 
+// OnBeforeGC, if non-nil, is called with each group's full snapshot just before
+// GCRuns removes it from the in-memory manager. The callback receives the
+// group's stable ID and the full snapshot slice (group + child tasks). It is
+// called while global.mu is held, so it must not call back into the task
+// package.
+var OnBeforeGC func(groupID string, snapshots []TaskSnapshot)
+
 // RunMeta is the listing summary for one run (task group): identity, metadata,
 // status, timing, and child-task counts. It is what the generic task-manager
 // list view renders; drill-down uses SnapshotByID.
@@ -35,7 +42,7 @@ type RunFilter struct {
 	Labels map[string]string // every entry must match
 }
 
-func (f RunFilter) matches(m RunMeta) bool {
+func (f RunFilter) Matches(m RunMeta) bool {
 	if f.Kind != "" && m.Kind != f.Kind {
 		return false
 	}
@@ -50,9 +57,9 @@ func (f RunFilter) matches(m RunMeta) bool {
 	return true
 }
 
-// runMetaFromSnapshot lifts the group-level fields of a group snapshot into a
+// RunMetaFromSnapshot lifts the group-level fields of a group snapshot into a
 // RunMeta. The snapshot's ID is the group name; GroupID carries the stable id.
-func runMetaFromSnapshot(snap TaskSnapshot) RunMeta {
+func RunMetaFromSnapshot(snap TaskSnapshot) RunMeta {
 	return RunMeta{
 		ID:         snap.GroupID,
 		Name:       snap.Name,
@@ -73,6 +80,13 @@ func runMetaFromSnapshot(snap TaskSnapshot) RunMeta {
 // narrowed by filter. It runs GC first so stale finished runs drop out.
 func Runs(filter RunFilter) []RunMeta {
 	GCRuns()
+	return RunsRaw(filter)
+}
+
+// RunsRaw is like Runs but does NOT trigger GC first. Callers that manage
+// their own GC timing (e.g. an L2-backed wrapper that needs to snapshot
+// before GC) use this to avoid double-GC.
+func RunsRaw(filter RunFilter) []RunMeta {
 	if global == nil {
 		return nil
 	}
@@ -83,8 +97,8 @@ func Runs(filter RunFilter) []RunMeta {
 
 	out := make([]RunMeta, 0, len(groups))
 	for _, g := range groups {
-		meta := runMetaFromSnapshot(SnapshotGroup(g))
-		if filter.matches(meta) {
+		meta := RunMetaFromSnapshot(SnapshotGroup(g))
+		if filter.Matches(meta) {
 			out = append(out, meta)
 		}
 	}
@@ -100,7 +114,9 @@ func SnapshotByID(id string) []TaskSnapshot {
 
 // GCRuns removes finished runs older than runRetention from the global manager.
 // A run is "finished" once it has a non-zero FinishedAt (recorded the first time
-// it is observed terminal). Live runs are retained regardless of age.
+// it is observed terminal). Live runs are retained regardless of age. If
+// OnBeforeGC is set, each evicted group's full snapshot is passed to it before
+// removal.
 func GCRuns() {
 	if global == nil {
 		return
@@ -110,10 +126,12 @@ func GCRuns() {
 	defer global.mu.Unlock()
 	kept := global.groups[:0]
 	for _, g := range global.groups {
-		// Observe terminal so a never-snapshotted finished group still ages out.
 		g.observeTerminal(g.Status(), now)
 		finished := g.FinishedAt()
 		if !finished.IsZero() && now.Sub(finished) > runRetention {
+			if OnBeforeGC != nil {
+				OnBeforeGC(g.ID(), snapshotGroupWithTasks(g))
+			}
 			continue
 		}
 		kept = append(kept, g)
