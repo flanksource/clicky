@@ -649,9 +649,16 @@ func (s *SwaggerServer) handleExecuteCommand(w http.ResponseWriter, r *http.Requ
 		}
 	}
 
-	// Format and write response body using FormatManager (defaults to json)
+	// Format and write response body using FormatManager (defaults to json).
+	// Structured wire formats serialize the ExecutionResponse envelope so the
+	// rendered command output is addressable via `output`; render formats emit
+	// the command's parsed data directly.
 	opts := extractFormatOpts(r)
-	s.writeFormattedResponse(w, r, data, opts, statusCode)
+	body := data
+	if isStructuredWireFormat(opts.Format) && metadata != nil {
+		body = metadata
+	}
+	s.writeFormattedResponse(w, r, body, opts, statusCode)
 }
 
 func isLookupRequest(r *http.Request) bool {
@@ -723,7 +730,12 @@ func extractFormatOpts(r *http.Request) formatOptions {
 		opts.Limit, _ = strconv.Atoi(l)
 	}
 
-	if f := r.URL.Query().Get("format"); f != "" {
+	// A `format` of pretty/tree is a command *render* format (it controls how
+	// the executed command renders its Output), not an HTTP wire format. When
+	// the client also sends an Accept header asking for a structured format, the
+	// Accept header wins for the wire format and the render format flows to the
+	// command unchanged.
+	if f := r.URL.Query().Get("format"); f != "" && !isRenderFormat(f) {
 		opts.Format = f
 		return opts
 	}
@@ -763,6 +775,28 @@ func extractFormatOpts(r *http.Request) formatOptions {
 
 	opts.Format = "json"
 	return opts
+}
+
+// isRenderFormat reports whether format is a human-facing render format used to
+// style a command's Output (vs. a structured HTTP wire format).
+func isRenderFormat(format string) bool {
+	switch format {
+	case "pretty", "tree":
+		return true
+	default:
+		return false
+	}
+}
+
+// isStructuredWireFormat reports whether format serializes the ExecutionResponse
+// envelope as structured data (so Output/Success/ExitCode are addressable).
+func isStructuredWireFormat(format string) bool {
+	switch format {
+	case "json", "clicky-json", "yaml", "yml":
+		return true
+	default:
+		return false
+	}
 }
 
 func formatToContentType(format string) string {
