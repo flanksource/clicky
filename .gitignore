@@ -65,6 +65,8 @@ test-*
 .cache
 *.db
 clicky
+!lint/testdata/src/github.com/flanksource/clicky/
+!lint/testdata/src/github.com/flanksource/clicky/stub.go
 .task
 *.pdf
 *.html

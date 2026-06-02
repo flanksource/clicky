@@ -137,6 +137,212 @@ var _ = Describe("E2E Clicky Command Execution", func() {
 		})
 	})
 
+	Context("when requesting pretty help", func() {
+		It("keeps pretty --help concise and points to the detailed guide", func() {
+			cmd := exec.Command(binaryPath, "pretty", "--help")
+			cmd.Env = clickyTestEnv(false)
+
+			var stdout, stderr bytes.Buffer
+			cmd.Stdout = &stdout
+			cmd.Stderr = &stderr
+
+			err := cmd.Run()
+			Expect(err).ToNot(HaveOccurred(), "pretty --help should succeed")
+
+			output := stdout.String()
+			Expect(output).To(ContainSubstring("clicky help pretty"))
+			Expect(output).ToNot(ContainSubstring("Anti-patterns"))
+		})
+
+		It("shows the colored full pretty-printing API guide", func() {
+			cmd := exec.Command(binaryPath, "help", "pretty")
+			cmd.Env = clickyTestEnv(false)
+
+			var stdout, stderr bytes.Buffer
+			cmd.Stdout = &stdout
+			cmd.Stderr = &stderr
+
+			err := cmd.Run()
+			Expect(err).ToNot(HaveOccurred(), "help pretty should succeed")
+
+			output := stdout.String()
+			Expect(output).To(ContainSubstring("Clicky Pretty Printing"))
+			Expect(output).To(ContainSubstring("Intro"))
+			Expect(output).To(ContainSubstring("Flag Reference"))
+			Expect(output).To(ContainSubstring("--schema string"))
+			Expect(output).To(ContainSubstring("Quickstart: Add Pretty() Method"))
+			Expect(output).To(ContainSubstring("Add Table Support"))
+			Expect(output).To(ContainSubstring("Tree Rendering"))
+			Expect(output).To(ContainSubstring("Clicky Components: Reference And Examples"))
+			Expect(output).To(ContainSubstring("Anti-patterns"))
+			Expect(output).To(ContainSubstring("Struct Tags"))
+			Expect(output).To(ContainSubstring("clicky.Format"))
+			Expect(output).To(ContainSubstring("clicky.Table"))
+			Expect(output).To(ContainSubstring("clicky-json"))
+			Expect(output).To(ContainSubstring(".ANSI()"))
+			Expect(output).To(ContainSubstring("\x1b["))
+		})
+
+		It("honors NO_COLOR for the detailed API guide", func() {
+			cmd := exec.Command(binaryPath, "help", "pretty")
+			cmd.Env = clickyTestEnv(true)
+
+			var stdout, stderr bytes.Buffer
+			cmd.Stdout = &stdout
+			cmd.Stderr = &stderr
+
+			err := cmd.Run()
+			Expect(err).ToNot(HaveOccurred(), "NO_COLOR help pretty should succeed")
+
+			output := stdout.String()
+			Expect(output).To(ContainSubstring("Clicky Pretty Printing"))
+			Expect(output).ToNot(ContainSubstring("\x1b["))
+		})
+	})
+
+	Context("when running clicky lint", func() {
+		It("shows the Gavel-style lint summary for violations", func() {
+			dir := writeLintFixtureModule(map[string]string{
+				"bad.go": `
+package fixture
+
+import "github.com/flanksource/clicky/api"
+
+type Server struct{ Name string }
+
+var direct = api.Text{Content: "bad"}
+
+func (s Server) Pretty() api.Text {
+	text := api.Text{}.Append(s.Name)
+	return api.Text{}.Append(text.ANSI())
+}
+`,
+				"other.go": `
+package fixture
+
+import "github.com/flanksource/clicky/api"
+
+var other = api.Text{Content: "other"}
+`,
+			})
+			cmd := exec.Command(binaryPath, "lint", "--no-color", "--summary-limit", "1", ".")
+			cmd.Dir = dir
+			cmd.Env = append(clickyTestEnv(true), "GOWORK=off")
+
+			var stdout, stderr bytes.Buffer
+			cmd.Stdout = &stdout
+			cmd.Stderr = &stderr
+
+			err := cmd.Run()
+			Expect(err).To(HaveOccurred(), "lint should fail when violations are found")
+
+			output := stdout.String()
+			Expect(output).To(ContainSubstring("Lint summary:"))
+			Expect(output).To(ContainSubstring("clickylint"))
+			Expect(output).To(ContainSubstring("avoid direct api.Text struct literal"))
+			Expect(output).To(ContainSubstring("avoid .ANSI() inside clicky render builders"))
+			Expect(output).To(ContainSubstring("bad.go"))
+			Expect(output).To(ContainSubstring("... 1 more"))
+			Expect(stderr.String()).To(ContainSubstring("clickylint found"))
+		})
+
+		It("exits successfully for clean packages", func() {
+			dir := writeLintFixtureModule(map[string]string{
+				"good.go": `
+package fixture
+
+import "github.com/flanksource/clicky/api"
+
+type Server struct{ Name string }
+
+func (s Server) Pretty() api.Text {
+	return api.Text{}.Append(s.Name)
+}
+`,
+			})
+			cmd := exec.Command(binaryPath, "lint", "--no-color", ".")
+			cmd.Dir = dir
+			cmd.Env = append(clickyTestEnv(true), "GOWORK=off")
+
+			var stdout, stderr bytes.Buffer
+			cmd.Stdout = &stdout
+			cmd.Stderr = &stderr
+
+			err := cmd.Run()
+			Expect(err).ToNot(HaveOccurred(), "lint should pass for clean packages: %s", stderr.String())
+			Expect(stdout.String()).To(ContainSubstring("Lint summary: 0 violations"))
+			Expect(stdout.String()).To(ContainSubstring("clickylint"))
+		})
+
+		It("keeps raw analyzer JSON passthrough for old flags", func() {
+			dir := writeLintFixtureModule(map[string]string{
+				"bad.go": `
+package fixture
+
+import "github.com/flanksource/clicky/api"
+
+var direct = api.Text{Content: "bad"}
+`,
+			})
+			cmd := exec.Command(binaryPath, "lint", "-json", ".")
+			cmd.Dir = dir
+			cmd.Env = append(clickyTestEnv(true), "GOWORK=off")
+
+			var stdout, stderr bytes.Buffer
+			cmd.Stdout = &stdout
+			cmd.Stderr = &stderr
+
+			err := cmd.Run()
+			Expect(err).ToNot(HaveOccurred(), "singlechecker -json exits 0 for diagnostics: %s", stderr.String())
+			Expect(stdout.String()).To(ContainSubstring(`"clickylint"`))
+			Expect(stdout.String()).To(ContainSubstring("avoid direct api.Text struct literal"))
+		})
+
+		It("prints structured JSON from the summary runner", func() {
+			dir := writeLintFixtureModule(map[string]string{
+				"bad.go": `
+package fixture
+
+import "github.com/flanksource/clicky/api"
+
+var direct = api.Text{Content: "bad"}
+`,
+			})
+			cmd := exec.Command(binaryPath, "lint", "--format", "json", ".")
+			cmd.Dir = dir
+			cmd.Env = append(clickyTestEnv(true), "GOWORK=off")
+
+			var stdout, stderr bytes.Buffer
+			cmd.Stdout = &stdout
+			cmd.Stderr = &stderr
+
+			err := cmd.Run()
+			Expect(err).To(HaveOccurred(), "structured lint JSON should still exit nonzero for violations")
+
+			var result map[string]interface{}
+			Expect(json.Unmarshal(stdout.Bytes(), &result)).To(Succeed(), "stdout should be JSON: %s", stdout.String())
+			Expect(result).To(HaveKeyWithValue("linter", "clickylint"))
+			Expect(result).To(HaveKey("violations"))
+			Expect(stderr.String()).To(ContainSubstring("clickylint found"))
+		})
+
+		It("documents the lint display flags in command help", func() {
+			cmd := exec.Command(binaryPath, "lint", "--help")
+			cmd.Env = clickyTestEnv(true)
+
+			var stdout, stderr bytes.Buffer
+			cmd.Stdout = &stdout
+			cmd.Stderr = &stderr
+
+			err := cmd.Run()
+			Expect(err).ToNot(HaveOccurred(), "lint --help should succeed: %s", stderr.String())
+			Expect(stdout.String()).To(ContainSubstring("--summary-limit"))
+			Expect(stdout.String()).To(ContainSubstring("--format"))
+			Expect(stdout.String()).To(ContainSubstring("--raw"))
+			Expect(stdout.String()).To(ContainSubstring("tree summary"))
+		})
+	})
+
 	Context("when generating OpenAPI spec", func() {
 		It("should produce valid OpenAPI JSON with required components", func() {
 			cmd := exec.Command(binaryPath, "openapi", "generate")
@@ -402,4 +608,46 @@ Total: $15,750.00 USD`
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	_ = json.NewEncoder(w).Encode(response)
+}
+
+func clickyTestEnv(noColor bool) []string {
+	env := make([]string, 0, len(os.Environ())+3)
+	for _, item := range os.Environ() {
+		if strings.HasPrefix(item, "NO_COLOR=") ||
+			strings.HasPrefix(item, "COLOR=") ||
+			strings.HasPrefix(item, "TERM=") {
+			continue
+		}
+		env = append(env, item)
+	}
+	env = append(env, "COLOR=", "TERM=xterm-256color")
+	if noColor {
+		env = append(env, "NO_COLOR=1")
+	} else {
+		env = append(env, "NO_COLOR=")
+	}
+	return env
+}
+
+func writeLintFixtureModule(files map[string]string) string {
+	dir := GinkgoT().TempDir()
+	repoRoot, err := os.Getwd()
+	Expect(err).ToNot(HaveOccurred(), "Should resolve repository root for lint fixture")
+
+	mod := fmt.Sprintf(`module example.com/clickylintfixture
+
+go 1.26.1
+
+require github.com/flanksource/clicky v0.0.0
+
+replace github.com/flanksource/clicky => %s
+`, filepath.ToSlash(repoRoot))
+	Expect(os.WriteFile(filepath.Join(dir, "go.mod"), []byte(mod), 0o644)).To(Succeed())
+
+	for name, content := range files {
+		path := filepath.Join(dir, name)
+		Expect(os.MkdirAll(filepath.Dir(path), 0o755)).To(Succeed())
+		Expect(os.WriteFile(path, []byte(strings.TrimSpace(content)+"\n"), 0o644)).To(Succeed())
+	}
+	return dir
 }

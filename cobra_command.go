@@ -134,7 +134,7 @@ func AddNamedCommand[T any, R any](name string, parent *cobra.Command, opts T, f
 		subFilters = carrier.Filters()
 	}
 	if meta := GetCommandOpenAPIMeta(parent); meta != nil {
-		annotateEntityOperationCommand(cmd, parent, "action", "", "collection", name, "", len(subFilters) > 0, false)
+		annotateEntityOperationCommand(cmd, parent, "action", "", "collection", name, "", len(subFilters) > 0, false, false)
 	}
 	if len(subFilters) > 0 {
 		lookupFuncRegistry.Store(cmd, buildLookupFunc[T](subFilters))

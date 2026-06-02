@@ -528,6 +528,48 @@ func TestOpenAPIGenerator_EntityResponseSchemas(t *testing.T) {
 	assert.Contains(t, pauseSchema.Properties, "count")
 }
 
+// TestOpenAPIGenerator_OptionalIDActionPath asserts that an entity action
+// declared WithOptionalID generates a flat /api/v1/<entity>/<action> path
+// (no {id} segment), so a no-id call does not collide with the entity's
+// get-by-id route. A regular action without WithOptionalID keeps the
+// /{id}/<action> shape.
+func TestOpenAPIGenerator_OptionalIDActionPath(t *testing.T) {
+	const entityName = "openapi-optional-id-stack"
+	root := &cobra.Command{Use: "testapp"}
+
+	clicky.NewEntity[openAPISchemaListItem, openAPISchemaOpts, openAPISchemaDetail](entityName).
+		List(func(openAPISchemaOpts) ([]openAPISchemaListItem, error) {
+			return nil, nil
+		}).
+		Get(func(id string) (openAPISchemaDetail, error) {
+			return openAPISchemaDetail{ID: id, Name: id}, nil
+		}).
+		WithAction(clicky.Action("overview", func(string, map[string]string) (openAPIPauseResult, error) {
+			return openAPIPauseResult{}, nil
+		}).WithMethod("GET").WithOptionalID()).
+		WithAction(clicky.Action("restart", func(string, map[string]string) (openAPIRestartResult, error) {
+			return openAPIRestartResult{Restarted: true}, nil
+		})).
+		Register()
+
+	clicky.GenerateCLI(root)
+
+	spec, err := NewOpenAPIGenerator(nil).GenerateFromCobra(root)
+	require.NoError(t, err)
+
+	flatPath := "/api/v1/" + entityName + "/overview"
+	idScopedPath := "/api/v1/" + entityName + "/{id}/overview"
+	assert.Contains(t, spec.Paths, flatPath,
+		"optional-id action must register a flat path with no {id} segment")
+	assert.NotContains(t, spec.Paths, idScopedPath,
+		"optional-id action must NOT register an {id}-scoped path")
+	assert.Contains(t, spec.Paths[flatPath], "get",
+		"overview WithMethod(GET) must register under the GET verb")
+
+	assert.Contains(t, spec.Paths, "/api/v1/"+entityName+"/{id}/restart",
+		"a regular action without WithOptionalID keeps its {id} segment")
+}
+
 func requireResponseSchema(t *testing.T, op OpenAPIOperation) *OpenAPISchema {
 	t.Helper()
 	response, ok := op.Responses["200"]

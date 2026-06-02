@@ -760,7 +760,7 @@ func generateListCommand(parent *cobra.Command, entity EntityInfo, op EntityOper
 		op.BindCompletions(cmd)
 	}
 
-	annotateEntityOperationCommand(cmd, parent, "list", "", "collection", "", "", op.LookupFunc != nil, false)
+	annotateEntityOperationCommand(cmd, parent, "list", "", "collection", "", "", op.LookupFunc != nil, false, false)
 	parent.AddCommand(cmd)
 	dataFuncRegistry.Store(cmd, op.DataFunc)
 	SetCommandResponseMeta(cmd, ResponseOpenAPIMeta{
@@ -833,7 +833,7 @@ func generateIDCommand(
 	if method == "" {
 		method = op.Method
 	}
-	annotateEntityOperationCommand(cmd, parent, metaVerb, method, scope, actionName, idParam, supportsLookup, supportsFilterMode)
+	annotateEntityOperationCommand(cmd, parent, metaVerb, method, scope, actionName, idParam, supportsLookup, supportsFilterMode, optionalID)
 	parent.AddCommand(cmd)
 	dataFuncRegistry.Store(cmd, op.DataFunc)
 	SetCommandResponseMeta(cmd, ResponseOpenAPIMeta{
@@ -913,7 +913,7 @@ func generateBodyCommand(parent *cobra.Command, verb, short string, op EntityOpe
 		scope = "entity"
 		idParam = "id"
 	}
-	annotateEntityOperationCommand(cmd, parent, verb, "", scope, "", idParam, false, false)
+	annotateEntityOperationCommand(cmd, parent, verb, "", scope, "", idParam, false, false, false)
 	parent.AddCommand(cmd)
 	dataFuncRegistry.Store(cmd, op.DataFunc)
 	SetCommandResponseMeta(cmd, ResponseOpenAPIMeta{
@@ -960,7 +960,7 @@ func generateBulkActionCommand(parent *cobra.Command, ba BulkActionInfo) {
 		}
 	}
 
-	annotateEntityOperationCommand(cmd, parent, "action", "", "collection", ba.Name, "id", ba.LookupFunc != nil, ba.FilterFunc != nil)
+	annotateEntityOperationCommand(cmd, parent, "action", "", "collection", ba.Name, "id", ba.LookupFunc != nil, ba.FilterFunc != nil, false)
 	parent.AddCommand(cmd)
 	dataFuncRegistry.Store(cmd, execute)
 	SetCommandResponseMeta(cmd, ResponseOpenAPIMeta{Type: ba.ResponseType})

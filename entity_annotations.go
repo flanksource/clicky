@@ -19,6 +19,7 @@ const (
 	annotationClickyOperationIDParam   = "clicky/operation-id-param"
 	annotationClickySupportsLookup     = "clicky/supports-lookup"
 	annotationClickySupportsFilterMode = "clicky/supports-filter-mode"
+	annotationClickyOptionalID         = "clicky/operation-optional-id"
 )
 
 // CommandOpenAPIMeta is the clicky-specific metadata attached to generated
@@ -36,6 +37,11 @@ type CommandOpenAPIMeta struct {
 	IDParam            string
 	SupportsLookup     bool
 	SupportsFilterMode bool
+	// OptionalID is true when the operation's positional id is optional
+	// (WithOptionalID). Such operations are invocable without an id, so the
+	// generated REST path must NOT carry an {id} segment — otherwise the no-id
+	// call collides with the entity's get-by-id route.
+	OptionalID bool
 }
 
 func GetCommandOpenAPIMeta(cmd *cobra.Command) *CommandOpenAPIMeta {
@@ -55,6 +61,7 @@ func GetCommandOpenAPIMeta(cmd *cobra.Command) *CommandOpenAPIMeta {
 		IDParam:            cmd.Annotations[annotationClickyOperationIDParam],
 		SupportsLookup:     parseAnnotationBool(cmd.Annotations[annotationClickySupportsLookup]),
 		SupportsFilterMode: parseAnnotationBool(cmd.Annotations[annotationClickySupportsFilterMode]),
+		OptionalID:         parseAnnotationBool(cmd.Annotations[annotationClickyOptionalID]),
 	}
 
 	if meta.Entity == "" {
@@ -85,6 +92,7 @@ func annotateEntityOperationCommand(
 	idParam string,
 	supportsLookup bool,
 	supportsFilterMode bool,
+	optionalID bool,
 ) {
 	if cmd == nil {
 		return
@@ -98,6 +106,7 @@ func annotateEntityOperationCommand(
 	setCommandAnnotation(cmd, annotationClickyOperationIDParam, idParam)
 	setCommandAnnotation(cmd, annotationClickySupportsLookup, strconv.FormatBool(supportsLookup))
 	setCommandAnnotation(cmd, annotationClickySupportsFilterMode, strconv.FormatBool(supportsFilterMode))
+	setCommandAnnotation(cmd, annotationClickyOptionalID, strconv.FormatBool(optionalID))
 }
 
 func inheritEntityAnnotations(cmd *cobra.Command, parent *cobra.Command) {
