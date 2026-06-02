@@ -1,3 +1,5 @@
+//go:build ignore
+
 /*
 Task Manager Demo - Comprehensive demonstration of clicky task manager capabilities
 
