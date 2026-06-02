@@ -22,7 +22,7 @@ func TestSnapshotTaskIDIsStableAcrossRename(t *testing.T) {
 	after := task.ID()
 
 	assert.Equal(t, before, after)
-	assert.Equal(t, before, SnapshotTask(task, "group").ID)
+	assert.Equal(t, before, SnapshotTask(task, nil).ID)
 }
 
 func TestStopTaskCancelsRunningTaskByID(t *testing.T) {

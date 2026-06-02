@@ -9,11 +9,24 @@ import (
 	"golang.org/x/sync/semaphore"
 )
 
+// GroupMetadata is the queryable metadata attached to a run (task group). Kind
+// classifies the run (e.g. "sql-fix", "test-run"), Labels carry arbitrary
+// key/value facets for filtering, and Owner identifies who started it. All
+// fields are optional.
+type GroupMetadata struct {
+	Kind   string            `json:"kind,omitempty"`
+	Labels map[string]string `json:"labels,omitempty"`
+	Owner  string            `json:"owner,omitempty"`
+}
+
 // Group represents a group of tasks that can be managed collectively
 type Group struct {
 	name        string
+	id          string // stable unique id; distinct from name for registry drill-down
 	Items       []Taskable // Can contain Tasks or nested Groups
 	startTime   time.Time
+	finishedAt  time.Time // set lazily the first time the group is observed terminal
+	metadata    GroupMetadata
 	manager     *Manager
 	ctx         context.Context
 	cancel      context.CancelFunc
@@ -28,6 +41,86 @@ func WithConcurrency(concurrency int) TaskGroupOption {
 	return func(group *Group) {
 		group.concurrency = concurrency
 	}
+}
+
+// WithGroupID sets a caller-supplied stable id for the group. When unset,
+// StartGroup assigns a uuid.
+func WithGroupID(id string) TaskGroupOption {
+	return func(group *Group) {
+		group.id = id
+	}
+}
+
+// WithKind classifies the run for the task-manager listing/filtering.
+func WithKind(kind string) TaskGroupOption {
+	return func(group *Group) {
+		group.metadata.Kind = kind
+	}
+}
+
+// WithLabels attaches filterable key/value facets to the run.
+func WithLabels(labels map[string]string) TaskGroupOption {
+	return func(group *Group) {
+		group.metadata.Labels = labels
+	}
+}
+
+// WithOwner records who started the run.
+func WithOwner(owner string) TaskGroupOption {
+	return func(group *Group) {
+		group.metadata.Owner = owner
+	}
+}
+
+// ID returns the group's stable unique id.
+func (g *Group) ID() string {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+	return g.id
+}
+
+// Metadata returns a copy of the group's metadata.
+func (g *Group) Metadata() GroupMetadata {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+	md := GroupMetadata{Kind: g.metadata.Kind, Owner: g.metadata.Owner}
+	if g.metadata.Labels != nil {
+		md.Labels = make(map[string]string, len(g.metadata.Labels))
+		for k, v := range g.metadata.Labels {
+			md.Labels[k] = v
+		}
+	}
+	return md
+}
+
+// StartedAt returns the group's start time.
+func (g *Group) StartedAt() time.Time {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+	return g.startTime
+}
+
+// FinishedAt returns the time the group first became terminal, or the zero
+// time if it is still running/pending. It is recorded lazily by observeTerminal
+// (called from snapshotting) so it does not depend on a WaitFor caller.
+func (g *Group) FinishedAt() time.Time {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+	return g.finishedAt
+}
+
+// observeTerminal records finishedAt the first time the group is seen in a
+// terminal status. Idempotent; safe to call on every snapshot.
+func (g *Group) observeTerminal(status Status, now time.Time) {
+	switch status {
+	case StatusRunning, StatusPending:
+		return
+	}
+	g.mu.Lock()
+	if g.finishedAt.IsZero() {
+		g.finishedAt = now
+	}
+	g.mu.Unlock()
 }
 
 func (g *Group) GetTasks() []Taskable {

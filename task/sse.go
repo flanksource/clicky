@@ -14,10 +14,17 @@ import (
 // It sends an "event: done" when all tracked groups have completed.
 func SSEHandler(taskIDs ...string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Merge query param IDs with function-level IDs
+		// Merge query param IDs with function-level IDs. A ?kind= filter is
+		// resolved to the matching runs' ids so the stream can follow a whole
+		// kind, not just an explicit id/name list.
 		ids := append([]string{}, taskIDs...)
 		if q := r.URL.Query().Get("tasks"); q != "" {
 			ids = append(ids, strings.Split(q, ",")...)
+		}
+		if kind := r.URL.Query().Get("kind"); kind != "" {
+			for _, run := range Runs(RunFilter{Kind: kind}) {
+				ids = append(ids, run.ID)
+			}
 		}
 
 		flusher, ok := w.(http.Flusher)

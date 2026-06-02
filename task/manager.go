@@ -473,17 +473,25 @@ func (tm *Manager) StartWithResult(name string, taskFunc func(flanksourceContext
 func StartGroup[T any](name string, opts ...TaskGroupOption) TypedGroup[T] {
 	ctx, cancel := context.WithCancel(context.Background())
 	group := &Group{
-		name:    name,
-		Items:   make([]Taskable, 0),
-		manager: global,
-		ctx:     ctx,
-		cancel:  cancel,
+		name:      name,
+		Items:     make([]Taskable, 0),
+		startTime: time.Now(),
+		manager:   global,
+		ctx:       ctx,
+		cancel:    cancel,
 	}
 
 	global.groups = append(global.groups, group)
 
 	for _, opt := range opts {
 		opt(group)
+	}
+
+	// Assign a stable id unless the caller supplied one via WithGroupID. The id
+	// is what the registry drill-down (SnapshotByID) and SSE id filter key on,
+	// independent of the human-facing name.
+	if group.id == "" {
+		group.id = uuid.NewString()
 	}
 
 	if group.concurrency > 0 {
