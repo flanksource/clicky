@@ -1,0 +1,45 @@
+name: Dist
+
+on:
+  push:
+    branches: [main, master, develop]
+  workflow_dispatch:
+
+jobs:
+  # Rebuild the embedded task-ui bundle from source and commit it back when it
+  # changed. dist/taskui.js is gitignored build output that task/ui/assets.go
+  # embeds via `//go:embed`, so it must be kept in sync with task/ui/src.
+  # Only runs on push (a real branch to push to); the commit is marked
+  # [skip ci] to avoid re-triggering this workflow.
+  task-ui:
+    name: Rebuild task-ui bundle
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Build and commit task-ui bundle
+        env:
+          GH_TOKEN: ${{ secrets.FLANKBOT }}
+        run: |
+          make task-ui
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -f task/ui/dist/taskui.js
+          if ! git diff --cached --quiet; then
+            git commit -m "chore(embed): rebuild task-ui bundle [skip ci]"
+            git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git"
+            git push origin HEAD:${{ github.ref_name }}
+          else
+            echo "task-ui bundle unchanged"
+          fi
