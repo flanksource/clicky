@@ -367,6 +367,15 @@ func (c *Converter) generateRESTPath(cmd *cobra.Command, cmdPath string) string 
 	//    -> /api/v1/policy/{id}/recalculate
 	// Only applies when the command is nested under a parent entity command
 	// (not at the top level under the root command).
+	//
+	// Actions declared with WithOptionalID are exempt: they are invocable
+	// without an id (collection-level summaries like `activity overview`), so
+	// inserting an {id} segment would make the no-id REST call (which the
+	// frontend issues) fall through to the entity's get-by-id route. Keep the
+	// flat /entity/action path for those.
+	if meta := clicky.GetCommandOpenAPIMeta(cmd); meta != nil && meta.OptionalID {
+		return strings.Join(pathParts, "/")
+	}
 	if cmd.Parent() != nil && cmd.Parent().Parent() != nil && !isCRUDOperation(cmd.Name()) {
 		paramName := extractParameterName(cmd.Use)
 		if paramName != "" {

@@ -26,6 +26,9 @@ func TestResolveNoColor(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Setenv("NO_COLOR", "")
+			t.Setenv("COLOR", "")
+			t.Setenv("TERM", "xterm-256color")
 			for k, v := range tt.env {
 				t.Setenv(k, v)
 			}

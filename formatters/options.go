@@ -32,6 +32,9 @@ var knownFormats = map[string]bool{
 	"tree":        true,
 }
 
+const FormatSpecHelp = "Output format. Use one stdout format (pretty|json|yaml|yml|csv|markdown|md|html|html-static|html-react|clicky-json|pdf|slack|excel|xlsx|tree), " +
+	"or comma-separated format=file sinks such as 'pretty,json=out.json,markdown=summary.md'."
+
 // canonicalFormat normalises common aliases (e.g. "md" -> "markdown").
 func canonicalFormat(f string) string {
 	switch f {
@@ -262,7 +265,7 @@ func MergeOptions(opts ...FormatOptions) FormatOptions {
 
 // BindFlags adds formatting flags to the provided flag set
 func BindFlags(flags *flag.FlagSet, options *FormatOptions) {
-	flags.StringVar(&options.Format, "format", "", "Output format: pretty, json, yaml, csv, html, pdf, markdown, slack")
+	flags.StringVar(&options.Format, "format", "", FormatSpecHelp)
 	flags.StringVar(&options.Output, "output", "", "Output file pattern (optional, uses stdout if not specified)")
 	flags.BoolVar(&options.NoColor, "no-color", false, "Disable colored output")
 	flags.BoolVar(&options.DumpSchema, "dump-schema", false, "Dump the schema to stderr for debugging")
@@ -285,7 +288,7 @@ func BindFlags(flags *flag.FlagSet, options *FormatOptions) {
 
 // BindPFlags adds formatting flags to the provided pflag set (for cobra)
 func BindPFlags(flags *pflag.FlagSet, options *FormatOptions) {
-	flags.StringVar(&options.Format, "format", "", "Output format: pretty, json, yaml, csv, html, pdf, markdown, slack")
+	flags.StringVar(&options.Format, "format", "", FormatSpecHelp)
 	flags.StringVar(&options.Output, "output", "", "Output file pattern (optional, uses stdout if not specified)")
 	flags.BoolVar(&options.NoColor, "no-color", false, "Disable colored output")
 	flags.BoolVar(&options.DumpSchema, "dump-schema", false, "Dump the schema to stderr for debugging")

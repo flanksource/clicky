@@ -147,6 +147,14 @@ func CompactList[T any](items []T) api.Textable {
 	return list
 }
 
+func List(items ...api.Textable) api.List {
+	return api.List{Items: items}
+}
+
+func TextList(items ...api.Textable) api.TextList {
+	return api.TextList(items)
+}
+
 func Text(content string, tailwindClasses ...string) api.Text {
 	return api.Text{
 		Content: content,
@@ -167,12 +175,127 @@ func WithKey(key string, value api.Textable) api.Keyed {
 	return api.Keyed{Key: key, Value: value}
 }
 
+func Table(headers ...string) api.TextTable {
+	table := api.TextTable{}
+	for _, header := range headers {
+		table.Headers = append(table.Headers, Text(header, "font-bold"))
+		table.FieldNames = append(table.FieldNames, header)
+	}
+	return table
+}
+
+func Tree(node api.Textable, children ...api.TextTree) api.TextTree {
+	return api.TextTree{
+		Node:     node,
+		Children: children,
+	}
+}
+
 func Collapsed(label string, content api.Textable, styles ...string) api.Collapsed {
 	return api.Collapsed{
 		Label:   label,
 		Content: content,
 		Style:   strings.Join(styles, " "),
 	}
+}
+
+func Button(label, href string, options ...func(*api.Button)) api.Button {
+	button := api.Button{Label: label, Href: href}
+	for _, option := range options {
+		if option != nil {
+			option(&button)
+		}
+	}
+	return button
+}
+
+func ButtonID(id string) func(*api.Button) {
+	return func(button *api.Button) {
+		button.ID = id
+	}
+}
+
+func ButtonPayload(payload string) func(*api.Button) {
+	return func(button *api.Button) {
+		button.Payload = payload
+	}
+}
+
+func ButtonVariant(variant string) func(*api.Button) {
+	return func(button *api.Button) {
+		button.Variant = variant
+	}
+}
+
+func ButtonGroup(buttons ...api.Button) api.ButtonGroup {
+	return api.ButtonGroup{Buttons: buttons}
+}
+
+func LabelBadge(label, value string, options ...func(*api.LabelBadge)) api.LabelBadge {
+	badge := api.LabelBadge{Label: label, Value: value}
+	for _, option := range options {
+		if option != nil {
+			option(&badge)
+		}
+	}
+	return badge
+}
+
+func LabelBadgeColor(color string) func(*api.LabelBadge) {
+	return func(badge *api.LabelBadge) {
+		badge.Color = color
+	}
+}
+
+func LabelBadgeTextColor(color string) func(*api.LabelBadge) {
+	return func(badge *api.LabelBadge) {
+		badge.TextColor = color
+	}
+}
+
+func LabelBadgeShape(shape string) func(*api.LabelBadge) {
+	return func(badge *api.LabelBadge) {
+		badge.Shape = shape
+	}
+}
+
+func LabelBadgeIcon(icon string) func(*api.LabelBadge) {
+	return func(badge *api.LabelBadge) {
+		badge.Icon = icon
+	}
+}
+
+func Admonition(severity api.Severity, title, body api.Textable) api.Admonition {
+	return api.Admonition{
+		Severity: severity,
+		Title:    title,
+		Body:     body,
+	}
+}
+
+func Diff(before, after, fromLabel, toLabel string) api.Diff {
+	return api.NewDiff(before, after, fromLabel, toLabel)
+}
+
+func Comment(text string) api.Comment {
+	return api.Comment(text)
+}
+
+func HTMLElement(tag, content string, attrs ...map[string]string) api.HtmlElement {
+	var attributes map[string]string
+	if len(attrs) > 0 {
+		attributes = attrs[0]
+	}
+	return api.HtmlElement{
+		Tag:        tag,
+		Attributes: attributes,
+		Content:    content,
+		Fallback:   Text(content),
+	}
+}
+
+func ClickyText(text api.Textable) formatters.ClickyText {
+	return formatters.ClickyText{Textable: text}
 }
 
 var KeyValue = api.KeyValue
