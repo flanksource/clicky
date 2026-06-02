@@ -34,7 +34,7 @@ var _ = Describe("Valkey Timeseries", func() {
 
 	BeforeEach(func() {
 		client, mr = newClient()
-		ts = valkey.New(client, valkey.Config{KeyPrefix: "oipa:", Retention: time.Hour})
+		ts = valkey.New(client, valkey.Config{KeyPrefix: "app:", Retention: time.Hour})
 	})
 
 	AfterEach(func() {
@@ -65,7 +65,7 @@ var _ = Describe("Valkey Timeseries", func() {
 	})
 
 	It("trims points older than the retention window on record", func() {
-		ts = valkey.New(client, valkey.Config{KeyPrefix: "oipa:", Retention: 10 * time.Minute})
+		ts = valkey.New(client, valkey.Config{KeyPrefix: "app:", Retention: 10 * time.Minute})
 		Expect(ts.Record(metrics.RecordRequest{ID: "cpu", At: base.Add(-time.Hour), Value: 1})).To(Succeed())
 		Expect(ts.Record(metrics.RecordRequest{ID: "cpu", At: base, Value: 2})).To(Succeed())
 
@@ -76,7 +76,7 @@ var _ = Describe("Valkey Timeseries", func() {
 
 	It("sets an expiry on the metric key", func() {
 		Expect(ts.Record(metrics.RecordRequest{ID: "cpu", At: base, Value: 1})).To(Succeed())
-		Expect(mr.TTL("oipa:metric:cpu")).To(Equal(time.Hour))
+		Expect(mr.TTL("app:metric:cpu")).To(Equal(time.Hour))
 	})
 
 	It("returns an empty slice for an unknown metric", func() {
