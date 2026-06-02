@@ -13,7 +13,10 @@ import (
 
 	"github.com/flanksource/clicky/task"
 	"github.com/flanksource/commons/logger"
-	_ "github.com/mattn/go-sqlite3"
+	// Pure-Go SQLite driver (registers driver name "sqlite") so clicky builds
+	// without CGO. modernc.org/sqlite supports the WAL pragmas and standard DDL
+	// this cache relies on.
+	_ "modernc.org/sqlite"
 )
 
 var (
@@ -104,7 +107,7 @@ func New(config Config) (*Cache, error) {
 	}
 
 	// Open database
-	db, err := sql.Open("sqlite3", config.DBPath)
+	db, err := sql.Open("sqlite", config.DBPath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
