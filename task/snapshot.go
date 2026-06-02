@@ -116,6 +116,20 @@ func SnapshotGroup(g *Group) TaskSnapshot {
 	return snap
 }
 
+// snapshotGroupWithTasks returns the group snapshot followed by its child task
+// snapshots. The group's own lock is acquired internally; the caller must NOT
+// hold global.mu exclusively (RLock is fine).
+func snapshotGroupWithTasks(g *Group) []TaskSnapshot {
+	snaps := []TaskSnapshot{SnapshotGroup(g)}
+	g.mu.RLock()
+	items := g.Items
+	g.mu.RUnlock()
+	for _, item := range items {
+		snaps = append(snaps, SnapshotTask(item.GetTask(), g))
+	}
+	return snaps
+}
+
 // SnapshotAll returns snapshots for all groups and their tasks.
 // If taskIDs is non-empty, only groups whose name OR stable id matches are
 // included (matching by id lets the registry/SSE drill into one run; matching
@@ -141,15 +155,7 @@ func SnapshotAll(taskIDs ...string) []TaskSnapshot {
 		if len(filter) > 0 && !filter[g.Name()] && !filter[g.ID()] {
 			continue
 		}
-		snapshots = append(snapshots, SnapshotGroup(g))
-
-		g.mu.RLock()
-		items := g.Items
-		g.mu.RUnlock()
-
-		for _, item := range items {
-			snapshots = append(snapshots, SnapshotTask(item.GetTask(), g))
-		}
+		snapshots = append(snapshots, snapshotGroupWithTasks(g)...)
 	}
 
 	return snapshots

@@ -127,6 +127,79 @@ func TestGCRunsDropsExpiredFinishedRuns(t *testing.T) {
 	}
 }
 
+func TestOnBeforeGCCalledWithSnapshotBeforeEviction(t *testing.T) {
+	withTestGlobal(t)
+
+	g := StartGroup[any]("gc-hook-run", WithKind("test"), WithConcurrency(1))
+	groupID := g.ID()
+	runGroupToCompletion(t, g, "step-a", "step-b")
+
+	g.mu.Lock()
+	g.finishedAt = time.Now().Add(-2 * runRetention)
+	g.mu.Unlock()
+
+	var capturedID string
+	var capturedSnaps []TaskSnapshot
+	OnBeforeGC = func(id string, snaps []TaskSnapshot) {
+		capturedID = id
+		capturedSnaps = snaps
+	}
+	t.Cleanup(func() { OnBeforeGC = nil })
+
+	GCRuns()
+
+	if capturedID != groupID {
+		t.Fatalf("OnBeforeGC groupID = %q, want %q", capturedID, groupID)
+	}
+	if len(capturedSnaps) != 3 {
+		t.Fatalf("expected 3 snapshots (1 group + 2 tasks), got %d", len(capturedSnaps))
+	}
+	if capturedSnaps[0].Type != "group" {
+		t.Fatalf("first snapshot should be group, got %q", capturedSnaps[0].Type)
+	}
+	if capturedSnaps[0].Total != 2 {
+		t.Fatalf("group snapshot Total = %d, want 2", capturedSnaps[0].Total)
+	}
+}
+
+func TestOnBeforeGCNotCalledForLiveRuns(t *testing.T) {
+	withTestGlobal(t)
+
+	g := StartGroup[any]("live-run", WithConcurrency(1))
+	runGroupToCompletion(t, g, "step")
+
+	called := false
+	OnBeforeGC = func(_ string, _ []TaskSnapshot) { called = true }
+	t.Cleanup(func() { OnBeforeGC = nil })
+
+	GCRuns()
+
+	if called {
+		t.Fatal("OnBeforeGC should not be called for runs within retention period")
+	}
+}
+
+func TestRunsRawSkipsGC(t *testing.T) {
+	withTestGlobal(t)
+
+	g := StartGroup[any]("raw-run", WithConcurrency(1))
+	runGroupToCompletion(t, g, "step")
+
+	g.mu.Lock()
+	g.finishedAt = time.Now().Add(-2 * runRetention)
+	g.mu.Unlock()
+
+	runs := RunsRaw(RunFilter{})
+	if len(runs) != 1 {
+		t.Fatalf("RunsRaw should return expired runs (no GC), got %d", len(runs))
+	}
+
+	runs = Runs(RunFilter{})
+	if len(runs) != 0 {
+		t.Fatalf("Runs should GC expired runs, got %d", len(runs))
+	}
+}
+
 func TestSnapshotAllBackwardCompatByName(t *testing.T) {
 	withTestGlobal(t)
 	g := StartGroup[any]("named-run", WithConcurrency(1))
