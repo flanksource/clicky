@@ -5,6 +5,60 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.21.14](https://github.com/flanksource/clicky/compare/v1.21.13...v1.21.14) (2026-06-03)
+
+
+### ⚠ BREAKING CHANGES
+
+* **entity,command,rpc:** None - all changes are additive with backward compatibility maintained through fallback to non-context variants.
+* **task:** RunFilter.matches() renamed to RunFilter.Matches(); runMetaFromSnapshot() renamed to RunMetaFromSnapshot()
+* **api,openapi,lint:** annotateEntityOperationCommand now requires an additional optionalID boolean parameter.
+
+### ♻️ Code Refactoring
+
+* **timeseries:** replace oipa references with generic app prefix ([d0cb68e](https://github.com/flanksource/clicky/commit/d0cb68e7b32f9229683caa2d5ba04e24bb867e3d))
+
+
+### ✨ Features
+
+* **api,openapi,lint:** Add optional ID support for entity actions and expand formatting helpers ([706ab62](https://github.com/flanksource/clicky/commit/706ab6203ec9b003e361084457b75d814d59297f))
+* **entity,command,rpc:** add context-aware data functions for request-scoped state ([394a69c](https://github.com/flanksource/clicky/commit/394a69c15f8af3a076a1ca41de8312c8e2f8925b))
+* **lint:** add render builder validation and helper-backed type detection ([dd00e26](https://github.com/flanksource/clicky/commit/dd00e26f9b175d6fff211a319dde1fe8dffc9940))
+* **metrics:** add timeseries metrics store with in-memory and valkey backends ([786c3a5](https://github.com/flanksource/clicky/commit/786c3a5d8756f7f60378d0cffe28168241c2c9dc))
+* **task:** Add OnBeforeGC hook and RunsRaw for GC lifecycle control ([4505a9f](https://github.com/flanksource/clicky/commit/4505a9f9cf1010acbbbe721f359348a2c42829ce))
+* **task:** Add task registry with run listing, filtering, and drill-down APIs ([3045cfc](https://github.com/flanksource/clicky/commit/3045cfc7ba916da38e41701b099b3e4f15c7580d))
+
+
+### 🐛 Bug Fixes
+
+* **examples:** tag standalone demos with //go:build ignore ([11bbd07](https://github.com/flanksource/clicky/commit/11bbd075df9a163cb81628032a8b1ddaf71bddd8))
+* **rpc:** serve ExecutionResponse envelope for structured wire formats ([f01a56a](https://github.com/flanksource/clicky/commit/f01a56a0d67c81fb486ce4ba8b43812602df244e))
+* **task:** WaitFor returns result after in-closure terminal SetStatus ([d058287](https://github.com/flanksource/clicky/commit/d058287ac87ad0d2d652fd99055130439d7b3e80))
+
+
+### 👷 CI/CD
+
+* **workflows:** consolidate CI/CD workflows into gavel and dist ([6c9d5d5](https://github.com/flanksource/clicky/commit/6c9d5d5523a6583ba9eb4522e5db5bdc594f37a3))
+* **workflows:** run gavel lint as raw step to avoid --show-passed injection ([a58f5c4](https://github.com/flanksource/clicky/commit/a58f5c4f3fc923fef40000454086904cc1edbdae))
+* **workflows:** split gavel into separate test and lint jobs with node setup ([ce3c9c6](https://github.com/flanksource/clicky/commit/ce3c9c654148da4a5676fdfe6b9b05f3069094fb))
+
+
+### 📚 Documentation
+
+* **cache:** clarify SQLite driver selection rationale in comments ([8744c01](https://github.com/flanksource/clicky/commit/8744c0183331725fbca6bc81023ca6cd292f732e))
+
+
+### 📦 Build System
+
+* **cache:** Replace go-sqlite3 with modernc.org/sqlite for CGO-free builds ([7d4e343](https://github.com/flanksource/clicky/commit/7d4e3431678b3a17415d131c034de13c398f1f10))
+* **webapp:** Add placeholder index.html for go:embed resolution in CI ([c4eee78](https://github.com/flanksource/clicky/commit/c4eee78d97d6e4fd566eacf83682494daddce08f))
+
+
+### 🔧 Maintenance
+
+* update docs ([df28a6c](https://github.com/flanksource/clicky/commit/df28a6c406da53e500222cd89c5ff505b98f3cb5))
+* **examples:** tidy go.mod after tagging demos as build-ignore ([5e91e2f](https://github.com/flanksource/clicky/commit/5e91e2fe67617348ed5b45f9ac63fa2d84ce4f2b))
+
 ## [1.21.13](https://github.com/flanksource/clicky/compare/v1.21.12...v1.21.13) (2026-05-31)
 
 
