@@ -2,6 +2,7 @@ package rpc
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -30,6 +31,20 @@ type CommandExecutor struct {
 type ExecutionRequest struct {
 	Args  []string          `json:"args,omitempty"`  // Positional arguments
 	Flags map[string]string `json:"flags,omitempty"` // Flag values
+
+	// Context carries the request's context.Context to a ContextDataFunc. On the
+	// HTTP path it is r.Context(); on the CLI path it is cmd.Context(). It is
+	// never serialized — it is transport state, not part of the wire contract.
+	Context context.Context `json:"-"`
+}
+
+// ctx returns the request context, falling back to context.Background() when
+// the request was built without one (older callers, tests).
+func (r *ExecutionRequest) ctx() context.Context {
+	if r != nil && r.Context != nil {
+		return r.Context
+	}
+	return context.Background()
 }
 
 // ExecutionResponse represents the result of command execution
@@ -43,6 +58,13 @@ type ExecutionResponse struct {
 	Error    string            `json:"error,omitempty"`  // Error description
 	Input    *ExecutionRequest `json:"input,omitempty"`  // Processed input parameters (included on errors for debugging)
 	CLI      string            `json:"cli,omitempty"`    // Equivalent CLI command to reproduce this execution
+
+	// DataIsStructured is true when the operation returned data via a DataFunc
+	// (entity list/get) rather than captured stdout. The HTTP layer uses it to
+	// serialize the data payload directly for structured wire formats instead of
+	// substituting this (output-less) envelope. Not serialized — it's transport
+	// metadata, not part of the response contract.
+	DataIsStructured bool `json:"-"`
 }
 
 // NewCommandExecutor creates a new command executor
@@ -192,14 +214,29 @@ func (e *CommandExecutor) ExecuteCommand(op *RPCOperation, req *ExecutionRequest
 		return resp, resp, fmt.Errorf("command execution is disabled")
 	}
 
-	// If the operation has a DataFunc (registered via AddCommand), call it directly
-	// to get structured data without stdout capture.
-	if op.DataFunc != nil {
-		data, err := op.DataFunc(req.Flags, req.Args)
+	// If the operation has a (Context)DataFunc (registered via AddCommand), call
+	// it directly to get structured data without stdout capture. The
+	// context-aware variant is preferred so handlers can resolve request-scoped
+	// state from req.Context().
+	if op.ContextDataFunc != nil || op.DataFunc != nil {
+		var (
+			data any
+			err  error
+		)
+		if op.ContextDataFunc != nil {
+			data, err = op.ContextDataFunc(req.ctx(), req.Flags, req.Args)
+		} else {
+			data, err = op.DataFunc(req.Flags, req.Args)
+		}
 		response := &ExecutionResponse{
 			Success:  err == nil,
 			ExitCode: 0,
 			CLI:      buildCLICommand(op, req),
+			// The payload is op.DataFunc's structured return value, not captured
+			// stdout. The HTTP layer must serialize `data` directly even for
+			// structured wire formats (json/yaml) — the envelope's Output is empty
+			// here, so substituting it would drop the entire result.
+			DataIsStructured: err == nil,
 		}
 		if err != nil {
 			response.Error = err.Error()
@@ -437,7 +474,8 @@ func (e *CommandExecutor) executeWithGlobalCapture(execCmd *cobra.Command, args 
 // ExtractRequestFromHTTP extracts execution parameters from HTTP request
 func (e *CommandExecutor) ExtractRequestFromHTTP(r *http.Request, op *RPCOperation) (*ExecutionRequest, error) {
 	req := &ExecutionRequest{
-		Flags: make(map[string]string),
+		Flags:   make(map[string]string),
+		Context: r.Context(),
 	}
 
 	// Extract path parameters from URL using the template.

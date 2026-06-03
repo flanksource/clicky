@@ -1,6 +1,7 @@
 package rpc
 
 import (
+	"context"
 	"reflect"
 
 	"github.com/spf13/cobra"
@@ -9,6 +10,13 @@ import (
 // DataFunc is a function that returns structured data directly, bypassing stdout capture.
 // Used by commands registered via AddCommand to provide data to the HTTP handler.
 type DataFunc func(flags map[string]string, args []string) (any, error)
+
+// ContextDataFunc is a context-aware variant of DataFunc. When set on an
+// operation, the executor prefers it over DataFunc and passes the request's
+// context.Context (from r.Context() on the HTTP path, or cmd.Context() on the
+// CLI path). It lets handlers resolve request-scoped state (e.g. a per-request
+// database/config bundle) instead of reaching for process globals.
+type ContextDataFunc func(ctx context.Context, flags map[string]string, args []string) (any, error)
 
 // RPCOperation represents a generic RPC operation that can be converted to various formats
 type RPCOperation struct {
@@ -21,6 +29,7 @@ type RPCOperation struct {
 	Method           string               `json:"method,omitempty"` // HTTP method
 	Tags             []string             `json:"tags,omitempty"`   // For grouping
 	DataFunc         DataFunc             `json:"-"`                // Direct data provider, bypasses stdout capture
+	ContextDataFunc  ContextDataFunc      `json:"-"`                // Context-aware data provider; preferred over DataFunc when set
 	LookupFunc       DataFunc             `json:"-"`                // Direct filter metadata provider
 	Clicky           *ClickyOperationMeta `json:"-"`                // Entity semantics used for OpenAPI extensions
 	ResponseType     reflect.Type         `json:"-"`                // Static response type for OpenAPI generation

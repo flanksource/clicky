@@ -12,6 +12,14 @@ type entityLookupFilter struct {
 	Selected map[string]clickyNode `json:"selected,omitempty"`
 	Multi    bool                  `json:"multi,omitempty"`
 	Type     string                `json:"type,omitempty"`
+	// Truncated is true when more options exist than are returned in Options:
+	// the filter is a SearchableFilter whose distinct count exceeds the option
+	// cap. The UI renders the returned head set plus an "… and N more" hint and
+	// re-queries via OptionsWithQuery as the user types. Total is the true
+	// distinct count behind the head. Both stay zero/false for non-searchable
+	// filters whose Options fully enumerate.
+	Truncated bool `json:"truncated,omitempty"`
+	Total     int  `json:"total,omitempty"`
 }
 
 type clickyNode struct {

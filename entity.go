@@ -1,6 +1,7 @@
 package clicky
 
 import (
+	"context"
 	"encoding/csv"
 	"encoding/json"
 	"fmt"
@@ -70,6 +71,10 @@ type EntityOperation struct {
 	Verb     string // "list", "get", "create", "update", "delete"
 	Method   string // Optional explicit HTTP method for generated RPC/OpenAPI routes.
 	DataFunc func(flags map[string]string, args []string) (any, error)
+	// ContextDataFunc, when set, is preferred over DataFunc by both the CLI run
+	// path (fed cmd.Context()) and the RPC executor (fed r.Context()). Lets the
+	// operation resolve request-scoped state instead of process globals.
+	ContextDataFunc ContextDataFunc
 	// FlagsType, when non-nil, binds typed flags from the given struct type
 	// onto the generated cobra command and collects their values into the
 	// flag map passed to DataFunc. Used by actions that implement
@@ -88,6 +93,11 @@ type ActionInfo struct {
 	Short    string
 	Method   string
 	DataFunc func(flags map[string]string, args []string) (any, error)
+	// ContextDataFunc, when set, is preferred over DataFunc by both the CLI run
+	// path (fed cmd.Context()) and the RPC executor (fed r.Context()), mirroring
+	// the entity CRUD seam. Lets an action resolve request-scoped state instead
+	// of process globals.
+	ContextDataFunc ContextDataFunc
 	// FlagsType, if non-nil, is the struct type whose `flag:"..."` tagged
 	// fields are registered as cobra flags on the generated action command
 	// and populated into the flag map passed to DataFunc.
@@ -131,6 +141,20 @@ type Filter[ListOpts any] interface {
 	Label() string
 	Lookup(opts *ListOpts) (map[string]api.Textable, error)
 	Options(opts ListOpts) map[string]api.Textable
+}
+
+// SearchableFilter is an OPTIONAL extension a Filter may implement when its
+// option set is too large to enumerate in one shot (e.g. a SQL DISTINCT column
+// with thousands of values). The lookup handler type-asserts to it; filters
+// that don't implement it keep the plain Options() behaviour unchanged.
+//
+// OptionsWithQuery returns at most limit options. An empty query means "the
+// head set": the first limit options plus total = the true distinct count, so
+// the UI can show "… and N more". A non-empty query returns up to limit options
+// matching it (server-side search), letting the UI surface values that sort
+// beyond the head. total is only meaningful for the head (query == "") call.
+type SearchableFilter[ListOpts any] interface {
+	OptionsWithQuery(opts ListOpts, query string, limit int) (options map[string]api.Textable, total int)
 }
 
 // Filterable is implemented by AddNamedCommand options structs that want to
@@ -182,6 +206,19 @@ func (l liftedFilter[Outer, Inner]) Options(opts Outer) map[string]api.Textable 
 	return l.inner.Options(*l.project(&opts))
 }
 
+// OptionsWithQuery forwards to the inner filter when it is searchable, so a
+// lifted DistinctColumnFilter keeps its head/search behaviour. When the inner
+// filter isn't searchable it degrades to Options() with len() as the total,
+// matching the non-truncated path.
+func (l liftedFilter[Outer, Inner]) OptionsWithQuery(opts Outer, query string, limit int) (map[string]api.Textable, int) {
+	inner := *l.project(&opts)
+	if s, ok := l.inner.(SearchableFilter[Inner]); ok {
+		return s.OptionsWithQuery(inner, query, limit)
+	}
+	options := l.inner.Options(inner)
+	return options, len(options)
+}
+
 // EntityAction is the type-erased registration surface for custom entity
 // actions. Use Action or ActionWithFlags to construct values.
 type EntityAction interface {
@@ -193,6 +230,7 @@ type actionSpec[R any] struct {
 	short      string
 	method     string
 	run        func(id string, flags map[string]string) (R, error)
+	runCtx     func(ctx context.Context, id string, flags map[string]string) (R, error)
 	flags      ActionFlags
 	optionalID bool
 }
@@ -205,6 +243,18 @@ func Action[R any](name string, fn func(id string, flags map[string]string) (R, 
 // ActionWithFlags creates a typed custom operation with typed action flags.
 func ActionWithFlags[R any](name string, flags ActionFlags, fn func(id string, flags map[string]string) (R, error)) *actionSpec[R] {
 	return &actionSpec[R]{name: name, flags: flags, run: fn}
+}
+
+// ActionWithContext creates a typed action whose run closure receives the
+// request-scoped context (cmd.Context() on the CLI, r.Context() over HTTP), so
+// it can resolve a per-request database/config instead of a process global.
+func ActionWithContext[R any](name string, fn func(ctx context.Context, id string, flags map[string]string) (R, error)) *actionSpec[R] {
+	return &actionSpec[R]{name: name, runCtx: fn}
+}
+
+// ActionWithFlagsAndContext is ActionWithContext with typed action flags.
+func ActionWithFlagsAndContext[R any](name string, flags ActionFlags, fn func(ctx context.Context, id string, flags map[string]string) (R, error)) *actionSpec[R] {
+	return &actionSpec[R]{name: name, flags: flags, runCtx: fn}
 }
 
 func (a *actionSpec[R]) WithShort(short string) *actionSpec[R] {
@@ -232,25 +282,44 @@ func (a *actionSpec[R]) WithOptionalID() *actionSpec[R] {
 	return a
 }
 
+func (a *actionSpec[R]) actionID(flagMap map[string]string, args []string) (string, error) {
+	id := flagMap["id"]
+	if id == "" && len(args) > 0 {
+		id = args[0]
+	}
+	if id == "" && !a.optionalID {
+		return "", fmt.Errorf("id is required")
+	}
+	return id, nil
+}
+
 func (a *actionSpec[R]) actionInfo() ActionInfo {
-	return ActionInfo{
+	info := ActionInfo{
 		Name:         a.name,
 		Short:        a.short,
 		Method:       a.method,
 		FlagsType:    actionFlagsType(a.flags),
 		ResponseType: responseTypeOf[R](),
 		OptionalID:   a.optionalID,
-		DataFunc: func(flagMap map[string]string, args []string) (any, error) {
-			id := flagMap["id"]
-			if id == "" && len(args) > 0 {
-				id = args[0]
+	}
+	if a.runCtx != nil {
+		info.ContextDataFunc = func(ctx context.Context, flagMap map[string]string, args []string) (any, error) {
+			id, err := a.actionID(flagMap, args)
+			if err != nil {
+				return nil, err
 			}
-			if id == "" && !a.optionalID {
-				return nil, fmt.Errorf("id is required")
+			return a.runCtx(ctx, id, flagMap)
+		}
+	} else {
+		info.DataFunc = func(flagMap map[string]string, args []string) (any, error) {
+			id, err := a.actionID(flagMap, args)
+			if err != nil {
+				return nil, err
 			}
 			return a.run(id, flagMap)
-		},
+		}
 	}
+	return info
 }
 
 // EntityBulkAction is the type-erased registration surface for custom bulk
@@ -348,6 +417,15 @@ type Entity[T EntityItem, ListOpts any, R any] struct {
 	Aliases []string
 	List    func(opts ListOpts) ([]T, error)
 	Get     func(id string) (R, error)
+	// ListWithContext / GetWithContext / GetWithFlagsAndContext are context-aware
+	// variants of List / Get / GetWithFlags. When set they take precedence over
+	// their non-context counterparts and receive the request-scoped
+	// context.Context (r.Context() over HTTP, cmd.Context() on the CLI). Use them
+	// to resolve per-request state (e.g. a database/config bundle) instead of
+	// reaching for process globals.
+	ListWithContext        func(ctx context.Context, opts ListOpts) ([]T, error)
+	GetWithContext         func(ctx context.Context, id string) (R, error)
+	GetWithFlagsAndContext func(ctx context.Context, id string, flags map[string]string) (R, error)
 	// GetFlags, when non-nil, is a zero-value struct value implementing
 	// ActionFlags whose `flag:"..."` tagged fields are registered as
 	// CLI flags on the generated `get` subcommand. The parsed values are
@@ -361,7 +439,14 @@ type Entity[T EntityItem, ListOpts any, R any] struct {
 	Create       func(body map[string]any) (R, error)
 	Update       func(id string, body map[string]any) (R, error)
 	Delete       func(id string) error
-	Filters      []Filter[ListOpts]
+	// CreateWithContext / UpdateWithContext / DeleteWithContext are context-aware
+	// variants of Create / Update / Delete, mirroring the read-side seam above.
+	// When set they take precedence and receive the request-scoped context, so
+	// writes target the request's environment rather than a process global.
+	CreateWithContext func(ctx context.Context, body map[string]any) (R, error)
+	UpdateWithContext func(ctx context.Context, id string, body map[string]any) (R, error)
+	DeleteWithContext func(ctx context.Context, id string) error
+	Filters           []Filter[ListOpts]
 
 	Actions     []EntityAction
 	BulkActions []EntityBulkAction
@@ -373,6 +458,40 @@ type Entity[T EntityItem, ListOpts any, R any] struct {
 
 	// ValidArgs provides shell completion for the ID argument.
 	ValidArgs func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective)
+}
+
+// entityIDFrom resolves the entity id from the `id` flag or the first
+// positional arg, erroring when neither is present.
+func entityIDFrom(flagMap map[string]string, args []string) (string, error) {
+	id := flagMap["id"]
+	if id == "" && len(args) > 0 {
+		id = args[0]
+	}
+	if id == "" {
+		return "", fmt.Errorf("id is required")
+	}
+	return id, nil
+}
+
+// entityBody copies the flag map into the body map passed to Create.
+func entityBody(flagMap map[string]string) map[string]any {
+	body := make(map[string]any, len(flagMap))
+	for k, v := range flagMap {
+		body[k] = v
+	}
+	return body
+}
+
+// entityBodyExcludingID copies the flag map minus the `id` key into the body
+// map passed to Update (the id is supplied separately).
+func entityBodyExcludingID(flagMap map[string]string) map[string]any {
+	body := make(map[string]any, len(flagMap))
+	for k, v := range flagMap {
+		if k != "id" {
+			body[k] = v
+		}
+	}
+	return body
 }
 
 // RegisterEntity registers a CRUD entity. Call during init().
@@ -392,10 +511,29 @@ func RegisterEntity[T EntityItem, ListOpts any, R any](e Entity[T, ListOpts, R])
 		ValidArgs: e.ValidArgs,
 	}
 
-	if e.List != nil {
-		info.Operations = append(info.Operations, EntityOperation{
-			Verb: "list",
-			DataFunc: func(flagMap map[string]string, args []string) (any, error) {
+	if e.ListWithContext != nil || e.List != nil {
+		op := EntityOperation{
+			Verb:             "list",
+			LookupFunc:       buildLookupFunc[ListOpts](e.Filters),
+			BindCompletions:  buildFilterCompletionBinder[ListOpts](e.Filters),
+			ResponseType:     reflect.TypeOf((*T)(nil)).Elem(),
+			ResponseArray:    true,
+			ResponseEntityID: true,
+		}
+		if e.ListWithContext != nil {
+			op.ContextDataFunc = func(ctx context.Context, flagMap map[string]string, args []string) (any, error) {
+				opts, err := resolveEntityOpts[ListOpts](flagMap, e.Filters)
+				if err != nil {
+					return nil, err
+				}
+				items, err := e.ListWithContext(ctx, opts)
+				if err != nil {
+					return nil, err
+				}
+				return withEntityIDs(items), nil
+			}
+		} else {
+			op.DataFunc = func(flagMap map[string]string, args []string) (any, error) {
 				opts, err := resolveEntityOpts[ListOpts](flagMap, e.Filters)
 				if err != nil {
 					return nil, err
@@ -405,99 +543,120 @@ func RegisterEntity[T EntityItem, ListOpts any, R any](e Entity[T, ListOpts, R])
 					return nil, err
 				}
 				return withEntityIDs(items), nil
-			},
-			LookupFunc:       buildLookupFunc[ListOpts](e.Filters),
-			BindCompletions:  buildFilterCompletionBinder[ListOpts](e.Filters),
-			ResponseType:     reflect.TypeOf((*T)(nil)).Elem(),
-			ResponseArray:    true,
-			ResponseEntityID: true,
-		})
+			}
+		}
+		info.Operations = append(info.Operations, op)
 	}
 
-	if e.GetWithFlags != nil {
+	switch {
+	case e.GetWithFlagsAndContext != nil:
+		info.Operations = append(info.Operations, EntityOperation{
+			Verb:         "get",
+			FlagsType:    actionFlagsType(e.GetFlags),
+			ResponseType: responseTypeOf[R](),
+			ContextDataFunc: func(ctx context.Context, flagMap map[string]string, args []string) (any, error) {
+				id, err := entityIDFrom(flagMap, args)
+				if err != nil {
+					return nil, err
+				}
+				return e.GetWithFlagsAndContext(ctx, id, flagMap)
+			},
+		})
+	case e.GetWithFlags != nil:
 		info.Operations = append(info.Operations, EntityOperation{
 			Verb:         "get",
 			FlagsType:    actionFlagsType(e.GetFlags),
 			ResponseType: responseTypeOf[R](),
 			DataFunc: func(flagMap map[string]string, args []string) (any, error) {
-				id := flagMap["id"]
-				if id == "" && len(args) > 0 {
-					id = args[0]
-				}
-				if id == "" {
-					return nil, fmt.Errorf("id is required")
+				id, err := entityIDFrom(flagMap, args)
+				if err != nil {
+					return nil, err
 				}
 				return e.GetWithFlags(id, flagMap)
 			},
 		})
-	} else if e.Get != nil {
+	case e.GetWithContext != nil:
+		info.Operations = append(info.Operations, EntityOperation{
+			Verb:         "get",
+			ResponseType: responseTypeOf[R](),
+			ContextDataFunc: func(ctx context.Context, flagMap map[string]string, args []string) (any, error) {
+				id, err := entityIDFrom(flagMap, args)
+				if err != nil {
+					return nil, err
+				}
+				return e.GetWithContext(ctx, id)
+			},
+		})
+	case e.Get != nil:
 		info.Operations = append(info.Operations, EntityOperation{
 			Verb:         "get",
 			ResponseType: responseTypeOf[R](),
 			DataFunc: func(flagMap map[string]string, args []string) (any, error) {
-				id := flagMap["id"]
-				if id == "" && len(args) > 0 {
-					id = args[0]
-				}
-				if id == "" {
-					return nil, fmt.Errorf("id is required")
+				id, err := entityIDFrom(flagMap, args)
+				if err != nil {
+					return nil, err
 				}
 				return e.Get(id)
 			},
 		})
 	}
 
-	if e.Create != nil {
-		info.Operations = append(info.Operations, EntityOperation{
-			Verb:         "create",
-			ResponseType: responseTypeOf[R](),
-			DataFunc: func(flagMap map[string]string, args []string) (any, error) {
-				body := make(map[string]any)
-				for k, v := range flagMap {
-					body[k] = v
-				}
-				return e.Create(body)
-			},
-		})
+	if e.CreateWithContext != nil || e.Create != nil {
+		op := EntityOperation{Verb: "create", ResponseType: responseTypeOf[R]()}
+		if e.CreateWithContext != nil {
+			op.ContextDataFunc = func(ctx context.Context, flagMap map[string]string, args []string) (any, error) {
+				return e.CreateWithContext(ctx, entityBody(flagMap))
+			}
+		} else {
+			op.DataFunc = func(flagMap map[string]string, args []string) (any, error) {
+				return e.Create(entityBody(flagMap))
+			}
+		}
+		info.Operations = append(info.Operations, op)
 	}
 
-	if e.Update != nil {
-		info.Operations = append(info.Operations, EntityOperation{
-			Verb:         "update",
-			ResponseType: responseTypeOf[R](),
-			DataFunc: func(flagMap map[string]string, args []string) (any, error) {
-				id := flagMap["id"]
-				if id == "" && len(args) > 0 {
-					id = args[0]
+	if e.UpdateWithContext != nil || e.Update != nil {
+		op := EntityOperation{Verb: "update", ResponseType: responseTypeOf[R]()}
+		if e.UpdateWithContext != nil {
+			op.ContextDataFunc = func(ctx context.Context, flagMap map[string]string, args []string) (any, error) {
+				id, err := entityIDFrom(flagMap, args)
+				if err != nil {
+					return nil, err
 				}
-				if id == "" {
-					return nil, fmt.Errorf("id is required")
+				return e.UpdateWithContext(ctx, id, entityBodyExcludingID(flagMap))
+			}
+		} else {
+			op.DataFunc = func(flagMap map[string]string, args []string) (any, error) {
+				id, err := entityIDFrom(flagMap, args)
+				if err != nil {
+					return nil, err
 				}
-				body := make(map[string]any)
-				for k, v := range flagMap {
-					if k != "id" {
-						body[k] = v
-					}
-				}
-				return e.Update(id, body)
-			},
-		})
+				return e.Update(id, entityBodyExcludingID(flagMap))
+			}
+		}
+		info.Operations = append(info.Operations, op)
 	}
 
-	if e.Delete != nil {
-		info.Operations = append(info.Operations, EntityOperation{
-			Verb: "delete",
-			DataFunc: func(flagMap map[string]string, args []string) (any, error) {
-				id := flagMap["id"]
-				if id == "" && len(args) > 0 {
-					id = args[0]
+	if e.DeleteWithContext != nil || e.Delete != nil {
+		op := EntityOperation{Verb: "delete"}
+		if e.DeleteWithContext != nil {
+			op.ContextDataFunc = func(ctx context.Context, flagMap map[string]string, args []string) (any, error) {
+				id, err := entityIDFrom(flagMap, args)
+				if err != nil {
+					return nil, err
 				}
-				if id == "" {
-					return nil, fmt.Errorf("id is required")
+				return nil, e.DeleteWithContext(ctx, id)
+			}
+		} else {
+			op.DataFunc = func(flagMap map[string]string, args []string) (any, error) {
+				id, err := entityIDFrom(flagMap, args)
+				if err != nil {
+					return nil, err
 				}
 				return nil, e.Delete(id)
-			},
-		})
+			}
+		}
+		info.Operations = append(info.Operations, op)
 	}
 
 	for _, action := range e.Actions {
@@ -680,11 +839,12 @@ func generateEntityCLI(parent *cobra.Command, entity EntityInfo) {
 
 	for _, action := range entity.Actions {
 		generateIDCommand(entityCmd, action.Name, action.Short, EntityOperation{
-			Verb:         action.Name,
-			Method:       action.Method,
-			DataFunc:     action.DataFunc,
-			FlagsType:    action.FlagsType,
-			ResponseType: action.ResponseType,
+			Verb:            action.Name,
+			Method:          action.Method,
+			DataFunc:        action.DataFunc,
+			ContextDataFunc: action.ContextDataFunc,
+			FlagsType:       action.FlagsType,
+			ResponseType:    action.ResponseType,
 		}, entity.ValidArgs, "action", "", "entity", action.Name, "id", false, false, action.OptionalID)
 	}
 
@@ -736,6 +896,27 @@ func generateEntitySubcommand(parent *cobra.Command, entity EntityInfo, op Entit
 	}
 }
 
+// runEntityOp invokes the operation's data function on the CLI path, preferring
+// the context-aware variant (fed cmd.Context()) when present.
+func runEntityOp(c *cobra.Command, op EntityOperation, flagMap map[string]string, args []string) (any, error) {
+	if op.ContextDataFunc != nil {
+		return op.ContextDataFunc(c.Context(), flagMap, args)
+	}
+	return op.DataFunc(flagMap, args)
+}
+
+// storeEntityDataFuncs records the operation's data closures against the command
+// so the RPC converter can wire them onto the generated RPCOperation. The
+// context-aware variant is stored separately and preferred downstream.
+func storeEntityDataFuncs(cmd *cobra.Command, op EntityOperation) {
+	if op.ContextDataFunc != nil {
+		contextDataFuncRegistry.Store(cmd, ContextDataFunc(op.ContextDataFunc))
+	}
+	if op.DataFunc != nil {
+		dataFuncRegistry.Store(cmd, op.DataFunc)
+	}
+}
+
 func generateListCommand(parent *cobra.Command, entity EntityInfo, op EntityOperation) {
 	cmd := &cobra.Command{
 		Use:   "list",
@@ -745,7 +926,7 @@ func generateListCommand(parent *cobra.Command, entity EntityInfo, op EntityOper
 			c.Flags().Visit(func(f *pflag.Flag) {
 				flagMap[f.Name] = flagMapValue(f)
 			})
-			result, err := op.DataFunc(flagMap, args)
+			result, err := runEntityOp(c, op, flagMap, args)
 			if err != nil {
 				return err
 			}
@@ -762,7 +943,7 @@ func generateListCommand(parent *cobra.Command, entity EntityInfo, op EntityOper
 
 	annotateEntityOperationCommand(cmd, parent, "list", "", "collection", "", "", op.LookupFunc != nil, false, false)
 	parent.AddCommand(cmd)
-	dataFuncRegistry.Store(cmd, op.DataFunc)
+	storeEntityDataFuncs(cmd, op)
 	SetCommandResponseMeta(cmd, ResponseOpenAPIMeta{
 		Type:     op.ResponseType,
 		Array:    op.ResponseArray,
@@ -811,7 +992,7 @@ func generateIDCommand(
 					flagMap[f.Name] = flagMapValue(f)
 				})
 			}
-			result, err := op.DataFunc(flagMap, args)
+			result, err := runEntityOp(c, op, flagMap, args)
 			if err != nil {
 				return err
 			}
@@ -835,7 +1016,7 @@ func generateIDCommand(
 	}
 	annotateEntityOperationCommand(cmd, parent, metaVerb, method, scope, actionName, idParam, supportsLookup, supportsFilterMode, optionalID)
 	parent.AddCommand(cmd)
-	dataFuncRegistry.Store(cmd, op.DataFunc)
+	storeEntityDataFuncs(cmd, op)
 	SetCommandResponseMeta(cmd, ResponseOpenAPIMeta{
 		Type:     op.ResponseType,
 		Array:    op.ResponseArray,
@@ -897,7 +1078,7 @@ func generateBodyCommand(parent *cobra.Command, verb, short string, op EntityOpe
 				}
 			}
 
-			result, err := op.DataFunc(flagMap, args)
+			result, err := runEntityOp(c, op, flagMap, args)
 			if err != nil {
 				return err
 			}
@@ -915,7 +1096,7 @@ func generateBodyCommand(parent *cobra.Command, verb, short string, op EntityOpe
 	}
 	annotateEntityOperationCommand(cmd, parent, verb, "", scope, "", idParam, false, false, false)
 	parent.AddCommand(cmd)
-	dataFuncRegistry.Store(cmd, op.DataFunc)
+	storeEntityDataFuncs(cmd, op)
 	SetCommandResponseMeta(cmd, ResponseOpenAPIMeta{
 		Type:     op.ResponseType,
 		Array:    op.ResponseArray,
@@ -1092,6 +1273,20 @@ func resolveEntityOpts[T any](flagMap map[string]string, filters []Filter[T]) (T
 	return opts, err
 }
 
+// lookupOptionsLimit caps the number of options a single lookup filter returns,
+// both for the head set and per-search. SearchableFilter implementations enumerate
+// only this many; the UI shows "… and N more" against the reported total and
+// re-queries as the user types.
+const lookupOptionsLimit = 200
+
+// Reserved flag keys the lookup handler injects from the request query so a
+// single filter can be searched server-side. They never collide with entity
+// flags because of the __lookup_ prefix.
+const (
+	lookupFilterKeyParam = "__lookup_filter"
+	lookupQueryParam     = "__lookup_q"
+)
+
 func buildLookupFunc[T any](filters []Filter[T]) func(flags map[string]string, args []string) (any, error) {
 	if len(filters) == 0 {
 		return nil
@@ -1100,6 +1295,13 @@ func buildLookupFunc[T any](filters []Filter[T]) func(flags map[string]string, a
 	lookupMetadata := buildLookupMetadata[T]()
 
 	return func(flagMap map[string]string, args []string) (any, error) {
+		searchKey := flagMap[lookupFilterKeyParam]
+		searchQuery := flagMap[lookupQueryParam]
+		// The reserved params aren't entity flags; strip them before buildOpts
+		// so they don't leak into the filter ListOpts.
+		delete(flagMap, lookupFilterKeyParam)
+		delete(flagMap, lookupQueryParam)
+
 		opts, err := buildOpts[T](flagMap)
 		if err != nil {
 			return nil, err
@@ -1115,13 +1317,31 @@ func buildLookupFunc[T any](filters []Filter[T]) func(flags map[string]string, a
 		}
 		for _, filter := range filters {
 			meta := lookupMetadata[filter.Key()]
-			response.Filters[filter.Key()] = entityLookupFilter{
+			entry := entityLookupFilter{
 				Label:    filter.Label(),
-				Options:  toClickyNodeMap(filter.Options(opts)),
 				Selected: toClickyNodeMap(selected[filter.Key()]),
 				Multi:    meta.Multi,
 				Type:     meta.Type,
 			}
+
+			searchable, isSearchable := filter.(SearchableFilter[T])
+			switch {
+			case isSearchable && searchKey == filter.Key() && searchQuery != "":
+				// Targeted server-side search: return matches for this filter only.
+				options, _ := searchable.OptionsWithQuery(opts, searchQuery, lookupOptionsLimit)
+				entry.Options = toClickyNodeMap(options)
+			case isSearchable:
+				// Head request: first N options plus the true distinct total so
+				// the UI can show "… and N more" and decide whether to search.
+				options, total := searchable.OptionsWithQuery(opts, "", lookupOptionsLimit)
+				entry.Options = toClickyNodeMap(options)
+				entry.Total = total
+				entry.Truncated = total > len(options)
+			default:
+				entry.Options = toClickyNodeMap(filter.Options(opts))
+			}
+
+			response.Filters[filter.Key()] = entry
 		}
 		return response, nil
 	}
