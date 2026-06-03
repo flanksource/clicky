@@ -1,6 +1,7 @@
 package clicky
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -15,9 +16,19 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// ContextDataFunc is the context-aware data closure stored for a command. Its
+// signature matches rpc.ContextDataFunc structurally; the RPC converter
+// converts it when wiring RPCOperation.ContextDataFunc. Defined here (the root
+// package) to avoid a clicky -> clicky/rpc import cycle.
+type ContextDataFunc = func(ctx context.Context, flags map[string]string, args []string) (any, error)
+
 // dataFuncRegistry maps cobra commands created by AddCommand to closures
 // that can invoke the user function directly with flag values.
 var dataFuncRegistry sync.Map // map[*cobra.Command]func(flags map[string]string, args []string) (any, error)
+
+// contextDataFuncRegistry maps cobra commands to context-aware data closures.
+// When present, both the CLI run path and the RPC converter prefer it.
+var contextDataFuncRegistry sync.Map // map[*cobra.Command]ContextDataFunc
 
 // lookupFuncRegistry maps cobra commands to filter metadata lookup closures.
 var lookupFuncRegistry sync.Map // map[*cobra.Command]func(flags map[string]string, args []string) (any, error)
@@ -27,6 +38,15 @@ var lookupFuncRegistry sync.Map // map[*cobra.Command]func(flags map[string]stri
 func GetDataFunc(cmd *cobra.Command) func(flags map[string]string, args []string) (any, error) {
 	if v, ok := dataFuncRegistry.Load(cmd); ok {
 		return v.(func(flags map[string]string, args []string) (any, error))
+	}
+	return nil
+}
+
+// GetContextDataFunc returns the context-aware data function registered for a
+// command, if any. Used by the RPC converter to wire ContextDataFunc.
+func GetContextDataFunc(cmd *cobra.Command) ContextDataFunc {
+	if v, ok := contextDataFuncRegistry.Load(cmd); ok {
+		return v.(ContextDataFunc)
 	}
 	return nil
 }
@@ -107,6 +127,27 @@ func AddCommand[T any, R any](parent *cobra.Command, opts T, fn func(opts T) (R,
 }
 
 func AddNamedCommand[T any, R any](name string, parent *cobra.Command, opts T, fn func(opts T) (R, error)) *cobra.Command {
+	return addNamedCommand(name, parent, opts, fn, nil)
+}
+
+// AddNamedCommandWithContext is AddNamedCommand whose closure receives the
+// request-scoped context (cmd.Context() on the CLI, r.Context() over HTTP), so
+// the subcommand can resolve a per-request database/config instead of a process
+// global. Same flag/arg binding and rendering as AddNamedCommand.
+func AddNamedCommandWithContext[T any, R any](name string, parent *cobra.Command, opts T, fn func(ctx context.Context, opts T) (R, error)) *cobra.Command {
+	return addNamedCommand(name, parent, opts, nil, fn)
+}
+
+// addNamedCommand is the shared implementation. Exactly one of fn / fnCtx is
+// non-nil; fnCtx, when set, is preferred and is fed cmd.Context() (CLI) or
+// r.Context() (HTTP, via the stored ContextDataFunc).
+func addNamedCommand[T any, R any](
+	name string,
+	parent *cobra.Command,
+	opts T,
+	fn func(opts T) (R, error),
+	fnCtx func(ctx context.Context, opts T) (R, error),
+) *cobra.Command {
 
 	optsType := reflect.TypeOf(opts)
 	if optsType.Kind() != reflect.Struct {
@@ -226,13 +267,23 @@ func AddNamedCommand[T any, R any](name string, parent *cobra.Command, opts T, f
 	// CLI path (cmd.RunE below) keeps pflag because cobra owns its
 	// lifecycle and one process invocation == one Run.
 	capturedFields := append([]flags.FieldInfo(nil), fieldInfos...)
-	dataFuncRegistry.Store(cmd, func(flagMap map[string]string, args []string) (any, error) {
-		optsValue := reflect.New(optsType).Elem()
-		if err := flags.PopulateFromRequest(optsValue, capturedFields, flagMap, args); err != nil {
-			return nil, err
-		}
-		return fn(optsValue.Interface().(T))
-	})
+	if fnCtx != nil {
+		contextDataFuncRegistry.Store(cmd, func(ctx context.Context, flagMap map[string]string, args []string) (any, error) {
+			optsValue := reflect.New(optsType).Elem()
+			if err := flags.PopulateFromRequest(optsValue, capturedFields, flagMap, args); err != nil {
+				return nil, err
+			}
+			return fnCtx(ctx, optsValue.Interface().(T))
+		})
+	} else {
+		dataFuncRegistry.Store(cmd, func(flagMap map[string]string, args []string) (any, error) {
+			optsValue := reflect.New(optsType).Elem()
+			if err := flags.PopulateFromRequest(optsValue, capturedFields, flagMap, args); err != nil {
+				return nil, err
+			}
+			return fn(optsValue.Interface().(T))
+		})
+	}
 
 	// Set RunE function
 	cmd.RunE = func(c *cobra.Command, args []string) error {
@@ -261,8 +312,15 @@ func AddNamedCommand[T any, R any](name string, parent *cobra.Command, opts T, f
 			}
 		}
 
-		// Call the function
-		result, err := fn(optsValue.Interface().(T))
+		// Call the function, preferring the context-aware variant (fed the
+		// command's context so the closure sees cmd.Context()).
+		var result R
+		var err error
+		if fnCtx != nil {
+			result, err = fnCtx(c.Context(), optsValue.Interface().(T))
+		} else {
+			result, err = fn(optsValue.Interface().(T))
+		}
 		if err != nil {
 			// An error that carries a clicky rendering interface
 			// (Pretty/Textable/Tree*) is rendered through the same format

@@ -655,7 +655,10 @@ func (s *SwaggerServer) handleExecuteCommand(w http.ResponseWriter, r *http.Requ
 	// the command's parsed data directly.
 	opts := extractFormatOpts(r)
 	body := data
-	if isStructuredWireFormat(opts.Format) && metadata != nil {
+	// Substitute the envelope only for stdout-capture commands, whose payload
+	// lives in metadata.Output. DataFunc operations (entity list/get) carry their
+	// payload in `data`; serializing the envelope there would drop the result.
+	if isStructuredWireFormat(opts.Format) && metadata != nil && !metadata.DataIsStructured {
 		body = metadata
 	}
 	s.writeFormattedResponse(w, r, body, opts, statusCode)
@@ -673,6 +676,16 @@ func (s *SwaggerServer) handleLookupCommand(w http.ResponseWriter, r *http.Reque
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to extract parameters: %v", err), http.StatusBadRequest)
 		return
+	}
+
+	// __lookup_filter / __lookup_q drive per-filter server-side search. They are
+	// not declared operation parameters, so ExtractRequestFromHTTP drops them;
+	// forward them into the flag map for buildLookupFunc to consume.
+	if v := r.URL.Query().Get("__lookup_filter"); v != "" {
+		req.Flags["__lookup_filter"] = v
+	}
+	if v := r.URL.Query().Get("__lookup_q"); v != "" {
+		req.Flags["__lookup_q"] = v
 	}
 
 	data, err := op.LookupFunc(req.Flags, req.Args)

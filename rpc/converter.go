@@ -181,6 +181,9 @@ func (c *Converter) ConvertCommand(cmd *cobra.Command) (*RPCOperation, error) {
 	if df := clicky.GetDataFunc(cmd); df != nil {
 		operation.DataFunc = df
 	}
+	if cdf := clicky.GetContextDataFunc(cmd); cdf != nil {
+		operation.ContextDataFunc = ContextDataFunc(cdf)
+	}
 	if lf := clicky.GetLookupFunc(cmd); lf != nil {
 		operation.LookupFunc = lf
 	}

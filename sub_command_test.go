@@ -25,6 +25,7 @@ func resetEntityRegistry(t *testing.T) {
 	entityRegistry = nil
 	entityRegistryMu.Unlock()
 	dataFuncRegistry = sync.Map{}
+	contextDataFuncRegistry = sync.Map{}
 	lookupFuncRegistry = sync.Map{}
 	responseMetaRegistry = sync.Map{}
 	pendingSubCommandsMu.Lock()
