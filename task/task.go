@@ -483,14 +483,34 @@ func (t *Task) WaitFor() *WaitResult {
 	for !t.completed.Load() {
 		select {
 		case <-t.ctx.Done():
-			// Task was canceled externally
+			// ctx.Done fires for two distinct reasons: a genuine external
+			// cancellation while the task is still pending/running, OR the task
+			// itself reaching a terminal status — SetStatus cancels t.ctx on
+			// Success/Failed/Warning/Cancelled. In the latter case the result is
+			// still being stored by runFunc (the task closure typically calls
+			// t.Success() before `return result`), so bailing out here would
+			// return the zero value before the result lands. Only treat ctx.Done
+			// as a real cancellation when the status is still non-terminal.
 			t.mu.Lock()
-			if t.status == StatusRunning || t.status == StatusPending {
+			terminal := t.status != StatusRunning && t.status != StatusPending
+			if !terminal {
 				t.status = StatusCancelled
 				t.endTime = time.Now()
 				t.completed.Store(true)
 			}
 			t.mu.Unlock()
+			if !terminal {
+				goto done
+			}
+			// Self-cancel during terminal SetStatus: ctx is now permanently
+			// ready, so re-selecting on it would busy-spin. Wait on doneChan
+			// (closed by the worker immediately after it stores the result and
+			// flips completed) so we wake the instant the result lands, with the
+			// overall timeout as a backstop.
+			select {
+			case <-t.doneChan:
+			case <-timeout:
+			}
 			goto done
 		case <-timeout:
 			// Timeout fallback to prevent infinite waiting
