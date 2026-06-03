@@ -98,4 +98,8 @@ ginkgo.report
 examples/uber_demo/uber_demo
 .gavel/
 examples/enitity/webapp/dist/
+# Keep a committed placeholder so the //go:embed webapp/dist in main.go always
+# resolves in CI; `pnpm build` overwrites dist/ with the real hashed bundles.
+!examples/enitity/webapp/dist/
+!examples/enitity/webapp/dist/index.html
 examples/enitity/enitity
