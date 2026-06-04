@@ -55,16 +55,32 @@ func (m *memoryStore) Record(req RecordRequest) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	pts := append(m.series[req.ID], Point{At: at, Value: req.Value})
-	// Keep ascending by time; the appended point is usually already the
-	// latest, so this is a near-no-op in the common path.
-	sort.Slice(pts, func(i, j int) bool { return pts[i].At.Before(pts[j].At) })
+	pts, ok := m.series[req.ID]
+	if !ok {
+		pts = make([]Point, 0, min(1_000_000, m.maxPoints))
+	}
 
+	p := Point{At: at, Value: req.Value}
+	if len(pts) == 0 || !p.At.Before(pts[len(pts)-1].At) {
+		pts = append(pts, p)
+	} else {
+		// Out-of-order records are expected to be rare. Keep the common path as
+		// a cheap append and only pay insertion cost when a late point arrives.
+		i := sort.Search(len(pts), func(i int) bool { return !pts[i].At.Before(p.At) })
+		pts = append(pts, Point{})
+		copy(pts[i+1:], pts[i:])
+		pts[i] = p
+	}
+
+	// Retention management
 	cutoff := at.Add(-m.retention)
-	pts = dropBefore(pts, cutoff)
+	if len(pts) > 0 && pts[0].At.Before(cutoff) {
+		pts = dropBefore(pts, cutoff)
+	}
 	if len(pts) > m.maxPoints {
 		pts = pts[len(pts)-m.maxPoints:]
 	}
+
 	m.series[req.ID] = pts
 	return nil
 }
