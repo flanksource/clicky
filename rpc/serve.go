@@ -493,7 +493,7 @@ func (s *SwaggerServer) registerExecutionRoutes(mux *http.ServeMux) {
 		path = strings.ReplaceAll(path, " ", "-")
 		registerRoute(method, path, op.Name)
 
-		if op.LookupFunc == nil {
+		if !hasLookup(&op) {
 			continue
 		}
 
@@ -617,10 +617,10 @@ func (s *SwaggerServer) handleExecuteCommand(w http.ResponseWriter, r *http.Requ
 	lookupRequested := isLookupRequest(r)
 	op := s.executor.FindOperation(r.Method, r.URL.Path)
 	if lookupRequested {
-		if op == nil || op.LookupFunc == nil {
+		if !hasLookup(op) {
 			op = s.executor.FindLookupOperation(r.Method, r.URL.Path)
 		}
-		if op == nil || op.LookupFunc == nil {
+		if !hasLookup(op) {
 			http.Error(w, fmt.Sprintf("No lookup found for %s %s", r.Method, r.URL.Path), http.StatusNotFound)
 			return
 		}
@@ -671,6 +671,12 @@ func isLookupRequest(r *http.Request) bool {
 	return r.URL.Query().Get("__lookup") == "filters"
 }
 
+// hasLookup reports whether an operation can serve a filter-metadata lookup
+// request, via either its plain or context-aware lookup func.
+func hasLookup(op *RPCOperation) bool {
+	return op != nil && (op.LookupFunc != nil || op.ContextLookupFunc != nil)
+}
+
 func (s *SwaggerServer) handleLookupCommand(w http.ResponseWriter, r *http.Request, op *RPCOperation) {
 	req, err := s.executor.ExtractRequestFromHTTP(r, op)
 	if err != nil {
@@ -688,7 +694,12 @@ func (s *SwaggerServer) handleLookupCommand(w http.ResponseWriter, r *http.Reque
 		req.Flags["__lookup_q"] = v
 	}
 
-	data, err := op.LookupFunc(req.Flags, req.Args)
+	var data any
+	if op.ContextLookupFunc != nil {
+		data, err = op.ContextLookupFunc(r.Context(), req.Flags, req.Args)
+	} else {
+		data, err = op.LookupFunc(req.Flags, req.Args)
+	}
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return

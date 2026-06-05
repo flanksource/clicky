@@ -148,7 +148,7 @@ func (e *CommandExecutor) findLookupOperationForMethod(method, path string) *RPC
 	for _, preferredMethod := range preferredMethods {
 		for i := range e.service.Operations {
 			op := &e.service.Operations[i]
-			if op.LookupFunc == nil || !strings.EqualFold(op.Method, preferredMethod) {
+			if !hasLookup(op) || !strings.EqualFold(op.Method, preferredMethod) {
 				continue
 			}
 			if matchTemplatePath(op.Path, path) {
