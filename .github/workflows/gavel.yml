@@ -37,7 +37,7 @@ jobs:
       - name: Gavel test
         uses: flanksource/gavel@main
         with:
-          args: test
+          args: test --test-timeout 10m --timeout 20m
           comment-header: gavel-test
           artifact-name: gavel-test-results
 
