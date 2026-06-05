@@ -22,6 +22,13 @@ import (
 // package) to avoid a clicky -> clicky/rpc import cycle.
 type ContextDataFunc = func(ctx context.Context, flags map[string]string, args []string) (any, error)
 
+// ContextLookupFunc is the context-aware variant of a filter lookup closure.
+// When present, the RPC executor prefers it over LookupFunc and feeds the
+// request's context.Context (r.Context() over HTTP, cmd.Context() on the CLI)
+// so a filter's Options/OptionsWithQuery can resolve request-scoped state
+// (e.g. the per-request database handle) instead of a process global.
+type ContextLookupFunc = func(ctx context.Context, flags map[string]string, args []string) (any, error)
+
 // dataFuncRegistry maps cobra commands created by AddCommand to closures
 // that can invoke the user function directly with flag values.
 var dataFuncRegistry sync.Map // map[*cobra.Command]func(flags map[string]string, args []string) (any, error)
@@ -32,6 +39,11 @@ var contextDataFuncRegistry sync.Map // map[*cobra.Command]ContextDataFunc
 
 // lookupFuncRegistry maps cobra commands to filter metadata lookup closures.
 var lookupFuncRegistry sync.Map // map[*cobra.Command]func(flags map[string]string, args []string) (any, error)
+
+// contextLookupFuncRegistry maps cobra commands to context-aware filter
+// lookup closures. When present, the RPC converter wires it onto
+// RPCOperation.ContextLookupFunc and the executor prefers it over LookupFunc.
+var contextLookupFuncRegistry sync.Map // map[*cobra.Command]ContextLookupFunc
 
 // GetDataFunc returns the direct data function registered for a command, if any.
 // Used by the RPC converter to wire DataFunc on RPCOperation.
@@ -55,6 +67,15 @@ func GetContextDataFunc(cmd *cobra.Command) ContextDataFunc {
 func GetLookupFunc(cmd *cobra.Command) func(flags map[string]string, args []string) (any, error) {
 	if v, ok := lookupFuncRegistry.Load(cmd); ok {
 		return v.(func(flags map[string]string, args []string) (any, error))
+	}
+	return nil
+}
+
+// GetContextLookupFunc returns the context-aware lookup function registered for
+// a command, if any. Used by the RPC converter to wire ContextLookupFunc.
+func GetContextLookupFunc(cmd *cobra.Command) ContextLookupFunc {
+	if v, ok := contextLookupFuncRegistry.Load(cmd); ok {
+		return v.(ContextLookupFunc)
 	}
 	return nil
 }
@@ -130,6 +151,20 @@ func AddNamedCommand[T any, R any](name string, parent *cobra.Command, opts T, f
 	return addNamedCommand(name, parent, opts, fn, nil)
 }
 
+// AddCommandWithContext is AddCommand whose closure receives the request-scoped
+// context (cmd.Context() on the CLI, r.Context() over HTTP). It derives the
+// command name from the opts struct exactly like AddCommand, then delegates to
+// AddNamedCommandWithContext so the subcommand can resolve a per-request
+// database/config instead of a process global.
+func AddCommandWithContext[T any, R any](parent *cobra.Command, opts T, fn func(ctx context.Context, opts T) (R, error)) *cobra.Command {
+	optsType := reflect.TypeOf(opts)
+	if optsType.Kind() != reflect.Struct {
+		panic("AddCommandWithContext requires a struct type for opts parameter")
+	}
+	name := lo.KebabCase(strings.TrimSuffix(optsType.Name(), "Options"))
+	return AddNamedCommandWithContext(name, parent, opts, fn)
+}
+
 // AddNamedCommandWithContext is AddNamedCommand whose closure receives the
 // request-scoped context (cmd.Context() on the CLI, r.Context() over HTTP), so
 // the subcommand can resolve a per-request database/config instead of a process
@@ -179,6 +214,7 @@ func addNamedCommand[T any, R any](
 	}
 	if len(subFilters) > 0 {
 		lookupFuncRegistry.Store(cmd, buildLookupFunc[T](subFilters))
+		contextLookupFuncRegistry.Store(cmd, buildLookupFuncWithContext[T](subFilters))
 	}
 
 	if namer, ok := optsValue.Interface().(Name); ok {

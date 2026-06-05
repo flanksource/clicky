@@ -18,6 +18,13 @@ type DataFunc func(flags map[string]string, args []string) (any, error)
 // database/config bundle) instead of reaching for process globals.
 type ContextDataFunc func(ctx context.Context, flags map[string]string, args []string) (any, error)
 
+// ContextLookupFunc is the context-aware variant of the filter LookupFunc.
+// When set on an operation, handleLookupCommand prefers it over LookupFunc and
+// passes the request's context.Context (r.Context()), letting a filter resolve
+// request-scoped state (e.g. the per-request database handle) when enumerating
+// its option set.
+type ContextLookupFunc func(ctx context.Context, flags map[string]string, args []string) (any, error)
+
 // RPCOperation represents a generic RPC operation that can be converted to various formats
 type RPCOperation struct {
 	Name             string               `json:"name"`
@@ -29,8 +36,9 @@ type RPCOperation struct {
 	Method           string               `json:"method,omitempty"` // HTTP method
 	Tags             []string             `json:"tags,omitempty"`   // For grouping
 	DataFunc         DataFunc             `json:"-"`                // Direct data provider, bypasses stdout capture
-	ContextDataFunc  ContextDataFunc      `json:"-"`                // Context-aware data provider; preferred over DataFunc when set
-	LookupFunc       DataFunc             `json:"-"`                // Direct filter metadata provider
+	ContextDataFunc   ContextDataFunc   `json:"-"` // Context-aware data provider; preferred over DataFunc when set
+	LookupFunc        DataFunc          `json:"-"` // Direct filter metadata provider
+	ContextLookupFunc ContextLookupFunc `json:"-"` // Context-aware filter metadata provider; preferred over LookupFunc when set
 	Clicky           *ClickyOperationMeta `json:"-"`                // Entity semantics used for OpenAPI extensions
 	ResponseType     reflect.Type         `json:"-"`                // Static response type for OpenAPI generation
 	ResponseArray    bool                 `json:"-"`                // Response body is an array of ResponseType

@@ -79,12 +79,16 @@ type EntityOperation struct {
 	// onto the generated cobra command and collects their values into the
 	// flag map passed to DataFunc. Used by actions that implement
 	// ActionFlags; ignored for the built-in CRUD verbs.
-	FlagsType        reflect.Type
-	LookupFunc       func(flags map[string]string, args []string) (any, error)
-	BindCompletions  func(cmd *cobra.Command)
-	ResponseType     reflect.Type
-	ResponseArray    bool
-	ResponseEntityID bool
+	FlagsType  reflect.Type
+	LookupFunc func(flags map[string]string, args []string) (any, error)
+	// ContextLookupFunc, when set, is the context-aware filter lookup closure.
+	// The RPC converter wires it onto RPCOperation.ContextLookupFunc and the
+	// executor prefers it over LookupFunc, feeding the request context.
+	ContextLookupFunc ContextLookupFunc
+	BindCompletions   func(cmd *cobra.Command)
+	ResponseType      reflect.Type
+	ResponseArray     bool
+	ResponseEntityID  bool
 }
 
 // ActionInfo is the type-erased representation of a single-entity action.
@@ -112,14 +116,15 @@ type ActionInfo struct {
 
 // BulkActionInfo is the type-erased representation of a bulk action.
 type BulkActionInfo struct {
-	Name            string
-	Short           string
-	DataFunc        func(flags map[string]string, args []string) (any, error)
-	FilterFunc      func(flags map[string]string, args []string) (any, error)
-	LookupFunc      func(flags map[string]string, args []string) (any, error)
-	ListType        reflect.Type
-	BindCompletions func(cmd *cobra.Command)
-	ResponseType    reflect.Type
+	Name              string
+	Short             string
+	DataFunc          func(flags map[string]string, args []string) (any, error)
+	FilterFunc        func(flags map[string]string, args []string) (any, error)
+	LookupFunc        func(flags map[string]string, args []string) (any, error)
+	ContextLookupFunc ContextLookupFunc
+	ListType          reflect.Type
+	BindCompletions   func(cmd *cobra.Command)
+	ResponseType      reflect.Type
 }
 
 // ActionFlags is a marker interface implemented by options structs that
@@ -155,6 +160,24 @@ type Filter[ListOpts any] interface {
 // beyond the head. total is only meaningful for the head (query == "") call.
 type SearchableFilter[ListOpts any] interface {
 	OptionsWithQuery(opts ListOpts, query string, limit int) (options map[string]api.Textable, total int)
+}
+
+// ContextFilter is an OPTIONAL extension a Filter may implement when its
+// option set is resolved from request-scoped state (e.g. a per-request
+// database handle) rather than a process global. When the lookup handler runs
+// with a context (the RPC path feeds r.Context(), the CLI feeds cmd.Context())
+// it prefers OptionsWithContext over Options; filters that don't implement it
+// fall back to the plain Options() path unchanged.
+type ContextFilter[ListOpts any] interface {
+	OptionsWithContext(ctx context.Context, opts ListOpts) map[string]api.Textable
+}
+
+// ContextSearchableFilter is the context-aware counterpart of
+// SearchableFilter: a large/searchable filter whose head and server-side
+// search both need request-scoped state. The lookup handler prefers it over
+// OptionsWithQuery when a context is available.
+type ContextSearchableFilter[ListOpts any] interface {
+	OptionsWithQueryAndContext(ctx context.Context, opts ListOpts, query string, limit int) (options map[string]api.Textable, total int)
 }
 
 // Filterable is implemented by AddNamedCommand options structs that want to
@@ -212,6 +235,32 @@ func (l liftedFilter[Outer, Inner]) Options(opts Outer) map[string]api.Textable 
 // matching the non-truncated path.
 func (l liftedFilter[Outer, Inner]) OptionsWithQuery(opts Outer, query string, limit int) (map[string]api.Textable, int) {
 	inner := *l.project(&opts)
+	if s, ok := l.inner.(SearchableFilter[Inner]); ok {
+		return s.OptionsWithQuery(inner, query, limit)
+	}
+	options := l.inner.Options(inner)
+	return options, len(options)
+}
+
+// OptionsWithContext forwards to the inner filter's context-aware Options when
+// it implements ContextFilter, so a lifted db-backed filter resolves the
+// request handle. Otherwise it degrades to the non-context Options().
+func (l liftedFilter[Outer, Inner]) OptionsWithContext(ctx context.Context, opts Outer) map[string]api.Textable {
+	inner := *l.project(&opts)
+	if c, ok := l.inner.(ContextFilter[Inner]); ok {
+		return c.OptionsWithContext(ctx, inner)
+	}
+	return l.inner.Options(inner)
+}
+
+// OptionsWithQueryAndContext forwards to the inner filter's context-aware
+// searchable Options when available, falling back to the non-context
+// searchable path, then to Options(), mirroring OptionsWithQuery.
+func (l liftedFilter[Outer, Inner]) OptionsWithQueryAndContext(ctx context.Context, opts Outer, query string, limit int) (map[string]api.Textable, int) {
+	inner := *l.project(&opts)
+	if c, ok := l.inner.(ContextSearchableFilter[Inner]); ok {
+		return c.OptionsWithQueryAndContext(ctx, inner, query, limit)
+	}
 	if s, ok := l.inner.(SearchableFilter[Inner]); ok {
 		return s.OptionsWithQuery(inner, query, limit)
 	}
@@ -513,12 +562,13 @@ func RegisterEntity[T EntityItem, ListOpts any, R any](e Entity[T, ListOpts, R])
 
 	if e.ListWithContext != nil || e.List != nil {
 		op := EntityOperation{
-			Verb:             "list",
-			LookupFunc:       buildLookupFunc[ListOpts](e.Filters),
-			BindCompletions:  buildFilterCompletionBinder[ListOpts](e.Filters),
-			ResponseType:     reflect.TypeOf((*T)(nil)).Elem(),
-			ResponseArray:    true,
-			ResponseEntityID: true,
+			Verb:              "list",
+			LookupFunc:        buildLookupFunc[ListOpts](e.Filters),
+			ContextLookupFunc: buildLookupFuncWithContext[ListOpts](e.Filters),
+			BindCompletions:   buildFilterCompletionBinder[ListOpts](e.Filters),
+			ResponseType:      reflect.TypeOf((*T)(nil)).Elem(),
+			ResponseArray:     true,
+			ResponseEntityID:  true,
 		}
 		if e.ListWithContext != nil {
 			op.ContextDataFunc = func(ctx context.Context, flagMap map[string]string, args []string) (any, error) {
@@ -679,6 +729,7 @@ func RegisterEntity[T EntityItem, ListOpts any, R any](e Entity[T, ListOpts, R])
 		}
 		if bai.FilterFunc != nil {
 			bai.LookupFunc = buildLookupFunc[ListOpts](e.Filters)
+			bai.ContextLookupFunc = buildLookupFuncWithContext[ListOpts](e.Filters)
 			bai.BindCompletions = buildFilterCompletionBinder[ListOpts](e.Filters)
 		}
 		info.BulkActions = append(info.BulkActions, bai)
@@ -715,11 +766,12 @@ func RegisterEntity[T EntityItem, ListOpts any, R any](e Entity[T, ListOpts, R])
 					}
 					return withEntityIDs(items), nil
 				},
-				LookupFunc:       buildLookupFunc[ListOpts](admin.Filters),
-				BindCompletions:  buildFilterCompletionBinder[ListOpts](admin.Filters),
-				ResponseType:     reflect.TypeOf((*T)(nil)).Elem(),
-				ResponseArray:    true,
-				ResponseEntityID: true,
+				LookupFunc:        buildLookupFunc[ListOpts](admin.Filters),
+				ContextLookupFunc: buildLookupFuncWithContext[ListOpts](admin.Filters),
+				BindCompletions:   buildFilterCompletionBinder[ListOpts](admin.Filters),
+				ResponseType:      reflect.TypeOf((*T)(nil)).Elem(),
+				ResponseArray:     true,
+				ResponseEntityID:  true,
 			})
 		}
 		if admin.GetWithFlags != nil {
@@ -952,6 +1004,9 @@ func generateListCommand(parent *cobra.Command, entity EntityInfo, op EntityOper
 	if op.LookupFunc != nil {
 		lookupFuncRegistry.Store(cmd, op.LookupFunc)
 	}
+	if op.ContextLookupFunc != nil {
+		contextLookupFuncRegistry.Store(cmd, op.ContextLookupFunc)
+	}
 }
 
 func generateIDCommand(
@@ -1148,6 +1203,9 @@ func generateBulkActionCommand(parent *cobra.Command, ba BulkActionInfo) {
 	if ba.LookupFunc != nil {
 		lookupFuncRegistry.Store(cmd, ba.LookupFunc)
 	}
+	if ba.ContextLookupFunc != nil {
+		contextLookupFuncRegistry.Store(cmd, ba.ContextLookupFunc)
+	}
 }
 
 // bindTypeFlags registers cobra flags from a struct type's field tags.
@@ -1291,60 +1349,118 @@ func buildLookupFunc[T any](filters []Filter[T]) func(flags map[string]string, a
 	if len(filters) == 0 {
 		return nil
 	}
-
 	lookupMetadata := buildLookupMetadata[T]()
-
 	return func(flagMap map[string]string, args []string) (any, error) {
-		searchKey := flagMap[lookupFilterKeyParam]
-		searchQuery := flagMap[lookupQueryParam]
-		// The reserved params aren't entity flags; strip them before buildOpts
-		// so they don't leak into the filter ListOpts.
-		delete(flagMap, lookupFilterKeyParam)
-		delete(flagMap, lookupQueryParam)
-
-		opts, err := buildOpts[T](flagMap)
-		if err != nil {
-			return nil, err
-		}
-
-		selected, err := applyEntityFilters(&opts, filters)
-		if err != nil {
-			return nil, err
-		}
-
-		response := entityLookupResponse{
-			Filters: make(map[string]entityLookupFilter, len(filters)),
-		}
-		for _, filter := range filters {
-			meta := lookupMetadata[filter.Key()]
-			entry := entityLookupFilter{
-				Label:    filter.Label(),
-				Selected: toClickyNodeMap(selected[filter.Key()]),
-				Multi:    meta.Multi,
-				Type:     meta.Type,
-			}
-
-			searchable, isSearchable := filter.(SearchableFilter[T])
-			switch {
-			case isSearchable && searchKey == filter.Key() && searchQuery != "":
-				// Targeted server-side search: return matches for this filter only.
-				options, _ := searchable.OptionsWithQuery(opts, searchQuery, lookupOptionsLimit)
-				entry.Options = toClickyNodeMap(options)
-			case isSearchable:
-				// Head request: first N options plus the true distinct total so
-				// the UI can show "… and N more" and decide whether to search.
-				options, total := searchable.OptionsWithQuery(opts, "", lookupOptionsLimit)
-				entry.Options = toClickyNodeMap(options)
-				entry.Total = total
-				entry.Truncated = total > len(options)
-			default:
-				entry.Options = toClickyNodeMap(filter.Options(opts))
-			}
-
-			response.Filters[filter.Key()] = entry
-		}
-		return response, nil
+		return resolveLookup(context.Background(), filters, lookupMetadata, flagMap)
 	}
+}
+
+// buildLookupFuncWithContext is the context-aware variant of buildLookupFunc.
+// The closure threads the request ctx into each filter, so a filter that
+// implements ContextFilter/ContextSearchableFilter can resolve request-scoped
+// state (e.g. the per-request database handle). Filters that don't implement
+// the context-aware interfaces behave exactly as under buildLookupFunc.
+func buildLookupFuncWithContext[T any](filters []Filter[T]) func(ctx context.Context, flags map[string]string, args []string) (any, error) {
+	if len(filters) == 0 {
+		return nil
+	}
+	lookupMetadata := buildLookupMetadata[T]()
+	return func(ctx context.Context, flagMap map[string]string, args []string) (any, error) {
+		return resolveLookup(ctx, filters, lookupMetadata, flagMap)
+	}
+}
+
+// resolveLookup builds the entity lookup response for one request. It strips
+// the reserved search params, resolves opts + selected values, then fills each
+// filter's option set — preferring the context-aware Options methods when the
+// filter implements them, otherwise the plain Options/OptionsWithQuery.
+func resolveLookup[T any](
+	ctx context.Context,
+	filters []Filter[T],
+	lookupMetadata map[string]entityLookupMetadata,
+	flagMap map[string]string,
+) (any, error) {
+	searchKey := flagMap[lookupFilterKeyParam]
+	searchQuery := flagMap[lookupQueryParam]
+	// The reserved params aren't entity flags; strip them before buildOpts
+	// so they don't leak into the filter ListOpts.
+	delete(flagMap, lookupFilterKeyParam)
+	delete(flagMap, lookupQueryParam)
+
+	opts, err := buildOpts[T](flagMap)
+	if err != nil {
+		return nil, err
+	}
+
+	selected, err := applyEntityFilters(&opts, filters)
+	if err != nil {
+		return nil, err
+	}
+
+	response := entityLookupResponse{
+		Filters: make(map[string]entityLookupFilter, len(filters)),
+	}
+	for _, filter := range filters {
+		meta := lookupMetadata[filter.Key()]
+		entry := entityLookupFilter{
+			Label:    filter.Label(),
+			Selected: toClickyNodeMap(selected[filter.Key()]),
+			Multi:    meta.Multi,
+			Type:     meta.Type,
+		}
+
+		isSearchable := filterIsSearchable(filter)
+		switch {
+		case isSearchable && searchKey == filter.Key() && searchQuery != "":
+			// Targeted server-side search: return matches for this filter only.
+			options, _ := filterOptionsWithQuery(ctx, filter, opts, searchQuery, lookupOptionsLimit)
+			entry.Options = toClickyNodeMap(options)
+		case isSearchable:
+			// Head request: first N options plus the true distinct total so
+			// the UI can show "… and N more" and decide whether to search.
+			options, total := filterOptionsWithQuery(ctx, filter, opts, "", lookupOptionsLimit)
+			entry.Options = toClickyNodeMap(options)
+			entry.Total = total
+			entry.Truncated = total > len(options)
+		default:
+			entry.Options = toClickyNodeMap(filterOptions(ctx, filter, opts))
+		}
+
+		response.Filters[filter.Key()] = entry
+	}
+	return response, nil
+}
+
+// filterIsSearchable reports whether filter exposes a head/search option set,
+// via either the plain or the context-aware searchable interface.
+func filterIsSearchable[T any](filter Filter[T]) bool {
+	if _, ok := filter.(SearchableFilter[T]); ok {
+		return true
+	}
+	_, ok := filter.(ContextSearchableFilter[T])
+	return ok
+}
+
+// filterOptions resolves a filter's option map, preferring its context-aware
+// OptionsWithContext when implemented so it can reach request-scoped state.
+func filterOptions[T any](ctx context.Context, filter Filter[T], opts T) map[string]api.Textable {
+	if c, ok := filter.(ContextFilter[T]); ok {
+		return c.OptionsWithContext(ctx, opts)
+	}
+	return filter.Options(opts)
+}
+
+// filterOptionsWithQuery resolves a searchable filter's head/search results,
+// preferring the context-aware interface, then the plain searchable one.
+func filterOptionsWithQuery[T any](ctx context.Context, filter Filter[T], opts T, query string, limit int) (map[string]api.Textable, int) {
+	if c, ok := filter.(ContextSearchableFilter[T]); ok {
+		return c.OptionsWithQueryAndContext(ctx, opts, query, limit)
+	}
+	if s, ok := filter.(SearchableFilter[T]); ok {
+		return s.OptionsWithQuery(opts, query, limit)
+	}
+	options := filterOptions(ctx, filter, opts)
+	return options, len(options)
 }
 
 type entityLookupMetadata struct {
