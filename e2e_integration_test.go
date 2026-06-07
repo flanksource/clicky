@@ -227,7 +227,7 @@ var other = api.Text{Content: "other"}
 			})
 			cmd := exec.Command(binaryPath, "lint", "--no-color", "--summary-limit", "1", ".")
 			cmd.Dir = dir
-			cmd.Env = append(clickyTestEnv(true), "GOWORK=off")
+			cmd.Env = append(clickyTestEnv(true), "GOWORK=off", "GOFLAGS=-mod=mod")
 
 			var stdout, stderr bytes.Buffer
 			cmd.Stdout = &stdout
@@ -262,7 +262,7 @@ func (s Server) Pretty() api.Text {
 			})
 			cmd := exec.Command(binaryPath, "lint", "--no-color", ".")
 			cmd.Dir = dir
-			cmd.Env = append(clickyTestEnv(true), "GOWORK=off")
+			cmd.Env = append(clickyTestEnv(true), "GOWORK=off", "GOFLAGS=-mod=mod")
 
 			var stdout, stderr bytes.Buffer
 			cmd.Stdout = &stdout
@@ -286,7 +286,7 @@ var direct = api.Text{Content: "bad"}
 			})
 			cmd := exec.Command(binaryPath, "lint", "-json", ".")
 			cmd.Dir = dir
-			cmd.Env = append(clickyTestEnv(true), "GOWORK=off")
+			cmd.Env = append(clickyTestEnv(true), "GOWORK=off", "GOFLAGS=-mod=mod")
 
 			var stdout, stderr bytes.Buffer
 			cmd.Stdout = &stdout
@@ -310,7 +310,7 @@ var direct = api.Text{Content: "bad"}
 			})
 			cmd := exec.Command(binaryPath, "lint", "--format", "json", ".")
 			cmd.Dir = dir
-			cmd.Env = append(clickyTestEnv(true), "GOWORK=off")
+			cmd.Env = append(clickyTestEnv(true), "GOWORK=off", "GOFLAGS=-mod=mod")
 
 			var stdout, stderr bytes.Buffer
 			cmd.Stdout = &stdout
