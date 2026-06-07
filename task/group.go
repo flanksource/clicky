@@ -22,7 +22,7 @@ type GroupMetadata struct {
 // Group represents a group of tasks that can be managed collectively
 type Group struct {
 	name        string
-	id          string // stable unique id; distinct from name for registry drill-down
+	id          string     // stable unique id; distinct from name for registry drill-down
 	Items       []Taskable // Can contain Tasks or nested Groups
 	startTime   time.Time
 	finishedAt  time.Time // set lazily the first time the group is observed terminal
