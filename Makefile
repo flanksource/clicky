@@ -53,9 +53,16 @@ $(GOLANGCI_LINT): $(LOCALBIN)
 	test -s $(LOCALBIN)/golangci-lint || curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh | sh -s -- -b $(LOCALBIN) $(GOLANGCI_LINT_VERSION)
 
 
-# Format code
+# Go module directories (each has its own go.mod)
+GO_MODULES := . valkey examples examples/uber_demo
+
+# Format code and tidy all modules
 fmt:
 	gofmt -s -w .
+	@for dir in $(GO_MODULES); do \
+		echo "go mod tidy: $$dir"; \
+		(cd $$dir && go mod tidy) || exit 1; \
+	done
 
 # Run all checks
 check: fmt lint test
