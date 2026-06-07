@@ -12,6 +12,7 @@ import (
 type ResponseOpenAPIMeta struct {
 	Type     reflect.Type
 	Array    bool
+	Paged    bool
 	EntityID bool
 }
 

@@ -88,6 +88,7 @@ type EntityOperation struct {
 	BindCompletions   func(cmd *cobra.Command)
 	ResponseType      reflect.Type
 	ResponseArray     bool
+	ResponsePaged     bool
 	ResponseEntityID  bool
 }
 
@@ -473,6 +474,8 @@ type Entity[T EntityItem, ListOpts any, R any] struct {
 	// to resolve per-request state (e.g. a database/config bundle) instead of
 	// reaching for process globals.
 	ListWithContext        func(ctx context.Context, opts ListOpts) ([]T, error)
+	ListPaged              func(opts ListOpts) (PagedResult[T], error)
+	ListPagedWithContext   func(ctx context.Context, opts ListOpts) (PagedResult[T], error)
 	GetWithContext         func(ctx context.Context, id string) (R, error)
 	GetWithFlagsAndContext func(ctx context.Context, id string, flags map[string]string) (R, error)
 	// GetFlags, when non-nil, is a zero-value struct value implementing
@@ -560,7 +563,7 @@ func RegisterEntity[T EntityItem, ListOpts any, R any](e Entity[T, ListOpts, R])
 		ValidArgs: e.ValidArgs,
 	}
 
-	if e.ListWithContext != nil || e.List != nil {
+	if e.ListPagedWithContext != nil || e.ListPaged != nil || e.ListWithContext != nil || e.List != nil {
 		op := EntityOperation{
 			Verb:              "list",
 			LookupFunc:        buildLookupFunc[ListOpts](e.Filters),
@@ -570,7 +573,34 @@ func RegisterEntity[T EntityItem, ListOpts any, R any](e Entity[T, ListOpts, R])
 			ResponseArray:     true,
 			ResponseEntityID:  true,
 		}
-		if e.ListWithContext != nil {
+		switch {
+		case e.ListPagedWithContext != nil:
+			op.ResponsePaged = true
+			op.ContextDataFunc = func(ctx context.Context, flagMap map[string]string, args []string) (any, error) {
+				opts, err := resolveEntityOpts[ListOpts](flagMap, e.Filters)
+				if err != nil {
+					return nil, err
+				}
+				page, err := e.ListPagedWithContext(ctx, opts)
+				if err != nil {
+					return nil, err
+				}
+				return NewPagedResult(withEntityIDs(page.Data), page.Page.Limit, page.Page.Offset, page.Page.Total), nil
+			}
+		case e.ListPaged != nil:
+			op.ResponsePaged = true
+			op.DataFunc = func(flagMap map[string]string, args []string) (any, error) {
+				opts, err := resolveEntityOpts[ListOpts](flagMap, e.Filters)
+				if err != nil {
+					return nil, err
+				}
+				page, err := e.ListPaged(opts)
+				if err != nil {
+					return nil, err
+				}
+				return NewPagedResult(withEntityIDs(page.Data), page.Page.Limit, page.Page.Offset, page.Page.Total), nil
+			}
+		case e.ListWithContext != nil:
 			op.ContextDataFunc = func(ctx context.Context, flagMap map[string]string, args []string) (any, error) {
 				opts, err := resolveEntityOpts[ListOpts](flagMap, e.Filters)
 				if err != nil {
@@ -582,7 +612,7 @@ func RegisterEntity[T EntityItem, ListOpts any, R any](e Entity[T, ListOpts, R])
 				}
 				return withEntityIDs(items), nil
 			}
-		} else {
+		default:
 			op.DataFunc = func(flagMap map[string]string, args []string) (any, error) {
 				opts, err := resolveEntityOpts[ListOpts](flagMap, e.Filters)
 				if err != nil {
@@ -889,6 +919,8 @@ func generateEntityCLI(parent *cobra.Command, entity EntityInfo) {
 		generateEntitySubcommand(entityCmd, entity, op)
 	}
 
+	promoteListToEntityRoot(entityCmd)
+
 	for _, action := range entity.Actions {
 		generateIDCommand(entityCmd, action.Name, action.Short, EntityOperation{
 			Verb:            action.Name,
@@ -902,6 +934,60 @@ func generateEntityCLI(parent *cobra.Command, entity EntityInfo) {
 
 	for _, ba := range entity.BulkActions {
 		generateBulkActionCommand(entityCmd, ba)
+	}
+}
+
+// promoteListToEntityRoot makes the bare entity command (`xero-cli accounts`)
+// run its own `list` subcommand, so the entity root mirrors the CLI's natural
+// "type the entity, get the collection" UX and the RPC converter exposes it as
+// the canonical GET /api/v1/<entity> (it then skips the now-redundant `list`
+// endpoint — see rpc.Converter.shouldIncludeCommand).
+//
+// Only the list command's LOCAL flags (its ListOpts filters) are copied onto
+// the root. The root already inherits every persistent flag through cobra's
+// flag chain, so copying the merged set would re-declare globals like --format
+// /--config/--loglevel as local flags — which the RPC converter would then
+// surface as bogus query parameters on the operation. Copy locals only.
+func promoteListToEntityRoot(entityCmd *cobra.Command) {
+	var listCmd *cobra.Command
+	for _, sub := range entityCmd.Commands() {
+		if meta := GetCommandOpenAPIMeta(sub); meta != nil && meta.Verb == "list" {
+			listCmd = sub
+			break
+		}
+	}
+	if listCmd == nil {
+		return
+	}
+
+	entityCmd.RunE = listCmd.RunE
+	entityCmd.Args = listCmd.Args
+	entityCmd.ValidArgsFunction = listCmd.ValidArgsFunction
+	entityCmd.Flags().AddFlagSet(listCmd.LocalNonPersistentFlags())
+
+	// The root keeps its entity annotations with NO operation verb: the RPC
+	// converter detects "runnable entity-root, no verb" to map it to GET
+	// /api/v1/<entity> and to skip the redundant `list` subcommand. Only the
+	// lookup-support flag is forwarded so the spec still advertises filter
+	// lookups for the promoted endpoint.
+	if listMeta := GetCommandOpenAPIMeta(listCmd); listMeta != nil && listMeta.SupportsLookup {
+		setCommandAnnotation(entityCmd, annotationClickySupportsLookup, "true")
+	}
+
+	if df := GetDataFunc(listCmd); df != nil {
+		dataFuncRegistry.Store(entityCmd, df)
+	}
+	if cdf := GetContextDataFunc(listCmd); cdf != nil {
+		contextDataFuncRegistry.Store(entityCmd, cdf)
+	}
+	if lf := GetLookupFunc(listCmd); lf != nil {
+		lookupFuncRegistry.Store(entityCmd, lf)
+	}
+	if clf := GetContextLookupFunc(listCmd); clf != nil {
+		contextLookupFuncRegistry.Store(entityCmd, clf)
+	}
+	if meta := GetCommandResponseMeta(listCmd); meta != nil {
+		SetCommandResponseMeta(entityCmd, *meta)
 	}
 }
 
@@ -951,10 +1037,22 @@ func generateEntitySubcommand(parent *cobra.Command, entity EntityInfo, op Entit
 // runEntityOp invokes the operation's data function on the CLI path, preferring
 // the context-aware variant (fed cmd.Context()) when present.
 func runEntityOp(c *cobra.Command, op EntityOperation, flagMap map[string]string, args []string) (any, error) {
+	var (
+		result any
+		err    error
+	)
 	if op.ContextDataFunc != nil {
-		return op.ContextDataFunc(c.Context(), flagMap, args)
+		result, err = op.ContextDataFunc(c.Context(), flagMap, args)
+	} else {
+		result, err = op.DataFunc(flagMap, args)
 	}
-	return op.DataFunc(flagMap, args)
+	if err != nil {
+		return nil, err
+	}
+	if paged, ok := result.(Paged); ok {
+		return paged.PageRows(), nil
+	}
+	return result, nil
 }
 
 // storeEntityDataFuncs records the operation's data closures against the command
@@ -999,6 +1097,7 @@ func generateListCommand(parent *cobra.Command, entity EntityInfo, op EntityOper
 	SetCommandResponseMeta(cmd, ResponseOpenAPIMeta{
 		Type:     op.ResponseType,
 		Array:    op.ResponseArray,
+		Paged:    op.ResponsePaged,
 		EntityID: op.ResponseEntityID,
 	})
 	if op.LookupFunc != nil {
@@ -1075,6 +1174,7 @@ func generateIDCommand(
 	SetCommandResponseMeta(cmd, ResponseOpenAPIMeta{
 		Type:     op.ResponseType,
 		Array:    op.ResponseArray,
+		Paged:    op.ResponsePaged,
 		EntityID: op.ResponseEntityID,
 	})
 }
@@ -1155,6 +1255,7 @@ func generateBodyCommand(parent *cobra.Command, verb, short string, op EntityOpe
 	SetCommandResponseMeta(cmd, ResponseOpenAPIMeta{
 		Type:     op.ResponseType,
 		Array:    op.ResponseArray,
+		Paged:    op.ResponsePaged,
 		EntityID: op.ResponseEntityID,
 	})
 }
