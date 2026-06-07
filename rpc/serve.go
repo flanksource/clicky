@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/flanksource/clicky"
 	"github.com/flanksource/clicky/formatters"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
@@ -720,6 +721,16 @@ func (s *SwaggerServer) handleLookupCommand(w http.ResponseWriter, r *http.Reque
 // writeFormattedResponse formats data using the FormatManager and writes it as
 // the raw response body with the appropriate Content-Type.
 func (s *SwaggerServer) writeFormattedResponse(w http.ResponseWriter, r *http.Request, data any, opts formatOptions, statusCode int) {
+	if paged, ok := data.(clicky.Paged); ok {
+		page := paged.PageMetadata()
+		w.Header().Set("X-Total-Count", strconv.FormatInt(page.Total, 10))
+		w.Header().Set("X-Page-Limit", strconv.Itoa(page.Limit))
+		w.Header().Set("X-Page-Offset", strconv.Itoa(page.Offset))
+		if shouldFormatPagedRows(opts.Format) {
+			data = paged.PageRows()
+		}
+	}
+
 	manager := formatters.NewFormatManager()
 	output, err := manager.FormatWithContext(r, formatters.FormatOptions{
 		Format: opts.Format,
@@ -736,6 +747,15 @@ func (s *SwaggerServer) writeFormattedResponse(w http.ResponseWriter, r *http.Re
 	w.Header().Set("Content-Type", formatToContentType(opts.Format))
 	w.WriteHeader(statusCode)
 	w.Write([]byte(output)) //nolint:errcheck
+}
+
+func shouldFormatPagedRows(format string) bool {
+	switch format {
+	case "json", "yaml", "yml":
+		return false
+	default:
+		return true
+	}
 }
 
 type formatOptions struct {

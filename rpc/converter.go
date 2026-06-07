@@ -172,6 +172,10 @@ func (c *Converter) ConvertCommand(cmd *cobra.Command) (*RPCOperation, error) {
 		operation.Clicky.Admin = meta.Admin
 		operation.Clicky.Verb = meta.Verb
 		operation.Clicky.Scope = meta.Scope
+		if meta.Verb == "" && meta.Entity != "" {
+			operation.Clicky.Verb = "list"
+			operation.Clicky.Scope = "collection"
+		}
 		operation.Clicky.ActionName = meta.ActionName
 		operation.Clicky.IDParam = meta.IDParam
 		operation.Clicky.SupportsLookup = meta.SupportsLookup
@@ -193,6 +197,7 @@ func (c *Converter) ConvertCommand(cmd *cobra.Command) (*RPCOperation, error) {
 	if meta := clicky.GetCommandResponseMeta(cmd); meta != nil {
 		operation.ResponseType = meta.Type
 		operation.ResponseArray = meta.Array
+		operation.ResponsePaged = meta.Paged
 		operation.ResponseEntityID = meta.EntityID
 	}
 

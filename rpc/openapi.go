@@ -370,6 +370,7 @@ func (g *OpenAPIGenerator) convertOperationToOpenAPI(op RPCOperation) OpenAPIOpe
 	// Add standard responses
 	openAPIOp.Responses["200"] = OpenAPIResponse{
 		Description: "Successful operation",
+		Headers:     g.responseHeadersForOperation(op),
 		Content: map[string]OpenAPIMediaType{
 			"application/json": {
 				Schema: g.responseSchemaForOperation(op),
@@ -460,6 +461,19 @@ func (g *OpenAPIGenerator) responseSchemaForOperation(op RPCOperation) *OpenAPIS
 	if op.ResponseEntityID {
 		addEntityIDSchema(schema)
 	}
+	if op.ResponsePaged {
+		return &OpenAPISchema{
+			Type: "object",
+			Properties: map[string]*OpenAPISchema{
+				"data": {
+					Type:  "array",
+					Items: schema,
+				},
+				"page": pageInfoSchema(),
+			},
+			Required: []string{"data", "page"},
+		}
+	}
 	if op.ResponseArray {
 		schema = &OpenAPISchema{
 			Type:  "array",
@@ -467,6 +481,48 @@ func (g *OpenAPIGenerator) responseSchemaForOperation(op RPCOperation) *OpenAPIS
 		}
 	}
 	return schema
+}
+
+func (g *OpenAPIGenerator) responseHeadersForOperation(op RPCOperation) map[string]OpenAPIHeader {
+	if !op.ResponsePaged {
+		return nil
+	}
+	integer := &OpenAPISchema{Type: "integer"}
+	return map[string]OpenAPIHeader{
+		"X-Total-Count": {
+			Description: "Total number of matching rows before paging.",
+			Schema:      integer,
+		},
+		"X-Page-Limit": {
+			Description: "Effective page limit applied to the response.",
+			Schema:      integer,
+		},
+		"X-Page-Offset": {
+			Description: "Effective page offset applied to the response.",
+			Schema:      integer,
+		},
+	}
+}
+
+func pageInfoSchema() *OpenAPISchema {
+	return &OpenAPISchema{
+		Type: "object",
+		Properties: map[string]*OpenAPISchema{
+			"limit": {
+				Type:        "integer",
+				Description: "Effective page limit.",
+			},
+			"offset": {
+				Type:        "integer",
+				Description: "Effective page offset.",
+			},
+			"total": {
+				Type:        "integer",
+				Description: "Total number of matching rows before paging.",
+			},
+		},
+		Required: []string{"limit", "offset", "total"},
+	}
 }
 
 func addEntityIDSchema(schema *OpenAPISchema) {
@@ -575,9 +631,6 @@ func (g *OpenAPIGenerator) buildClickySpecMeta(operations []RPCOperation) *Click
 }
 
 func clickySurfaceBaseKey(entity string, aliases []string) string {
-	if len(aliases) > 0 && aliases[0] != "" {
-		return aliases[0]
-	}
 	return clickyPluralize(entity)
 }
 

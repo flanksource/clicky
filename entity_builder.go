@@ -1,6 +1,10 @@
 package clicky
 
-import "github.com/spf13/cobra"
+import (
+	"context"
+
+	"github.com/spf13/cobra"
+)
 
 // EntityBuilder provides a fluent API for registering typed entities.
 type EntityBuilder[T EntityItem, ListOpts any, R any] struct {
@@ -26,6 +30,21 @@ func (b *EntityBuilder[T, ListOpts, R]) Aliases(aliases ...string) *EntityBuilde
 
 func (b *EntityBuilder[T, ListOpts, R]) List(fn func(ListOpts) ([]T, error)) *EntityBuilder[T, ListOpts, R] {
 	b.entity.List = fn
+	return b
+}
+
+func (b *EntityBuilder[T, ListOpts, R]) ListWithContext(fn func(context.Context, ListOpts) ([]T, error)) *EntityBuilder[T, ListOpts, R] {
+	b.entity.ListWithContext = fn
+	return b
+}
+
+func (b *EntityBuilder[T, ListOpts, R]) ListPaged(fn func(ListOpts) (PagedResult[T], error)) *EntityBuilder[T, ListOpts, R] {
+	b.entity.ListPaged = fn
+	return b
+}
+
+func (b *EntityBuilder[T, ListOpts, R]) ListPagedWithContext(fn func(context.Context, ListOpts) (PagedResult[T], error)) *EntityBuilder[T, ListOpts, R] {
+	b.entity.ListPagedWithContext = fn
 	return b
 }
 

@@ -27,22 +27,23 @@ type ContextLookupFunc func(ctx context.Context, flags map[string]string, args [
 
 // RPCOperation represents a generic RPC operation that can be converted to various formats
 type RPCOperation struct {
-	Name             string               `json:"name"`
-	Description      string               `json:"description"`
-	Parameters       []RPCParameter       `json:"parameters"`
-	Schema           Schema               `json:"schema"`
-	Command          *cobra.Command       `json:"-"`                // Reference to original command
-	Path             string               `json:"path,omitempty"`   // For REST APIs
-	Method           string               `json:"method,omitempty"` // HTTP method
-	Tags             []string             `json:"tags,omitempty"`   // For grouping
-	DataFunc         DataFunc             `json:"-"`                // Direct data provider, bypasses stdout capture
-	ContextDataFunc   ContextDataFunc   `json:"-"` // Context-aware data provider; preferred over DataFunc when set
-	LookupFunc        DataFunc          `json:"-"` // Direct filter metadata provider
-	ContextLookupFunc ContextLookupFunc `json:"-"` // Context-aware filter metadata provider; preferred over LookupFunc when set
-	Clicky           *ClickyOperationMeta `json:"-"`                // Entity semantics used for OpenAPI extensions
-	ResponseType     reflect.Type         `json:"-"`                // Static response type for OpenAPI generation
-	ResponseArray    bool                 `json:"-"`                // Response body is an array of ResponseType
-	ResponseEntityID bool                 `json:"-"`                // Array item schema should include Clicky _id metadata
+	Name              string               `json:"name"`
+	Description       string               `json:"description"`
+	Parameters        []RPCParameter       `json:"parameters"`
+	Schema            Schema               `json:"schema"`
+	Command           *cobra.Command       `json:"-"`                // Reference to original command
+	Path              string               `json:"path,omitempty"`   // For REST APIs
+	Method            string               `json:"method,omitempty"` // HTTP method
+	Tags              []string             `json:"tags,omitempty"`   // For grouping
+	DataFunc          DataFunc             `json:"-"`                // Direct data provider, bypasses stdout capture
+	ContextDataFunc   ContextDataFunc      `json:"-"`                // Context-aware data provider; preferred over DataFunc when set
+	LookupFunc        DataFunc             `json:"-"`                // Direct filter metadata provider
+	ContextLookupFunc ContextLookupFunc    `json:"-"`                // Context-aware filter metadata provider; preferred over LookupFunc when set
+	Clicky            *ClickyOperationMeta `json:"-"`                // Entity semantics used for OpenAPI extensions
+	ResponseType      reflect.Type         `json:"-"`                // Static response type for OpenAPI generation
+	ResponseArray     bool                 `json:"-"`                // Response body is an array of ResponseType
+	ResponsePaged     bool                 `json:"-"`                // Response body is a paged envelope around ResponseType rows
+	ResponseEntityID  bool                 `json:"-"`                // Array item schema should include Clicky _id metadata
 }
 
 // ClickySpecMeta is emitted as the OpenAPI-level x-clicky extension.
