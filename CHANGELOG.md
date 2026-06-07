@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.21.15](https://github.com/flanksource/clicky/compare/v1.21.14...v1.21.15) (2026-06-07)
+
+
+### ⚠ BREAKING CHANGES
+
+* **entity:** runEntityOp now extracts paged results via PageRows() interface method before formatting, changing how paged responses are serialized in RPC responses.
+
+### ✨ Features
+
+* **entity:** add pagination support for entity list operations ([6903915](https://github.com/flanksource/clicky/commit/69039150788c3891ff7e9b8a82091830fbdf7e87))
+* **rpc,entity:** add context-aware filter lookup support for request-scoped state ([442a560](https://github.com/flanksource/clicky/commit/442a56059fbadd47165a1ab0b3c69535017a031d))
+
+
+### 🐛 Bug Fixes
+
+* **entity,rpc:** address PR review comments and lint e2e go.sum failures ([28bd967](https://github.com/flanksource/clicky/commit/28bd96731b1703bc922a50bc2bb91f71fc2ee547))
+
+
+### 📦 Build System
+
+* **makefile:** add go mod tidy to fmt target for all modules ([eb82367](https://github.com/flanksource/clicky/commit/eb823671fd7b6d2863db35acf7ec8e0fed3c38cb))
+
 ## [1.21.14](https://github.com/flanksource/clicky/compare/v1.21.13...v1.21.14) (2026-06-03)
 
 
