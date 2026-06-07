@@ -1483,12 +1483,17 @@ func resolveLookup[T any](
 ) (any, error) {
 	searchKey := flagMap[lookupFilterKeyParam]
 	searchQuery := flagMap[lookupQueryParam]
-	// The reserved params aren't entity flags; strip them before buildOpts
-	// so they don't leak into the filter ListOpts.
-	delete(flagMap, lookupFilterKeyParam)
-	delete(flagMap, lookupQueryParam)
+	// The reserved params aren't entity flags; strip them on a local copy
+	// before buildOpts so they don't leak into the filter ListOpts and we
+	// don't mutate the caller-owned flagMap.
+	localFlags := make(map[string]string, len(flagMap))
+	for k, v := range flagMap {
+		localFlags[k] = v
+	}
+	delete(localFlags, lookupFilterKeyParam)
+	delete(localFlags, lookupQueryParam)
 
-	opts, err := buildOpts[T](flagMap)
+	opts, err := buildOpts[T](localFlags)
 	if err != nil {
 		return nil, err
 	}

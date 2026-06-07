@@ -751,7 +751,7 @@ func (s *SwaggerServer) writeFormattedResponse(w http.ResponseWriter, r *http.Re
 
 func shouldFormatPagedRows(format string) bool {
 	switch format {
-	case "json", "yaml", "yml":
+	case "json", "clicky-json", "yaml", "yml":
 		return false
 	default:
 		return true
