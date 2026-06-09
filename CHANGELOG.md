@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.21.17](https://github.com/flanksource/clicky/compare/v1.21.16...v1.21.17) (2026-06-09)
+
+
+### ⚠ BREAKING CHANGES
+
+* **docs:** --output-dir now writes one markdown file per controller directly into the directory instead of scaffolding a provider-based docs site. The --provider and --base-path flags are removed. Generated files no longer include YAML frontmatter.
+
+### ♻️ Code Refactoring
+
+* **docs:** simplify docs generation to write flat markdown files instead of scaffolding provider-based sites ([ef73ee7](https://github.com/flanksource/clicky/commit/ef73ee773ee94df5c78afe36ea8968096f6e3b3e))
+
+
+### ✨ Features
+
+* **docs:** add docs generation command with CLI reference and UI catalog ([cabe31f](https://github.com/flanksource/clicky/commit/cabe31fe46b8189afabd2df3d4268f2abba49b52))
+* **task:** pluggable LiveRenderer for custom live/final rendering ([3be5046](https://github.com/flanksource/clicky/commit/3be50462948cc281f0737a41aa214b237d0cd92d))
+
+
+### 🐛 Bug Fixes
+
+* **api:** prevent blank lines in tree labels and large description lists from causing excessive padding ([24e9666](https://github.com/flanksource/clicky/commit/24e966668f776304b2344ee45328ae3813615a99))
+
 ## [1.21.16](https://github.com/flanksource/clicky/compare/v1.21.15...v1.21.16) (2026-06-09)
 
 
