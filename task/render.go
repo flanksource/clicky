@@ -10,6 +10,14 @@ import (
 
 // PlainRender outputs the current task statuses in plain text without any interactive / ANSI / console features
 func (tm *Manager) PlainRender() {
+	// A custom LiveRenderer owns the whole block; render it once per tick
+	// rather than the per-task dirty loop so its layout (e.g. a status table)
+	// stays coherent in non-interactive / piped output.
+	if r := tm.getLiveRenderer(); r != nil {
+		tm.plainRenderLive(r)
+		return
+	}
+
 	tm.mu.RLock()
 	defer tm.mu.RUnlock()
 	if len(tm.tasks) == 0 {
@@ -42,23 +50,35 @@ func (tm *Manager) PlainRender() {
 	}
 }
 
+// plainRenderLive prints a custom LiveRenderer's block for one non-interactive
+// tick, guarded by bufferMutex so a concurrent log-serializer write can't split
+// the block.
+func (tm *Manager) plainRenderLive(r LiveRenderer) {
+	rendered := r.RenderLive(tm.snapshotTasks())
+	output := tm.renderer.Output()
+	tm.bufferMutex.Lock()
+	defer tm.bufferMutex.Unlock()
+	if tm.noColor.Load() {
+		fmt.Fprintf(output, "%s\n", rendered.String())
+	} else {
+		fmt.Fprintf(output, "%s\n", rendered.ANSI())
+	}
+}
+
 func (tm *Manager) Pretty() api.Text {
 	if tm == nil {
 		return api.Text{}
 	}
+	return tm.prettyFromTasks(tm.snapshotTasks())
+}
 
-	tm.mu.RLock()
-	if len(tm.tasks) == 0 {
-		tm.mu.RUnlock()
-		return api.Text{}
+// renderLiveText produces the content for one live tick: the installed
+// LiveRenderer's output when set, otherwise the default task-tree formatting.
+func (tm *Manager) renderLiveText() api.Text {
+	if r := tm.getLiveRenderer(); r != nil {
+		return r.RenderLive(tm.snapshotTasks())
 	}
-
-	// Create snapshot to avoid holding lock during formatting
-	taskSnapshot := make([]*Task, len(tm.tasks))
-	copy(taskSnapshot, tm.tasks)
-	tm.mu.RUnlock()
-
-	return tm.prettyFromTasks(taskSnapshot)
+	return tm.Pretty()
 }
 
 // prettyFromTasks formats a snapshot of tasks without needing locks.
@@ -161,7 +181,7 @@ func (tm *Manager) prettyFromTasks(tasks []*Task) api.Text {
 // interactiveRender renders tasks in-place using ANSI clear lines.
 // Returns the number of lines rendered for the next cycle's ClearLines call.
 func (tm *Manager) interactiveRender(lastLines int) int {
-	rendered := tm.Pretty()
+	rendered := tm.renderLiveText()
 	var out string
 	if tm.noColor.Load() {
 		out = rendered.String()

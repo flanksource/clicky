@@ -5,6 +5,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/flanksource/clicky/api"
 	"github.com/flanksource/commons/logger"
 	"golang.org/x/term"
 )
@@ -165,7 +166,12 @@ func (tm *Manager) renderFinal() {
 	copy(taskSnapshot, tm.tasks)
 	tm.mu.RUnlock()
 
-	rendered := tm.prettyFromTasks(taskSnapshot)
+	var rendered api.Text
+	if r := tm.getLiveRenderer(); r != nil {
+		rendered = r.RenderFinal(taskSnapshot)
+	} else {
+		rendered = tm.prettyFromTasks(taskSnapshot)
+	}
 	// Write through renderer.Output (original stderr captured at init) so
 	// the final summary joins the live render stream and doesn't land in
 	// the StartCapturingOutput pipe — otherwise buffered content flushed
