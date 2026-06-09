@@ -135,6 +135,26 @@ func buildNoTreeDataMessage(data *api.PrettyData) string {
 	return msg.String()
 }
 
+// normalizeTreeLabel removes trailing whitespace per line and drops every blank
+// line from a node label so multi-line labels don't render stray "│"-gutter
+// blank lines. lipgloss prefixes every physical line of a multi-line label with
+// the continuation gutter, so a blank line surfaces as a bare gutter line. A
+// node label is a single tree row's content, not a paragraph — blank-line
+// spacing that reads well in flat output is noise inside the tree.
+func normalizeTreeLabel(s string) string {
+	if !strings.ContainsAny(s, "\n \t") {
+		return s
+	}
+	lines := strings.Split(s, "\n")
+	out := make([]string, 0, len(lines))
+	for _, line := range lines {
+		if line = strings.TrimRight(line, " \t"); line != "" {
+			out = append(out, line)
+		}
+	}
+	return strings.Join(out, "\n")
+}
+
 // buildLipglossTree builds a lipgloss tree structure from a TreeNode
 func (f *TreeFormatter) buildLipglossTree(node api.TreeNode, depth int) *tree.Tree {
 	if node == nil {
@@ -144,17 +164,18 @@ func (f *TreeFormatter) buildLipglossTree(node api.TreeNode, depth int) *tree.Tr
 	// All TreeNodes implement Pretty(), so use it for formatting
 	prettyText := node.Pretty()
 
-	// Build the node label with styling
+	// Build the node label with styling. Normalize the plain text before any
+	// lipgloss styling so trimming isn't fighting ANSI reset sequences and
+	// multi-line labels don't render stray "│"-gutter blank lines.
 	var nodeLabel string
 	if f.NoColor {
-		nodeLabel = prettyText.String()
+		nodeLabel = normalizeTreeLabel(prettyText.String())
 	} else {
-		// Apply lipgloss styling if we have a style
+		content := normalizeTreeLabel(prettyText.Content)
 		if prettyText.Style != "" {
-			style := parseTailwindToLipgloss(prettyText.Style)
-			nodeLabel = style.Render(prettyText.Content)
+			nodeLabel = parseTailwindToLipgloss(prettyText.Style).Render(content)
 		} else {
-			nodeLabel = prettyText.Content
+			nodeLabel = content
 		}
 	}
 

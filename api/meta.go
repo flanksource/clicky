@@ -11,8 +11,32 @@ import (
 	"strings"
 
 	lipglosstree "github.com/charmbracelet/lipgloss/tree"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/samber/lo"
 )
+
+// normalizeTreeLabel drops blank lines from a tree-node label and trims
+// trailing whitespace per line. lipgloss prefixes every physical line of a
+// multi-line node label with the tree continuation gutter, so a blank line
+// (including one that is only ANSI escape codes) renders as a bare "│"-gutter
+// line. A node label is one tree row's content, not a paragraph — blank-line
+// spacing that reads well in flat output is noise inside the tree. Operates on
+// already-rendered text (ANSI or plain): a line counts as blank when its
+// ANSI-stripped, space-trimmed form is empty.
+func normalizeTreeLabel(s string) string {
+	if !strings.Contains(s, "\n") {
+		return s
+	}
+	lines := strings.Split(s, "\n")
+	out := make([]string, 0, len(lines))
+	for _, line := range lines {
+		if strings.TrimSpace(ansi.Strip(line)) == "" {
+			continue
+		}
+		out = append(out, strings.TrimRight(line, " \t"))
+	}
+	return strings.Join(out, "\n")
+}
 
 // Interface types for reflection-based slice checking
 var (
@@ -278,6 +302,7 @@ func (tt TextTree) buildLipglossTree(withColors bool) *lipglosstree.Tree {
 		} else {
 			nodeLabel = tt.Node.String()
 		}
+		nodeLabel = normalizeTreeLabel(nodeLabel)
 	}
 
 	// If we have no node and only one child, return the child tree directly

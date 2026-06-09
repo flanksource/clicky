@@ -28,6 +28,7 @@ type entityFilterTestOpts struct {
 	entityFilterEmbeddedOpts
 	Owner  string    `flag:"owner"`
 	Status string    `flag:"status"`
+	Amount string    `flag:"amount"`
 	Active bool      `flag:"active"`
 	Since  time.Time `flag:"since"`
 	From   time.Time `flag:"from"`
@@ -126,6 +127,21 @@ func (tagsEntityFilter) Options(opts entityFilterTestOpts) map[string]api.Textab
 		"worker": api.Text{Content: "Worker"},
 	}
 }
+
+type amountEntityFilter struct{}
+
+func (amountEntityFilter) Key() string   { return "amount" }
+func (amountEntityFilter) Label() string { return "Amount" }
+
+func (amountEntityFilter) Lookup(opts *entityFilterTestOpts) (map[string]api.Textable, error) {
+	return nil, nil
+}
+
+func (amountEntityFilter) Options(opts entityFilterTestOpts) map[string]api.Textable {
+	return nil
+}
+
+func (amountEntityFilter) LookupType() string { return "number" }
 
 type activeEntityFilter struct{}
 
@@ -249,6 +265,7 @@ func TestEntityListFiltersResolveAndLookup(t *testing.T) {
 			ownerEntityFilter{},
 			statusEntityFilter{},
 			tagsEntityFilter{},
+			amountEntityFilter{},
 			activeEntityFilter{},
 			sinceEntityFilter{},
 			fromEntityFilter{},
@@ -328,6 +345,10 @@ func TestEntityListFiltersResolveAndLookup(t *testing.T) {
 
 	if !lookup.Filters["tags"].Multi {
 		t.Fatalf("expected tags lookup to advertise multi=true, got %#v", lookup.Filters["tags"])
+	}
+
+	if lookup.Filters["amount"].Type != "number" {
+		t.Fatalf("expected amount lookup type=number from filter override, got %#v", lookup.Filters["amount"])
 	}
 
 	if lookup.Filters["active"].Type != "bool" {

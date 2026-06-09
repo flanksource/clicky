@@ -1,6 +1,7 @@
 package api
 
 import (
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -185,6 +186,49 @@ func TestDescriptionList_String(t *testing.T) {
 				t.Errorf("String() = %q, want %q", result, tt.expected)
 			}
 		})
+	}
+}
+
+// TestDescriptionList_StacksLargeMaps pins the fix for the trace-output bug:
+// a DescriptionList with more than 3 entries renders one pair per line instead
+// of joining them onto a single multi-thousand-char line. That giant line is
+// what made lipgloss right-pad every sibling tree line with thousands of
+// trailing spaces (a screenful of apparent blank rows). Small lists still join
+// inline.
+func TestDescriptionList_StacksLargeMaps(t *testing.T) {
+	small := DescriptionList{Items: []KeyValuePair{
+		{Key: "Name", Value: "John"},
+		{Key: "Age", Value: 30},
+	}}
+	if got := small.String(); got != "Name: John, Age: 30" {
+		t.Fatalf("small list must stay inline, got %q", got)
+	}
+	if strings.Contains(small.ANSI(), "\n") {
+		t.Fatalf("small list ANSI must stay inline, got newline in %q", small.ANSI())
+	}
+
+	items := make([]KeyValuePair, 0, 50)
+	for i := 0; i < 50; i++ {
+		items = append(items, KeyValuePair{Key: "K" + strconv.Itoa(i), Value: i})
+	}
+	large := DescriptionList{Items: items}
+
+	for label, out := range map[string]string{"String": large.String(), "ANSI": large.ANSI()} {
+		lines := strings.Split(out, "\n")
+		if len(lines) != len(items) {
+			t.Errorf("%s: large map must stack one pair per line: got %d lines for %d items", label, len(lines), len(items))
+		}
+		widest := 0
+		for _, l := range lines {
+			if w := len(l); w > widest {
+				widest = w
+			}
+		}
+		// A single "Kxx: yy" pair is well under 20 chars; the inline join would
+		// be 50× that. The widest stacked line must stay near one pair.
+		if widest > 30 {
+			t.Errorf("%s: widest stacked line %d chars — looks like it joined inline, not stacked", label, widest)
+		}
 	}
 }
 

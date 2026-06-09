@@ -149,6 +149,14 @@ type Filter[ListOpts any] interface {
 	Options(opts ListOpts) map[string]api.Textable
 }
 
+// TypedFilter is an OPTIONAL extension a Filter may implement when the
+// underlying flag type is intentionally broader than the UI control type. For
+// example, date-math flags often remain strings at the CLI layer while the web
+// lookup response should still advertise a from/to date-range control.
+type TypedFilter[ListOpts any] interface {
+	LookupType() string
+}
+
 // SearchableFilter is an OPTIONAL extension a Filter may implement when its
 // option set is too large to enumerate in one shot (e.g. a SQL DISTINCT column
 // with thousands of values). The lookup handler type-asserts to it; filters
@@ -1503,6 +1511,9 @@ func resolveLookup[T any](
 	}
 	for _, filter := range filters {
 		meta := lookupMetadata[filter.Key()]
+		if typed, ok := filter.(TypedFilter[T]); ok {
+			meta.Type = typed.LookupType()
+		}
 		entry := entityLookupFilter{
 			Label:    filter.Label(),
 			Selected: toClickyNodeMap(selected[filter.Key()]),
