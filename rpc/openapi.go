@@ -335,8 +335,6 @@ func (g *OpenAPIGenerator) convertOperationToOpenAPI(op RPCOperation) OpenAPIOpe
 	}
 
 	// Convert parameters
-	supportsLookup := op.Clicky != nil && op.Clicky.SupportsLookup
-	isListOp := op.Clicky != nil && op.Clicky.Verb == "list"
 	for _, param := range op.Parameters {
 		openAPIParam := OpenAPIParameter{
 			Name:        param.Name,
@@ -349,7 +347,7 @@ func (g *OpenAPIGenerator) convertOperationToOpenAPI(op RPCOperation) OpenAPIOpe
 				Default:     param.Default,
 			}),
 		}
-		if role := paramRole(param, supportsLookup, isListOp); role != "" {
+		if role := ParamRole(op, param); role != "" {
 			openAPIParam.Clicky = &ClickyParameterMeta{Role: role}
 		}
 		openAPIOp.Parameters = append(openAPIOp.Parameters, openAPIParam)
@@ -397,6 +395,15 @@ func (g *OpenAPIGenerator) convertOperationToOpenAPI(op RPCOperation) OpenAPIOpe
 	}
 
 	return openAPIOp
+}
+
+// ParamRole classifies a parameter within its operation, deriving the
+// supportsLookup/isListOp signals from the operation's Clicky metadata. Returns
+// the UI role ("limit", "offset", "time-from", "time-to", "filter") or "".
+func ParamRole(op RPCOperation, param RPCParameter) string {
+	supportsLookup := op.Clicky != nil && op.Clicky.SupportsLookup
+	isListOp := op.Clicky != nil && op.Clicky.Verb == "list"
+	return paramRole(param, supportsLookup, isListOp)
 }
 
 // paramRole classifies a parameter so the UI can route it to the right widget

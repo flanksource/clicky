@@ -1,6 +1,7 @@
 package extensions
 
 import (
+	"github.com/flanksource/clicky/docs"
 	"github.com/flanksource/clicky/mcp"
 	"github.com/flanksource/clicky/rpc"
 	"github.com/spf13/cobra"
@@ -42,10 +43,23 @@ func (c *CobraExtension) MCPCommandWithConfig(config *mcp.Config) *CobraExtensio
 	return c
 }
 
-// All adds both OpenAPI and MCP commands with default configuration
+// DocsCommand adds the docs generation command group to the CLI
+// Usage: extensions.CobraExtensions(rootCmd).DocsCommand()
+func (c *CobraExtension) DocsCommand() *CobraExtension {
+	c.rootCmd.AddCommand(docs.NewCommand())
+	return c
+}
+
+// DocsCommandWithConfig adds the docs command group with custom configuration
+func (c *CobraExtension) DocsCommandWithConfig(config *docs.DocsConfig) *CobraExtension {
+	c.rootCmd.AddCommand(docs.NewCommandWithConfig(config))
+	return c
+}
+
+// All adds OpenAPI, MCP, and docs commands with default configuration
 // Usage: extensions.CobraExtensions(rootCmd).All()
 func (c *CobraExtension) All() *CobraExtension {
-	return c.OpenAPICommand().MCPCommand()
+	return c.OpenAPICommand().MCPCommand().DocsCommand()
 }
 
 // ServeCommand adds OpenAPI serve functionality for Swagger UI documentation
