@@ -53,6 +53,11 @@ type Manager struct {
 	// next ClearLines to cover any log lines that landed between ticks.
 	logSerializer *logSerializingWriter
 
+	// liveRenderer, when set, replaces the default task-tree content for live
+	// ticks and the final summary. Installed via SetLiveRenderer; guarded by
+	// mu (see get/setLiveRenderer).
+	liveRenderer LiveRenderer
+
 	// Priority queue for task scheduling
 	taskQueue     *collections.Queue[*Task]
 	workers       []*worker
