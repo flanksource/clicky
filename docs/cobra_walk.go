@@ -63,7 +63,7 @@ func flagDocs(cmd *cobra.Command) []FlagDoc {
 }
 
 func nonEmptyDefault(flag *pflag.Flag) interface{} {
-	if flag.DefValue == "" || flag.DefValue == "false" {
+	if flag.DefValue == "" || (flag.DefValue == "false" && flag.Value.Type() == "bool") {
 		return nil
 	}
 	return flag.DefValue

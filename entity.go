@@ -237,6 +237,12 @@ func (l liftedFilter[Outer, Inner]) Lookup(opts *Outer) (map[string]api.Textable
 func (l liftedFilter[Outer, Inner]) Options(opts Outer) map[string]api.Textable {
 	return l.inner.Options(*l.project(&opts))
 }
+func (l liftedFilter[Outer, Inner]) LookupType() string {
+	if typed, ok := l.inner.(TypedFilter[Inner]); ok {
+		return typed.LookupType()
+	}
+	return ""
+}
 
 // OptionsWithQuery forwards to the inner filter when it is searchable, so a
 // lifted DistinctColumnFilter keeps its head/search behaviour. When the inner
@@ -1512,7 +1518,9 @@ func resolveLookup[T any](
 	for _, filter := range filters {
 		meta := lookupMetadata[filter.Key()]
 		if typed, ok := filter.(TypedFilter[T]); ok {
-			meta.Type = typed.LookupType()
+			if lookupType := typed.LookupType(); lookupType != "" {
+				meta.Type = lookupType
+			}
 		}
 		entry := entityLookupFilter{
 			Label:    filter.Label(),

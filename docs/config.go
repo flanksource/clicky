@@ -1,6 +1,6 @@
 // Package docs provides a reusable cobra command group that generates a
 // markdown CLI reference and a clicky-ui surface catalog from a CLI's command
-// tree, and scaffolds an editable docs site around them.
+// tree, as one markdown file per high-level command controller.
 //
 // It mirrors the rpc.NewOpenAPICommand / mcp.NewCommand factory pattern and is
 // wired into a host CLI via extensions.CobraExtensions(root).DocsCommand().
@@ -24,13 +24,11 @@ type DocsConfig struct {
 	// Exclude lists command paths (space-delimited, e.g. "admin secret") that
 	// should be omitted from the generated CLI reference and UI catalog.
 	Exclude []string
-	// DefaultProvider is the docs-site provider used when --provider is not
-	// passed. Defaults to "astro".
-	DefaultProvider string
 	// Depth limits how many command levels below each high-level controller
 	// (direct child of root) are included in that controller's page. Depth 1
 	// (the default) includes the controller and its direct subcommands; depth 2
-	// descends one level further. Depth 0 means unlimited (the whole subtree).
+	// descends one level further. Depth 0 uses the default; negative values mean
+	// unlimited (the whole subtree).
 	Depth int
 }
 
@@ -56,11 +54,4 @@ func (c *DocsConfig) excluded(cmdPath string) bool {
 		}
 	}
 	return false
-}
-
-func (c *DocsConfig) defaultProvider() string {
-	if c != nil && c.DefaultProvider != "" {
-		return c.DefaultProvider
-	}
-	return providerAstro
 }
