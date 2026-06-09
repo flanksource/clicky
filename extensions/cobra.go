@@ -75,7 +75,7 @@ func (c *CobraExtension) ServeCommandWithConfig(config *rpc.OpenAPIConfig) *Cobr
 	return c
 }
 
-// AllWithConfig adds both OpenAPI and MCP commands with custom configurations
+// AllWithConfig adds OpenAPI, MCP, and docs commands with custom configurations
 func (c *CobraExtension) AllWithConfig(openAPIConfig *rpc.OpenAPIConfig, mcpConfig *mcp.Config) *CobraExtension {
-	return c.OpenAPICommandWithConfig(openAPIConfig).MCPCommandWithConfig(mcpConfig)
+	return c.OpenAPICommandWithConfig(openAPIConfig).MCPCommandWithConfig(mcpConfig).DocsCommand()
 }

@@ -8,10 +8,12 @@ const (
 	pageUISurfaces     = "ui-surfaces"
 	pageGettingStarted = "getting-started"
 	pageIntegration    = "clicky-ui-integration"
-	// controllerPagePrefix namespaces the one-page-per-controller reference
-	// files so their keys never collide with the starter/UI page keys.
-	controllerPagePrefix = "commands/"
 )
+
+// controllerPageKey is the page key (and flat filename stem) for a controller's
+// reference page. A controller's key is just its command name so the file lands
+// as <name>.md directly under the output directory.
+func controllerPageKey(name string) string { return name }
 
 // buildPages assembles the full set of docs-site pages from the model. Two
 // tiers: Generated pages (one per controller, ui-surfaces) are rewritten every
@@ -23,7 +25,6 @@ func buildPages(m *Model) []Page {
 			Key:         pageIndex,
 			Title:       m.Title,
 			Description: firstLine(m.Description),
-			Order:       0,
 			Body:        renderIndex(m),
 			Generated:   false,
 		},
@@ -31,18 +32,16 @@ func buildPages(m *Model) []Page {
 			Key:         pageGettingStarted,
 			Title:       "Getting Started",
 			Description: "Install and run " + m.Title + ".",
-			Order:       1,
 			Body:        renderGettingStarted(m),
 			Generated:   false,
 		},
 	}
 
-	for i, ctrl := range m.Controllers {
+	for _, ctrl := range m.Controllers {
 		pages = append(pages, Page{
-			Key:         controllerPagePrefix + ctrl.Name,
+			Key:         controllerPageKey(ctrl.Name),
 			Title:       ctrl.Name,
 			Description: controllerDescription(ctrl),
-			Order:       100 + i, // reference pages cluster after the starters
 			Body:        RenderController(ctrl),
 			Generated:   true,
 		})
@@ -53,7 +52,6 @@ func buildPages(m *Model) []Page {
 			Key:         pageUISurfaces,
 			Title:       "UI Surface Catalog",
 			Description: "clicky-ui surfaces, operations, and parameter widget roles.",
-			Order:       200,
 			Body:        RenderUISurfaces(m),
 			Generated:   true,
 		},
@@ -61,7 +59,6 @@ func buildPages(m *Model) []Page {
 			Key:         pageIntegration,
 			Title:       "clicky-ui Integration",
 			Description: "Wire " + m.Title + " into the clicky-ui web explorer.",
-			Order:       201,
 			Body:        renderIntegration(m),
 			Generated:   false,
 		},
@@ -88,7 +85,7 @@ func renderIndex(m *Model) string {
 
 	md.heading(2, "Command Reference")
 	for _, ctrl := range m.Controllers {
-		line := fmt.Sprintf("- [%s](./%s)", ctrl.Name, controllerPagePrefix+ctrl.Name)
+		line := fmt.Sprintf("- [%s](./%s)", ctrl.Name, controllerPageKey(ctrl.Name))
 		if ctrl.Short != "" {
 			line += " — " + firstLine(ctrl.Short)
 		}

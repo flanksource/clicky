@@ -26,6 +26,7 @@ func newTestTree() *cobra.Command {
 		RunE:    run,
 	}
 	greet.Flags().StringP("lang", "l", "en", "Language code")
+	greet.Flags().String("mode", "false", "Mode named false")
 	greet.Flags().Bool("shout", false, "Uppercase the greeting")
 	_ = greet.MarkFlagRequired("lang")
 	root.AddCommand(greet)
@@ -124,20 +125,25 @@ func TestFlagDocsCaptureTypeDefaultRequired(t *testing.T) {
 		t.Fatal("greet command missing")
 	}
 
-	var lang, shout *FlagDoc
+	var lang, mode, shout *FlagDoc
 	for i := range greet.Flags {
 		switch greet.Flags[i].Name {
 		case "lang":
 			lang = &greet.Flags[i]
+		case "mode":
+			mode = &greet.Flags[i]
 		case "shout":
 			shout = &greet.Flags[i]
 		}
 	}
-	if lang == nil || shout == nil {
-		t.Fatalf("expected lang and shout flags, got %+v", greet.Flags)
+	if lang == nil || mode == nil || shout == nil {
+		t.Fatalf("expected lang, mode, and shout flags, got %+v", greet.Flags)
 	}
 	if lang.Shorthand != "l" || lang.Type != "string" || lang.Default != "en" || !lang.Required {
 		t.Errorf("lang flag metadata wrong: %+v", lang)
+	}
+	if mode.Type != "string" || mode.Default != "false" {
+		t.Errorf("mode string default should keep literal false: %+v", mode)
 	}
 	if shout.Type != "bool" || shout.Required {
 		t.Errorf("shout flag metadata wrong: %+v", shout)
@@ -224,47 +230,30 @@ func TestRenderSingleFileFormats(t *testing.T) {
 	}
 }
 
-func TestProviderForUnknownFailsLoudly(t *testing.T) {
-	if _, err := providerFor("docusaurus", ""); err == nil {
-		t.Error("expected unknown provider to error")
-	}
-	if _, err := providerFor("astro", ""); err != nil {
-		t.Errorf("astro provider should resolve: %v", err)
-	}
-}
-
-func TestAstroProviderBasePath(t *testing.T) {
-	p, err := providerFor("astro", "/reference/")
-	if err != nil {
-		t.Fatalf("providerFor: %v", err)
-	}
-	got := p.RelPath(Page{Key: controllerPagePrefix + "stack"})
-	if got != "src/content/docs/reference/commands/stack.md" {
-		t.Errorf("base-path RelPath = %q, want src/content/docs/reference/commands/stack.md", got)
+func TestGenerateRejectsConflictingOutputFlags(t *testing.T) {
+	root := newTestTree()
+	root.AddCommand(NewCommand())
+	root.SetArgs([]string{"docs", "generate", "--output", filepath.Join(t.TempDir(), "reference.md"), "--output-dir", t.TempDir()})
+	if err := root.Execute(); err == nil {
+		t.Fatal("expected conflicting --output and --output-dir to fail")
 	}
 }
 
-func TestAstroProviderFrontmatterAndPaths(t *testing.T) {
-	p := astroProvider{}
-	page := Page{Key: controllerPagePrefix + "stack", Title: "stack", Description: "ref", Order: 2, Body: "x"}
-
-	if got := p.RelPath(page); got != "src/content/docs/commands/stack.md" {
-		t.Errorf("astro RelPath = %q", got)
+func TestPageRelPathIsFlat(t *testing.T) {
+	got := pageRelPath(Page{Key: controllerPageKey("stack")})
+	if got != "stack.md" {
+		t.Errorf("pageRelPath = %q, want stack.md", got)
 	}
-	fm := p.Frontmatter(page)
-	for _, want := range []string{"---", "title: stack", "description: ref", "order: 2"} {
-		if !strings.Contains(fm, want) {
-			t.Errorf("frontmatter missing %q in:\n%s", want, fm)
-		}
+	if got := pageRelPath(Page{Key: pageIndex}); got != "index.md" {
+		t.Errorf("pageRelPath = %q, want index.md", got)
 	}
 }
 
 func TestScaffoldTwoTierWriteOnce(t *testing.T) {
 	dir := t.TempDir()
 	m := buildTestModel(t, nil)
-	p := astroProvider{}
 
-	first, err := Scaffold(m, dir, p, false)
+	first, err := Scaffold(m, dir, false)
 	if err != nil {
 		t.Fatalf("first scaffold: %v", err)
 	}
@@ -275,8 +264,8 @@ func TestScaffoldTwoTierWriteOnce(t *testing.T) {
 	}
 
 	// Edit a starter page and a generated page (a per-controller reference page).
-	starter := filepath.Join(dir, p.RelPath(Page{Key: pageGettingStarted}))
-	generated := filepath.Join(dir, p.RelPath(Page{Key: controllerPagePrefix + "stack"}))
+	starter := filepath.Join(dir, pageRelPath(Page{Key: pageGettingStarted}))
+	generated := filepath.Join(dir, pageRelPath(Page{Key: controllerPageKey("stack")}))
 	if err := os.WriteFile(starter, []byte("EDITED STARTER"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -284,7 +273,7 @@ func TestScaffoldTwoTierWriteOnce(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	second, err := Scaffold(m, dir, p, false)
+	second, err := Scaffold(m, dir, false)
 	if err != nil {
 		t.Fatalf("second scaffold: %v", err)
 	}
@@ -292,10 +281,10 @@ func TestScaffoldTwoTierWriteOnce(t *testing.T) {
 	for _, a := range second.Actions {
 		statusByPath[a.Path] = a.Status
 	}
-	if statusByPath[p.RelPath(Page{Key: pageGettingStarted})] != "skipped" {
+	if statusByPath[pageRelPath(Page{Key: pageGettingStarted})] != "skipped" {
 		t.Error("starter page should be skipped on re-run without --force")
 	}
-	if statusByPath[p.RelPath(Page{Key: controllerPagePrefix + "stack"})] != "regenerated" {
+	if statusByPath[pageRelPath(Page{Key: controllerPageKey("stack")})] != "regenerated" {
 		t.Error("generated page should be regenerated on re-run")
 	}
 
@@ -310,17 +299,16 @@ func TestScaffoldTwoTierWriteOnce(t *testing.T) {
 func TestScaffoldForceOverwritesStarter(t *testing.T) {
 	dir := t.TempDir()
 	m := buildTestModel(t, nil)
-	p := astroProvider{}
 
-	if _, err := Scaffold(m, dir, p, false); err != nil {
+	if _, err := Scaffold(m, dir, false); err != nil {
 		t.Fatal(err)
 	}
-	starter := filepath.Join(dir, p.RelPath(Page{Key: pageGettingStarted}))
+	starter := filepath.Join(dir, pageRelPath(Page{Key: pageGettingStarted}))
 	if err := os.WriteFile(starter, []byte("EDITED"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
-	result, err := Scaffold(m, dir, p, true)
+	result, err := Scaffold(m, dir, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -419,23 +407,45 @@ func TestRenderControllerProducesOneDocument(t *testing.T) {
 	}
 }
 
-func TestScaffoldWritesOnePagePerController(t *testing.T) {
+func TestScaffoldWritesControllerFilesDirectlyInOutputDir(t *testing.T) {
 	dir := t.TempDir()
 	m := buildTestModel(t, nil)
-	p := astroProvider{}
 
-	if _, err := Scaffold(m, dir, p, false); err != nil {
+	if _, err := Scaffold(m, dir, false); err != nil {
 		t.Fatalf("scaffold: %v", err)
 	}
+	// One file per controller, directly under the output dir — no commands/ or
+	// src/content/docs/ subtree, and no frontmatter.
 	for _, name := range []string{"greet", "stack"} {
-		rel := p.RelPath(Page{Key: controllerPagePrefix + name})
-		if _, err := os.Stat(filepath.Join(dir, rel)); err != nil {
-			t.Errorf("expected per-controller page %s: %v", rel, err)
+		body := mustRead(t, filepath.Join(dir, name+".md"))
+		if strings.HasPrefix(body, "---") {
+			t.Errorf("%s.md should have no frontmatter, got:\n%s", name, body[:min(40, len(body))])
 		}
 	}
-	// The monolithic cli.md page no longer exists.
-	if _, err := os.Stat(filepath.Join(dir, "src/content/docs/cli.md")); !os.IsNotExist(err) {
-		t.Error("monolithic cli.md should not be generated")
+	if _, err := os.Stat(filepath.Join(dir, "commands")); !os.IsNotExist(err) {
+		t.Error("should not create a commands/ subdir")
+	}
+	if _, err := os.Stat(filepath.Join(dir, "src")); !os.IsNotExist(err) {
+		t.Error("should not create a src/content/docs subtree")
+	}
+}
+
+func TestScaffoldFailsOnPathCollision(t *testing.T) {
+	pages := []Page{
+		{Key: pageIndex},
+		{Key: controllerPageKey("index")}, // a command literally named "index"
+	}
+	if err := assertNoPathCollisions(pages); err == nil {
+		t.Error("expected a collision error when a controller's filename matches a starter page")
+	}
+}
+
+func TestScaffoldRejectsPathTraversalPageKey(t *testing.T) {
+	pages := []Page{
+		{Key: "../outside"},
+	}
+	if err := assertNoPathCollisions(pages); err == nil {
+		t.Fatal("expected path traversal page key to fail")
 	}
 }
 

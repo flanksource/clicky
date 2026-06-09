@@ -39,6 +39,10 @@ type entityMultiFilterTestOpts struct {
 	Status MultiFilter `flag:"status"`
 }
 
+type entityFilterOuterOpts struct {
+	entityFilterTestOpts
+}
+
 type ownerEntityFilter struct{}
 
 func (ownerEntityFilter) Key() string   { return "owner" }
@@ -250,6 +254,31 @@ func TestLookupMetadataDetectsMultiFilter(t *testing.T) {
 	status := metadata["status"]
 	if !status.Multi || status.Type != "multi-filter" {
 		t.Fatalf("expected status to be a multi-filter, got %#v", status)
+	}
+}
+
+func TestLiftedFiltersPreserveTypedLookupOverrides(t *testing.T) {
+	filters := LiftFilters[entityFilterOuterOpts, entityFilterTestOpts](
+		[]Filter[entityFilterTestOpts]{
+			amountEntityFilter{},
+			activeEntityFilter{},
+		},
+		func(opts *entityFilterOuterOpts) *entityFilterTestOpts {
+			return &opts.entityFilterTestOpts
+		},
+	)
+
+	lookupAny, err := buildLookupFunc(filters)(nil, nil)
+	if err != nil {
+		t.Fatalf("lookup func returned error: %v", err)
+	}
+	lookup := lookupAny.(entityLookupResponse)
+
+	if lookup.Filters["amount"].Type != "number" {
+		t.Fatalf("expected lifted typed filter to preserve type override, got %#v", lookup.Filters["amount"])
+	}
+	if lookup.Filters["active"].Type != "bool" {
+		t.Fatalf("expected lifted untyped filter to keep inferred bool type, got %#v", lookup.Filters["active"])
 	}
 }
 

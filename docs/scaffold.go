@@ -1,8 +1,10 @@
 package docs
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // WriteAction records what happened to one file during scaffolding.
@@ -18,15 +20,21 @@ type ScaffoldResult struct {
 	Actions []WriteAction
 }
 
-// Scaffold writes the model's pages into dir using provider, applying the
-// two-tier policy: Generated pages are always (re)written; starter pages are
-// written only when absent, unless force is set. Returns a per-file report so
-// the caller can show exactly what was written vs. skipped (no silent skips).
-func Scaffold(m *Model, dir string, provider Provider, force bool) (*ScaffoldResult, error) {
+// Scaffold writes the model's pages as flat markdown files directly under dir,
+// applying the two-tier policy: Generated pages are always (re)written; starter
+// pages are written only when absent, unless force is set. Returns a per-file
+// report so the caller can show exactly what was written vs. skipped (no silent
+// skips).
+func Scaffold(m *Model, dir string, force bool) (*ScaffoldResult, error) {
 	result := &ScaffoldResult{Dir: dir}
 
-	for _, page := range buildPages(m) {
-		rel := provider.RelPath(page)
+	pages := buildPages(m)
+	if err := assertNoPathCollisions(pages); err != nil {
+		return nil, err
+	}
+
+	for _, page := range pages {
+		rel := pageRelPath(page)
 		abs := filepath.Join(dir, rel)
 
 		exists, err := fileExists(abs)
@@ -43,8 +51,7 @@ func Scaffold(m *Model, dir string, provider Provider, force bool) (*ScaffoldRes
 		if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
 			return nil, err
 		}
-		content := provider.Frontmatter(page) + page.Body
-		if err := os.WriteFile(abs, []byte(content), 0o644); err != nil {
+		if err := os.WriteFile(abs, []byte(page.Body), 0o644); err != nil {
 			return nil, err
 		}
 
@@ -56,6 +63,34 @@ func Scaffold(m *Model, dir string, provider Provider, force bool) (*ScaffoldRes
 	}
 
 	return result, nil
+}
+
+// assertNoPathCollisions fails loudly when two pages map to the same on-disk
+// path — e.g. a controller named "index" would otherwise clobber the landing
+// page. Better a clear error than a silent overwrite.
+func assertNoPathCollisions(pages []Page) error {
+	seen := map[string]string{}
+	for _, p := range pages {
+		if err := validatePageKey(p.Key); err != nil {
+			return err
+		}
+		rel := pageRelPath(p)
+		if other, ok := seen[rel]; ok {
+			return fmt.Errorf("docs page collision: %q and %q both map to %s (rename the conflicting command)", other, p.Key, rel)
+		}
+		seen[rel] = p.Key
+	}
+	return nil
+}
+
+func validatePageKey(key string) error {
+	if key == "" || key == "." || key == ".." {
+		return fmt.Errorf("invalid docs page key %q", key)
+	}
+	if strings.ContainsAny(key, `/\`) || filepath.Clean(key) != key {
+		return fmt.Errorf("invalid docs page key %q: page keys must be flat filenames", key)
+	}
+	return nil
 }
 
 func fileExists(path string) (bool, error) {
