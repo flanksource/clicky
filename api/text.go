@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/x/ansi"
 	"github.com/flanksource/clicky/api/tailwind"
 	"github.com/samber/lo"
 )
@@ -548,22 +549,37 @@ func (dl DescriptionList) String() string {
 	if len(dl.Items) == 0 {
 		return ""
 	}
-	var parts []string
+	parts := make([]string, 0, len(dl.Items))
 	for _, item := range dl.Items {
 		parts = append(parts, item.String())
 	}
-	return strings.Join(parts, ", ")
+	return joinDescriptionParts(parts)
 }
 
 func (dl DescriptionList) ANSI() string {
 	if len(dl.Items) == 0 {
 		return ""
 	}
-	var parts []string
+	parts := make([]string, 0, len(dl.Items))
 	for _, item := range dl.Items {
 		parts = append(parts, item.ANSI())
 	}
-	return strings.Join(parts, ", ")
+	return joinDescriptionParts(parts)
+}
+
+// joinDescriptionParts renders pre-formatted key/value parts inline (", "
+// separated) for small lists that fit the terminal, and stacks them one per
+// line otherwise. Inline joining is fine for a handful of pairs, but a large
+// map (e.g. a 493-entry activity Math map) becomes a single multi-thousand-char
+// line. When that line is the widest in a tree, lipgloss right-pads every
+// sibling line to match — flooding the terminal with trailing-space "blank"
+// rows. Stacking removes the giant line so nothing forces that padding.
+func joinDescriptionParts(parts []string) string {
+	inline := strings.Join(parts, ", ")
+	if len(parts) <= 3 && ansi.StringWidth(inline) <= GetTerminalWidth() {
+		return inline
+	}
+	return strings.Join(parts, "\n")
 }
 
 func (dl DescriptionList) HTML() string {
