@@ -15,6 +15,12 @@ type Collapsed struct {
 	Content Textable // Content to show/hide
 	Style   string   // Tailwind CSS classes for button styling
 	Icon    *icons.Icon
+	// CollapseANSI keeps the block collapsed in terminal output: ANSI renders a
+	// label-only "▶ <label>" header and hides the content (which terminals
+	// cannot toggle), while HTML/Markdown stay interactively expandable. Use it
+	// for bulky-but-secondary content (e.g. a raw-JSON dump) that should not
+	// flood a failure trace on the console but must remain in the report/web.
+	CollapseANSI bool
 }
 
 // String returns plain text representation with label and content
@@ -38,9 +44,14 @@ func (c Collapsed) String() string {
 	return result.String()
 }
 
-// ANSI returns the content directly without the collapsed wrapper,
-// since terminals don't support interactive expand/collapse.
+// ANSI returns the content directly without the collapsed wrapper, since
+// terminals don't support interactive expand/collapse. When CollapseANSI is set,
+// the content is hidden and only a "▶ <label>" header is shown, keeping bulky
+// secondary content out of the terminal while leaving it expandable in HTML.
 func (c Collapsed) ANSI() string {
+	if c.CollapseANSI {
+		return "▶ " + c.Label
+	}
 	if c.Content != nil {
 		return c.Content.ANSI()
 	}

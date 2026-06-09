@@ -387,6 +387,14 @@ func (c *Converter) generateRESTPath(cmd *cobra.Command, cmdPath string) string 
 	if meta := clicky.GetCommandOpenAPIMeta(cmd); meta != nil && meta.OptionalID {
 		return strings.Join(pathParts, "/")
 	}
+	// A multi-operand action (e.g. `diff <a> <b>`) compares two instances and
+	// has no single entity id to lift into the path — both operands are body
+	// args. Lifting the first into {id} produces /entity/{a}/diff, which the
+	// flat-path frontend never calls. Keep it flat; only single-positional
+	// actions (`recalculate <id>`) restructure to /entity/{id}/action.
+	if positionalOperandCount(cmd.Use) > 1 {
+		return strings.Join(pathParts, "/")
+	}
 	if cmd.Parent() != nil && cmd.Parent().Parent() != nil && !isCRUDOperation(cmd.Name()) {
 		paramName := extractParameterName(cmd.Use)
 		if paramName != "" {
@@ -444,6 +452,36 @@ func extractParameterName(use string) string {
 		}
 	}
 	return ""
+}
+
+// positionalOperandCount counts the valid positional operands declared in a
+// command's Use string — both <required> and [optional] forms. Variadic /
+// body-style tokens (`[args...]`, `key=value`) and the conventional `[flags]`
+// placeholder are not operands and don't count. Used to distinguish a single-id
+// action (`recalculate <id>`, count 1, lifts to /entity/{id}/action) from a
+// multi-operand action (`diff <a> <b>`, count 2, stays flat).
+func positionalOperandCount(use string) int {
+	count := 0
+	for _, open := range []struct{ l, r byte }{{'<', '>'}, {'[', ']'}} {
+		s := use
+		for {
+			start := strings.IndexByte(s, open.l)
+			if start == -1 {
+				break
+			}
+			end := strings.IndexByte(s[start:], open.r)
+			if end == -1 {
+				break
+			}
+			end += start
+			name := strings.TrimSpace(s[start+1 : end])
+			if name != "flags" && isValidParamName(name) {
+				count++
+			}
+			s = s[end+1:]
+		}
+	}
+	return count
 }
 
 func isValidParamName(name string) bool {

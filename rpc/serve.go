@@ -8,6 +8,7 @@ import (
 	"html/template"
 	"net/http"
 	"os/exec"
+	"path"
 	"runtime"
 	"strconv"
 	"strings"
@@ -745,8 +746,51 @@ func (s *SwaggerServer) writeFormattedResponse(w http.ResponseWriter, r *http.Re
 	}
 
 	w.Header().Set("Content-Type", formatToContentType(opts.Format))
+	if filename := sanitizedAttachmentFilename(r.URL.Query().Get("filename")); filename != "" {
+		w.Header().Set("Content-Disposition", "attachment; filename="+strconv.Quote(filename))
+	}
 	w.WriteHeader(statusCode)
 	w.Write([]byte(output)) //nolint:errcheck
+}
+
+func sanitizedAttachmentFilename(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+
+	base := path.Base(strings.ReplaceAll(raw, "\\", "/"))
+	base = strings.Trim(base, ". ")
+	if base == "" || base == "." || base == "/" {
+		return ""
+	}
+
+	var out strings.Builder
+	lastDash := false
+	for _, r := range base {
+		safe := (r >= 'a' && r <= 'z') ||
+			(r >= 'A' && r <= 'Z') ||
+			(r >= '0' && r <= '9') ||
+			r == '.' ||
+			r == '_' ||
+			r == '-'
+		if safe {
+			out.WriteRune(r)
+			lastDash = false
+			continue
+		}
+		if !lastDash {
+			out.WriteByte('-')
+			lastDash = true
+		}
+	}
+
+	filename := strings.Trim(out.String(), ".-")
+	if len(filename) > 160 {
+		filename = filename[:160]
+		filename = strings.Trim(filename, ".-")
+	}
+	return filename
 }
 
 func shouldFormatPagedRows(format string) bool {
