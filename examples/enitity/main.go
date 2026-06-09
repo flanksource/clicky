@@ -18,6 +18,7 @@ import (
 
 	"github.com/flanksource/clicky"
 	"github.com/flanksource/clicky/api"
+	"github.com/flanksource/clicky/docs"
 	"github.com/flanksource/clicky/extensions"
 	"github.com/flanksource/clicky/formatters"
 	"github.com/flanksource/clicky/mcp"
@@ -1171,6 +1172,12 @@ and the executor-backed OpenAPI serve mode from the same registrations.`,
 			{Name: "catalog", Description: "Nested catalog entity operations"},
 			{Name: "admin", Description: "Administrative entity operations"},
 		},
+	})
+
+	extensions.CobraExtensions(rootCmd).DocsCommandWithConfig(&docs.DocsConfig{
+		Title:       "Clicky Entity Example",
+		Description: "Entity example app with a CLI reference and clicky-ui surface catalog.",
+		Exclude:     []string{"serve-ui"},
 	})
 
 	rootCmd.AddCommand(newServeUICommand())
