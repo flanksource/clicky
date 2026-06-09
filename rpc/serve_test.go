@@ -446,3 +446,27 @@ func TestFormatToContentType_ClickyJSON(t *testing.T) {
 	assert.Equal(t, "text/html; charset=utf-8", formatToContentType("html-react"))
 	assert.Equal(t, "application/json", formatToContentType("json"))
 }
+
+func TestWriteFormattedResponseSetsAttachmentFilename(t *testing.T) {
+	server := &SwaggerServer{}
+	req := httptest.NewRequest("GET", "/x?format=json&filename=../Accounts%20Report.json", nil)
+	w := httptest.NewRecorder()
+
+	server.writeFormattedResponse(w, req, map[string]string{"ok": "true"}, formatOptions{Format: "json"}, http.StatusOK)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
+	assert.Equal(t, `attachment; filename="Accounts-Report.json"`, w.Header().Get("Content-Disposition"))
+}
+
+func TestWriteFormattedResponseWithoutFilenameStaysInline(t *testing.T) {
+	server := &SwaggerServer{}
+	req := httptest.NewRequest("GET", "/x?format=json", nil)
+	w := httptest.NewRecorder()
+
+	server.writeFormattedResponse(w, req, map[string]string{"ok": "true"}, formatOptions{Format: "json"}, http.StatusOK)
+
+	require.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
+	assert.Empty(t, w.Header().Get("Content-Disposition"))
+}
