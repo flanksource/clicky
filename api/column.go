@@ -107,17 +107,12 @@ type DetailProvider interface {
 	RowDetail() Textable
 }
 
-// NewTableFrom creates a TextTable from a slice of TableProvider items.
-func NewTableFrom[T TableProvider](items []T) TextTable {
+// NewEmptyTable builds a header-only TextTable from column definitions, with no
+// rows. It is the shared schema-building step for NewTableFrom, and lets empty
+// result sets still render the table chrome (headers) instead of collapsing to
+// a "No data" placeholder.
+func NewEmptyTable(columns []ColumnDef) TextTable {
 	table := TextTable{}
-	if len(items) == 0 {
-		return table
-	}
-
-	// Get column definitions from first item
-	columns := items[0].Columns()
-
-	// Build headers and field names from column definitions
 	for _, col := range columns {
 		if col.Hidden {
 			continue
@@ -130,7 +125,6 @@ func NewTableFrom[T TableProvider](items []T) TextTable {
 			style = fmt.Sprintf("%s max-w-[%dch] truncate", style, col.MaxWidth)
 		}
 
-		// Convert ColumnDef to PrettyField for Columns slice
 		table.Columns = append(table.Columns, PrettyField{
 			Name:          col.Name,
 			Label:         col.DisplayLabel(),
@@ -141,6 +135,19 @@ func NewTableFrom[T TableProvider](items []T) TextTable {
 			FormatOptions: col.FormatOptions,
 		})
 	}
+	return table
+}
+
+// NewTableFrom creates a TextTable from a slice of TableProvider items.
+func NewTableFrom[T TableProvider](items []T) TextTable {
+	if len(items) == 0 {
+		var zero T
+		return NewEmptyTable(zero.Columns())
+	}
+
+	// Get column definitions from first item
+	columns := items[0].Columns()
+	table := NewEmptyTable(columns)
 
 	// Build rows and collect detail content
 	var hasDetail bool
