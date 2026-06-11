@@ -7,6 +7,7 @@ import {
   type RenderLink,
 } from "@flanksource/clicky-ui";
 import { apiClient } from "./api";
+import { ChatWidget } from "./ChatWidget";
 import { LinkExampleCommandPage, LinkExamplesPage } from "./LinkExamplesPage";
 
 const renderLink: RenderLink = ({ to, className, children, title, key }) => (
@@ -75,6 +76,8 @@ export function App() {
           />
         </Routes>
       </div>
+
+      <ChatWidget />
     </div>
   );
 }

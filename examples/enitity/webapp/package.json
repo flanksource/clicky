@@ -9,7 +9,9 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@ai-sdk/react": "^3.0.0",
     "@iconify/react": "^5.0.2",
+    "ai": "^6.0.0",
     "@radix-ui/react-compose-refs": "^1.1.2",
     "@radix-ui/react-slot": "^1.1.1",
     "@scalar/api-reference-react": "^0.9.31",
@@ -24,6 +26,7 @@
     "react-dom": "^18.3.1",
     "react-router-dom": "^7.6.2",
     "shiki": "^1.24.0",
+    "streamdown": "^2.5.0",
     "tailwind-merge": "^2.6.0"
   },
   "devDependencies": {

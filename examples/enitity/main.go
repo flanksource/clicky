@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/flanksource/clicky"
+	"github.com/flanksource/clicky/aichat"
 	"github.com/flanksource/clicky/api"
 	"github.com/flanksource/clicky/docs"
 	"github.com/flanksource/clicky/extensions"
@@ -883,6 +884,32 @@ compiling the Go binary so the embedded assets are current.`,
 			server.RegisterRoutes(mux)
 			mux.HandleFunc("/api/examples/links", serveLinkExamples)
 
+			// AI chat backend: the demo's own entity operations become tools.
+			// Requires a provider key (ANTHROPIC_API_KEY / OPENAI_API_KEY /
+			// GOOGLE_API_KEY); it fails loud on the first request otherwise.
+			chat := aichat.NewServer(aichat.Options{
+				RootCmd: rootCmd,
+				System: "You are an operator assistant for this entity demo " +
+					"(stacks, clusters, teams). Prefer calling an operation over " +
+					"guessing, and summarize results clearly.",
+				// Persist conversations in-memory so the thread endpoints work.
+				Threads: aichat.NewMemThreadStore(),
+				// Demonstrate human-in-the-loop approvals: any mutating operation
+				// (restart/delete/reconcile/pause) pauses for the user to approve.
+				ApprovalPolicy: func(toolName string, _ any) bool {
+					for _, verb := range []string{"restart", "delete", "reconcile", "pause", "destroy"} {
+						if strings.Contains(toolName, verb) {
+							return true
+						}
+					}
+					return false
+				},
+			})
+			// Mount as a subtree so /api/chat, /api/chat/models and the thread
+			// endpoints all resolve.
+			mux.Handle("/api/chat", chat.Handler())
+			mux.Handle("/api/chat/", chat.Handler())
+
 			uiHandler, err := newWebappHandler()
 			if err != nil {
 				return fmt.Errorf("load embedded webapp: %w", err)
@@ -891,11 +918,12 @@ compiling the Go binary so the embedded assets are current.`,
 
 			addr := fmt.Sprintf("%s:%d", host, port)
 			httpSrv := &http.Server{
-				Addr:         addr,
-				Handler:      mux,
-				ReadTimeout:  30 * time.Second,
-				WriteTimeout: 30 * time.Second,
-				IdleTimeout:  60 * time.Second,
+				Addr:        addr,
+				Handler:     mux,
+				ReadTimeout: 30 * time.Second,
+				// No WriteTimeout: /api/chat streams SSE responses that stay open
+				// well past any fixed deadline; a write timeout truncates them.
+				IdleTimeout: 60 * time.Second,
 			}
 
 			ctx, stop := signal.NotifyContext(cmd.Context(), os.Interrupt, syscall.SIGTERM)
@@ -907,6 +935,7 @@ compiling the Go binary so the embedded assets are current.`,
 				fmt.Fprintf(cmd.OutOrStdout(), "   • UI:           http://%s/\n", addr)
 				fmt.Fprintf(cmd.OutOrStdout(), "   • OpenAPI JSON: http://%s/api/openapi.json\n", addr)
 				fmt.Fprintf(cmd.OutOrStdout(), "   • Executor API: http://%s/api/v1/...\n", addr)
+				fmt.Fprintf(cmd.OutOrStdout(), "   • AI Chat:      http://%s/api/chat\n", addr)
 				if err := httpSrv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 					errCh <- err
 				}

@@ -1,0 +1,313 @@
+package aichat
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"sync"
+
+	"github.com/firebase/genkit/go/ai"
+	"github.com/firebase/genkit/go/genkit"
+	"github.com/spf13/cobra"
+)
+
+// Options configures a chat Server.
+type Options struct {
+	// RootCmd is the Cobra command tree whose operations become AI tools
+	// (executed in-process via clicky's RPC executor). Optional.
+	RootCmd *cobra.Command
+	// MCPServers are external MCP servers consumed as additional tools. Optional.
+	MCPServers []MCPServer
+	// System is the agent's system prompt. A default is used when empty.
+	System string
+	// Threads persists conversations for the thread endpoints. When nil, those
+	// endpoints report 501 and /api/chat stays stateless. Optional.
+	Threads ThreadStore
+	// RequireApprovalFor lists tool names that must be approved by the user
+	// before they execute (human-in-the-loop). Tools not listed run
+	// automatically. Ignored when ApprovalPolicy is set. Optional.
+	RequireApprovalFor []string
+	// ApprovalPolicy gates tool execution behind user approval with arbitrary
+	// logic (e.g. by name prefix or input). Takes precedence over
+	// RequireApprovalFor. Optional.
+	ApprovalPolicy ApprovalPolicy
+}
+
+const defaultSystem = "You are an operator assistant for this application. " +
+	"Use the available tools to answer questions and perform actions on the user's behalf. " +
+	"Prefer calling a tool over guessing. Summarize tool results clearly."
+
+// Server is an AI-SDK-compatible chat backend. It serves POST /api/chat as the
+// v6 UI Message Stream protocol, backed by Genkit + clicky operations + MCP.
+type Server struct {
+	g         *genkit.Genkit
+	clicky    *ClickyToolset
+	tools     []ai.ToolRef
+	providers []Provider
+	system    string
+	initErr   error
+	once      sync.Once
+	opts      Options
+}
+
+// NewServer builds a chat server. Genkit init and tool discovery happen lazily
+// on the first request so construction never fails on missing API keys.
+func NewServer(opts Options) *Server {
+	system := opts.System
+	if system == "" {
+		system = defaultSystem
+	}
+	return &Server{system: system, opts: opts}
+}
+
+// Handler returns the http.Handler serving the chat API: POST /api/chat (the
+// streaming turn), GET /api/chat/models (the model menu), and the thread
+// endpoints when a ThreadStore is configured. Mount it as a subtree
+// (e.g. mux.Handle("/api/chat/", srv.Handler())) so the nested routes resolve.
+func (s *Server) Handler() http.Handler {
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /api/chat", s.handleChat)
+	mux.HandleFunc("GET /api/chat/models", s.handleModels)
+	s.registerThreadRoutes(mux)
+	return mux
+}
+
+// handleModels serves the model menu annotated with provider availability so a
+// client model selector can disable models whose provider is not configured.
+func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
+	if err := s.ensureInit(r.Context()); err != nil {
+		http.Error(w, err.Error(), http.StatusServiceUnavailable)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(CatalogInfo(s.providers)); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+	}
+}
+
+func (s *Server) ensureInit(ctx context.Context) error {
+	s.once.Do(func() {
+		g, providers, err := initGenkit(ctx)
+		if err != nil {
+			s.initErr = err
+			return
+		}
+		s.g = g
+		s.providers = providers
+		if s.opts.RootCmd != nil {
+			ts, err := NewClickyToolset(s.opts.RootCmd)
+			if err != nil {
+				s.initErr = err
+				return
+			}
+			ts.requireApproval = resolveApprovalPolicy(s.opts.ApprovalPolicy, s.opts.RequireApprovalFor)
+			s.clicky = ts
+			s.tools = append(s.tools, ts.DefineTools(g)...)
+		}
+		mcpTools, err := MCPTools(ctx, g, s.opts.MCPServers)
+		if err != nil {
+			s.initErr = err
+			return
+		}
+		s.tools = append(s.tools, mcpTools...)
+	})
+	return s.initErr
+}
+
+func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	if err := s.ensureInit(ctx); err != nil {
+		http.Error(w, err.Error(), http.StatusServiceUnavailable)
+		return
+	}
+
+	var req ChatRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, fmt.Sprintf("invalid request body: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	model, err := s.resolveModel(req.Model)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err := ValidateEffort(req.ReasoningEffort); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	msgs, resume, err := toGenkitMessages(req.Messages)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if err := s.persistIncoming(ctx, req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	sse, err := newSSEWriter(w)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	if err := s.stream(ctx, sse, model, req.ReasoningEffort, msgs, resume); err != nil {
+		// Headers are already sent; surface the error as an SSE error part.
+		_ = sse.errorPart(err.Error())
+	}
+	_ = sse.done()
+}
+
+// persistIncoming appends the latest user message to its thread when the request
+// carries a thread id and a store is configured. The assistant reply is not
+// persisted here; thread history is intended for resuming context, and the
+// client owns re-sending the full transcript.
+func (s *Server) persistIncoming(ctx context.Context, req ChatRequest) error {
+	if req.ThreadID == "" || s.opts.Threads == nil || len(req.Messages) == 0 {
+		return nil
+	}
+	last := req.Messages[len(req.Messages)-1]
+	if last.Role != "user" {
+		return nil
+	}
+	return s.opts.Threads.AppendMessage(ctx, req.ThreadID, last)
+}
+
+// resolveModel selects the model for a request. An empty id uses the
+// provider-aware default; a named id must be in the catalog AND have its
+// provider configured — both failure modes are reported loudly so a request for
+// an unconfigured provider does not surface as an opaque generation error.
+func (s *Server) resolveModel(id string) (Model, error) {
+	if id == "" {
+		m, ok := defaultModel(s.providers)
+		if !ok {
+			return Model{}, fmt.Errorf("no catalog model available for configured providers %v", s.providers)
+		}
+		return m, nil
+	}
+	m, err := LookupModel(id)
+	if err != nil {
+		return Model{}, err
+	}
+	if !providerRegistered(s.providers, m.Provider) {
+		return Model{}, fmt.Errorf("model %q requires the %q provider, which is not configured (set its API key)", id, m.Provider)
+	}
+	return m, nil
+}
+
+// stream runs one chat turn, translating Genkit stream chunks into v6 SSE parts.
+// Genkit auto-executes the tool loop; the callback observes text, tool requests
+// and tool responses as they flow across steps. When a gated tool interrupts
+// for approval, Generate returns with pending interrupts (no error); each is
+// surfaced as a tool-approval-request so the client can approve/deny and resume.
+// When resume directives are supplied, the interrupted calls are restarted
+// (approved) or responded-to (denied) instead of re-prompting.
+func (s *Server) stream(ctx context.Context, sse *sseWriter, model Model, effort Effort, msgs []*ai.Message, resume *resumeDirectives) error {
+	if err := sse.start(); err != nil {
+		return err
+	}
+	if err := sse.startStep(); err != nil {
+		return err
+	}
+
+	em := &streamEmitter{sse: sse}
+	cb := func(_ context.Context, chunk *ai.ModelResponseChunk) error {
+		return em.onChunk(chunk)
+	}
+
+	opts := generateOptions(model, effort, s.system, msgs, s.tools, cb, resumeOptions(resume)...)
+	resp, err := genkit.Generate(ctx, s.g, opts...)
+	if err != nil {
+		return err
+	}
+
+	if err := em.closeText(); err != nil {
+		return err
+	}
+	if err := s.emitInterrupts(sse, resp); err != nil {
+		return err
+	}
+	if err := sse.finishStep(); err != nil {
+		return err
+	}
+	return sse.finish()
+}
+
+// emitInterrupts surfaces any pending tool-approval interrupts as
+// tool-approval-request parts. The tool-input-available part was already emitted
+// while the model streamed the tool request; the approval id reuses the tool
+// call ref so the client's approval response matches it back by toolCallId.
+func (s *Server) emitInterrupts(sse *sseWriter, resp *ai.ModelResponse) error {
+	if resp == nil {
+		return nil
+	}
+	for _, p := range resp.Interrupts() {
+		if p.ToolRequest == nil {
+			continue
+		}
+		ref := p.ToolRequest.Ref
+		if err := sse.toolApprovalRequest(ref, ref); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// streamEmitter tracks per-turn streaming state: the open text block id and
+// seen tool calls, so it emits correctly ordered text-start/-delta/-end and
+// tool-input/-output parts.
+type streamEmitter struct {
+	sse       *sseWriter
+	textID    string
+	textOpen  bool
+	textBlock int
+}
+
+func (e *streamEmitter) onChunk(chunk *ai.ModelResponseChunk) error {
+	for _, p := range chunk.Content {
+		switch {
+		case p.IsText() && p.Text != "":
+			if err := e.openText(); err != nil {
+				return err
+			}
+			if err := e.sse.textDelta(e.textID, p.Text); err != nil {
+				return err
+			}
+		case p.IsToolRequest() && p.ToolRequest != nil && !p.ToolRequest.Partial:
+			if err := e.closeText(); err != nil {
+				return err
+			}
+			tr := p.ToolRequest
+			if err := e.sse.toolInputAvailable(tr.Ref, tr.Name, tr.Input); err != nil {
+				return err
+			}
+		case p.IsToolResponse() && p.ToolResponse != nil:
+			resp := p.ToolResponse
+			if err := e.sse.toolOutputAvailable(resp.Ref, resp.Output); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func (e *streamEmitter) openText() error {
+	if e.textOpen {
+		return nil
+	}
+	e.textID = fmt.Sprintf("text-%d", e.textBlock)
+	e.textBlock++
+	e.textOpen = true
+	return e.sse.textStart(e.textID)
+}
+
+func (e *streamEmitter) closeText() error {
+	if !e.textOpen {
+		return nil
+	}
+	e.textOpen = false
+	return e.sse.textEnd(e.textID)
+}

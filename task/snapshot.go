@@ -27,6 +27,14 @@ type TaskSnapshot struct {
 	Failed    int        `json:"failed,omitempty"`    // group: failed tasks
 	Running   int        `json:"running,omitempty"`   // group: running tasks
 
+	// Per-task fields (type == "task"). Description is the live stage label set
+	// via Task.SetDescription; Progress/MaxValue mirror Task.SetProgress so the UI
+	// can render an x/y count and percent for a running task. MaxValue 0 means the
+	// task has no bounded progress.
+	Description string `json:"description,omitempty"`
+	Progress    int    `json:"progress,omitempty"`
+	MaxValue    int    `json:"maxValue,omitempty"`
+
 	// Registry metadata (additive). For a group these describe the run itself;
 	// for a task GroupID links it to its parent run so the SSE/JSON clients can
 	// key on a stable id rather than the human-facing name.
@@ -56,6 +64,11 @@ func SnapshotTask(t *Task, group *Group) TaskSnapshot {
 	}
 	if err := t.Error(); err != nil {
 		snap.Error = err.Error()
+	}
+	snap.Description = t.Description()
+	if value, max := t.Progress(); max > 0 {
+		snap.Progress = value
+		snap.MaxValue = max
 	}
 	if bl := t.getBufferedLogger(); bl != nil {
 		if entries := bl.GetLogs(); len(entries) > 0 {
