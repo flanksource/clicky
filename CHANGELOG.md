@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.21.18](https://github.com/flanksource/clicky/compare/v1.21.17...v1.21.18) (2026-06-11)
+
+
+### ✨ Features
+
+* **cache:** add generic cache-browser API with valkey impl ([#114](https://github.com/flanksource/clicky/issues/114)) ([8e20a9a](https://github.com/flanksource/clicky/commit/8e20a9add8b422d1e8147407a2f9c6acd5c5c7ef))
+
 ## [1.21.17](https://github.com/flanksource/clicky/compare/v1.21.16...v1.21.17) (2026-06-09)
 
 
