@@ -12,6 +12,7 @@ import (
 )
 
 func TestBatch_ConcurrentContextCancellation(t *testing.T) {
+	withTestGlobal(t)
 	// This test verifies that concurrent context cancellation doesn't cause panics
 	_, cancel := context.WithCancel(context.Background())
 
@@ -52,6 +53,7 @@ func TestBatch_ConcurrentContextCancellation(t *testing.T) {
 }
 
 func TestBatch_RapidCompletion(t *testing.T) {
+	withTestGlobal(t)
 	// This test verifies that rapid completion of all items works correctly
 	items := make([]func(logger.Logger) (int, error), 20)
 	for i := range items {
@@ -131,6 +133,7 @@ func XTestBatch_PanicRecovery(t *testing.T) {
 }
 
 func TestBatch_NoDoubleClose(t *testing.T) {
+	withTestGlobal(t)
 	// This test verifies that the channel is closed exactly once even with multiple close paths
 	// We run this test with the race detector enabled: go test -race
 	items := make([]func(logger.Logger) (int, error), 3)
@@ -161,6 +164,7 @@ func TestBatch_NoDoubleClose(t *testing.T) {
 }
 
 func TestBatch_AllGoroutinesComplete(t *testing.T) {
+	withTestGlobal(t)
 	// This test verifies that all goroutines complete before the channel is closed
 	var started atomic.Int32
 	var completed atomic.Int32
@@ -202,6 +206,7 @@ func TestBatch_AllGoroutinesComplete(t *testing.T) {
 }
 
 func TestBatch_ContextCancellationPropagation(t *testing.T) {
+	withTestGlobal(t)
 	// This test verifies that the batch can be canceled mid-execution
 	items := make([]func(logger.Logger) (string, error), 5)
 	for i := range items {
@@ -235,6 +240,7 @@ func TestBatch_ContextCancellationPropagation(t *testing.T) {
 // Timeout Tests
 
 func TestBatch_BatchTimeout(t *testing.T) {
+	withTestGlobal(t)
 	// Test that batch timeout fires correctly and returns partial results
 	batch := &Batch[int]{
 		Name:       "test-batch-timeout",
@@ -286,6 +292,7 @@ func TestBatch_BatchTimeout(t *testing.T) {
 }
 
 func TestBatch_ItemTimeout(t *testing.T) {
+	withTestGlobal(t)
 	// Test that individual items timing out return ErrItemTimeout
 	batch := &Batch[int]{
 		Name:        "test-item-timeout",
@@ -335,6 +342,7 @@ func TestBatch_ItemTimeout(t *testing.T) {
 }
 
 func TestBatch_ZeroTimeoutBackwardCompatibility(t *testing.T) {
+	withTestGlobal(t)
 	// Test that zero timeout (default) behaves as infinite timeout
 	batch := &Batch[int]{
 		Name:        "test-zero-timeout",
@@ -430,6 +438,7 @@ func TestBatch_ZeroTimeoutBackwardCompatibility(t *testing.T) {
 // }
 
 func TestBatch_MethodChaining(t *testing.T) {
+	withTestGlobal(t)
 	// Test that WithTimeout and WithItemTimeout work for method chaining
 	batch := (&Batch[int]{
 		Name:       "test-chaining",
@@ -466,6 +475,7 @@ func TestBatch_MethodChaining(t *testing.T) {
 }
 
 func TestBatch_CombinedTimeouts(t *testing.T) {
+	withTestGlobal(t)
 	// Test both batch and item timeouts set
 	batch := &Batch[int]{
 		Name:        "test-combined",
@@ -513,6 +523,7 @@ func TestBatch_CombinedTimeouts(t *testing.T) {
 }
 
 func TestBatch_EmptyBatchWithTimeout(t *testing.T) {
+	withTestGlobal(t)
 	// Edge case: empty batch with timeout
 	batch := &Batch[int]{
 		Name:    "test-empty",
@@ -530,6 +541,7 @@ func TestBatch_EmptyBatchWithTimeout(t *testing.T) {
 }
 
 func TestBatch_SingleItemWithTimeout(t *testing.T) {
+	withTestGlobal(t)
 	// Edge case: single item with timeout
 	batch := &Batch[int]{
 		Name:        "test-single",
