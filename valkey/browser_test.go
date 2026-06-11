@@ -188,6 +188,14 @@ var _ = Describe("Valkey cache Browser", func() {
 		Expect(resp.Truncated).To(BeTrue())
 	})
 
+	It("clamps an unset search limit to MaxChildren", func() {
+		seed(valkey.BrowserConfig{MaxChildren: 1})
+		resp, err := browser.Search(ctx, cache.SearchRequest{Query: "tx"})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(resp.Keys).To(HaveLen(1))
+		Expect(resp.Truncated).To(BeTrue())
+	})
+
 	It("deletes a single key", func() {
 		resp, err := browser.DeleteKey(ctx, "marker")
 		Expect(err).NotTo(HaveOccurred())
@@ -203,6 +211,14 @@ var _ = Describe("Valkey cache Browser", func() {
 		Expect(mr.Exists("app:tx:2:meta")).To(BeFalse())
 		Expect(mr.Exists("app:plan:p1")).To(BeTrue())
 		Expect(mr.Exists("other:noise")).To(BeTrue())
+	})
+
+	It("fails fast instead of partially deleting when the scan is truncated", func() {
+		seed(valkey.BrowserConfig{MaxScan: 1})
+		_, err := browser.DeletePrefix(ctx, "tx:")
+		Expect(err).To(MatchError(ContainSubstring("truncated at maxScan=1")))
+		Expect(mr.Exists("app:tx:1")).To(BeTrue())
+		Expect(mr.Exists("app:tx:2:meta")).To(BeTrue())
 	})
 
 	It("counts only namespaced keys in stats", func() {

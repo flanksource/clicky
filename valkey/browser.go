@@ -2,6 +2,7 @@ package valkey
 
 import (
 	"context"
+	"fmt"
 	"slices"
 	"sort"
 	"strings"
@@ -301,8 +302,11 @@ func (b *browser) Search(ctx context.Context, req cache.SearchRequest) (cache.Se
 	defer cancel()
 
 	limit := req.Limit
-	if limit <= 0 || limit > b.cfg.MaxChildren {
-		limit = 100
+	if limit <= 0 {
+		limit = min(100, b.cfg.MaxChildren)
+	}
+	if limit > b.cfg.MaxChildren {
+		limit = b.cfg.MaxChildren
 	}
 	pattern := globEscape(b.cfg.KeyPrefix) + "*" + globEscape(req.Query) + "*"
 	// Scan one past the limit so truncation is reported without a full pass.
@@ -343,9 +347,13 @@ func (b *browser) DeleteKey(ctx context.Context, key string) (cache.DeleteRespon
 func (b *browser) DeletePrefix(ctx context.Context, prefix string) (cache.DeleteResponse, error) {
 	ctx, cancel := b.opCtx(ctx)
 	defer cancel()
-	keys, _, err := b.scan(ctx, globEscape(b.cfg.KeyPrefix+prefix)+"*", b.cfg.MaxScan)
+	pattern := globEscape(b.cfg.KeyPrefix+prefix) + "*"
+	keys, truncated, err := b.scan(ctx, pattern, b.cfg.MaxScan)
 	if err != nil {
 		return cache.DeleteResponse{}, err
+	}
+	if truncated {
+		return cache.DeleteResponse{}, fmt.Errorf("prefix delete %q truncated at maxScan=%d; refine prefix or raise cap", pattern, b.cfg.MaxScan)
 	}
 	// One DEL per key, pipelined: valkey-go rejects multi-key DELs whose keys
 	// hash to different slots, and a browser prefix routinely spans slots.

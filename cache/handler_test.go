@@ -117,6 +117,16 @@ var _ = Describe("Cache HTTP handler", func() {
 		Expect(resp.StatusCode).To(Equal(http.StatusBadRequest))
 	})
 
+	It("rejects a negative max", func() {
+		resp, _ := get("/api/v1/cache/tree?max=-1")
+		Expect(resp.StatusCode).To(Equal(http.StatusBadRequest))
+	})
+
+	It("rejects a negative search limit", func() {
+		resp, _ := get("/api/v1/cache/search?q=tx&limit=-5")
+		Expect(resp.StatusCode).To(Equal(http.StatusBadRequest))
+	})
+
 	It("serves key detail with the key taken from the query", func() {
 		resp, body := get("/api/v1/cache/key?key=tx%3Aabc%2Fdef")
 		Expect(resp.StatusCode).To(Equal(http.StatusOK))

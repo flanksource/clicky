@@ -6,6 +6,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/valkey-io/valkey-go"
+
 	"github.com/flanksource/clicky/cache"
 )
 
@@ -31,6 +33,8 @@ func (b *browser) Key(ctx context.Context, key string) (cache.KeyDetail, error) 
 		switch {
 		case err == nil:
 			detail.Bytes = bytes
+		case valkey.IsValkeyNil(err):
+			// Key expired between TYPE and MEMORY USAGE; treat as non-fatal.
 		case isUnknownCommand(err):
 			b.memoryUnsupported.Store(true)
 		default:

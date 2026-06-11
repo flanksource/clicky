@@ -3,6 +3,7 @@ package cache
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 )
@@ -110,5 +111,12 @@ func intParam(r *http.Request, name string) (int, error) {
 	if raw == "" {
 		return 0, nil
 	}
-	return strconv.Atoi(raw)
+	v, err := strconv.Atoi(raw)
+	if err != nil {
+		return 0, err
+	}
+	if v < 0 {
+		return 0, fmt.Errorf("%s must be >= 0, got %d", name, v)
+	}
+	return v, nil
 }
