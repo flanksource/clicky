@@ -377,6 +377,14 @@ func (t *Task) SetProgress(value, maximum int) {
 	t.dirty.Store(true) // Mark task as modified
 }
 
+// Progress returns the task's current progress value and maximum. A maximum of 0
+// means the task has no bounded progress.
+func (t *Task) Progress() (value, maximum int) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.progress, t.maxValue
+}
+
 // Success marks the task as successfully completed
 func (t *Task) Success() *Task {
 	t.SetStatus(StatusSuccess)
