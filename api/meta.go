@@ -556,10 +556,15 @@ func TryTypedValue(o any) *TypedValue {
 	if val.Kind() == reflect.Slice {
 		elemType := val.Type().Elem()
 
-		// Handle empty slices - still check the element type for interface implementations
+		// Handle empty slices - emit the table schema (headers, no rows) when the
+		// element type is a table so empty result sets still render the table
+		// chrome instead of collapsing to a "No data" placeholder. A zero value
+		// of the concrete element type sources the columns.
 		if val.Len() == 0 {
-			// For empty slices, we can only check pointer-to-interface types
-			// since we don't have concrete elements to inspect
+			if elemType.Implements(tableProviderType) {
+				zero := zeroTableProvider(elemType)
+				return &TypedValue{Table: lo.ToPtr(NewEmptyTable(zero.Columns()))}
+			}
 			return nil
 		}
 
@@ -634,6 +639,16 @@ func TryTypedValue(o any) *TypedValue {
 	}
 
 	return nil
+}
+
+// zeroTableProvider returns a usable zero TableProvider for an element type so
+// its Columns() can be read from an empty slice. Pointer element types get a
+// non-nil instance to avoid a nil-receiver panic in value-receiver Columns().
+func zeroTableProvider(elemType reflect.Type) TableProvider {
+	if elemType.Kind() == reflect.Ptr {
+		return reflect.New(elemType.Elem()).Interface().(TableProvider)
+	}
+	return reflect.New(elemType).Elem().Interface().(TableProvider)
 }
 
 func NewTypedValue(o any) TypedValue {

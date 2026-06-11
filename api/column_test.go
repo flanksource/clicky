@@ -93,9 +93,10 @@ var _ = Describe("Column", func() {
 	})
 
 	Describe("NewTableFrom", func() {
-		It("creates empty table from empty slice", func() {
+		It("emits header-only table (schema, no rows) from empty slice", func() {
 			table := NewTableFrom([]mockEmployee{})
-			Expect(table.Headers).To(BeEmpty())
+			Expect(table.Headers).To(HaveLen(5))
+			Expect(table.FieldNames).To(Equal([]string{"id", "name", "department", "salary", "status"}))
 			Expect(table.Rows).To(BeEmpty())
 		})
 

@@ -221,10 +221,14 @@ var _ = Describe("TryTypedValue", func() {
 			Expect((*result.Slice)[0].String()).To(Equal("text1"))
 		})
 
-		It("returns nil for empty slice", func() {
+		It("emits a header-only table for an empty TableProvider slice", func() {
 			var items []testTableProvider
 			result := TryTypedValue(items)
-			Expect(result).To(BeNil())
+			Expect(result).NotTo(BeNil())
+			Expect(result.Table).NotTo(BeNil())
+			Expect(result.Table.Headers).To(HaveLen(2))
+			Expect(result.Table.FieldNames).To(Equal([]string{"id", "name"}))
+			Expect(result.Table.Rows).To(BeEmpty())
 		})
 
 		It("returns nil for []string (non-matching)", func() {
