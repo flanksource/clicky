@@ -83,3 +83,102 @@ func SSEHandler(taskIDs ...string) http.Handler {
 		}
 	})
 }
+
+// RunsSSEHandler streams the run listing (RunMeta) as SSE. Unlike SSEHandler it
+// never sends a terminal event: a manager view stays subscribed to observe new
+// and changing runs. supplement (may be nil) merges extra runs — e.g. archived
+// or persisted runs the in-memory registry no longer holds; live runs win on id.
+// It emits a single "event: runs" frame carrying the full listing, and only
+// re-emits when the listing changes.
+func RunsSSEHandler(supplement func(RunFilter) []RunMeta) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		filter := runFilterFromQuery(r)
+
+		flusher, ok := w.(http.Flusher)
+		if !ok {
+			http.Error(w, "streaming not supported", http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("Connection", "keep-alive")
+		w.Header().Set("X-Accel-Buffering", "no")
+		flusher.Flush()
+
+		// Listing updates are cheaper and less urgent than per-task progress, so
+		// poll on a slower tick than SSEHandler.
+		ticker := time.NewTicker(500 * time.Millisecond)
+		defer ticker.Stop()
+
+		var lastSent string
+		emit := func() {
+			GCRuns()
+			runs := mergeRuns(RunsRaw(filter), supplement, filter)
+			data, err := json.Marshal(runs)
+			if err != nil {
+				return
+			}
+			if string(data) == lastSent {
+				return
+			}
+			lastSent = string(data)
+			_, _ = fmt.Fprintf(w, "event: runs\ndata: %s\n\n", data)
+			flusher.Flush()
+		}
+
+		emit()
+		for {
+			select {
+			case <-r.Context().Done():
+				return
+			case <-ticker.C:
+				emit()
+			}
+		}
+	})
+}
+
+// mergeRuns unions live runs with supplement(filter), deduped by id. Live runs
+// win on collision (a supplement source may hold a stale terminal snapshot of a
+// run that is still live in memory).
+func mergeRuns(live []RunMeta, supplement func(RunFilter) []RunMeta, filter RunFilter) []RunMeta {
+	if supplement == nil {
+		if live == nil {
+			return []RunMeta{}
+		}
+		return live
+	}
+	seen := make(map[string]bool, len(live))
+	for _, m := range live {
+		seen[m.ID] = true
+	}
+	out := append([]RunMeta{}, live...)
+	for _, m := range supplement(filter) {
+		if !seen[m.ID] {
+			out = append(out, m)
+		}
+	}
+	return out
+}
+
+// runFilterFromQuery builds a RunFilter from the standard task listing query
+// params: kind, status, and repeated label=k=v pairs.
+func runFilterFromQuery(r *http.Request) RunFilter {
+	q := r.URL.Query()
+	filter := RunFilter{
+		Kind:   q.Get("kind"),
+		Status: q.Get("status"),
+	}
+	for _, v := range q["label"] {
+		k, val, ok := strings.Cut(v, "=")
+		if !ok {
+			continue
+		}
+		if filter.Labels == nil {
+			filter.Labels = map[string]string{}
+		}
+		filter.Labels[k] = val
+	}
+	return filter
+}
