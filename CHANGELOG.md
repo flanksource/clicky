@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.21.19](https://github.com/flanksource/clicky/compare/v1.21.18...v1.21.19) (2026-06-12)
+
+
+### ✨ Features
+
+* **sse:** add RunsSSEHandler for streaming run listings with deduplication ([f4bb6ca](https://github.com/flanksource/clicky/commit/f4bb6cabde8c5be14dd25041799d39e2d8ed2ab4))
+
 ## [1.21.18](https://github.com/flanksource/clicky/compare/v1.21.17...v1.21.18) (2026-06-11)
 
 
