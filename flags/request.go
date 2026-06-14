@@ -28,8 +28,8 @@ func PopulateFromRequest(optsValue reflect.Value, fields []FieldInfo, flagMap ma
 			return fmt.Errorf("cannot set field %s", info.FieldName)
 		}
 
-		raw, hasRaw := pickRawValue(info, flagMap)
-		if err := assignFieldFromRequest(fieldValue, info, raw, hasRaw, args); err != nil {
+		raw, hasRaw, fromFlag := pickRawValue(info, flagMap)
+		if err := assignFieldFromRequest(fieldValue, info, raw, hasRaw, fromFlag, args); err != nil {
 			return fmt.Errorf("field %s: %w", info.FieldName, err)
 		}
 	}
@@ -37,26 +37,29 @@ func PopulateFromRequest(optsValue reflect.Value, fields []FieldInfo, flagMap ma
 }
 
 // pickRawValue chooses the string input for a field, honouring the precedence
-// flagMap → DefaultValue. Args and stdin are handled inside the per-type
-// branch because their semantics differ (args may be a slice; stdin is
-// off for HTTP).
-func pickRawValue(info FieldInfo, flagMap map[string]string) (string, bool) {
+// flagMap → DefaultValue. fromFlag reports whether the value came from an
+// explicit flag (vs the default), so the per-type branches can let positional
+// args override a default but not an explicit flag. Args and stdin are handled
+// inside the per-type branch because their semantics differ (args may be a
+// slice; stdin is off for HTTP).
+func pickRawValue(info FieldInfo, flagMap map[string]string) (raw string, hasRaw, fromFlag bool) {
 	if info.FlagName != "" {
 		if v, ok := flagMap[info.FlagName]; ok {
-			return v, true
+			return v, true, true
 		}
 	}
 	if info.DefaultValue != "" {
-		return info.DefaultValue, true
+		return info.DefaultValue, true, false
 	}
-	return "", false
+	return "", false, false
 }
 
-func assignFieldFromRequest(fieldValue reflect.Value, info FieldInfo, raw string, hasRaw bool, args []string) error {
+func assignFieldFromRequest(fieldValue reflect.Value, info FieldInfo, raw string, hasRaw, fromFlag bool, args []string) error {
 	switch info.FieldType.Kind() {
 	case reflect.String:
 		val := raw
-		if !hasRaw && info.IsArgs && len(args) > 0 {
+		// Positional args override a default but not an explicit flag value.
+		if info.IsArgs && len(args) > 0 && !fromFlag {
 			val = args[0]
 		}
 		loaded, err := loadFromFileOrURL(val)
@@ -91,7 +94,7 @@ func assignFieldFromRequest(fieldValue reflect.Value, info FieldInfo, raw string
 		return nil
 
 	case reflect.Slice:
-		return assignSliceFromRequest(fieldValue, info, raw, hasRaw, args)
+		return assignSliceFromRequest(fieldValue, info, raw, hasRaw, fromFlag, args)
 
 	default:
 		switch info.FieldType.String() {
@@ -122,19 +125,20 @@ func assignFieldFromRequest(fieldValue reflect.Value, info FieldInfo, raw string
 	return nil
 }
 
-func assignSliceFromRequest(fieldValue reflect.Value, info FieldInfo, raw string, hasRaw bool, args []string) error {
+func assignSliceFromRequest(fieldValue reflect.Value, info FieldInfo, raw string, hasRaw, fromFlag bool, args []string) error {
 	elemKind := info.FieldType.Elem().Kind()
 
+	// Positional args override a default but not an explicit flag value.
 	var tokens []string
 	switch {
+	case info.IsArgs && len(args) > 0 && !fromFlag:
+		tokens = args
 	case hasRaw:
 		parsed, err := readAsCSVRecord(raw)
 		if err != nil {
 			return fmt.Errorf("parsing CSV: %w", err)
 		}
 		tokens = parsed
-	case info.IsArgs && len(args) > 0:
-		tokens = args
 	}
 
 	switch elemKind {

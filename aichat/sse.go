@@ -58,7 +58,17 @@ func (s *sseWriter) done() error {
 func (s *sseWriter) start() error      { return s.part(map[string]any{"type": "start"}) }
 func (s *sseWriter) startStep() error  { return s.part(map[string]any{"type": "start-step"}) }
 func (s *sseWriter) finishStep() error { return s.part(map[string]any{"type": "finish-step"}) }
-func (s *sseWriter) finish() error     { return s.part(map[string]any{"type": "finish"}) }
+
+// finish closes the stream. When meta is non-nil it rides as `messageMetadata`,
+// which the AI SDK applies to the assistant UIMessage's metadata (used here to
+// carry token usage + cost). Omitted entirely when nil — never sent as null.
+func (s *sseWriter) finish(meta map[string]any) error {
+	p := map[string]any{"type": "finish"}
+	if meta != nil {
+		p["messageMetadata"] = meta
+	}
+	return s.part(p)
+}
 
 // --- text parts ---
 
