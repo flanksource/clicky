@@ -1,0 +1,21 @@
+name: "Download files"
+log_messages:
+  - level: trace
+    message: "Resolving URLs"
+  - level: debug
+    message: "Cache dir: /tmp/cache"
+  - level: info
+    message: "Downloading file 1"
+  - level: info
+    message: "Downloading file 2"
+progress:
+  value: 2
+  max: 2
+status: success
+result_type: string
+result: "2 files downloaded"
+assertions:
+  - status == 'success'
+  - result == '2 files downloaded'
+  - size(logs) >= 4
+  - duration > 0.0

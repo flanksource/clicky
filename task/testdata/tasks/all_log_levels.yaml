@@ -1,0 +1,23 @@
+name: "Log level demo"
+log_messages:
+  - level: trace
+    message: "trace message"
+  - level: debug
+    message: "debug message"
+  - level: info
+    message: "info message"
+  - level: warn
+    message: "warn message"
+  - level: error
+    message: "error message"
+status: success
+result_type: string
+result: "done"
+assertions:
+  - status == 'success'
+  - size(logs) == 5
+  - size(trace_logs) == 1
+  - size(debug_logs) == 1
+  - size(info_logs) == 1
+  - size(warn_logs) == 1
+  - size(error_logs) == 1
