@@ -30,13 +30,17 @@ func AssignFieldValue(structValue reflect.Value, fv *FlagValue, args []string, i
 	case reflect.String:
 		val := *fv.StringPtr
 
-		// Priority: args first, then stdin, then flag value
-		if val == "" && fv.IsArgs && len(args) > 0 {
+		// Precedence: explicit flag → positional args → default → stdin. The flag
+		// pointer still holds DefaultValue unless the flag was set explicitly, so
+		// a positional arg must win over an unchanged default (val == DefaultValue)
+		// but never over an explicitly-set flag value.
+		switch {
+		case fv.IsArgs && len(args) > 0 && val == fv.DefaultValue:
 			val = args[0]
-		} else if val == "" && fv.IsStdin && len(args) > 0 {
+		case val == "" && fv.IsStdin && len(args) > 0:
 			// stdin:"true" can also use args as fallback
 			val = args[0]
-		} else if val == "" && fv.IsStdin && isStdinAvailable {
+		case val == "" && fv.IsStdin && isStdinAvailable:
 			if lines, err := loadFromStdin(); err != nil {
 				return err
 			} else if len(lines) > 0 {

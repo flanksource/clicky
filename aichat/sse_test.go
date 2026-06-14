@@ -49,7 +49,7 @@ func TestSSEPlainTextTurn(t *testing.T) {
 		func() error { return s.textDelta("text-0", " world") },
 		func() error { return s.textEnd("text-0") },
 		s.finishStep,
-		s.finish,
+		func() error { return s.finish(nil) },
 		s.done,
 	} {
 		if err := step(); err != nil {
@@ -89,7 +89,7 @@ func TestSSEToolRoundTrip(t *testing.T) {
 	_ = s.textDelta("text-0", "Found 2")
 	_ = s.textEnd("text-0")
 	_ = s.finishStep()
-	_ = s.finish()
+	_ = s.finish(nil)
 	_ = s.done()
 
 	body := rec.Body.String()

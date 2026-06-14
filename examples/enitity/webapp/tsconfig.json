@@ -19,6 +19,7 @@
     "paths": {
       "@flanksource/clicky-ui": ["../../../../clicky-ui/packages/ui/dist/index.d.ts"],
       "@flanksource/clicky-ui/chat": ["../../../../clicky-ui/packages/ui/dist/chat.d.ts"],
+      "@flanksource/clicky-ui/ai": ["../../../../clicky-ui/packages/ui/dist/ai.d.ts"],
       "@flanksource/clicky-ui/styles.css": [
         "../../../../clicky-ui/packages/ui/dist/styles.css"
       ],

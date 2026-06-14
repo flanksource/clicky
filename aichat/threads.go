@@ -9,13 +9,29 @@ import (
 )
 
 // Thread is one persisted conversation: an ordered list of UIMessages plus
-// metadata for a thread picker.
+// metadata for a thread picker and accumulated token-usage/cost totals.
 type Thread struct {
 	ID        string      `json:"id"`
 	Title     string      `json:"title"`
 	CreatedAt time.Time   `json:"createdAt"`
 	UpdatedAt time.Time   `json:"updatedAt"`
 	Messages  []UIMessage `json:"messages"`
+
+	// Cumulative usage across all turns in this thread.
+	TotalInputTokens  int     `json:"totalInputTokens"`
+	TotalOutputTokens int     `json:"totalOutputTokens"`
+	TotalCostUsd      float64 `json:"totalCostUsd"`
+	// LastContextTokens is the most recent turn's input-token count, which
+	// approximates current context-window occupancy for a usage gauge.
+	LastContextTokens int `json:"lastContextTokens"`
+}
+
+// TurnUsage is one generation's token usage and computed cost, accumulated onto
+// a Thread by AddUsage.
+type TurnUsage struct {
+	InputTokens  int
+	OutputTokens int
+	CostUSD      float64
 }
 
 // ThreadStore persists conversations so a client can list past threads and
@@ -27,6 +43,9 @@ type ThreadStore interface {
 	List(ctx context.Context) ([]*Thread, error)
 	Get(ctx context.Context, id string) (*Thread, error)
 	AppendMessage(ctx context.Context, id string, m UIMessage) error
+	// AddUsage accumulates one turn's token usage and cost onto a thread and
+	// returns the updated thread so the caller can report cumulative totals.
+	AddUsage(ctx context.Context, id string, u TurnUsage) (*Thread, error)
 }
 
 // memThreadStore is an in-process ThreadStore for demos and tests. IDs are
@@ -90,4 +109,19 @@ func (s *memThreadStore) AppendMessage(_ context.Context, id string, m UIMessage
 	t.Messages = append(t.Messages, m)
 	t.UpdatedAt = time.Now()
 	return nil
+}
+
+func (s *memThreadStore) AddUsage(_ context.Context, id string, u TurnUsage) (*Thread, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	t, ok := s.threads[id]
+	if !ok {
+		return nil, fmt.Errorf("thread %q not found", id)
+	}
+	t.TotalInputTokens += u.InputTokens
+	t.TotalOutputTokens += u.OutputTokens
+	t.TotalCostUsd += u.CostUSD
+	t.LastContextTokens = u.InputTokens
+	t.UpdatedAt = time.Now()
+	return t, nil
 }

@@ -154,7 +154,7 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.stream(ctx, sse, model, req.ReasoningEffort, msgs, resume); err != nil {
+	if err := s.stream(ctx, sse, model, req.ReasoningEffort, msgs, resume, req.ThreadID); err != nil {
 		// Headers are already sent; surface the error as an SSE error part.
 		_ = sse.errorPart(err.Error())
 	}
@@ -205,7 +205,7 @@ func (s *Server) resolveModel(id string) (Model, error) {
 // surfaced as a tool-approval-request so the client can approve/deny and resume.
 // When resume directives are supplied, the interrupted calls are restarted
 // (approved) or responded-to (denied) instead of re-prompting.
-func (s *Server) stream(ctx context.Context, sse *sseWriter, model Model, effort Effort, msgs []*ai.Message, resume *resumeDirectives) error {
+func (s *Server) stream(ctx context.Context, sse *sseWriter, model Model, effort Effort, msgs []*ai.Message, resume *resumeDirectives, threadID string) error {
 	if err := sse.start(); err != nil {
 		return err
 	}
@@ -233,7 +233,40 @@ func (s *Server) stream(ctx context.Context, sse *sseWriter, model Model, effort
 	if err := sse.finishStep(); err != nil {
 		return err
 	}
-	return sse.finish()
+	return sse.finish(s.usageMetadata(ctx, model, resp, threadID))
+}
+
+// usageMetadata captures this turn's token usage + cost, accumulates it onto the
+// thread (when persisted), and returns the AI SDK messageMetadata describing
+// per-turn usage and the cumulative thread cost. Returns nil when the model
+// reported no usage, so no metadata part is emitted.
+func (s *Server) usageMetadata(ctx context.Context, model Model, resp *ai.ModelResponse, threadID string) map[string]any {
+	if resp == nil || resp.Usage == nil {
+		return nil
+	}
+	u := resp.Usage
+	turnCost := costUSD(model.ID, u)
+	turn := TurnUsage{InputTokens: u.InputTokens, OutputTokens: u.OutputTokens + u.ThoughtsTokens, CostUSD: turnCost}
+
+	threadCost := turnCost
+	if threadID != "" && s.opts.Threads != nil {
+		// Accumulation is best-effort: a persistence failure must not abort an
+		// otherwise-complete turn, so fall back to this turn's cost.
+		if t, err := s.opts.Threads.AddUsage(ctx, threadID, turn); err == nil {
+			threadCost = t.TotalCostUsd
+		}
+	}
+
+	return map[string]any{
+		"usage": map[string]any{
+			"inputTokens":  u.InputTokens,
+			"outputTokens": turn.OutputTokens,
+			"totalTokens":  u.TotalTokens,
+		},
+		"cost":          turnCost,
+		"threadCostUsd": threadCost,
+		"contextTokens": u.InputTokens,
+	}
 }
 
 // emitInterrupts surfaces any pending tool-approval interrupts as

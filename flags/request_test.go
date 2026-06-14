@@ -173,3 +173,40 @@ func TestPopulateFromRequest_ArgsFallThrough(t *testing.T) {
 		t.Errorf("IDs = %v; want %v", got, want)
 	}
 }
+
+// pathOpts mirrors the repomap `deps`/`images` path field: a positional arg
+// with a non-empty default. The documented precedence is flag → args → default.
+type pathOpts struct {
+	Path string `flag:"path" args:"true" default:"."`
+}
+
+func populatePath(t *testing.T, flagMap map[string]string, args []string) pathOpts {
+	t.Helper()
+	fields, err := ParseStructFields(reflect.TypeOf(pathOpts{}))
+	if err != nil {
+		t.Fatalf("ParseStructFields: %v", err)
+	}
+	var opts pathOpts
+	if err := PopulateFromRequest(reflect.ValueOf(&opts).Elem(), fields, flagMap, args); err != nil {
+		t.Fatalf("PopulateFromRequest: %v", err)
+	}
+	return opts
+}
+
+func TestPopulateFromRequest_PositionalArgOverridesDefault(t *testing.T) {
+	if got := populatePath(t, nil, []string{"/some/path"}).Path; got != "/some/path" {
+		t.Errorf("Path = %q; want /some/path (positional arg must beat the default)", got)
+	}
+}
+
+func TestPopulateFromRequest_DefaultWhenNoArg(t *testing.T) {
+	if got := populatePath(t, nil, nil).Path; got != "." {
+		t.Errorf("Path = %q; want . (default applies when no positional arg)", got)
+	}
+}
+
+func TestPopulateFromRequest_ExplicitFlagBeatsArg(t *testing.T) {
+	if got := populatePath(t, map[string]string{"path": "/from/flag"}, []string{"/from/arg"}).Path; got != "/from/flag" {
+		t.Errorf("Path = %q; want /from/flag (explicit flag must beat the positional arg)", got)
+	}
+}

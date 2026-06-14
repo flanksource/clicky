@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"testing"
 
+	"github.com/spf13/cobra"
 	"github.com/xuri/excelize/v2"
 )
 
@@ -178,4 +179,67 @@ func itoa(i int) string {
 		return string('0' + byte(i))
 	}
 	return string('0'+byte(i/10)) + string('0'+byte(i%10))
+}
+
+// cliPathOpts mirrors the repomap `deps`/`images` path field: a positional arg
+// with a non-empty default. The documented precedence is flag → args → default,
+// but a non-empty default used to clobber the positional arg.
+type cliPathOpts struct {
+	Path string `flag:"path" args:"true" default:"."`
+}
+
+// bindPathField builds the FlagValue for the Path field exactly as the cobra
+// command builder does, then optionally simulates an explicitly-set flag by
+// writing through the bound pointer (what pflag does when --path is passed).
+func bindPathField(t *testing.T, explicitFlag string) (reflect.Value, *FlagValue) {
+	t.Helper()
+	fields, err := ParseStructFields(reflect.TypeOf(cliPathOpts{}))
+	if err != nil {
+		t.Fatalf("ParseStructFields: %v", err)
+	}
+	cmd := &cobra.Command{Use: "x"}
+	var fv *FlagValue
+	for _, info := range fields {
+		if bound := BindFlag(cmd, info); info.IsArgs {
+			fv = bound
+		}
+	}
+	if fv == nil {
+		t.Fatal("no args field bound")
+	}
+	if explicitFlag != "" {
+		*fv.StringPtr = explicitFlag
+	}
+	var opts cliPathOpts
+	return reflect.ValueOf(&opts).Elem(), fv
+}
+
+func TestAssignFieldValue_PositionalArgOverridesDefault(t *testing.T) {
+	structVal, fv := bindPathField(t, "")
+	if err := AssignFieldValue(structVal, fv, []string{"/some/path"}, false); err != nil {
+		t.Fatalf("AssignFieldValue: %v", err)
+	}
+	if got := structVal.Interface().(cliPathOpts).Path; got != "/some/path" {
+		t.Fatalf("Path = %q; want /some/path (positional arg must beat the default)", got)
+	}
+}
+
+func TestAssignFieldValue_DefaultWhenNoArg(t *testing.T) {
+	structVal, fv := bindPathField(t, "")
+	if err := AssignFieldValue(structVal, fv, nil, false); err != nil {
+		t.Fatalf("AssignFieldValue: %v", err)
+	}
+	if got := structVal.Interface().(cliPathOpts).Path; got != "." {
+		t.Fatalf("Path = %q; want . (default applies when no positional arg)", got)
+	}
+}
+
+func TestAssignFieldValue_ExplicitFlagBeatsArg(t *testing.T) {
+	structVal, fv := bindPathField(t, "/from/flag")
+	if err := AssignFieldValue(structVal, fv, []string{"/from/arg"}, false); err != nil {
+		t.Fatalf("AssignFieldValue: %v", err)
+	}
+	if got := structVal.Interface().(cliPathOpts).Path; got != "/from/flag" {
+		t.Fatalf("Path = %q; want /from/flag (explicit flag must beat the positional arg)", got)
+	}
 }
