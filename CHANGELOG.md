@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.21.21](https://github.com/flanksource/clicky/compare/v1.21.20...v1.21.21) (2026-06-14)
+
+
+### 🔧 Maintenance
+
+* add Apache 2.0 license ([1ef624b](https://github.com/flanksource/clicky/commit/1ef624be7410db462cdb074730492d9d01825275))
+
 ## [1.21.20](https://github.com/flanksource/clicky/compare/v1.21.19...v1.21.20) (2026-06-14)
 
 
