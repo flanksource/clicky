@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.21.20](https://github.com/flanksource/clicky/compare/v1.21.19...v1.21.20) (2026-06-14)
+
+
+### ⚠ BREAKING CHANGES
+
+* **api:** NewTableFrom now returns a table with headers for empty slices instead of an empty table. TryTypedValue now returns a TypedValue with a header-only table for empty TableProvider slices instead of nil.
+
+### ✅ Tests
+
+* **task:** add testdata YAML files for task testing ([990f51d](https://github.com/flanksource/clicky/commit/990f51d5ff2b53ff27d0b087588880dcc1da94e8))
+* **task:** isolate batch tests from global task manager ([ba6a373](https://github.com/flanksource/clicky/commit/ba6a373da524b15e6dadceed895b9b2ba18474df))
+
+
+### ✨ Features
+
+* **aichat:** Add AI chat backend with tool approval and conversation persistence ([ebabb9b](https://github.com/flanksource/clicky/commit/ebabb9b08a3f044a82300a4858d7c406cd3dda1c))
+* **aichat:** Add token usage tracking and cost calculation for chat turns ([3cf6bee](https://github.com/flanksource/clicky/commit/3cf6bee96b03e3191dccb5a9f73eec11d30c608c))
+* **api:** emit table schema for empty TableProvider slices ([b3157fd](https://github.com/flanksource/clicky/commit/b3157fdfef6ecf388cde7704965a68f795636d00))
+
 ## [1.21.19](https://github.com/flanksource/clicky/compare/v1.21.18...v1.21.19) (2026-06-12)
 
 
