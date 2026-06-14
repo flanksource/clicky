@@ -1,0 +1,24 @@
+name: "Run tests"
+log_messages:
+  - level: debug
+    message: "Discovering test files"
+  - level: info
+    message: "Test 1 passed"
+  - level: info
+    message: "Test 2 passed"
+  - level: warn
+    message: "Test 3 was slow (2.3s)"
+  - level: info
+    message: "Test 3 passed"
+  - level: trace
+    message: "Generating coverage report"
+progress:
+  value: 3
+  max: 3
+status: success
+result_type: int
+result: 3
+assertions:
+  - status == 'success'
+  - result == 3.0
+  - size(warn_logs) == 1

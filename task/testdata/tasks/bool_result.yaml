@@ -1,0 +1,14 @@
+name: "Setup environment"
+log_messages:
+  - level: debug
+    message: "Checking prerequisites"
+  - level: info
+    message: "Installing toolchain"
+  - level: info
+    message: "Environment ready"
+status: success
+result_type: bool
+result: true
+assertions:
+  - status == 'success'
+  - result == true

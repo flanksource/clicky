@@ -1,0 +1,20 @@
+name: "Build project"
+log_messages:
+  - level: debug
+    message: "Compiling module 1"
+  - level: info
+    message: "Compiling..."
+  - level: warn
+    message: "Deprecated API call found"
+  - level: warn
+    message: "Build artifact oversized"
+status: warning
+result_type: map
+result:
+  warnings: 2
+  artifact: "48MB"
+assertions:
+  - status == 'warning'
+  - result.warnings == 2.0
+  - result.artifact == '48MB'
+  - size(warn_logs) == 2

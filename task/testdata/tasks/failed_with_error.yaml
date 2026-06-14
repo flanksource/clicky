@@ -1,0 +1,17 @@
+name: "Publish artifacts"
+log_messages:
+  - level: info
+    message: "Authenticating with registry"
+  - level: info
+    message: "Uploading artifact..."
+  - level: error
+    message: "Connection reset by peer"
+  - level: warn
+    message: "Retrying upload..."
+  - level: error
+    message: "Registry returned 503"
+status: failed
+error: "failed to publish after 2 attempts"
+assertions:
+  - status == 'failed'
+  - size(error_logs) >= 2
