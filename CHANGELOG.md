@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.21.23](https://github.com/flanksource/clicky/compare/v1.21.22...v1.21.23) (2026-06-15)
+
+
+### ✨ Features
+
+* **exec:** add process supervision with resource limits and port detection ([e8972b6](https://github.com/flanksource/clicky/commit/e8972b6f44b1e12b861cc8720eb2cd2f28573fc3)), closes [#123](https://github.com/flanksource/clicky/issues/123)
+* **webapp:** Wire ChatWidget to operations client for tool parity ([b542518](https://github.com/flanksource/clicky/commit/b542518dd3684db6bf35f24f1c5482745398ba20))
+
 ## [1.21.22](https://github.com/flanksource/clicky/compare/v1.21.21...v1.21.22) (2026-06-15)
 
 
