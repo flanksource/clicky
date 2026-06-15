@@ -269,6 +269,7 @@ func (p *Process) clone() *Process {
 		SucceedOnNonZero: p.SucceedOnNonZero,
 		log:              p.log,
 		Shell:            p.Shell,
+		newProcessGroup:  p.newProcessGroup,
 		done:             make(chan struct{}),
 	}
 

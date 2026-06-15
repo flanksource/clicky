@@ -31,3 +31,12 @@ func killTree(pid int, _ bool) error {
 	}
 	return killTreeByWalk(pid)
 }
+
+// terminateTree has no graceful equivalent on Windows (no POSIX signals); fall
+// back to the same descendant kill so Stop still tears the tree down.
+func terminateTree(pid int, _ bool) error {
+	if pid <= 0 {
+		return nil
+	}
+	return killTreeByWalk(pid)
+}
