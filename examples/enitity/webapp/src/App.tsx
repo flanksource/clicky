@@ -77,7 +77,7 @@ export function App() {
         </Routes>
       </div>
 
-      <ChatWidget />
+      <ChatWidget client={apiClient} />
     </div>
   );
 }
