@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.21.22](https://github.com/flanksource/clicky/compare/v1.21.21...v1.21.22) (2026-06-15)
+
+
+### 🐛 Bug Fixes
+
+* Improve in-memory timeseries store write performance ([#110](https://github.com/flanksource/clicky/issues/110)) ([bf79215](https://github.com/flanksource/clicky/commit/bf79215890ea1059a38c6905b6f723a311bb84f9))
+
 ## [1.21.21](https://github.com/flanksource/clicky/compare/v1.21.20...v1.21.21) (2026-06-14)
 
 
