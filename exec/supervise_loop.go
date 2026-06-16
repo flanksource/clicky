@@ -26,6 +26,10 @@ var (
 // portDetector reports the listening ports of the process tree rooted at pid.
 type portDetector func(pid int32) ([]int, error)
 
+// compilationDetector reports whether compiler/linker work is active in the
+// process tree rooted at pid.
+type compilationDetector func(pid int32) (bool, error)
+
 // detectGroupPorts is the production detector: the listening ports across the
 // supervised process's whole group/tree.
 func detectGroupPorts(pid int32) ([]int, error) {
@@ -202,7 +206,7 @@ func (s *SupervisedProcess) runLoop() {
 		}
 
 		if s.opts.DetectPorts && proc.IsRunning() {
-			go s.watchPorts(proc, myGen, detectGroupPorts)
+			go s.watchPorts(proc, myGen, detectGroupPorts, detectCompilers)
 		}
 
 		<-runDone
@@ -261,16 +265,14 @@ func (s *SupervisedProcess) monitorLoop(done chan struct{}) {
 	}
 }
 
-// watchPorts polls for the TCP ports the current process tree is listening on
-// for the lifetime of the run, recording the set (and marking the process
-// port-bound, sticky across restarts) whenever it changes. It polls fast
-// (portPollInterval) during the startup window (portFastWindow), then relaxes to
-// portPollIntervalSlow, so a port that only binds after a cold `go run` compile —
-// well past the window — is still picked up. A detected port, or portPromoteGrace
-// elapsing without one, flips "starting"→"running" so neither a slow server nor a
-// port-less worker is wedged in "starting". gen guards against a stale watcher
-// from a previous run clobbering the current one.
-func (s *SupervisedProcess) watchPorts(proc *Process, gen int, detect portDetector) {
+// watchPorts polls the current process tree for startup signals and listening
+// ports for the lifetime of the run. During startup it reports active compiler
+// or linker children as "compiling"; after compilation quiets down it reports
+// "starting" while waiting for ports; a detected port or a quiet grace period
+// promotes the run to "running". Once running, compiler activity never moves the
+// lifecycle backwards. gen guards against a stale watcher from a previous run
+// clobbering the current one.
+func (s *SupervisedProcess) watchPorts(proc *Process, gen int, detect portDetector, detectCompile compilationDetector) {
 	s.mu.RLock()
 	done := s.done
 	s.mu.RUnlock()
@@ -280,11 +282,12 @@ func (s *SupervisedProcess) watchPorts(proc *Process, gen int, detect portDetect
 	}
 
 	start := time.Now()
-	promoteAt := start.Add(portPromoteGrace)
+	waitingSince := start
 	fastUntil := start.Add(portFastWindow)
 	for {
 		s.mu.RLock()
 		current := s.gen == gen && s.current == proc && !s.stopping
+		status := s.status
 		s.mu.RUnlock()
 		if !current || !proc.IsRunning() {
 			return
@@ -296,7 +299,16 @@ func (s *SupervisedProcess) watchPorts(proc *Process, gen int, detect portDetect
 			s.promoteIfStarting(gen, proc)
 			return
 		}
+		compiling := false
+		if status != StatusRunning && len(ports) == 0 && detectCompile != nil {
+			if active, err := detectCompile(int32(pid)); err != nil {
+				log.Warnf("detect compiler activity for %s: %v", s.Name(), err)
+			} else {
+				compiling = active
+			}
+		}
 
+		now := time.Now()
 		s.mu.Lock()
 		if s.gen != gen || s.current != proc {
 			s.mu.Unlock()
@@ -308,8 +320,22 @@ func (s *SupervisedProcess) watchPorts(proc *Process, gen int, detect portDetect
 			}
 			s.expectsPort = true
 		}
-		if s.status == StatusStarting && (len(ports) > 0 || !time.Now().Before(promoteAt)) {
-			s.status = StatusRunning
+		if s.status == StatusStarting || s.status == StatusCompiling {
+			switch {
+			case len(ports) > 0:
+				s.status = StatusRunning
+			case compiling:
+				s.status = StatusCompiling
+				waitingSince = time.Time{}
+			default:
+				if waitingSince.IsZero() {
+					waitingSince = now
+				}
+				s.status = StatusStarting
+				if !now.Before(waitingSince.Add(portPromoteGrace)) {
+					s.status = StatusRunning
+				}
+			}
 		}
 		s.mu.Unlock()
 
@@ -325,13 +351,14 @@ func (s *SupervisedProcess) watchPorts(proc *Process, gen int, detect portDetect
 	}
 }
 
-// promoteIfStarting flips a still-"starting" current run to "running" — used when
+// promoteIfStarting flips a startup-phase current run to "running" — used when
 // port detection can't continue (lsof failed) so a known server isn't left
-// wedged in "starting". The gen/proc guard ignores a stale prior run.
+// wedged in "starting" or "compiling". The gen/proc guard ignores a stale prior
+// run.
 func (s *SupervisedProcess) promoteIfStarting(gen int, proc *Process) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.gen == gen && s.current == proc && s.status == StatusStarting {
+	if s.gen == gen && s.current == proc && (s.status == StatusStarting || s.status == StatusCompiling) {
 		s.status = StatusRunning
 	}
 }

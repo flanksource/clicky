@@ -70,6 +70,7 @@ type Status string
 const (
 	StatusStopped    Status = "stopped"
 	StatusStarting   Status = "starting"
+	StatusCompiling  Status = "compiling"
 	StatusRunning    Status = "running"
 	StatusRestarting Status = "restarting"
 	StatusCrashed    Status = "crashed"
