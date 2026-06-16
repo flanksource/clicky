@@ -56,6 +56,9 @@ const DefaultModelID = "anthropic/claude-sonnet-4-5"
 // catalog is the v1 model menu. Mirrors captain pkg/ai provider defaults so the
 // chat agrees with the rest of the stack.
 var catalog = []Model{
+	{ID: "anthropic/claude-sonnet-4-6", Provider: ProviderAnthropic, Label: "Claude Sonnet 4.6", Reasoning: true, ContextWindow: 200000},
+	{ID: "anthropic/claude-opus-4-8", Provider: ProviderAnthropic, Label: "Claude Opus 4.8", Reasoning: true, ContextWindow: 200000},
+	{ID: "anthropic/claude-haiku-4-5", Provider: ProviderAnthropic, Label: "Claude Haiku 4.5", Reasoning: true, ContextWindow: 200000},
 	{ID: "anthropic/claude-sonnet-4-5", Provider: ProviderAnthropic, Label: "Claude Sonnet 4.5", Reasoning: true, ContextWindow: 200000},
 	{ID: "anthropic/claude-opus-4-1", Provider: ProviderAnthropic, Label: "Claude Opus 4.1", Reasoning: true, ContextWindow: 200000},
 	{ID: "anthropic/claude-3-5-haiku-latest", Provider: ProviderAnthropic, Label: "Claude 3.5 Haiku", Reasoning: false, ContextWindow: 200000},

@@ -18,6 +18,22 @@ func TestLookupModelUnknownFailsLoud(t *testing.T) {
 	}
 }
 
+func TestAnthropicCatalogIncludesRequestedModels(t *testing.T) {
+	for _, id := range []string{
+		"anthropic/claude-haiku-4-5",
+		"anthropic/claude-sonnet-4-6",
+		"anthropic/claude-opus-4-8",
+	} {
+		m, err := LookupModel(id)
+		if err != nil {
+			t.Fatalf("LookupModel(%q): %v", id, err)
+		}
+		if m.Provider != ProviderAnthropic {
+			t.Errorf("LookupModel(%q).Provider = %q, want %q", id, m.Provider, ProviderAnthropic)
+		}
+	}
+}
+
 func TestEffortConfigPerProvider(t *testing.T) {
 	cases := []struct {
 		name    string
