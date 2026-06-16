@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -177,7 +178,7 @@ var _ = Describe("SupervisedProcess", func() {
 				}
 				return []int{4321}, nil
 			}
-			go s.watchPorts(proc, gen, detect)
+			go s.watchPorts(proc, gen, detect, nil)
 
 			Eventually(s.Ports, 2*time.Second, 20*time.Millisecond).Should(Equal([]int{4321}))
 			Expect(s.Status()).To(Equal(StatusRunning))
@@ -189,11 +190,66 @@ var _ = Describe("SupervisedProcess", func() {
 			portFastWindow = 10 * time.Second
 			s, proc, gen := startWatched()
 			none := func(int32) ([]int, error) { return nil, nil }
-			go s.watchPorts(proc, gen, none)
+			go s.watchPorts(proc, gen, none, nil)
 
 			Eventually(s.Status, 1*time.Second, 20*time.Millisecond).Should(Equal(StatusRunning))
 			Expect(s.Ports()).To(BeEmpty())
 		})
+
+		It("reports compiling, then starting, then running during startup", func() {
+			s, proc, gen := startWatched()
+			var compiling atomic.Bool
+			compiling.Store(true)
+			none := func(int32) ([]int, error) { return nil, nil }
+			detectCompile := func(int32) (bool, error) { return compiling.Load(), nil }
+			go s.watchPorts(proc, gen, none, detectCompile)
+
+			Eventually(s.Status, 1*time.Second, 20*time.Millisecond).Should(Equal(StatusCompiling))
+			compiling.Store(false)
+			Eventually(s.Status, 1*time.Second, 20*time.Millisecond).Should(Equal(StatusStarting))
+			Eventually(s.Status, 1*time.Second, 20*time.Millisecond).Should(Equal(StatusRunning))
+			Expect(s.Ports()).To(BeEmpty())
+		})
+
+		It("keeps reporting compiling past the normal port promotion grace", func() {
+			s, proc, gen := startWatched()
+			var compiling atomic.Bool
+			compiling.Store(true)
+			none := func(int32) ([]int, error) { return nil, nil }
+			detectCompile := func(int32) (bool, error) { return compiling.Load(), nil }
+			go s.watchPorts(proc, gen, none, detectCompile)
+
+			Eventually(s.Status, 1*time.Second, 20*time.Millisecond).Should(Equal(StatusCompiling))
+			Consistently(s.Status, portPromoteGrace+40*time.Millisecond, 10*time.Millisecond).Should(Equal(StatusCompiling))
+			compiling.Store(false)
+			Eventually(s.Status, 1*time.Second, 20*time.Millisecond).Should(Equal(StatusStarting))
+			Eventually(s.Status, 1*time.Second, 20*time.Millisecond).Should(Equal(StatusRunning))
+		})
+
+		It("promotes to running when a port appears even while compiling", func() {
+			s, proc, gen := startWatched()
+			detect := func(int32) ([]int, error) { return []int{4321}, nil }
+			detectCompile := func(int32) (bool, error) { return true, nil }
+			go s.watchPorts(proc, gen, detect, detectCompile)
+
+			Eventually(s.Ports, 1*time.Second, 20*time.Millisecond).Should(Equal([]int{4321}))
+			Expect(s.Status()).To(Equal(StatusRunning))
+		})
+	})
+})
+
+var _ = Describe("compiler startup detection", func() {
+	It("matches compiler and linker process names", func() {
+		Expect(isCompilerExecutable("/tmp/go/pkg/tool/darwin_arm64/compile")).To(BeTrue())
+		Expect(isCompilerExecutable("link")).To(BeTrue())
+		Expect(isCompilerExecutable("compile.exe")).To(BeTrue())
+	})
+
+	It("matches common JavaScript compiler command lines", func() {
+		Expect(isCompilerCommandLine([]string{"node", "/workspace/node_modules/esbuild/bin/esbuild"})).To(BeTrue())
+		Expect(isCompilerCommandLine([]string{"/usr/local/bin/webpack"})).To(BeTrue())
+		Expect(isCompilerCommandLine([]string{"go", "run", "."})).To(BeFalse())
+		Expect(isCompilerCommandLine([]string{"npm", "run", "compile"})).To(BeFalse())
 	})
 })
 
