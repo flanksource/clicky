@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.21.24](https://github.com/flanksource/clicky/compare/v1.21.23...v1.21.24) (2026-06-16)
+
+
+### ✨ Features
+
+* **aichat:** add newer Anthropic models ([56ed4f0](https://github.com/flanksource/clicky/commit/56ed4f064f7c2ef20eba08b21c503acf247981a4))
+
+
+### 🐛 Bug Fixes
+
+* **aichat:** set Anthropic max tokens ([d6f4892](https://github.com/flanksource/clicky/commit/d6f4892110c7eb9da0101ee5d43cb00ce08bf554))
+
 ## [1.21.23](https://github.com/flanksource/clicky/compare/v1.21.22...v1.21.23) (2026-06-15)
 
 
