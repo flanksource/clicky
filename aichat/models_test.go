@@ -29,8 +29,8 @@ func TestEffortConfigPerProvider(t *testing.T) {
 		{"openai-high", Model{Provider: ProviderOpenAI, Reasoning: true}, EffortHigh, "reasoning_effort", false},
 		{"gemini-medium", Model{Provider: ProviderGoogle, Reasoning: true}, EffortMedium, "thinkingConfig", false},
 		{"anthropic-low", Model{Provider: ProviderAnthropic, Reasoning: true}, EffortLow, "thinking", false},
+		{"anthropic-no-effort-still-sets-max-tokens", Model{Provider: ProviderAnthropic, Reasoning: true}, EffortNone, "max_tokens", false},
 		{"non-reasoning", Model{Provider: ProviderOpenAI, Reasoning: false}, EffortHigh, "", true},
-		{"no-effort", Model{Provider: ProviderAnthropic, Reasoning: true}, EffortNone, "", true},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -45,6 +45,13 @@ func TestEffortConfigPerProvider(t *testing.T) {
 				t.Errorf("cfg %v missing key %q", cfg, c.wantKey)
 			}
 		})
+	}
+}
+
+func TestAnthropicEffortConfigSetsMaxTokens(t *testing.T) {
+	cfg := effortConfig(Model{Provider: ProviderAnthropic, Reasoning: true}, EffortHigh)
+	if got := cfg["max_tokens"]; got != anthropicThinkingBudget(EffortHigh)+defaultMaxOutputTokens {
+		t.Errorf("max_tokens = %v, want thinking budget plus visible output budget", got)
 	}
 }
 

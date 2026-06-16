@@ -49,26 +49,36 @@ func initGenkit(ctx context.Context) (*genkit.Genkit, []Provider, error) {
 	return g, registered, nil
 }
 
+const defaultMaxOutputTokens = 4096
+
 // effortConfig builds the provider-specific generation config that translates
-// an Effort value into the provider's native reasoning control. Returns nil
-// when there is nothing to set (no effort, or a non-reasoning model).
+// an Effort value into the provider's native reasoning control. Anthropic also
+// requires max_tokens on every request, so return a config for Anthropic even
+// when no reasoning effort is selected.
 func effortConfig(m Model, e Effort) map[string]any {
-	if !m.Reasoning || e == EffortNone {
-		return nil
-	}
 	switch m.Provider {
 	case ProviderOpenAI:
+		if !m.Reasoning || e == EffortNone {
+			return nil
+		}
 		// OpenAI o-series: reasoning_effort low|medium|high.
 		return map[string]any{"reasoning_effort": string(e)}
 	case ProviderGoogle:
+		if !m.Reasoning || e == EffortNone {
+			return nil
+		}
 		// Gemini 2.5+: thinkingConfig.thinkingBudget (token budget).
 		return map[string]any{"thinkingConfig": map[string]any{"thinkingBudget": geminiThinkingBudget(e)}}
 	case ProviderAnthropic:
-		// Anthropic: extended-thinking budget tokens.
-		return map[string]any{"thinking": map[string]any{
-			"type":          "enabled",
-			"budget_tokens": anthropicThinkingBudget(e),
-		}}
+		cfg := map[string]any{"max_tokens": anthropicMaxTokens(e)}
+		if m.Reasoning && e != EffortNone {
+			// Anthropic: extended-thinking budget tokens.
+			cfg["thinking"] = map[string]any{
+				"type":          "enabled",
+				"budget_tokens": anthropicThinkingBudget(e),
+			}
+		}
+		return cfg
 	default:
 		return nil
 	}
@@ -85,6 +95,16 @@ func anthropicThinkingBudget(e Effort) int {
 	default:
 		return 0
 	}
+}
+
+func anthropicMaxTokens(e Effort) int {
+	budget := anthropicThinkingBudget(e)
+	if budget == 0 {
+		return defaultMaxOutputTokens
+	}
+	// Anthropic's thinking budget is counted inside max_tokens. Leave room for
+	// the visible answer in addition to the hidden thinking budget.
+	return budget + defaultMaxOutputTokens
 }
 
 func geminiThinkingBudget(e Effort) int {
