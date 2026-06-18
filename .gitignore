@@ -72,7 +72,6 @@ clicky
 .task
 *.pdf
 *.html
-*.md
 *.json
 *.csv
 *.yaml
@@ -107,3 +106,6 @@ examples/enitity/webapp/dist/
 !examples/enitity/webapp/dist/index.html
 examples/enitity/enitity
 go.work.sum
+.todos/
+todos-bak/
+specs/
