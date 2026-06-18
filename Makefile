@@ -1,9 +1,14 @@
 ## Tool Binaries
 LOCALBIN ?= $(shell pwd)/.bin
 GOLANGCI_LINT ?= $(LOCALBIN)/golangci-lint
+PKGSITE ?= $(LOCALBIN)/pkgsite
 
 ## Tool Versions
 GOLANGCI_LINT_VERSION ?= v2.8.0
+PKGSITE_VERSION ?= v0.1.0
+
+## Docs server
+DOCS_PORT ?= 8089
 
 GIT_COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
 BUILD_DATE ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
@@ -26,6 +31,19 @@ test-coverage:
 # Build the binary
 build:
 	go build -ldflags "$(LDFLAGS)" -o clicky ./cmd/clicky/
+
+# Serve Go package documentation locally and open a browser.
+# Override the port with `make docs DOCS_PORT=9000` if it is in use.
+# pkgsite is installed to $(LOCALBIN) (pinned + cached) and run directly, so it
+# starts fast and shuts down cleanly on Ctrl-C instead of orphaning the port.
+.PHONY: docs
+docs: pkgsite
+	$(PKGSITE) -http=:$(DOCS_PORT) -open .
+
+.PHONY: pkgsite
+pkgsite: $(PKGSITE) ## Download pkgsite locally if necessary.
+$(PKGSITE): $(LOCALBIN)
+	test -s $(PKGSITE) || GOBIN=$(LOCALBIN) go install golang.org/x/pkgsite/cmd/pkgsite@$(PKGSITE_VERSION)
 
 # Build the task-ui frontend bundle (Preact + Vite → single IIFE)
 task-ui:

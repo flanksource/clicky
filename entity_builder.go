@@ -11,7 +11,11 @@ type EntityBuilder[T EntityItem, ListOpts any, R any] struct {
 	entity Entity[T, ListOpts, R]
 }
 
-// NewEntity starts a typed entity registration.
+// NewEntity starts a typed entity registration. The resulting entity is served
+// identically on the CLI and over HTTP/RPC. See the package
+// github.com/flanksource/clicky/entity for an authoring guide, the best
+// practices for operations that behave well on both surfaces, and runnable
+// examples.
 func NewEntity[T EntityItem, ListOpts any, R any](name string) *EntityBuilder[T, ListOpts, R] {
 	return &EntityBuilder[T, ListOpts, R]{
 		entity: Entity[T, ListOpts, R]{Name: name},
