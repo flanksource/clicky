@@ -562,6 +562,9 @@ func entityBodyExcludingID(flagMap map[string]string) map[string]any {
 
 // RegisterEntity registers a CRUD entity. Call during init().
 // CLI commands and HTTP routes are generated later via GenerateCLI/GenerateRoutes.
+//
+// See the github.com/flanksource/clicky/entity package for the authoring guide
+// and the best practices for operations that work well across CLI and HTTP.
 func RegisterEntity[T EntityItem, ListOpts any, R any](e Entity[T, ListOpts, R]) {
 	name := e.Name
 	if name == "" {

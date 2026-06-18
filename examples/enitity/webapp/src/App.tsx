@@ -1,24 +1,36 @@
-import { Link, Routes, Route, useLocation } from "react-router-dom";
+import { useMemo } from "react";
+import { Link, Routes, Route, useLocation, useNavigate } from "react-router-dom";
 import {
   DensitySwitcher,
   EntityExplorerApp,
   Icon,
+  RouterProvider,
   ThemeSwitcher,
-  type RenderLink,
+  type RouterAdapter,
 } from "@flanksource/clicky-ui";
 import { apiClient } from "./api";
 import { ChatWidget } from "./ChatWidget";
 import { LinkExampleCommandPage, LinkExamplesPage } from "./LinkExamplesPage";
 
-const renderLink: RenderLink = ({ to, className, children, title, key }) => (
-  <Link key={key} to={to} className={className} title={title}>
-    {children}
-  </Link>
-);
-
 export function App() {
   const location = useLocation();
+  const navigate = useNavigate();
   const showingLinks = location.pathname.startsWith("/links");
+
+  // Bridge react-router into clicky-ui's RouterAdapter: <Link> for rendering,
+  // useLocation for active state, useNavigate for imperative navigation.
+  const adapter = useMemo<RouterAdapter>(
+    () => ({
+      pathname: location.pathname,
+      renderLink: ({ to, className, children, title, key }) => (
+        <Link key={key} to={to} className={className} title={title}>
+          {children}
+        </Link>
+      ),
+      navigate: (to, opts) => navigate(to, opts),
+    }),
+    [location.pathname, navigate],
+  );
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-background">
@@ -67,11 +79,9 @@ export function App() {
           <Route
             path="*"
             element={
-              <EntityExplorerApp
-                client={apiClient}
-                pathname={location.pathname}
-                renderLink={renderLink}
-              />
+              <RouterProvider adapter={adapter}>
+                <EntityExplorerApp client={apiClient} />
+              </RouterProvider>
             }
           />
         </Routes>
