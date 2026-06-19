@@ -63,3 +63,18 @@ embedded `task/ui/dist/taskui.js` bundle on pushes to main.
   raw step when that happens.
 - `openapi-ansi-leak-bug` — `rpc/serve.go` must serve the `ExecutionResponse` envelope for
   json/yaml and not conflate render format with the HTTP wire format.
+- `datafunc-wire-envelope` — the envelope substitution above is correct only for stdout-capture
+  commands (payload in `metadata.Output`). Entity list/get go through `op.DataFunc` whose payload is in
+  `data`, so gate the substitution on `!ExecutionResponse.DataIsStructured` (set true in the executor's
+  DataFunc branch) — otherwise every `GET /api/v1/<entity>` returns an empty `{success,exit_code,cli}`
+  envelope with no rows. Regression: `rpc/datafunc_wire_test.go`.
+- `valkey-nested-module-pin` — `valkey/` is a **separate Go module** (own `go.mod`) tagged
+  `valkey/vX.Y.Z` matching the parent version; the parent proxy zip intentionally contains no
+  `valkey/`. Consumers require `clicky` and `clicky/valkey` as two lines; a `valkey` pseudo-version
+  pointing at a commit predating an API breaks `GOWORK=off` (Docker/CI) builds with
+  `undefined: clickyvalkey.X` even though a local `go.work` checkout compiles. Cut a real `valkey/vX`
+  tag at the commit that has the API, then `GOWORK=off go get github.com/flanksource/clicky/valkey@vX`.
+- `tree-multiline-label-gutter` — lipgloss prefixes *every* physical line of a multi-line `TreeNode`
+  label with the `│   ` gutter, so blank/ANSI-only separator lines render as empty `│`-gutter rows.
+  Normalize labels in `api/meta.go normalizeTreeLabel` (drop blank lines, ANSI-aware strip) — not in
+  `formatters/tree_formatter.go`, which is a separate renderer.

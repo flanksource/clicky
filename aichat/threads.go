@@ -43,6 +43,7 @@ type ThreadStore interface {
 	List(ctx context.Context) ([]*Thread, error)
 	Get(ctx context.Context, id string) (*Thread, error)
 	AppendMessage(ctx context.Context, id string, m UIMessage) error
+	Delete(ctx context.Context, id string) error
 	// AddUsage accumulates one turn's token usage and cost onto a thread and
 	// returns the updated thread so the caller can report cumulative totals.
 	AddUsage(ctx context.Context, id string, u TurnUsage) (*Thread, error)
@@ -108,6 +109,16 @@ func (s *memThreadStore) AppendMessage(_ context.Context, id string, m UIMessage
 	}
 	t.Messages = append(t.Messages, m)
 	t.UpdatedAt = time.Now()
+	return nil
+}
+
+func (s *memThreadStore) Delete(_ context.Context, id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.threads[id]; !ok {
+		return fmt.Errorf("thread %q not found", id)
+	}
+	delete(s.threads, id)
 	return nil
 }
 

@@ -16,11 +16,45 @@ func TestRequireApprovalForGatesNamedTools(t *testing.T) {
 	if pred == nil {
 		t.Fatal("expected a predicate for a non-empty list")
 	}
-	if !pred("stack_restart", nil) {
+	if !pred(ToolInfo{Name: "stack_restart"}, nil) {
 		t.Error("stack_restart should require approval")
 	}
-	if pred("stack_list", nil) {
+	if pred(ToolInfo{Name: "stack_list"}, nil) {
 		t.Error("stack_list should not require approval")
+	}
+}
+
+func TestToolPreferencesOverrideDefaultApproval(t *testing.T) {
+	defaultGate := func(tool ToolInfo, _ any) bool {
+		return tool.Name != "stack_list"
+	}
+	ctx := withToolRuntime(context.Background(), toolRuntimeConfig{
+		preferences: ToolPreferences{
+			"stack_list":   ToolModeAsk,
+			"stack_delete": ToolModeEnabled,
+		},
+		defaultApproval: defaultGate,
+	})
+
+	if !shouldRequireApproval(ctx, nil, ToolInfo{Name: "stack_list"}, nil) {
+		t.Error("ask preference should force approval")
+	}
+	if shouldRequireApproval(ctx, nil, ToolInfo{Name: "stack_delete"}, nil) {
+		t.Error("enabled preference should bypass default approval")
+	}
+	if !shouldRequireApproval(ctx, nil, ToolInfo{Name: "other_delete"}, nil) {
+		t.Error("missing preference should use default approval")
+	}
+}
+
+func TestToolsForRequestDropsDisabledTools(t *testing.T) {
+	tools := []registeredTool{
+		{ref: namedTool("stack_list"), info: ToolInfo{Name: "stack_list"}},
+		{ref: namedTool("stack_delete"), info: ToolInfo{Name: "stack_delete"}},
+	}
+	refs := toolsForRequest(tools, ToolPreferences{"stack_delete": ToolModeDisabled})
+	if len(refs) != 1 || refs[0].Name() != "stack_list" {
+		t.Fatalf("refs = %+v, want only stack_list", refs)
 	}
 }
 
@@ -73,4 +107,14 @@ func TestMemThreadStoreRoundTrip(t *testing.T) {
 	if _, err := store.Get(ctx, "missing"); err == nil {
 		t.Error("Get(missing) should fail loud")
 	}
+	if err := store.Delete(ctx, th.ID); err != nil {
+		t.Fatalf("Delete: %v", err)
+	}
+	if _, err := store.Get(ctx, th.ID); err == nil {
+		t.Error("Get(deleted) should fail loud")
+	}
 }
+
+type namedTool string
+
+func (t namedTool) Name() string { return string(t) }

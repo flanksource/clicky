@@ -13,6 +13,7 @@ func (s *Server) registerThreadRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/chat/threads", s.handleCreateThread)
 	mux.HandleFunc("GET /api/chat/threads", s.handleListThreads)
 	mux.HandleFunc("GET /api/chat/threads/{id}", s.handleGetThread)
+	mux.HandleFunc("DELETE /api/chat/threads/{id}", s.handleDeleteThread)
 }
 
 // threadsOrError returns the configured store, or writes a 501 and returns nil.
@@ -71,6 +72,18 @@ func (s *Server) handleGetThread(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, t)
+}
+
+func (s *Server) handleDeleteThread(w http.ResponseWriter, r *http.Request) {
+	store := s.threadsOrError(w)
+	if store == nil {
+		return
+	}
+	if err := store.Delete(r.Context(), r.PathValue("id")); err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {

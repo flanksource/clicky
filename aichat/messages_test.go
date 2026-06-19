@@ -2,6 +2,7 @@ package aichat
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 )
 
@@ -29,6 +30,27 @@ func TestToGenkitMessagesTextOnly(t *testing.T) {
 	}
 	if !out[0].Content[0].IsText() || out[0].Content[0].Text != "hello" {
 		t.Errorf("content = %+v, want text 'hello'", out[0].Content[0])
+	}
+}
+
+func TestContextPromptIncludesSerializedAndRichContext(t *testing.T) {
+	req := ChatRequest{
+		Context: "Context:\n[formula] Playground (entity: Demo)\n\n",
+		ContextItems: []ChatContextItem{{
+			ID:      "ctx-1",
+			Type:    "formula",
+			Label:   "Playground",
+			Fields:  map[string]string{"entity": "Demo"},
+			Payload: raw(map[string]any{"formula": "=tb.total"}),
+		}},
+	}
+
+	prompt := contextPrompt(req)
+	if !strings.Contains(prompt, "[formula] Playground") {
+		t.Fatalf("prompt missing serialized context: %s", prompt)
+	}
+	if !strings.Contains(prompt, `"formula": "=tb.total"`) {
+		t.Fatalf("prompt missing rich payload: %s", prompt)
 	}
 }
 

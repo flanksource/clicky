@@ -42,7 +42,14 @@ func NewClickyToolset(rootCmd *cobra.Command) (*ClickyToolset, error) {
 // and cobra built-ins (completion/help) are skipped; operation names are
 // sanitized into the provider-safe identifier charset.
 func (t *ClickyToolset) DefineTools(g *genkit.Genkit) []ai.ToolRef {
-	refs := make([]ai.ToolRef, 0, len(t.service.Operations))
+	return toolRefs(t.DefineRegisteredTools(g))
+}
+
+// DefineRegisteredTools registers each runnable operation and returns the tool
+// refs together with clicky operation metadata used for per-request filtering
+// and approval decisions.
+func (t *ClickyToolset) DefineRegisteredTools(g *genkit.Genkit) []registeredTool {
+	refs := make([]registeredTool, 0, len(t.service.Operations))
 	seen := map[string]bool{}
 	for i := range t.service.Operations {
 		op := &t.service.Operations[i]
@@ -59,7 +66,7 @@ func (t *ClickyToolset) DefineTools(g *genkit.Genkit) []ai.ToolRef {
 			t.handlerFor(op),
 			ai.WithInputSchema(schema),
 		)
-		refs = append(refs, tool)
+		refs = append(refs, registeredTool{ref: tool, info: toolInfo(name, op)})
 	}
 	return refs
 }
@@ -115,10 +122,11 @@ func toolName(raw string) string {
 func (t *ClickyToolset) handlerFor(op *rpc.RPCOperation) ai.ToolFunc[any, any] {
 	positional := positionalParams(op)
 	name := toolName(op.Name)
+	info := toolInfo(name, op)
 	return func(tc *ai.ToolContext, input any) (any, error) {
 		// First pass for a gated tool: pause for user approval. On resume
 		// (tc.IsResumed) we fall through and execute the approved call.
-		if !tc.IsResumed() && t.requireApproval != nil && t.requireApproval(name, input) {
+		if !tc.IsResumed() && shouldRequireApproval(tc.Context, t.requireApproval, info, input) {
 			return nil, interruptForApproval(tc, name)
 		}
 		req := toExecutionRequest(input, positional)
