@@ -168,6 +168,30 @@ func Textf(content string, args ...any) api.Text {
 	}
 }
 
+func Heading(level int, content api.Textable) api.Heading {
+	return api.Heading{Level: level, Content: content}
+}
+
+func Header(level int, content api.Textable) api.Heading {
+	return Heading(level, content)
+}
+
+func Blockquote(content api.Textable) api.Blockquote {
+	return api.Blockquote{Content: content}
+}
+
+func FootnoteRef(id string) api.FootnoteRef {
+	return api.FootnoteRef{ID: id}
+}
+
+func Footnote(id string, content api.Textable) api.Footnote {
+	return api.Footnote{ID: id, Content: content}
+}
+
+func Footnotes(notes ...api.Footnote) api.Footnotes {
+	return api.Footnotes{Items: notes}
+}
+
 // WithKey wraps a Textable with a data key. The result renders identically to
 // value in every format but serializes to JSON as {key: value}. Callers reading
 // the key for their own serialization can type-assert to api.Keyed.
