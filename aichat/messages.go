@@ -12,14 +12,28 @@ import (
 // the running UIMessage list; model and reasoningEffort are optional per-request
 // overrides carried in the transport `body`.
 type ChatRequest struct {
-	ID              string      `json:"id,omitempty"`
-	Messages        []UIMessage `json:"messages"`
-	Model           string      `json:"model,omitempty"`
-	ReasoningEffort Effort      `json:"reasoningEffort,omitempty"`
+	ID              string          `json:"id,omitempty"`
+	Messages        []UIMessage     `json:"messages"`
+	Model           string          `json:"model,omitempty"`
+	ReasoningEffort Effort          `json:"reasoningEffort,omitempty"`
+	ToolPreferences ToolPreferences `json:"toolPreferences,omitempty"`
+	// Context is the human-readable serialized context summary sent by
+	// clicky-ui. ContextItems carries the same attachments with app-owned
+	// payloads for tools/models that need structured editor state.
+	Context      string            `json:"context,omitempty"`
+	ContextItems []ChatContextItem `json:"contextItems,omitempty"`
 	// ThreadID, when set (carried in the transport body), names the persisted
 	// conversation this turn belongs to. Distinct from ID, which is the AI SDK
 	// client chat id and not a server thread.
 	ThreadID string `json:"threadId,omitempty"`
+}
+
+type ChatContextItem struct {
+	ID      string            `json:"id,omitempty"`
+	Type    string            `json:"type,omitempty"`
+	Label   string            `json:"label,omitempty"`
+	Fields  map[string]string `json:"fields,omitempty"`
+	Payload json.RawMessage   `json:"payload,omitempty"`
 }
 
 // UIMessage is the AI SDK v6 client message: a role plus typed parts.
@@ -162,6 +176,31 @@ func toGenkitMessages(msgs []UIMessage) ([]*ai.Message, *resumeDirectives, error
 		dirs = nil
 	}
 	return out, dirs, nil
+}
+
+func contextPrompt(req ChatRequest) string {
+	var parts []string
+	if strings.TrimSpace(req.Context) != "" {
+		parts = append(parts, strings.TrimSpace(req.Context))
+	}
+	if len(req.ContextItems) > 0 {
+		raw, err := json.MarshalIndent(req.ContextItems, "", "  ")
+		if err == nil {
+			parts = append(parts, "Structured context items JSON:\n"+string(raw))
+		}
+	}
+	if len(parts) == 0 {
+		return ""
+	}
+	return "Current UI context for this turn. Use it as live editor/page state; do not assume it has been saved:\n\n" + strings.Join(parts, "\n\n")
+}
+
+func contextualGenkitMessages(req ChatRequest, msgs []*ai.Message) []*ai.Message {
+	prompt := contextPrompt(req)
+	if prompt == "" {
+		return msgs
+	}
+	return append([]*ai.Message{ai.NewSystemTextMessage(prompt)}, msgs...)
 }
 
 // userParts converts a user message into text and media (attachment) parts.

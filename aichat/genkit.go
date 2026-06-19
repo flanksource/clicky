@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/firebase/genkit/go/ai"
 	"github.com/firebase/genkit/go/core/api"
@@ -13,29 +14,35 @@ import (
 	"github.com/firebase/genkit/go/plugins/googlegenai"
 )
 
-// initGenkit registers every provider plugin whose API key is present in the
-// environment, defaulting the model to DefaultModelID. Plugins panic on Init
-// when their key is missing, so an absent key means the provider is simply not
-// registered (and selecting one of its models later fails loud in LookupModel +
-// generation). Fails loud if no providers are configured at all.
-func initGenkit(ctx context.Context) (*genkit.Genkit, []Provider, error) {
-	var plugins []api.Plugin
-	var registered []Provider
+// ProviderCredential is a request-scoped API key for one upstream AI provider.
+// Embedders can use this to resolve org-owned provider keys from their own
+// connection store instead of relying only on process environment variables.
+type ProviderCredential struct {
+	Provider Provider
+	APIKey   string
+}
 
-	if os.Getenv("ANTHROPIC_API_KEY") != "" {
-		plugins = append(plugins, &anthropic.Anthropic{})
-		registered = append(registered, ProviderAnthropic)
+// ProviderCredentialsProvider returns API keys available to the current request.
+type ProviderCredentialsProvider func(context.Context) ([]ProviderCredential, error)
+
+// initGenkit registers every provider plugin whose API key is present in the
+// supplied credentials or environment, defaulting the model to DefaultModelID.
+// Plugins panic on Init when their key is missing, so an absent key means the
+// provider is simply not registered (and selecting one of its models later fails
+// loud in LookupModel + generation). Fails loud if no providers are configured.
+func initGenkit(ctx context.Context, creds ...ProviderCredential) (*genkit.Genkit, []Provider, error) {
+	var plugins []api.Plugin
+	registered := configuredProviders(creds)
+	keyByProvider := credentialMap(creds)
+
+	if key := firstNonEmptyString(keyByProvider[ProviderAnthropic], os.Getenv("ANTHROPIC_API_KEY")); key != "" {
+		plugins = append(plugins, &anthropic.Anthropic{APIKey: key})
 	}
-	if os.Getenv("OPENAI_API_KEY") != "" {
-		plugins = append(plugins, &openai.OpenAI{APIKey: os.Getenv("OPENAI_API_KEY")})
-		registered = append(registered, ProviderOpenAI)
+	if key := firstNonEmptyString(keyByProvider[ProviderOpenAI], os.Getenv("OPENAI_API_KEY")); key != "" {
+		plugins = append(plugins, &openai.OpenAI{APIKey: key})
 	}
-	if k := os.Getenv("GOOGLE_API_KEY"); k != "" {
-		plugins = append(plugins, &googlegenai.GoogleAI{APIKey: k})
-		registered = append(registered, ProviderGoogle)
-	} else if k := os.Getenv("GEMINI_API_KEY"); k != "" {
-		plugins = append(plugins, &googlegenai.GoogleAI{APIKey: k})
-		registered = append(registered, ProviderGoogle)
+	if key := firstNonEmptyString(keyByProvider[ProviderGoogle], os.Getenv("GOOGLE_API_KEY"), os.Getenv("GEMINI_API_KEY")); key != "" {
+		plugins = append(plugins, &googlegenai.GoogleAI{APIKey: key})
 	}
 
 	if len(plugins) == 0 {

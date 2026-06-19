@@ -32,6 +32,23 @@ type Options struct {
 	// logic (e.g. by name prefix or input). Takes precedence over
 	// RequireApprovalFor. Optional.
 	ApprovalPolicy ApprovalPolicy
+	// ToolApprovalPolicy is the metadata-aware approval hook. It takes
+	// precedence over ApprovalPolicy and RequireApprovalFor. Optional.
+	ToolApprovalPolicy ToolApprovalPolicy
+	// CustomTools are app-owned Genkit tools registered alongside clicky RPC and
+	// MCP tools. They are useful for structured client-action outputs that are
+	// not Cobra commands.
+	CustomTools []ToolDefinition
+	// SettingsProvider supplies per-request defaults and limits owned by the
+	// embedding application. It is evaluated after the request is decoded but
+	// before model selection/generation, so it can default the model and reject
+	// turns that exceed local budgets.
+	SettingsProvider RuntimeSettingsProvider
+	// ProviderCredentials supplies per-request upstream provider keys. When set,
+	// the server builds a request-local Genkit runtime from those credentials
+	// plus any process env keys, so org-scoped connection stores can drive model
+	// availability and generation.
+	ProviderCredentials ProviderCredentialsProvider
 }
 
 const defaultSystem = "You are an operator assistant for this application. " +
@@ -42,13 +59,19 @@ const defaultSystem = "You are an operator assistant for this application. " +
 // v6 UI Message Stream protocol, backed by Genkit + clicky operations + MCP.
 type Server struct {
 	g         *genkit.Genkit
-	clicky    *ClickyToolset
-	tools     []ai.ToolRef
+	tools     []registeredTool
 	providers []Provider
 	system    string
 	initErr   error
 	once      sync.Once
 	opts      Options
+	approval  approvalPredicate
+}
+
+type chatRuntime struct {
+	g         *genkit.Genkit
+	providers []Provider
+	tools     []registeredTool
 }
 
 // NewServer builds a chat server. Genkit init and tool discovery happen lazily
@@ -58,7 +81,11 @@ func NewServer(opts Options) *Server {
 	if system == "" {
 		system = defaultSystem
 	}
-	return &Server{system: system, opts: opts}
+	return &Server{
+		system:   system,
+		opts:     opts,
+		approval: resolveApprovalPolicy(opts.ToolApprovalPolicy, opts.ApprovalPolicy, opts.RequireApprovalFor),
+	}
 }
 
 // Handler returns the http.Handler serving the chat API: POST /api/chat (the
@@ -76,14 +103,29 @@ func (s *Server) Handler() http.Handler {
 // handleModels serves the model menu annotated with provider availability so a
 // client model selector can disable models whose provider is not configured.
 func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
-	if err := s.ensureInit(r.Context()); err != nil {
+	providers, err := s.availableProviders(r.Context())
+	if err != nil {
 		http.Error(w, err.Error(), http.StatusServiceUnavailable)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(CatalogInfo(s.providers)); err != nil {
+	if err := json.NewEncoder(w).Encode(CatalogInfo(providers)); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
+}
+
+func (s *Server) availableProviders(ctx context.Context) ([]Provider, error) {
+	if s.opts.ProviderCredentials != nil {
+		creds, err := s.opts.ProviderCredentials(ctx)
+		if err != nil {
+			return nil, err
+		}
+		return configuredProviders(creds), nil
+	}
+	if err := s.ensureInit(ctx); err != nil {
+		return nil, err
+	}
+	return s.providers, nil
 }
 
 func (s *Server) ensureInit(ctx context.Context) error {
@@ -95,40 +137,85 @@ func (s *Server) ensureInit(ctx context.Context) error {
 		}
 		s.g = g
 		s.providers = providers
-		if s.opts.RootCmd != nil {
-			ts, err := NewClickyToolset(s.opts.RootCmd)
-			if err != nil {
-				s.initErr = err
-				return
-			}
-			ts.requireApproval = resolveApprovalPolicy(s.opts.ApprovalPolicy, s.opts.RequireApprovalFor)
-			s.clicky = ts
-			s.tools = append(s.tools, ts.DefineTools(g)...)
-		}
-		mcpTools, err := MCPTools(ctx, g, s.opts.MCPServers)
+		tools, err := s.buildTools(ctx, g)
 		if err != nil {
 			s.initErr = err
 			return
 		}
-		s.tools = append(s.tools, mcpTools...)
+		s.tools = tools
 	})
 	return s.initErr
 }
 
+func (s *Server) runtime(ctx context.Context) (chatRuntime, error) {
+	if s.opts.ProviderCredentials == nil {
+		if err := s.ensureInit(ctx); err != nil {
+			return chatRuntime{}, err
+		}
+		return chatRuntime{g: s.g, providers: s.providers, tools: s.tools}, nil
+	}
+	creds, err := s.opts.ProviderCredentials(ctx)
+	if err != nil {
+		return chatRuntime{}, err
+	}
+	g, providers, err := initGenkit(ctx, creds...)
+	if err != nil {
+		return chatRuntime{}, err
+	}
+	tools, err := s.buildTools(ctx, g)
+	if err != nil {
+		return chatRuntime{}, err
+	}
+	return chatRuntime{g: g, providers: providers, tools: tools}, nil
+}
+
+func (s *Server) buildTools(ctx context.Context, g *genkit.Genkit) ([]registeredTool, error) {
+	var tools []registeredTool
+	if s.opts.RootCmd != nil {
+		ts, err := NewClickyToolset(s.opts.RootCmd)
+		if err != nil {
+			return nil, err
+		}
+		ts.requireApproval = s.approval
+		tools = append(tools, ts.DefineRegisteredTools(g)...)
+	}
+	customTools, err := DefineCustomTools(g, s.opts.CustomTools)
+	if err != nil {
+		return nil, err
+	}
+	tools = append(tools, customTools...)
+	mcpTools, err := MCPTools(ctx, g, s.opts.MCPServers)
+	if err != nil {
+		return nil, err
+	}
+	for _, tool := range mcpTools {
+		tools = append(tools, registeredTool{
+			ref:  tool,
+			info: ToolInfo{Name: tool.Name()},
+		})
+	}
+	return tools, nil
+}
+
 func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	if err := s.ensureInit(ctx); err != nil {
-		http.Error(w, err.Error(), http.StatusServiceUnavailable)
-		return
-	}
-
 	var req ChatRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, fmt.Sprintf("invalid request body: %v", err), http.StatusBadRequest)
 		return
 	}
 
-	model, err := s.resolveModel(req.Model)
+	settings, err := s.runtimeSettings(ctx)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	rt, err := s.runtime(ctx)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusServiceUnavailable)
+		return
+	}
+	model, err := s.resolveModel(modelIDForRequest(req, settings), rt.providers)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -140,6 +227,11 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 	msgs, resume, err := toGenkitMessages(req.Messages)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	msgs = contextualGenkitMessages(req, msgs)
+	if err := enforceRuntimeSettings(req, settings); err != nil {
+		http.Error(w, err.Error(), statusForRuntimeSettingsError(err))
 		return
 	}
 
@@ -154,7 +246,7 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.stream(ctx, sse, model, req.ReasoningEffort, msgs, resume, req.ThreadID); err != nil {
+	if err := s.stream(ctx, sse, rt, model, req.ReasoningEffort, msgs, resume, req.ThreadID, req.ToolPreferences); err != nil {
 		// Headers are already sent; surface the error as an SSE error part.
 		_ = sse.errorPart(err.Error())
 	}
@@ -176,15 +268,22 @@ func (s *Server) persistIncoming(ctx context.Context, req ChatRequest) error {
 	return s.opts.Threads.AppendMessage(ctx, req.ThreadID, last)
 }
 
+func (s *Server) runtimeSettings(ctx context.Context) (RuntimeSettings, error) {
+	if s.opts.SettingsProvider == nil {
+		return RuntimeSettings{}, nil
+	}
+	return s.opts.SettingsProvider(ctx)
+}
+
 // resolveModel selects the model for a request. An empty id uses the
 // provider-aware default; a named id must be in the catalog AND have its
 // provider configured — both failure modes are reported loudly so a request for
 // an unconfigured provider does not surface as an opaque generation error.
-func (s *Server) resolveModel(id string) (Model, error) {
+func (s *Server) resolveModel(id string, providers []Provider) (Model, error) {
 	if id == "" {
-		m, ok := defaultModel(s.providers)
+		m, ok := defaultModel(providers)
 		if !ok {
-			return Model{}, fmt.Errorf("no catalog model available for configured providers %v", s.providers)
+			return Model{}, fmt.Errorf("no catalog model available for configured providers %v", providers)
 		}
 		return m, nil
 	}
@@ -192,7 +291,7 @@ func (s *Server) resolveModel(id string) (Model, error) {
 	if err != nil {
 		return Model{}, err
 	}
-	if !providerRegistered(s.providers, m.Provider) {
+	if !providerRegistered(providers, m.Provider) {
 		return Model{}, fmt.Errorf("model %q requires the %q provider, which is not configured (set its API key)", id, m.Provider)
 	}
 	return m, nil
@@ -205,7 +304,7 @@ func (s *Server) resolveModel(id string) (Model, error) {
 // surfaced as a tool-approval-request so the client can approve/deny and resume.
 // When resume directives are supplied, the interrupted calls are restarted
 // (approved) or responded-to (denied) instead of re-prompting.
-func (s *Server) stream(ctx context.Context, sse *sseWriter, model Model, effort Effort, msgs []*ai.Message, resume *resumeDirectives, threadID string) error {
+func (s *Server) stream(ctx context.Context, sse *sseWriter, rt chatRuntime, model Model, effort Effort, msgs []*ai.Message, resume *resumeDirectives, threadID string, toolPrefs ToolPreferences) error {
 	if err := sse.start(); err != nil {
 		return err
 	}
@@ -218,8 +317,12 @@ func (s *Server) stream(ctx context.Context, sse *sseWriter, model Model, effort
 		return em.onChunk(chunk)
 	}
 
-	opts := generateOptions(model, effort, s.system, msgs, s.tools, cb, resumeOptions(resume)...)
-	resp, err := genkit.Generate(ctx, s.g, opts...)
+	ctx = withToolRuntime(ctx, toolRuntimeConfig{
+		preferences:     toolPrefs,
+		defaultApproval: s.approval,
+	})
+	opts := generateOptions(model, effort, s.system, msgs, toolsForRequest(rt.tools, toolPrefs), cb, resumeOptions(resume)...)
+	resp, err := genkit.Generate(ctx, rt.g, opts...)
 	if err != nil {
 		return err
 	}

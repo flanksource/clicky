@@ -102,6 +102,38 @@ render primitives:
   `clicky.Infof`/the log writer so the task renderer's terminal accounting stays correct.
   File-level opt-out: `//clicky:allow-stdout`.
 
+### Actions, filters & error rendering (from project memory)
+
+Practical notes from building entity surfaces on clicky:
+
+- **Typed action flags via an interface, not reflection.** To attach optional typed flags to an
+  `Action[T]`, define an `ActionFlags` interface the options struct implements plus an interface-typed
+  field on the action, and check it at registration with a type assertion. Avoid a `Flags reflect.Type`
+  field — the marker interface keeps the feature opt-in and the registration call site declarative.
+- **An action's verb must be unique per entity.** Each `EntityAction` becomes a cobra subcommand
+  named after its verb, so two actions sharing a verb collide even though their routes differ. A
+  required-`<id>` action routes to `/api/v1/<entity>/{id}/<verb>`; a `.WithOptionalID()` action routes
+  to the flat `/api/v1/<entity>/<verb>`. Give a per-id action a verb distinct from any bulk/optional-id
+  action (e.g. `execute` when `run` is already taken); pass route selectors as string flags, not bool.
+- **From/To filters auto-pair into one range picker** only when both fields are `time.Time` (not
+  `string`/`*time.Time`) AND the flag names are `from`/`to` or end with `-from`/`-to`
+  (`entity.go` `describeLookupField`/`isRangeStartFlag`/`isRangeEndFlag`). Do NOT also register them as
+  explicit `Filter` entries — explicit registration overrides the pairing and renders two text boxes.
+- **Searchable (type-ahead) lookups** are opt-in via the `SearchableFilter[ListOpts]` interface —
+  `OptionsWithQuery(opts, query, limit) (map[string]api.Textable, total)`. `buildLookupFunc`
+  type-asserts it; the handler reads `__lookup_filter`/`__lookup_q` from the query string (limit 200).
+  Empty query → head + total (sets `Truncated`/`Total`); non-empty → matched results. The query is the
+  only user input reaching SQL — keep it a bound parameter.
+- **Prefer a command + filter struct over a raw `mux.HandleFunc`.** Registering an op as a command
+  whose `ContextDataFunc` returns structured data auto-routes it under `/api/v1/<cmd>`; drive filtering
+  with `flag:`/`json:`-tagged fields + `MultiFilter`. A raw handler in the executor-owned `/api/v1/*`
+  namespace collides with the auto-routed command routes.
+- **Errors that implement a render interface are rendered, not just logged.** The command runner's
+  `renderableError` walks the `errors.Unwrap` chain and, if any error implements a clicky render
+  interface (`api.TryTypedValue`), routes it through `PrintAndWriteSinks` (honouring `--format`) while
+  still returning non-zero. Return an error type with `Pretty() api.Text` (and `MarshalJSON` to skip
+  the struct envelope) to get rich failure output.
+
 ## Architecture map
 
 - **`api/`** — render primitives (`Text`, `Table`, `Tree`, …), the `Pretty*`/`Textable` interfaces,

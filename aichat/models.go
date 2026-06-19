@@ -238,9 +238,24 @@ func providerRegistered(registered []Provider, p Provider) bool {
 // the model to be in the catalog.
 func ProviderOf(id string) Provider {
 	if i := strings.IndexByte(id, '/'); i > 0 {
-		return Provider(id[:i])
+		return NormalizeProvider(id[:i])
 	}
 	return ""
+}
+
+// NormalizeProvider maps product/storage aliases onto the Genkit provider
+// namespace used by model ids.
+func NormalizeProvider(value string) Provider {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "anthropic", "claude":
+		return ProviderAnthropic
+	case "openai":
+		return ProviderOpenAI
+	case "google", "gemini", "googleai":
+		return ProviderGoogle
+	default:
+		return Provider(strings.TrimSpace(value))
+	}
 }
 
 func modelIDs() []string {
