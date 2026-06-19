@@ -135,6 +135,25 @@ func (b LabelBadge) ANSI() string     { return "" }
 func (b LabelBadge) HTML() string     { return "" }
 func (b LabelBadge) Markdown() string { return "" }
 
+type Heading struct {
+	Level   int
+	Content Textable
+}
+
+func (h Heading) String() string   { return "" }
+func (h Heading) ANSI() string     { return "" }
+func (h Heading) HTML() string     { return "" }
+func (h Heading) Markdown() string { return "" }
+
+type Blockquote struct {
+	Content Textable
+}
+
+func (b Blockquote) String() string   { return "" }
+func (b Blockquote) ANSI() string     { return "" }
+func (b Blockquote) HTML() string     { return "" }
+func (b Blockquote) Markdown() string { return "" }
+
 type Severity int
 
 const SeverityWarning Severity = 3
@@ -148,6 +167,34 @@ func (a Admonition) String() string   { return "" }
 func (a Admonition) ANSI() string     { return "" }
 func (a Admonition) HTML() string     { return "" }
 func (a Admonition) Markdown() string { return "" }
+
+type FootnoteRef struct {
+	ID string
+}
+
+func (r FootnoteRef) String() string   { return "" }
+func (r FootnoteRef) ANSI() string     { return "" }
+func (r FootnoteRef) HTML() string     { return "" }
+func (r FootnoteRef) Markdown() string { return "" }
+
+type Footnote struct {
+	ID      string
+	Content Textable
+}
+
+func (f Footnote) String() string   { return "" }
+func (f Footnote) ANSI() string     { return "" }
+func (f Footnote) HTML() string     { return "" }
+func (f Footnote) Markdown() string { return "" }
+
+type Footnotes struct {
+	Items []Footnote
+}
+
+func (f Footnotes) String() string   { return "" }
+func (f Footnotes) ANSI() string     { return "" }
+func (f Footnotes) HTML() string     { return "" }
+func (f Footnotes) Markdown() string { return "" }
 
 type Collapsed struct {
 	Label   string

@@ -114,6 +114,8 @@ type ClickyNode struct {
 	Roots           []ClickyTreeItem   `json:"roots,omitempty"`
 	Label           *ClickyNode        `json:"label,omitempty"`
 	Content         *ClickyNode        `json:"content,omitempty"`
+	Level           int                `json:"level,omitempty"`
+	Severity        string             `json:"severity,omitempty"`
 	Href            string             `json:"href,omitempty"`
 	Target          string             `json:"target,omitempty"`
 	Command         string             `json:"command,omitempty"`
@@ -277,6 +279,30 @@ func convertTextable(t api.Textable) ClickyNode {
 		return convertCode(v)
 	case *api.Code:
 		return convertCode(*v)
+	case api.Heading:
+		return convertHeading(v)
+	case *api.Heading:
+		return convertHeading(*v)
+	case api.Blockquote:
+		return convertBlockquote(v)
+	case *api.Blockquote:
+		return convertBlockquote(*v)
+	case api.Admonition:
+		return convertAdmonition(v)
+	case *api.Admonition:
+		return convertAdmonition(*v)
+	case api.FootnoteRef:
+		return convertFootnoteRef(v)
+	case *api.FootnoteRef:
+		return convertFootnoteRef(*v)
+	case api.Footnote:
+		return convertFootnote(v)
+	case *api.Footnote:
+		return convertFootnote(*v)
+	case api.Footnotes:
+		return convertFootnotes(v)
+	case *api.Footnotes:
+		return convertFootnotes(*v)
 	case api.Collapsed:
 		return convertCollapsed(v)
 	case *api.Collapsed:
@@ -555,6 +581,87 @@ func convertCode(code api.Code) ClickyNode {
 		Source:          code.Content,
 		HighlightedHTML: code.HTML(),
 	}
+}
+
+func convertHeading(heading api.Heading) ClickyNode {
+	node := ClickyNode{
+		Kind:  "heading",
+		Plain: heading.String(),
+		Level: clampClickyHeadingLevel(heading.Level),
+	}
+	if heading.Content != nil {
+		content := convertTextable(heading.Content)
+		node.Content = &content
+	}
+	return node
+}
+
+func clampClickyHeadingLevel(level int) int {
+	if level < 1 {
+		return 1
+	}
+	if level > 6 {
+		return 6
+	}
+	return level
+}
+
+func convertBlockquote(blockquote api.Blockquote) ClickyNode {
+	node := ClickyNode{Kind: "blockquote", Plain: blockquote.String()}
+	if blockquote.Content != nil {
+		content := convertTextable(blockquote.Content)
+		node.Content = &content
+	}
+	return node
+}
+
+func convertAdmonition(admonition api.Admonition) ClickyNode {
+	node := ClickyNode{
+		Kind:     "admonition",
+		Plain:    admonition.String(),
+		Severity: admonition.Severity.String(),
+	}
+	if admonition.Title != nil {
+		label := convertTextable(admonition.Title)
+		node.Label = &label
+	}
+	if admonition.Body != nil {
+		content := convertTextable(admonition.Body)
+		node.Content = &content
+	}
+	return node
+}
+
+func convertFootnoteRef(ref api.FootnoteRef) ClickyNode {
+	return ClickyNode{
+		Kind:  "footnote-ref",
+		Plain: ref.String(),
+		ID:    strings.TrimSpace(ref.ID),
+	}
+}
+
+func convertFootnote(footnote api.Footnote) ClickyNode {
+	node := ClickyNode{
+		Kind:  "footnote",
+		Plain: footnote.String(),
+		ID:    strings.TrimSpace(footnote.ID),
+	}
+	if footnote.Content != nil {
+		content := convertTextable(footnote.Content)
+		node.Content = &content
+	}
+	return node
+}
+
+func convertFootnotes(footnotes api.Footnotes) ClickyNode {
+	node := ClickyNode{Kind: "footnotes", Plain: footnotes.String()}
+	for _, footnote := range footnotes.Items {
+		if strings.TrimSpace(footnote.ID) == "" {
+			continue
+		}
+		node.Items = append(node.Items, convertFootnote(footnote))
+	}
+	return node
 }
 
 func convertStackTrace(trace api.StackTrace) ClickyNode {

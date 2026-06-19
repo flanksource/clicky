@@ -307,6 +307,58 @@ func TestHTMLReactConvertRichTextables(t *testing.T) {
 	if commandNode.Flags["events"] != "1" || !commandNode.AutoRun {
 		t.Fatalf("expected command flags/autRun to be preserved, got %#v", commandNode)
 	}
+
+	headingNode := convertTextable(api.Heading{Level: 8, Content: api.Text{Content: "Report"}})
+	if headingNode.Kind != "heading" || headingNode.Level != 6 {
+		t.Fatalf("expected clamped heading node, got %#v", headingNode)
+	}
+	if headingNode.Content == nil || headingNode.Content.Plain != "Report" {
+		t.Fatalf("expected heading content to be preserved, got %#v", headingNode.Content)
+	}
+
+	blockquoteNode := convertTextable(api.Blockquote{Content: api.Text{Content: "quoted text"}})
+	if blockquoteNode.Kind != "blockquote" || blockquoteNode.Content == nil || blockquoteNode.Content.Plain != "quoted text" {
+		t.Fatalf("expected blockquote content to be preserved, got %#v", blockquoteNode)
+	}
+
+	admonitionNode := convertTextable(api.Admonition{
+		Severity: api.SeverityWarning,
+		Title:    api.Text{Content: "Review"},
+		Body:     api.Text{Content: "Check the disclosure."},
+	})
+	if admonitionNode.Kind != "admonition" || admonitionNode.Severity != "warning" {
+		t.Fatalf("expected warning admonition node, got %#v", admonitionNode)
+	}
+	if admonitionNode.Label == nil || admonitionNode.Label.Plain != "Review" {
+		t.Fatalf("expected admonition title label, got %#v", admonitionNode.Label)
+	}
+	if admonitionNode.Content == nil || admonitionNode.Content.Plain != "Check the disclosure." {
+		t.Fatalf("expected admonition body content, got %#v", admonitionNode.Content)
+	}
+
+	refNode := convertTextable(api.FootnoteRef{ID: "cash"})
+	if refNode.Kind != "footnote-ref" || refNode.ID != "cash" || refNode.Plain != "[^cash]" {
+		t.Fatalf("expected footnote ref node, got %#v", refNode)
+	}
+
+	footnoteNode := convertTextable(api.Footnote{ID: "cash", Content: api.Text{Content: "Cash equivalents."}})
+	if footnoteNode.Kind != "footnote" || footnoteNode.ID != "cash" {
+		t.Fatalf("expected footnote node, got %#v", footnoteNode)
+	}
+	if footnoteNode.Content == nil || footnoteNode.Content.Plain != "Cash equivalents." {
+		t.Fatalf("expected footnote content, got %#v", footnoteNode.Content)
+	}
+
+	footnotesNode := convertTextable(api.Footnotes{Items: []api.Footnote{
+		{ID: "cash", Content: api.Text{Content: "Cash equivalents."}},
+		{ID: "", Content: api.Text{Content: "skip"}},
+	}})
+	if footnotesNode.Kind != "footnotes" || len(footnotesNode.Items) != 1 {
+		t.Fatalf("expected one valid footnote item, got %#v", footnotesNode)
+	}
+	if footnotesNode.Items[0].Kind != "footnote" || footnotesNode.Items[0].ID != "cash" {
+		t.Fatalf("expected footnote item to be preserved, got %#v", footnotesNode.Items)
+	}
 }
 
 func TestHTMLReactConvertStackTrace(t *testing.T) {

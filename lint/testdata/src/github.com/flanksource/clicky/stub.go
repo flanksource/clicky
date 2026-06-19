@@ -4,6 +4,18 @@ import "github.com/flanksource/clicky/api"
 
 func Text(content string, styles ...string) api.Text { return api.Text{} }
 
+func Heading(level int, content api.Textable) api.Heading { return api.Heading{} }
+
+func Header(level int, content api.Textable) api.Heading { return api.Heading{} }
+
+func Blockquote(content api.Textable) api.Blockquote { return api.Blockquote{} }
+
+func FootnoteRef(id string) api.FootnoteRef { return api.FootnoteRef{} }
+
+func Footnote(id string, content api.Textable) api.Footnote { return api.Footnote{} }
+
+func Footnotes(notes ...api.Footnote) api.Footnotes { return api.Footnotes{} }
+
 func List(items ...api.Textable) api.List { return api.List{} }
 
 func TextList(items ...api.Textable) api.TextList { return api.TextList(items) }
