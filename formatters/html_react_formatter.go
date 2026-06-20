@@ -33,8 +33,15 @@ type ClickyJSONFormatter struct{}
 // so the document round-trips through encoding/json (Marshal and Unmarshal) with
 // the stock codec — callers can persist it and reload it without loss.
 type ClickyDocument struct {
-	Version int        `json:"version"`
-	Node    ClickyNode `json:"node"`
+	Version  int            `json:"version"`
+	Metadata map[string]any `json:"metadata,omitempty"`
+	Node     ClickyNode     `json:"node"`
+}
+
+// ClickyDocumentProvider lets rich producers provide a fully structured Clicky
+// document without first flattening through PrettyData.
+type ClickyDocumentProvider interface {
+	ClickyDocument() ClickyDocument
 }
 
 type ClickyStyle struct {
@@ -105,6 +112,7 @@ type ClickyNode struct {
 	HTML            string             `json:"html,omitempty"`
 	Inline          bool               `json:"inline,omitempty"`
 	Ordered         bool               `json:"ordered,omitempty"`
+	Checked         *bool              `json:"checked,omitempty"`
 	Unstyled        bool               `json:"unstyled,omitempty"`
 	Bullet          *ClickyNode        `json:"bullet,omitempty"`
 	Items           []ClickyNode       `json:"items,omitempty"`
@@ -116,6 +124,10 @@ type ClickyNode struct {
 	Content         *ClickyNode        `json:"content,omitempty"`
 	Level           int                `json:"level,omitempty"`
 	Severity        string             `json:"severity,omitempty"`
+	Attributes      map[string]string  `json:"attributes,omitempty"`
+	SourceMarkdown  string             `json:"sourceMarkdown,omitempty"`
+	LineStart       int                `json:"lineStart,omitempty"`
+	LineEnd         int                `json:"lineEnd,omitempty"`
 	Href            string             `json:"href,omitempty"`
 	Target          string             `json:"target,omitempty"`
 	Command         string             `json:"command,omitempty"`
@@ -175,6 +187,14 @@ func clickyDocumentJSON(data any, opts FormatOptions, indent bool) ([]byte, erro
 		data = slice[0]
 	}
 
+	if provider, ok := data.(ClickyDocumentProvider); ok {
+		payload := provider.ClickyDocument()
+		if indent {
+			return json.MarshalIndent(payload, "", "  ")
+		}
+		return json.Marshal(payload)
+	}
+
 	prettyData, err := ToPrettyDataWithOptions(data, opts)
 	if err != nil {
 		return nil, fmt.Errorf("failed to convert to PrettyData: %w", err)
@@ -226,6 +246,10 @@ func convertTypedValue(tv *api.TypedValue, schema *api.PrettyObject) ClickyNode 
 }
 
 func convertTextable(t api.Textable) ClickyNode {
+	if provider, ok := t.(ClickyDocumentProvider); ok {
+		return provider.ClickyDocument().Node
+	}
+
 	switch v := t.(type) {
 	case api.Text:
 		return convertText(v)
