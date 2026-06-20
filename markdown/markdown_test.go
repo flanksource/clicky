@@ -118,6 +118,125 @@ func TestParseFootnoteLabels(t *testing.T) {
 	}
 }
 
+func TestParseKitchenSinkRoundTripAndClickyJSON(t *testing.T) {
+	source := "---\n" +
+		"title: Kitchen Sink\n" +
+		"version: 1\n" +
+		"---\n" +
+		"# Kitchen Sink\n" +
+		"\n" +
+		"Intro with *emphasis*, **strong**, ~~deleted~~, `inline code`, [a link](https://example.com \"Example\"), ![alt text](image.png), and https://bare.example/path.\n" +
+		"\n" +
+		"> Quoted **content**\n" +
+		"> across lines.\n" +
+		"\n" +
+		"- [x] Completed task\n" +
+		"- [ ] Pending task\n" +
+		"- Plain item\n" +
+		"\n" +
+		"1. Ordered item\n" +
+		"2. Ordered item with nested list\n" +
+		"   - Nested child\n" +
+		"\n" +
+		"| Name | Qty | Notes |\n" +
+		"| :--- | ---: | :---: |\n" +
+		"| Cash | 10 | liquid |\n" +
+		"| Debt | 2 | fixed |\n" +
+		"\n" +
+		"```go\n" +
+		"func main() {\n" +
+		"    println(\"ok\")\n" +
+		"}\n" +
+		"```\n" +
+		"\n" +
+		"!!! warning Review\n" +
+		"    Check this before export.\n" +
+		"\n" +
+		"<details>\n" +
+		"<summary>More detail</summary>\n" +
+		"<p>Hidden <strong>HTML</strong></p>\n" +
+		"</details>\n" +
+		"\n" +
+		"<section data-kind=\"raw\"><span>Raw HTML</span></section>\n" +
+		"\n" +
+		"---\n" +
+		"\n" +
+		"Rates include VAT[^vat].\n" +
+		"\n" +
+		"[^vat]: Value-added tax note.\n"
+
+	doc, err := markdown.ParseString(source)
+	if err != nil {
+		t.Fatalf("ParseString returned error: %v", err)
+	}
+	if got := doc.Markdown(); got != source {
+		t.Fatalf("Markdown roundtrip mismatch\nwant:\n%s\ngot:\n%s", source, got)
+	}
+	if got := doc.Metadata["title"]; got != "Kitchen Sink" {
+		t.Fatalf("frontmatter title = %v, want Kitchen Sink", got)
+	}
+
+	for _, kind := range []string{
+		"heading",
+		"paragraph",
+		"blockquote",
+		"list",
+		"table",
+		"code_block",
+		"admonition",
+		"collapsed",
+		"raw-html",
+		"thematic_break",
+		"footnote_ref",
+		"footnotes",
+	} {
+		if countKind(doc.Root, kind) == 0 {
+			t.Fatalf("kitchen sink did not produce %q node: %#v", kind, doc.Root)
+		}
+	}
+
+	taskList := findNode(doc.Root, func(n markdown.Node) bool {
+		if n.Kind != "list" {
+			return false
+		}
+		for _, item := range n.Items {
+			if item.Checked != nil {
+				return true
+			}
+		}
+		return false
+	})
+	if taskList.Kind == "" || len(taskList.Items) < 2 || taskList.Items[0].Checked == nil || !*taskList.Items[0].Checked || taskList.Items[1].Checked == nil || *taskList.Items[1].Checked {
+		t.Fatalf("task list state not preserved: %#v", taskList)
+	}
+
+	table := findNode(doc.Root, func(n markdown.Node) bool { return n.Kind == "table" })
+	clickyTable := table.ClickyNode()
+	if len(clickyTable.Columns) != 3 || len(clickyTable.Rows) != 2 {
+		t.Fatalf("table did not convert to clicky columns/rows: %#v", clickyTable)
+	}
+	if clickyTable.Columns[1].Align != "right" || clickyTable.Columns[2].Align != "center" {
+		t.Fatalf("table alignment not preserved: %#v", clickyTable.Columns)
+	}
+
+	out, err := clicky.Format(doc, clicky.FormatOptions{Format: "clicky-json"})
+	if err != nil {
+		t.Fatalf("Format clicky-json returned error: %v", err)
+	}
+	var payload struct {
+		Version int `json:"version"`
+		Node    struct {
+			Kind string `json:"kind"`
+		} `json:"node"`
+	}
+	if err := json.Unmarshal([]byte(out), &payload); err != nil {
+		t.Fatalf("unmarshal kitchen sink clicky-json: %v\n%s", err, out)
+	}
+	if payload.Version != 1 || payload.Node.Kind != "document" {
+		t.Fatalf("unexpected kitchen sink payload: %#v", payload)
+	}
+}
+
 func TestClickyJSONUsesParsedMarkdownProvider(t *testing.T) {
 	doc := clicky.MustParseMarkdown("# Report\n\n- [x] Done\n")
 
@@ -162,4 +281,35 @@ func containsKind(nodes []markdown.Node, kind string) bool {
 		}
 	}
 	return false
+}
+
+func countKind(node markdown.Node, kind string) int {
+	count := 0
+	if node.Kind == kind {
+		count++
+	}
+	for _, child := range node.Children {
+		count += countKind(child, kind)
+	}
+	for _, item := range node.Items {
+		count += countKind(item, kind)
+	}
+	return count
+}
+
+func findNode(node markdown.Node, match func(markdown.Node) bool) markdown.Node {
+	if match(node) {
+		return node
+	}
+	for _, child := range node.Children {
+		if found := findNode(child, match); found.Kind != "" {
+			return found
+		}
+	}
+	for _, item := range node.Items {
+		if found := findNode(item, match); found.Kind != "" {
+			return found
+		}
+	}
+	return markdown.Node{}
 }
