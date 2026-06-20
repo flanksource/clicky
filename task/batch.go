@@ -267,9 +267,19 @@ func (b *Batch[T]) Run() chan BatchResult[T] {
 				value, err := item(t)
 				duration := time.Since(start)
 
-				// Check if item timed out during execution
-				if b.ItemTimeout > 0 && itemCtx.Err() == context.DeadlineExceeded {
-					t.Warnf("Item %d in batch '%s' exceeded timeout of %v", itemNum, b.Name, b.ItemTimeout)
+				// Check if item timed out during execution. We base the verdict on
+				// elapsed wall-clock time rather than itemCtx.Err(), because the
+				// item callable does not receive the context and therefore cannot
+				// be interrupted. When the parent batch context is cancelled by the
+				// batch timeout, itemCtx.Err() becomes context.Canceled instead of
+				// context.DeadlineExceeded, which previously caused overrun items
+				// to be reported as successful (a racy outcome that depended on
+				// which timer fired first). Comparing duration against ItemTimeout
+				// is deterministic and only flags items that exceeded their own
+				// per-item budget, leaving batch-level cancellation to the
+				// monitoring goroutine.
+				if b.ItemTimeout > 0 && duration > b.ItemTimeout {
+					t.Warnf("Item %d in batch '%s' exceeded timeout of %v (took %v)", itemNum, b.Name, b.ItemTimeout, duration)
 					results <- BatchResult[T]{
 						Error:    fmt.Errorf("%w: item %d exceeded timeout of %v", ErrItemTimeout, itemNum, b.ItemTimeout),
 						Duration: duration,
