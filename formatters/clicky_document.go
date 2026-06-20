@@ -16,6 +16,9 @@ func NewClickyDocument(t api.Textable) ClickyDocument {
 	if t == nil {
 		return ClickyDocument{Version: 1, Node: clickyTextNode("")}
 	}
+	if provider, ok := t.(ClickyDocumentProvider); ok {
+		return provider.ClickyDocument()
+	}
 	return ClickyDocument{Version: 1, Node: convertTextable(t)}
 }
 

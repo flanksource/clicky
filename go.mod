@@ -36,6 +36,7 @@ require (
 	github.com/timberio/go-datemath v0.1.0
 	github.com/tj/go-naturaldate v1.3.0
 	github.com/xuri/excelize/v2 v2.10.1
+	github.com/yuin/goldmark v1.7.13
 	golang.org/x/crypto v0.49.0
 	golang.org/x/sync v0.20.0
 	golang.org/x/sys v0.42.0
