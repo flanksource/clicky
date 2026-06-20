@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.21.25](https://github.com/flanksource/clicky/compare/v1.21.24...v1.21.25) (2026-06-20)
+
+
+### ✅ Tests
+
+* **batch:** uncomment TestBatch_ErrorIdentification ([1baedde](https://github.com/flanksource/clicky/commit/1baedde5f671e88237257b99320d44691798f98e))
+* **formatters:** cover map[string]any input for markdown paths ([2dd611a](https://github.com/flanksource/clicky/commit/2dd611a365d2c161038b9244829a23f7aa0ac79f)), closes [flanksource/clicky#38](https://github.com/flanksource/clicky/issues/38)
+
+
+### 🐛 Bug Fixes
+
+* **batch:** detect item timeout by elapsed time, not context state ([391e6f5](https://github.com/flanksource/clicky/commit/391e6f5958c21cbdec51f2b01b83d46bdc18d393))
+* **formatters:** handle map input in ToPrettyData ([c21fd39](https://github.com/flanksource/clicky/commit/c21fd3991ad84233f1d49b42204b68de0573c615))
+
 ## [1.21.24](https://github.com/flanksource/clicky/compare/v1.21.23...v1.21.24) (2026-06-16)
 
 
