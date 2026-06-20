@@ -629,6 +629,14 @@ func ToPrettyData(data interface{}, opts ...TypeOptions) (*api.PrettyData, error
 		return nil, fmt.Errorf("cannot format slice input when both SkipTable and SkipTree are set")
 	}
 
+	// For maps, delegate to the shared parser path which has explicit
+	// map handling (it builds a schema from map keys, infers field
+	// types, and recurses for nested map/struct/table fields). The
+	// remaining code below assumes struct input.
+	if val.Kind() == reflect.Map {
+		return parseStructDataWithOptions(val, FormatOptions{})
+	}
+
 	// Create the schema from struct tags
 	schema, err := ParseStructSchema(val)
 	if err != nil {
