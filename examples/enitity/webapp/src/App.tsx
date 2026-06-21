@@ -11,11 +11,16 @@ import {
 import { apiClient } from "./api";
 import { ChatWidget } from "./ChatWidget";
 import { LinkExampleCommandPage, LinkExamplesPage } from "./LinkExamplesPage";
+import { MarkdownEditorPage } from "./MarkdownEditorPage";
 
 export function App() {
   const location = useLocation();
   const navigate = useNavigate();
-  const showingLinks = location.pathname.startsWith("/links");
+  const activeSection = location.pathname.startsWith("/links")
+    ? "links"
+    : location.pathname.startsWith("/markdown")
+      ? "markdown"
+      : "explorer";
 
   // Bridge react-router into clicky-ui's RouterAdapter: <Link> for rendering,
   // useLocation for active state, useNavigate for imperative navigation.
@@ -49,23 +54,31 @@ export function App() {
             >
               <Link
                 to="/stacks"
-                className={topNavLinkClass(!showingLinks)}
-                aria-current={!showingLinks ? "page" : undefined}
+                className={topNavLinkClass(activeSection === "explorer")}
+                aria-current={activeSection === "explorer" ? "page" : undefined}
               >
                 <Icon name="ph:squares-four" className="text-muted-foreground" />
                 Explorer
               </Link>
               <Link
                 to="/links"
-                className={topNavLinkClass(showingLinks)}
-                aria-current={showingLinks ? "page" : undefined}
+                className={topNavLinkClass(activeSection === "links")}
+                aria-current={activeSection === "links" ? "page" : undefined}
               >
                 <Icon name="ph:link" className="text-muted-foreground" />
                 Link Examples
               </Link>
+              <Link
+                to="/markdown"
+                className={topNavLinkClass(activeSection === "markdown")}
+                aria-current={activeSection === "markdown" ? "page" : undefined}
+              >
+                <Icon name="ph:markdown-logo" className="text-muted-foreground" />
+                Markdown
+              </Link>
             </nav>
             <div className="flex items-center gap-1 rounded-full border border-border/70 bg-muted/40 p-1">
-              {showingLinks ? <ThemeSwitcher /> : null}
+              {activeSection !== "explorer" ? <ThemeSwitcher /> : null}
               <DensitySwitcher />
             </div>
           </div>
@@ -76,6 +89,7 @@ export function App() {
         <Routes>
           <Route path="/links" element={<LinkExamplesPage />} />
           <Route path="/links/commands/:operationId" element={<LinkExampleCommandPage />} />
+          <Route path="/markdown" element={<MarkdownEditorPage />} />
           <Route
             path="*"
             element={

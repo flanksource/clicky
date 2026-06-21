@@ -4,11 +4,13 @@ import (
 	"context"
 	"embed"
 	"fmt"
+	"io"
 	"io/fs"
 	"net/http"
 	"os"
 	"os/signal"
 	"path"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -22,6 +24,7 @@ import (
 	"github.com/flanksource/clicky/docs"
 	"github.com/flanksource/clicky/extensions"
 	"github.com/flanksource/clicky/formatters"
+	"github.com/flanksource/clicky/markdown"
 	"github.com/flanksource/clicky/mcp"
 	"github.com/flanksource/clicky/rpc"
 	"github.com/spf13/cobra"
@@ -883,6 +886,7 @@ compiling the Go binary so the embedded assets are current.`,
 			mux := http.NewServeMux()
 			server.RegisterRoutes(mux)
 			mux.HandleFunc("/api/examples/links", serveLinkExamples)
+			mux.HandleFunc("/api/examples/markdown-preview", serveMarkdownPreview)
 
 			// AI chat backend: the demo's own entity operations become tools.
 			// Requires a provider key (ANTHROPIC_API_KEY / OPENAI_API_KEY /
@@ -1015,6 +1019,127 @@ func serveLinkExamples(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_, _ = w.Write([]byte(payload))
+}
+
+func serveMarkdownPreview(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost && r.Method != http.MethodPut {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	source, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to read markdown: %v", err), http.StatusBadRequest)
+		return
+	}
+	doc, err := markdown.ParseString(string(source))
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to parse markdown: %v", err), http.StatusBadRequest)
+		return
+	}
+
+	format := strings.TrimSpace(r.URL.Query().Get("format"))
+	if format == "" {
+		format = "clicky-json"
+	}
+	format = normalizeMarkdownPreviewFormat(format)
+
+	if format == "excel" {
+		serveMarkdownPreviewExcel(w, markdownPreviewRows(doc))
+		return
+	}
+
+	payloadData := any(doc)
+	if format == "csv" {
+		payloadData = markdownPreviewRows(doc)
+	}
+	payload, err := clicky.Format(payloadData, clicky.FormatOptions{Format: format})
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to render %s preview: %v", format, err), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", markdownPreviewContentType(format))
+	if _, err := w.Write([]byte(payload)); err != nil {
+		fmt.Fprintf(os.Stderr, "write markdown preview response: %v\n", err)
+	}
+}
+
+func serveMarkdownPreviewExcel(w http.ResponseWriter, rows []markdownPreviewRow) {
+	tmpDir, err := os.MkdirTemp("", "clicky-markdown-preview-*")
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to create excel preview: %v", err), http.StatusInternalServerError)
+		return
+	}
+	defer os.RemoveAll(tmpDir)
+
+	output := filepath.Join(tmpDir, "markdown-preview.xlsx")
+	manager := formatters.NewFormatManager()
+	if err := manager.ExcelToFile(rows, output); err != nil {
+		http.Error(w, fmt.Sprintf("failed to render excel preview: %v", err), http.StatusInternalServerError)
+		return
+	}
+	data, err := os.ReadFile(output)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("failed to read excel preview: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", clicky.FormatToContentType("excel"))
+	w.Header().Set("Content-Disposition", `inline; filename="markdown-preview.xlsx"`)
+	_, _ = w.Write(data)
+}
+
+func normalizeMarkdownPreviewFormat(format string) string {
+	switch strings.ToLower(format) {
+	case "react":
+		return "clicky-json"
+	case "md":
+		return "markdown"
+	case "xlsx":
+		return "excel"
+	default:
+		return strings.ToLower(format)
+	}
+}
+
+func markdownPreviewContentType(format string) string {
+	if format == "clicky-json" {
+		return "application/json+clicky"
+	}
+	return clicky.FormatToContentType(format)
+}
+
+type markdownPreviewRow struct {
+	Index int    `json:"index" pretty:"label=Index"`
+	Kind  string `json:"kind" pretty:"label=Kind"`
+	Level int    `json:"level,omitempty" pretty:"label=Level"`
+	Text  string `json:"text" pretty:"label=Text"`
+}
+
+func markdownPreviewRows(doc *markdown.Document) []markdownPreviewRow {
+	var rows []markdownPreviewRow
+	var visit func(node markdown.Node)
+	visit = func(node markdown.Node) {
+		if node.Kind != "" && node.Kind != "document" {
+			rows = append(rows, markdownPreviewRow{
+				Index: len(rows) + 1,
+				Kind:  node.Kind,
+				Level: node.Level,
+				Text:  strings.TrimSpace(node.String()),
+			})
+		}
+		for _, child := range node.Children {
+			visit(child)
+		}
+		for _, item := range node.Items {
+			visit(item)
+		}
+	}
+	if doc != nil {
+		visit(doc.Root)
+	}
+	return rows
 }
 
 func linkExamplesDocument() api.DescriptionList {
