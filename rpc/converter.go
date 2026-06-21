@@ -156,7 +156,7 @@ func (c *Converter) ConvertCommand(cmd *cobra.Command) (*RPCOperation, error) {
 		Description: cmd.Short,
 		Parameters:  parameters,
 		Schema:      schema,
-		Command:     cmd,
+		Command:     NewCobraExecutableCommand(cmd),
 		Path:        path,
 		Method:      method,
 		Tags:        tags,
@@ -170,6 +170,8 @@ func (c *Converter) ConvertCommand(cmd *cobra.Command) (*RPCOperation, error) {
 		operation.Clicky.Parent = meta.Parent
 		operation.Clicky.Aliases = append([]string(nil), meta.Aliases...)
 		operation.Clicky.Admin = meta.Admin
+		operation.Clicky.Icon = meta.Icon
+		operation.Clicky.Title = meta.Title
 		operation.Clicky.Verb = meta.Verb
 		operation.Clicky.Scope = meta.Scope
 		if meta.Verb == "" && meta.Entity != "" {
@@ -180,6 +182,8 @@ func (c *Converter) ConvertCommand(cmd *cobra.Command) (*RPCOperation, error) {
 		operation.Clicky.IDParam = meta.IDParam
 		operation.Clicky.SupportsLookup = meta.SupportsLookup
 		operation.Clicky.SupportsFilterMode = meta.SupportsFilterMode
+		operation.Clicky.Group = meta.ToolGroup
+		operation.Group = meta.ToolGroup
 	}
 
 	if df := clicky.GetDataFunc(cmd); df != nil {

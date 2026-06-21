@@ -1,7 +1,9 @@
 package rpc
 
 import (
+	"context"
 	"encoding/json"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -11,6 +13,46 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// TestOpenAPIGenerator_DynamicEntitySurfaceIcon asserts that the x-clicky-icon /
+// x-clicky-title carried by a dynamic entity propagate to the OpenAPI surface
+// (x-clicky.surfaces[].icon / .title), and that icon does NOT leak onto the
+// operation-level x-clicky.
+func TestOpenAPIGenerator_DynamicEntitySurfaceIcon(t *testing.T) {
+	const entityName = "openapi-icon-stack"
+	root := &cobra.Command{Use: "testapp"}
+
+	clicky.RegisterDynamicEntity(clicky.DynamicEntitySpec{
+		Name:     entityName,
+		Icon:     "database",
+		Title:    "My Stack",
+		ListType: reflect.StructOf(nil),
+		List: func(context.Context, map[string]string, []string) (any, error) {
+			return []map[string]any{}, nil
+		},
+	})
+
+	clicky.GenerateCLI(root)
+
+	spec, err := NewOpenAPIGenerator(nil).GenerateFromCobra(root)
+	require.NoError(t, err)
+	require.NotNil(t, spec.Clicky, "spec must carry x-clicky surfaces")
+
+	var surface *ClickySurface
+	for i := range spec.Clicky.Surfaces {
+		if spec.Clicky.Surfaces[i].Entity == entityName {
+			surface = &spec.Clicky.Surfaces[i]
+			break
+		}
+	}
+	require.NotNil(t, surface, "surface for %q missing", entityName)
+	assert.Equal(t, "database", surface.Icon, "surface carries the entity icon")
+	assert.Equal(t, "My Stack", surface.Title, "surface title overridden by x-clicky-title")
+
+	listOp := spec.Paths["/api/v1/"+entityName]["get"]
+	require.NotNil(t, listOp.Clicky, "list operation should carry x-clicky meta")
+	assert.Empty(t, listOp.Clicky.Icon, "icon must stay surface-only, not on the operation")
+}
 
 func TestOpenAPIGenerator_NewOpenAPIGenerator(t *testing.T) {
 	tests := []struct {

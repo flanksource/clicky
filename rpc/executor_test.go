@@ -462,7 +462,7 @@ func TestExecuteCommand(t *testing.T) {
 	op := &RPCOperation{
 		Name:        "test",
 		Description: "Test operation",
-		Command:     testCmd,
+		Command:     NewCobraExecutableCommand(testCmd),
 		Parameters: []RPCParameter{
 			{
 				Name:     "test-flag",
@@ -505,7 +505,7 @@ func TestExecuteCommandDisabled(t *testing.T) {
 	op := &RPCOperation{
 		Name:        "test",
 		Description: "Test operation",
-		Command:     &cobra.Command{Use: "test"},
+		Command:     NewCobraExecutableCommand(&cobra.Command{Use: "test"}),
 	}
 
 	executor := &CommandExecutor{
@@ -545,7 +545,7 @@ func TestExecuteCommandWithOutput(t *testing.T) {
 	op := &RPCOperation{
 		Name:        "test",
 		Description: "Test operation",
-		Command:     testCmd,
+		Command:     NewCobraExecutableCommand(testCmd),
 		Parameters:  []RPCParameter{},
 	}
 
@@ -603,7 +603,7 @@ func TestExecuteCommandWithError(t *testing.T) {
 	op := &RPCOperation{
 		Name:        "test",
 		Description: "Test operation",
-		Command:     testCmd,
+		Command:     NewCobraExecutableCommand(testCmd),
 		Parameters:  []RPCParameter{},
 	}
 
@@ -663,7 +663,7 @@ func TestExecuteCommandStdoutOnly(t *testing.T) {
 	op := &RPCOperation{
 		Name:        "test",
 		Description: "Test operation",
-		Command:     testCmd,
+		Command:     NewCobraExecutableCommand(testCmd),
 		Parameters:  []RPCParameter{},
 	}
 
@@ -715,7 +715,7 @@ func TestExecuteCommandStderrOnly(t *testing.T) {
 	op := &RPCOperation{
 		Name:        "test",
 		Description: "Test operation",
-		Command:     testCmd,
+		Command:     NewCobraExecutableCommand(testCmd),
 		Parameters:  []RPCParameter{},
 	}
 
@@ -769,7 +769,7 @@ func TestExecuteCommandWithDirectOutput(t *testing.T) {
 	op := &RPCOperation{
 		Name:        "test",
 		Description: "Test operation",
-		Command:     testCmd,
+		Command:     NewCobraExecutableCommand(testCmd),
 		Parameters:  []RPCParameter{},
 	}
 
@@ -825,7 +825,7 @@ func TestExecuteCommandWithMixedOutput(t *testing.T) {
 	op := &RPCOperation{
 		Name:        "test",
 		Description: "Test operation",
-		Command:     testCmd,
+		Command:     NewCobraExecutableCommand(testCmd),
 		Parameters:  []RPCParameter{},
 	}
 
@@ -878,7 +878,7 @@ func TestExecuteCommandWithPrintfVariants(t *testing.T) {
 	op := &RPCOperation{
 		Name:        "test",
 		Description: "Test operation",
-		Command:     testCmd,
+		Command:     NewCobraExecutableCommand(testCmd),
 		Parameters:  []RPCParameter{},
 	}
 
@@ -924,7 +924,7 @@ func TestExecuteCommandWithDirectErrorOutput(t *testing.T) {
 	op := &RPCOperation{
 		Name:        "test",
 		Description: "Test operation",
-		Command:     testCmd,
+		Command:     NewCobraExecutableCommand(testCmd),
 		Parameters:  []RPCParameter{},
 	}
 
@@ -983,7 +983,7 @@ func TestConcurrentCommandExecution(t *testing.T) {
 	op := &RPCOperation{
 		Name:        "test",
 		Description: "Test operation",
-		Command:     testCmd,
+		Command:     NewCobraExecutableCommand(testCmd),
 		Parameters:  []RPCParameter{},
 	}
 
@@ -1105,7 +1105,7 @@ func TestExecuteCommandWithErrorIncludesInput(t *testing.T) {
 	op := &RPCOperation{
 		Name:        "test",
 		Description: "Test operation",
-		Command:     testCmd,
+		Command:     NewCobraExecutableCommand(testCmd),
 		Parameters:  []RPCParameter{},
 	}
 
@@ -1157,7 +1157,7 @@ func TestExecuteCommandDisabledIncludesInput(t *testing.T) {
 	op := &RPCOperation{
 		Name:        "test",
 		Description: "Test operation",
-		Command:     &cobra.Command{Use: "test"},
+		Command:     NewCobraExecutableCommand(&cobra.Command{Use: "test"}),
 	}
 
 	executor := &CommandExecutor{
@@ -1213,7 +1213,7 @@ func TestExecuteCommandInvalidFlagIncludesInput(t *testing.T) {
 	op := &RPCOperation{
 		Name:        "test",
 		Description: "Test operation",
-		Command:     testCmd,
+		Command:     NewCobraExecutableCommand(testCmd),
 		Parameters: []RPCParameter{
 			{
 				Name:     "count",
@@ -1257,7 +1257,7 @@ func TestExecuteCommandInvalidFlagIncludesInput(t *testing.T) {
 	}
 
 	// Verify error message mentions the invalid flag
-	if !strings.Contains(resp.Error, "Invalid value for flag count") {
+	if !strings.Contains(resp.Error, "invalid value for flag count") {
 		t.Errorf("Expected error to mention invalid flag, got '%s'", resp.Error)
 	}
 }
@@ -1390,7 +1390,7 @@ func TestBuildCLICommand(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			op := &RPCOperation{
-				Command: tt.cmd,
+				Command: NewCobraExecutableCommand(tt.cmd),
 			}
 
 			result := buildCLICommand(op, tt.req)
@@ -1528,7 +1528,7 @@ func TestExecuteCommandIncludesCLI(t *testing.T) {
 	testCmd.Flags().Bool("verbose", false, "Enable verbose output")
 
 	op := &RPCOperation{
-		Command: testCmd,
+		Command: NewCobraExecutableCommand(testCmd),
 	}
 
 	config := &ExecutorConfig{

@@ -7,16 +7,12 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"os/exec"
 	"strconv"
 	"strings"
-	"sync"
 	"syscall"
 
-	"github.com/flanksource/commons/logger"
-	"github.com/spf13/cobra"
-	"github.com/spf13/pflag"
+	"github.com/flanksource/clicky/entity"
 )
 
 // CommandExecutor handles dynamic execution of Cobra commands via HTTP requests
@@ -24,7 +20,6 @@ type CommandExecutor struct {
 	service    *RPCService              // Pre-converted command tree
 	operations map[string]*RPCOperation // path+method -> operation lookup
 	config     *ExecutorConfig          // Execution configuration
-	mutex      sync.Mutex               // Protects global stdout/stderr replacement
 }
 
 // ExecutionRequest represents parameters for command execution
@@ -257,79 +252,12 @@ func (e *CommandExecutor) ExecuteCommand(op *RPCOperation, req *ExecutionRequest
 		return resp, resp, fmt.Errorf("no command found for operation %s", op.Name)
 	}
 
-	// Store original hooks if we need to skip pre-runs
-	var (
-		origPreRun            func(*cobra.Command, []string)
-		origPreRunE           func(*cobra.Command, []string) error
-		origPersistentPreRun  func(*cobra.Command, []string)
-		origPersistentPreRunE func(*cobra.Command, []string) error
-	)
-
-	if e.config.SkipPreRun {
-		origPreRun = cmd.PreRun
-		origPreRunE = cmd.PreRunE
-		origPersistentPreRun = cmd.PersistentPreRun
-		origPersistentPreRunE = cmd.PersistentPreRunE
-
-		// Clear pre-run hooks
-		cmd.PreRun = nil
-		cmd.PreRunE = nil
-		cmd.PersistentPreRun = nil
-		cmd.PersistentPreRunE = nil
-	}
-
-	// Restore hooks after execution
-	defer func() {
-		if e.config.SkipPreRun {
-			cmd.PreRun = origPreRun
-			cmd.PreRunE = origPreRunE
-			cmd.PersistentPreRun = origPersistentPreRun
-			cmd.PersistentPreRunE = origPersistentPreRunE
-		}
-	}()
-
-	// Set flags from request
-	if req.Flags != nil {
-		for flagName, flagValue := range req.Flags {
-			if flag := cmd.Flags().Lookup(flagName); flag != nil {
-				if err := flag.Value.Set(flagValue); err != nil {
-					resp := &ExecutionResponse{
-						Success: false,
-						Error:   fmt.Sprintf("Invalid value for flag %s: %v", flagName, err),
-						Input:   req,
-						CLI:     buildCLICommand(op, req),
-					}
-					return resp, resp, err
-				}
-				// IMPORTANT: Mark the flag as changed so required flag validation passes
-				flag.Changed = true
-			}
-		}
-	}
-
-	// Create a new command instance to avoid modifying the original
-	execCmd := &cobra.Command{
-		Use:   cmd.Use,
-		Short: cmd.Short,
-		Long:  cmd.Long,
-		Run:   cmd.Run,
-		RunE:  cmd.RunE,
-		Args:  cmd.Args,
-	}
-
-	// Copy flags to the execution command
-	cmd.Flags().VisitAll(func(flag *pflag.Flag) {
-		execCmd.Flags().AddFlag(flag)
+	// Run the command through the transport-neutral handle, which resets state,
+	// applies the request's flags/args, and captures stdout/stderr.
+	stdoutStr, stderrStr, err := cmd.Execute(req.ctx(), entity.ExecuteOptions{
+		Args:  req.Args,
+		Flags: req.Flags,
 	})
-
-	// Set arguments
-	args := []string{}
-	if req.Args != nil {
-		args = req.Args
-	}
-
-	// Execute with global output capture
-	stdoutStr, stderrStr, err := e.executeWithGlobalCapture(execCmd, args)
 
 	// Extract exit code
 	exitCode := extractExitCode(err)
@@ -386,96 +314,26 @@ func parseCommandOutput(stdout, stderr string, req *ExecutionRequest) (any, erro
 	return nil, fmt.Errorf("unable to parse output")
 }
 
-// executeWithGlobalCapture executes a command while capturing ALL output including direct os.Stdout/os.Stderr writes
-func (e *CommandExecutor) executeWithGlobalCapture(execCmd *cobra.Command, args []string) (stdout, stderr string, err error) {
-	// Use mutex to ensure thread safety when replacing global file descriptors
-	e.mutex.Lock()
-	defer e.mutex.Unlock()
-
-	// Create capture buffers
-	var stdoutBuf, stderrBuf bytes.Buffer
-
-	// Store original file descriptors
-	originalStdout := os.Stdout
-	originalStderr := os.Stderr
-	originalArgs := os.Args
-
-	// Ensure restoration even on panic
-	defer func() {
-		os.Stdout = originalStdout
-		os.Stderr = originalStderr
-		os.Args = originalArgs
-	}()
-
-	// Create pipes for capturing output
-	stdoutReader, stdoutWriter, err := os.Pipe()
-	if err != nil {
-		return "", "", fmt.Errorf("failed to create stdout pipe: %w", err)
-	}
-	defer func() {
-		if err := stdoutReader.Close(); err != nil {
-			logger.Errorf("failed to close stdout reader: %v", err)
-		}
-	}()
-
-	stderrReader, stderrWriter, err := os.Pipe()
-	if err != nil {
-		_ = stdoutWriter.Close()
-		return "", "", fmt.Errorf("failed to create stderr pipe: %w", err)
-	}
-	defer func() {
-		if err := stderrReader.Close(); err != nil {
-			logger.Errorf("failed to close stderr reader: %v", err)
-		}
-	}()
-
-	// Replace global stdout/stderr
-	os.Stdout = stdoutWriter
-	os.Stderr = stderrWriter
-
-	// Also set cobra command outputs to use the same writers
-	execCmd.SetOut(stdoutWriter)
-	execCmd.SetErr(stderrWriter)
-
-	// Start goroutines to copy from pipes to buffers
-	var wg sync.WaitGroup
-	wg.Add(2)
-
-	go func() {
-		defer wg.Done()
-		if _, err := io.Copy(&stdoutBuf, stdoutReader); err != nil {
-			// Log error but continue
-			fmt.Printf("Warning: failed to copy stdout: %v\n", err)
-		}
-	}()
-
-	go func() {
-		defer wg.Done()
-		if _, err := io.Copy(&stderrBuf, stderrReader); err != nil {
-			// Log error but continue
-			fmt.Printf("Warning: failed to copy stderr: %v\n", err)
-		}
-	}()
-
-	// Execute the command
-	execCmd.SetArgs(args)
-	cmdErr := execCmd.Execute()
-
-	// Close writers to signal end of output and flush remaining data
-	_ = stdoutWriter.Close()
-	_ = stderrWriter.Close()
-
-	// Wait for all output to be copied
-	wg.Wait()
-
-	return stdoutBuf.String(), stderrBuf.String(), cmdErr
-}
-
 // ExtractRequestFromHTTP extracts execution parameters from HTTP request
 func (e *CommandExecutor) ExtractRequestFromHTTP(r *http.Request, op *RPCOperation) (*ExecutionRequest, error) {
+	// Buffer the body once so the raw (nested) JSON stays available to
+	// context-based entity handlers via RequestFromContext, even though the
+	// flag-flattening below also reads it. The internal decode reads from
+	// bodyBytes; r.Body is reset to a fresh reader for the handler.
+	var bodyBytes []byte
+	if r.Body != nil {
+		b, err := io.ReadAll(r.Body)
+		if err != nil {
+			return nil, fmt.Errorf("read request body: %w", err)
+		}
+		_ = r.Body.Close()
+		bodyBytes = b
+		r.Body = io.NopCloser(bytes.NewReader(bodyBytes))
+	}
+
 	req := &ExecutionRequest{
 		Flags:   make(map[string]string),
-		Context: r.Context(),
+		Context: ContextWithRequest(r.Context(), r),
 	}
 
 	// Extract path parameters from URL using the template.
@@ -495,9 +353,9 @@ func (e *CommandExecutor) ExtractRequestFromHTTP(r *http.Request, op *RPCOperati
 
 	// Extract JSON body for POST/PUT requests FIRST (so query params can override)
 	if r.Method == "POST" || r.Method == "PUT" {
-		if r.Header.Get("Content-Type") == "application/json" {
+		if r.Header.Get("Content-Type") == "application/json" && len(bodyBytes) > 0 {
 			var bodyData map[string]interface{}
-			if err := json.NewDecoder(r.Body).Decode(&bodyData); err != nil {
+			if err := json.Unmarshal(bodyBytes, &bodyData); err != nil {
 				return nil, fmt.Errorf("failed to parse JSON body: %w", err)
 			}
 
@@ -684,7 +542,7 @@ func buildCLICommand(op *RPCOperation, req *ExecutionRequest) string {
 	baseCmd := "clicky"
 
 	// Get the command path (e.g., "pretty", "user create")
-	cmdPath := getCommandPath(op.Command)
+	cmdPath := op.Command.Path()
 
 	// Build the command parts
 	parts := []string{baseCmd}
@@ -705,7 +563,7 @@ func buildCLICommand(op *RPCOperation, req *ExecutionRequest) string {
 	if req != nil && len(req.Flags) > 0 {
 		for flagName, flagValue := range req.Flags {
 			// Check if this is a boolean flag by looking at the command's flag definition
-			if flag := op.Command.Flags().Lookup(flagName); flag != nil && flag.Value.Type() == "bool" {
+			if op.Command.IsBoolFlag(flagName) {
 				// For boolean flags
 				if flagValue == "true" {
 					parts = append(parts, "--"+flagName)

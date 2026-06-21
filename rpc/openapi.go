@@ -357,6 +357,8 @@ func (g *OpenAPIGenerator) convertOperationToOpenAPI(op RPCOperation) OpenAPIOpe
 		meta.Parent = ""
 		meta.Aliases = nil
 		meta.Admin = false
+		meta.Icon = ""
+		meta.Title = ""
 		meta.Order = 0
 		openAPIOp.Clicky = &meta
 	}
@@ -641,12 +643,17 @@ func (g *OpenAPIGenerator) buildClickySpecMeta(operations []RPCOperation) *Click
 		entry := surfacesByID[meta.SurfaceID]
 		if entry == nil {
 			baseKey := clickySurfaceBaseKey(meta.Entity, meta.Aliases)
+			title := meta.Title
+			if title == "" {
+				title = clickySurfaceTitle(baseKey, meta.Admin)
+			}
 			entry = &surfaceEntry{
 				surface: ClickySurface{
 					Entity: meta.Entity,
 					Parent: meta.Parent,
 					Admin:  meta.Admin,
-					Title:  clickySurfaceTitle(baseKey, meta.Admin),
+					Title:  title,
+					Icon:   meta.Icon,
 					Order:  index,
 				},
 				baseKey: baseKey,

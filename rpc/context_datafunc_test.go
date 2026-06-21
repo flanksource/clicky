@@ -22,7 +22,7 @@ func TestExecuteCommandPrefersContextDataFunc(t *testing.T) {
 	dataFuncCalled := false
 	op := &RPCOperation{
 		Name:    "probe",
-		Command: &cobra.Command{Use: "probe"},
+		Command: NewCobraExecutableCommand(&cobra.Command{Use: "probe"}),
 		DataFunc: func(map[string]string, []string) (any, error) {
 			dataFuncCalled = true
 			return "from-datafunc", nil
@@ -58,7 +58,7 @@ func TestExecuteCommandFallsBackToDataFunc(t *testing.T) {
 	executor := &CommandExecutor{config: &ExecutorConfig{Enabled: true}}
 	op := &RPCOperation{
 		Name:    "probe",
-		Command: &cobra.Command{Use: "probe"},
+		Command: NewCobraExecutableCommand(&cobra.Command{Use: "probe"}),
 		DataFunc: func(map[string]string, []string) (any, error) {
 			return "from-datafunc", nil
 		},
