@@ -64,6 +64,11 @@ type EntityInfo struct {
 	BulkActions []BulkActionInfo
 	ValidArgs   func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective)
 	IsAdmin     bool
+	// FilterRefs maps a list filter's flag key to the name of the reusable named
+	// filter backing it (when the filter was attached via the entity package's
+	// Use/As helper). The OpenAPI layer uses it to emit an x-clicky-lookup $ref
+	// to the shared filter definition. Nil when no filters reference a named one.
+	FilterRefs map[string]string
 }
 
 // EntityOperation represents a single CRUD operation.
@@ -572,12 +577,13 @@ func RegisterEntity[T EntityItem, ListOpts any, R any](e Entity[T, ListOpts, R])
 	}
 
 	info := EntityInfo{
-		Name:      name,
-		Parent:    e.Parent,
-		Aliases:   e.Aliases,
-		Type:      reflect.TypeOf((*T)(nil)).Elem(),
-		ListType:  reflect.TypeOf((*ListOpts)(nil)).Elem(),
-		ValidArgs: e.ValidArgs,
+		Name:       name,
+		Parent:     e.Parent,
+		Aliases:    e.Aliases,
+		Type:       reflect.TypeOf((*T)(nil)).Elem(),
+		ListType:   reflect.TypeOf((*ListOpts)(nil)).Elem(),
+		ValidArgs:  e.ValidArgs,
+		FilterRefs: entityFilterRefs(e.Filters),
 	}
 
 	if e.ListPagedWithContext != nil || e.ListPaged != nil || e.ListWithContext != nil || e.List != nil {
@@ -874,6 +880,48 @@ func GetEntities() []EntityInfo {
 	entityRegistryMu.Lock()
 	defer entityRegistryMu.Unlock()
 	return append([]EntityInfo{}, entityRegistry...)
+}
+
+// GetEntity returns the registered entity with the given name (or alias) and
+// whether it was found.
+func GetEntity(name string) (EntityInfo, bool) {
+	entityRegistryMu.Lock()
+	defer entityRegistryMu.Unlock()
+	for _, info := range entityRegistry {
+		if info.Name == name {
+			return info, true
+		}
+		for _, alias := range info.Aliases {
+			if alias == name {
+				return info, true
+			}
+		}
+	}
+	return EntityInfo{}, false
+}
+
+// filterRefProvider is implemented by filter adapters that reference a reusable
+// named filter (the entity package's Use/As helper). It lets RegisterEntity
+// record the param-key→filter-name mapping without importing that package.
+type filterRefProvider interface {
+	FilterName() string
+}
+
+// entityFilterRefs records, for each filter that references a reusable named
+// filter, the mapping from its flag key to the named filter's name.
+func entityFilterRefs[ListOpts any](filters []Filter[ListOpts]) map[string]string {
+	refs := make(map[string]string)
+	for _, f := range filters {
+		if p, ok := f.(filterRefProvider); ok {
+			if name := p.FilterName(); name != "" {
+				refs[f.Key()] = name
+			}
+		}
+	}
+	if len(refs) == 0 {
+		return nil
+	}
+	return refs
 }
 
 // GenerateCLI creates cobra subcommands for all registered entities under parent.
@@ -1492,6 +1540,57 @@ func buildLookupFuncWithContext[T any](filters []Filter[T]) func(ctx context.Con
 // the reserved search params, resolves opts + selected values, then fills each
 // filter's option set — preferring the context-aware Options methods when the
 // filter implements them, otherwise the plain Options/OptionsWithQuery.
+// boundFilter is a type-agnostic, already-resolved filter descriptor that
+// resolveLookupCore renders into the lookup response. Both the typed entity path
+// (resolveLookup) and the dynamic entity path (buildDynamicLookup) produce a
+// slice of these, so the response shape is built in exactly one place.
+type boundFilter struct {
+	Key        string
+	Label      string
+	Type       string
+	Multi      bool
+	Searchable bool
+	Selected   map[string]api.Textable
+	// Options returns the head set (query == "") or search matches, plus the true
+	// total behind the head. A non-positive limit means "no cap".
+	Options func(query string, limit int) (map[string]api.Textable, int)
+}
+
+// resolveLookupCore renders bound filters into the lookup response, applying the
+// searchable head/search/total logic uniformly. It is the single place the
+// lookup wire shape is built, shared by the typed and dynamic entity paths.
+func resolveLookupCore(filters []boundFilter, searchKey, searchQuery string) entityLookupResponse {
+	response := entityLookupResponse{
+		Filters: make(map[string]entityLookupFilter, len(filters)),
+	}
+	for _, f := range filters {
+		entry := entityLookupFilter{
+			Label:    f.Label,
+			Selected: toClickyNodeMap(f.Selected),
+			Multi:    f.Multi,
+			Type:     f.Type,
+		}
+		switch {
+		case f.Searchable && searchKey == f.Key && searchQuery != "":
+			// Targeted server-side search: return matches for this filter only.
+			options, _ := f.Options(searchQuery, lookupOptionsLimit)
+			entry.Options = toClickyNodeMap(options)
+		case f.Searchable:
+			// Head request: first N options plus the true distinct total so
+			// the UI can show "… and N more" and decide whether to search.
+			options, total := f.Options("", lookupOptionsLimit)
+			entry.Options = toClickyNodeMap(options)
+			entry.Total = total
+			entry.Truncated = total > len(options)
+		default:
+			options, _ := f.Options("", 0)
+			entry.Options = toClickyNodeMap(options)
+		}
+		response.Filters[f.Key] = entry
+	}
+	return response
+}
+
 func resolveLookup[T any](
 	ctx context.Context,
 	filters []Filter[T],
@@ -1515,9 +1614,7 @@ func resolveLookup[T any](
 		return nil, err
 	}
 
-	response := entityLookupResponse{
-		Filters: make(map[string]entityLookupFilter, len(filters)),
-	}
+	bound := make([]boundFilter, 0, len(filters))
 	for _, filter := range filters {
 		meta := lookupMetadata[filter.Key()]
 		if typed, ok := filter.(TypedFilter[T]); ok {
@@ -1525,33 +1622,26 @@ func resolveLookup[T any](
 				meta.Type = lookupType
 			}
 		}
-		entry := entityLookupFilter{
-			Label:    filter.Label(),
-			Selected: toClickyNodeMap(selected[filter.Key()]),
-			Multi:    meta.Multi,
-			Type:     meta.Type,
-		}
-
-		isSearchable := filterIsSearchable(filter)
-		switch {
-		case isSearchable && searchKey == filter.Key() && searchQuery != "":
-			// Targeted server-side search: return matches for this filter only.
-			options, _ := filterOptionsWithQuery(ctx, filter, opts, searchQuery, lookupOptionsLimit)
-			entry.Options = toClickyNodeMap(options)
-		case isSearchable:
-			// Head request: first N options plus the true distinct total so
-			// the UI can show "… and N more" and decide whether to search.
-			options, total := filterOptionsWithQuery(ctx, filter, opts, "", lookupOptionsLimit)
-			entry.Options = toClickyNodeMap(options)
-			entry.Total = total
-			entry.Truncated = total > len(options)
-		default:
-			entry.Options = toClickyNodeMap(filterOptions(ctx, filter, opts))
-		}
-
-		response.Filters[filter.Key()] = entry
+		f := filter
+		searchable := filterIsSearchable(f)
+		bound = append(bound, boundFilter{
+			Key:        f.Key(),
+			Label:      f.Label(),
+			Type:       meta.Type,
+			Multi:      meta.Multi,
+			Searchable: searchable,
+			Selected:   selected[f.Key()],
+			Options: func(query string, limit int) (map[string]api.Textable, int) {
+				if searchable {
+					return filterOptionsWithQuery(ctx, f, opts, query, limit)
+				}
+				options := filterOptions(ctx, f, opts)
+				return options, len(options)
+			},
+		})
 	}
-	return response, nil
+
+	return resolveLookupCore(bound, searchKey, searchQuery), nil
 }
 
 // filterIsSearchable reports whether filter exposes a head/search option set,

@@ -9,6 +9,9 @@ import (
 
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
+
+	"github.com/flanksource/clicky"
+	"github.com/flanksource/clicky/entity"
 )
 
 // OpenAPISpec represents an OpenAPI 3.0 specification
@@ -83,6 +86,26 @@ type OpenAPIParameter struct {
 	Schema      *OpenAPISchema       `json:"schema,omitempty"`
 	Example     interface{}          `json:"example,omitempty"`
 	Clicky      *ClickyParameterMeta `json:"x-clicky,omitempty"`
+	Lookup      *ClickyLookupMeta    `json:"x-clicky-lookup,omitempty"`
+}
+
+// ClickyLookupMeta is the x-clicky-lookup extension on a filter parameter. It
+// references the reusable named-filter definition via Ref and tells the client
+// where to fetch options: URL is the owning entity's list path, which serves the
+// lookup via the ?__lookup=filters convention with Filter/SearchParam as the
+// per-filter search keys.
+type ClickyLookupMeta struct {
+	// Ref points at the reusable filter definition in
+	// components.x-clicky-filters (e.g. "#/components/x-clicky-filters/users").
+	Ref string `json:"$ref,omitempty"`
+	// URL is the lookup endpoint (the owning entity's list path).
+	URL string `json:"url,omitempty"`
+	// Filter is the bound flag key, sent as __lookup_filter for server-side search.
+	Filter string `json:"filter,omitempty"`
+	// SearchParam is the query-string key for the search term (__lookup_q).
+	SearchParam string `json:"searchParam,omitempty"`
+	// Multi reports whether the control accepts multiple selections.
+	Multi bool `json:"multi,omitempty"`
 }
 
 // ClickyParameterMeta carries UI hints for a single OpenAPI parameter so the
@@ -139,6 +162,7 @@ type OpenAPIExample struct {
 
 // OpenAPISchema represents a schema in the OpenAPI spec
 type OpenAPISchema struct {
+	Ref                  string                    `json:"$ref,omitempty"`
 	Type                 string                    `json:"type,omitempty"`
 	Format               string                    `json:"format,omitempty"`
 	Description          string                    `json:"description,omitempty"`
@@ -160,6 +184,9 @@ type OpenAPIComponents struct {
 	RequestBodies   map[string]OpenAPIRequestBody    `json:"requestBodies,omitempty"`
 	Headers         map[string]OpenAPIHeader         `json:"headers,omitempty"`
 	SecuritySchemes map[string]OpenAPISecurityScheme `json:"securitySchemes,omitempty"`
+	// ClickyFilters holds the reusable named-filter definitions referenced by
+	// filter parameters' x-clicky-lookup.$ref, emitted under x-clicky-filters.
+	ClickyFilters map[string]entity.FilterSpec `json:"x-clicky-filters,omitempty"`
 }
 
 // OpenAPISecurityScheme represents a security scheme
@@ -280,8 +307,8 @@ func (g *OpenAPIGenerator) GenerateFromService(service *RPCService) *OpenAPISpec
 		spec.Paths[path] = openAPIPath
 	}
 
-	// Add components if any schemas were generated
-	if len(g.components.Schemas) > 0 {
+	// Add components if any schemas or reusable filter definitions were generated
+	if len(g.components.Schemas) > 0 || len(g.components.ClickyFilters) > 0 {
 		spec.Components = g.components
 	}
 
@@ -349,6 +376,9 @@ func (g *OpenAPIGenerator) convertOperationToOpenAPI(op RPCOperation) OpenAPIOpe
 		}
 		if role := ParamRole(op, param); role != "" {
 			openAPIParam.Clicky = &ClickyParameterMeta{Role: role}
+			if role == "filter" {
+				openAPIParam.Lookup = g.filterLookupMeta(op, param.Name)
+			}
 		}
 		openAPIOp.Parameters = append(openAPIOp.Parameters, openAPIParam)
 	}
@@ -395,6 +425,42 @@ func (g *OpenAPIGenerator) convertOperationToOpenAPI(op RPCOperation) OpenAPIOpe
 	}
 
 	return openAPIOp
+}
+
+// filterLookupMeta builds the x-clicky-lookup extension for a filter parameter
+// that references a reusable named filter, registering the filter's definition
+// into components.x-clicky-filters. Returns nil when the parameter is not backed
+// by a named filter (a plain Filter[ListOpts] keeps the convention-only path).
+func (g *OpenAPIGenerator) filterLookupMeta(op RPCOperation, paramName string) *ClickyLookupMeta {
+	if op.Clicky == nil || op.Clicky.Entity == "" {
+		return nil
+	}
+	info, ok := clicky.GetEntity(op.Clicky.Entity)
+	if !ok {
+		return nil
+	}
+	filterName, ok := info.FilterRefs[paramName]
+	if !ok {
+		return nil
+	}
+	nf, ok := entity.GetFilter(filterName)
+	if !ok {
+		return nil
+	}
+
+	spec := nf.Spec()
+	if g.components.ClickyFilters == nil {
+		g.components.ClickyFilters = make(map[string]entity.FilterSpec)
+	}
+	g.components.ClickyFilters[filterName] = spec
+
+	return &ClickyLookupMeta{
+		Ref:         "#/components/x-clicky-filters/" + filterName,
+		URL:         op.Path,
+		Filter:      paramName,
+		SearchParam: "__lookup_q",
+		Multi:       spec.Multi,
+	}
 }
 
 // ParamRole classifies a parameter within its operation, deriving the
