@@ -17,6 +17,8 @@ type jsonSchema struct {
 	Required   []string                   `json:"required"`
 	Aliases    []string                   `json:"x-clicky-aliases"`
 	Parent     string                     `json:"x-clicky-parent"`
+	Icon       string                     `json:"x-clicky-icon"`
+	Title      string                     `json:"x-clicky-title"`
 }
 
 // schemaProperty is one property's schema plus its x-clicky-* annotations.
@@ -52,6 +54,8 @@ func (f schemaField) isArray() bool { return f.JSONType == "array" }
 type parsedSchema struct {
 	Aliases []string
 	Parent  string
+	Icon    string
+	Title   string
 	IDKey   string
 	NameKey string
 	Fields  []schemaField
@@ -75,7 +79,7 @@ func parseSchema(raw []byte) (*parsedSchema, error) {
 	}
 	sort.Strings(names)
 
-	ps := &parsedSchema{Aliases: doc.Aliases, Parent: doc.Parent}
+	ps := &parsedSchema{Aliases: doc.Aliases, Parent: doc.Parent, Icon: doc.Icon, Title: doc.Title}
 	seen := map[string]int{}
 	for _, name := range names {
 		p := doc.Properties[name]

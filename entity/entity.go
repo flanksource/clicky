@@ -1,4 +1,4 @@
-package clicky
+package entity
 
 import (
 	"context"
@@ -57,6 +57,11 @@ type EntityInfo struct {
 	Name        string
 	Parent      string
 	Aliases     []string
+	// Icon is an opaque UI icon name carried through to the OpenAPI surface
+	// (x-clicky.surfaces[].icon). Empty for entities that declare no icon.
+	Icon string
+	// Title overrides the auto-generated surface title when non-empty.
+	Title       string
 	Type        reflect.Type
 	ListType    reflect.Type
 	Operations  []EntityOperation
@@ -69,6 +74,10 @@ type EntityInfo struct {
 	// Use/As helper). The OpenAPI layer uses it to emit an x-clicky-lookup $ref
 	// to the shared filter definition. Nil when no filters reference a named one.
 	FilterRefs map[string]string
+	// ToolGroup names the group all of this entity's operations belong to. It is
+	// inherited by every generated operation (an action may override it) and is
+	// used by AI tool-preference layers to toggle related tools together.
+	ToolGroup string
 }
 
 // EntityOperation represents a single CRUD operation.
@@ -118,6 +127,9 @@ type ActionInfo struct {
 	// argument (and the `id` passed to the run func is empty). Use for
 	// actions whose target is supplied entirely through flags.
 	OptionalID bool
+	// ToolGroup overrides the entity's tool group for this action only. Empty
+	// means the action inherits the entity's group.
+	ToolGroup string
 }
 
 // BulkActionInfo is the type-erased representation of a bulk action.
@@ -294,7 +306,7 @@ type EntityAction interface {
 	actionInfo() ActionInfo
 }
 
-type actionSpec[R any] struct {
+type ActionSpec[R any] struct {
 	name       string
 	short      string
 	method     string
@@ -302,43 +314,44 @@ type actionSpec[R any] struct {
 	runCtx     func(ctx context.Context, id string, flags map[string]string) (R, error)
 	flags      ActionFlags
 	optionalID bool
+	toolGroup  string
 }
 
 // Action creates a typed custom operation on a single entity by ID.
-func Action[R any](name string, fn func(id string, flags map[string]string) (R, error)) *actionSpec[R] {
-	return &actionSpec[R]{name: name, run: fn}
+func Action[R any](name string, fn func(id string, flags map[string]string) (R, error)) *ActionSpec[R] {
+	return &ActionSpec[R]{name: name, run: fn}
 }
 
 // ActionWithFlags creates a typed custom operation with typed action flags.
-func ActionWithFlags[R any](name string, flags ActionFlags, fn func(id string, flags map[string]string) (R, error)) *actionSpec[R] {
-	return &actionSpec[R]{name: name, flags: flags, run: fn}
+func ActionWithFlags[R any](name string, flags ActionFlags, fn func(id string, flags map[string]string) (R, error)) *ActionSpec[R] {
+	return &ActionSpec[R]{name: name, flags: flags, run: fn}
 }
 
 // ActionWithContext creates a typed action whose run closure receives the
 // request-scoped context (cmd.Context() on the CLI, r.Context() over HTTP), so
 // it can resolve a per-request database/config instead of a process global.
-func ActionWithContext[R any](name string, fn func(ctx context.Context, id string, flags map[string]string) (R, error)) *actionSpec[R] {
-	return &actionSpec[R]{name: name, runCtx: fn}
+func ActionWithContext[R any](name string, fn func(ctx context.Context, id string, flags map[string]string) (R, error)) *ActionSpec[R] {
+	return &ActionSpec[R]{name: name, runCtx: fn}
 }
 
 // ActionWithFlagsAndContext is ActionWithContext with typed action flags.
-func ActionWithFlagsAndContext[R any](name string, flags ActionFlags, fn func(ctx context.Context, id string, flags map[string]string) (R, error)) *actionSpec[R] {
-	return &actionSpec[R]{name: name, flags: flags, runCtx: fn}
+func ActionWithFlagsAndContext[R any](name string, flags ActionFlags, fn func(ctx context.Context, id string, flags map[string]string) (R, error)) *ActionSpec[R] {
+	return &ActionSpec[R]{name: name, flags: flags, runCtx: fn}
 }
 
-func (a *actionSpec[R]) WithShort(short string) *actionSpec[R] {
+func (a *ActionSpec[R]) WithShort(short string) *ActionSpec[R] {
 	a.short = short
 	return a
 }
 
-func (a *actionSpec[R]) WithFlags(flags ActionFlags) *actionSpec[R] {
+func (a *ActionSpec[R]) WithFlags(flags ActionFlags) *ActionSpec[R] {
 	a.flags = flags
 	return a
 }
 
 // WithMethod overrides the inferred HTTP method for the generated RPC/OpenAPI
 // action route. Leave empty to keep the default inference behavior.
-func (a *actionSpec[R]) WithMethod(method string) *actionSpec[R] {
+func (a *ActionSpec[R]) WithMethod(method string) *ActionSpec[R] {
 	a.method = method
 	return a
 }
@@ -346,12 +359,19 @@ func (a *actionSpec[R]) WithMethod(method string) *actionSpec[R] {
 // WithOptionalID makes the positional <id> argument optional on the
 // generated action command. Use for actions whose target is supplied
 // entirely through flags; the `id` passed to the run func is then empty.
-func (a *actionSpec[R]) WithOptionalID() *actionSpec[R] {
+func (a *ActionSpec[R]) WithOptionalID() *ActionSpec[R] {
 	a.optionalID = true
 	return a
 }
 
-func (a *actionSpec[R]) actionID(flagMap map[string]string, args []string) (string, error) {
+// WithToolGroup overrides the entity's tool group for this action only. Empty
+// (the default) means the action inherits the entity's group.
+func (a *ActionSpec[R]) WithToolGroup(group string) *ActionSpec[R] {
+	a.toolGroup = group
+	return a
+}
+
+func (a *ActionSpec[R]) actionID(flagMap map[string]string, args []string) (string, error) {
 	id := flagMap["id"]
 	if id == "" && len(args) > 0 {
 		id = args[0]
@@ -362,7 +382,7 @@ func (a *actionSpec[R]) actionID(flagMap map[string]string, args []string) (stri
 	return id, nil
 }
 
-func (a *actionSpec[R]) actionInfo() ActionInfo {
+func (a *ActionSpec[R]) actionInfo() ActionInfo {
 	info := ActionInfo{
 		Name:         a.name,
 		Short:        a.short,
@@ -370,6 +390,7 @@ func (a *actionSpec[R]) actionInfo() ActionInfo {
 		FlagsType:    actionFlagsType(a.flags),
 		ResponseType: responseTypeOf[R](),
 		OptionalID:   a.optionalID,
+		ToolGroup:    a.toolGroup,
 	}
 	if a.runCtx != nil {
 		info.ContextDataFunc = func(ctx context.Context, flagMap map[string]string, args []string) (any, error) {
@@ -397,7 +418,7 @@ type EntityBulkAction interface {
 	bulkActionInfo(resolveOpts func(map[string]string) (any, error)) BulkActionInfo
 }
 
-type bulkActionSpec[R any] struct {
+type BulkActionSpec[R any] struct {
 	name       string
 	short      string
 	run        func(ids []string, flags map[string]string) (R, error)
@@ -406,15 +427,15 @@ type bulkActionSpec[R any] struct {
 }
 
 // BulkAction creates a typed custom operation on multiple entity IDs.
-func BulkAction[R any](name string, fn func(ids []string, flags map[string]string) (R, error)) *bulkActionSpec[R] {
-	return &bulkActionSpec[R]{name: name, run: fn}
+func BulkAction[R any](name string, fn func(ids []string, flags map[string]string) (R, error)) *BulkActionSpec[R] {
+	return &BulkActionSpec[R]{name: name, run: fn}
 }
 
 // BulkFilterAction creates a typed custom operation that runs against a typed
 // filtered list selection instead of explicit IDs.
-func BulkFilterAction[ListOpts any, R any](name string, fn func(opts ListOpts, flags map[string]string) (R, error)) *bulkActionSpec[R] {
+func BulkFilterAction[ListOpts any, R any](name string, fn func(opts ListOpts, flags map[string]string) (R, error)) *BulkActionSpec[R] {
 	listType := reflect.TypeOf((*ListOpts)(nil)).Elem()
-	return &bulkActionSpec[R]{
+	return &BulkActionSpec[R]{
 		name:     name,
 		listType: listType,
 		filterFunc: func(opts any, flagMap map[string]string) (R, error) {
@@ -434,18 +455,18 @@ func BulkActionWithFilter[ListOpts any, R any](
 	name string,
 	run func(ids []string, flags map[string]string) (R, error),
 	runFilter func(opts ListOpts, flags map[string]string) (R, error),
-) *bulkActionSpec[R] {
+) *BulkActionSpec[R] {
 	action := BulkFilterAction(name, runFilter)
 	action.run = run
 	return action
 }
 
-func (b *bulkActionSpec[R]) WithShort(short string) *bulkActionSpec[R] {
+func (b *BulkActionSpec[R]) WithShort(short string) *BulkActionSpec[R] {
 	b.short = short
 	return b
 }
 
-func (b *bulkActionSpec[R]) bulkActionInfo(resolveOpts func(map[string]string) (any, error)) BulkActionInfo {
+func (b *BulkActionSpec[R]) bulkActionInfo(resolveOpts func(map[string]string) (any, error)) BulkActionInfo {
 	info := BulkActionInfo{
 		Name:         b.name,
 		Short:        b.short,
@@ -529,6 +550,12 @@ type Entity[T EntityItem, ListOpts any, R any] struct {
 
 	// ValidArgs provides shell completion for the ID argument.
 	ValidArgs func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective)
+
+	// ToolGroup names the group all of this entity's operations belong to. It is
+	// inherited by every generated operation; an action may override it via
+	// WithToolGroup. AI tool-preference layers use it to toggle related tools
+	// together.
+	ToolGroup string
 }
 
 // entityIDFrom resolves the entity id from the `id` flag or the first
@@ -584,6 +611,7 @@ func RegisterEntity[T EntityItem, ListOpts any, R any](e Entity[T, ListOpts, R])
 		ListType:   reflect.TypeOf((*ListOpts)(nil)).Elem(),
 		ValidArgs:  e.ValidArgs,
 		FilterRefs: entityFilterRefs(e.Filters),
+		ToolGroup:  e.ToolGroup,
 	}
 
 	if e.ListPagedWithContext != nil || e.ListPaged != nil || e.ListWithContext != nil || e.List != nil {
@@ -994,7 +1022,7 @@ func generateEntityCLI(parent *cobra.Command, entity EntityInfo) {
 			ContextDataFunc: action.ContextDataFunc,
 			FlagsType:       action.FlagsType,
 			ResponseType:    action.ResponseType,
-		}, entity.ValidArgs, "action", "", "entity", action.Name, "id", false, false, action.OptionalID)
+		}, entity.ValidArgs, "action", "", "entity", action.Name, "id", false, false, action.OptionalID, action.ToolGroup)
 	}
 
 	for _, ba := range entity.BulkActions {
@@ -1075,6 +1103,7 @@ func generateEntitySubcommand(parent *cobra.Command, entity EntityInfo, op Entit
 			false,
 			false,
 			false,
+			"",
 		)
 	case "create":
 		generateBodyCommand(parent, "create", fmt.Sprintf("Create a %s", entity.Name), op)
@@ -1095,6 +1124,7 @@ func generateEntitySubcommand(parent *cobra.Command, entity EntityInfo, op Entit
 			false,
 			false,
 			false,
+			"",
 		)
 	}
 }
@@ -1145,7 +1175,7 @@ func generateListCommand(parent *cobra.Command, entity EntityInfo, op EntityOper
 			if err != nil {
 				return err
 			}
-			MustPrint(result, Flags.FormatOptions)
+			_ = RenderResult(result)
 			return nil
 		},
 	}
@@ -1156,7 +1186,7 @@ func generateListCommand(parent *cobra.Command, entity EntityInfo, op EntityOper
 		op.BindCompletions(cmd)
 	}
 
-	annotateEntityOperationCommand(cmd, parent, "list", "", "collection", "", "", op.LookupFunc != nil, false, false)
+	annotateEntityOperationCommand(cmd, parent, "list", "", "collection", "", "", op.LookupFunc != nil, false, false, "")
 	parent.AddCommand(cmd)
 	storeEntityDataFuncs(cmd, op)
 	SetCommandResponseMeta(cmd, ResponseOpenAPIMeta{
@@ -1187,6 +1217,7 @@ func generateIDCommand(
 	supportsLookup bool,
 	supportsFilterMode bool,
 	optionalID bool,
+	toolGroup string,
 ) {
 	hasFlags := op.FlagsType != nil
 	idToken := "<id>"
@@ -1216,7 +1247,7 @@ func generateIDCommand(
 				return err
 			}
 			if result != nil {
-				MustPrint(result, Flags.FormatOptions)
+				_ = RenderResult(result)
 			}
 			return nil
 		},
@@ -1233,7 +1264,7 @@ func generateIDCommand(
 	if method == "" {
 		method = op.Method
 	}
-	annotateEntityOperationCommand(cmd, parent, metaVerb, method, scope, actionName, idParam, supportsLookup, supportsFilterMode, optionalID)
+	annotateEntityOperationCommand(cmd, parent, metaVerb, method, scope, actionName, idParam, supportsLookup, supportsFilterMode, optionalID, toolGroup)
 	parent.AddCommand(cmd)
 	storeEntityDataFuncs(cmd, op)
 	SetCommandResponseMeta(cmd, ResponseOpenAPIMeta{
@@ -1277,7 +1308,7 @@ func generateBodyCommand(parent *cobra.Command, verb, short string, op EntityOpe
 			}
 
 			if len(callArgs) > 0 {
-				parsed, err := ParseArgumentsAsMap(callArgs)
+				parsed, err := ParseArgs(callArgs)
 				if err != nil {
 					return err
 				}
@@ -1303,7 +1334,7 @@ func generateBodyCommand(parent *cobra.Command, verb, short string, op EntityOpe
 				return err
 			}
 			if result != nil {
-				MustPrint(result, Flags.FormatOptions)
+				_ = RenderResult(result)
 			}
 			return nil
 		},
@@ -1314,7 +1345,7 @@ func generateBodyCommand(parent *cobra.Command, verb, short string, op EntityOpe
 		scope = "entity"
 		idParam = "id"
 	}
-	annotateEntityOperationCommand(cmd, parent, verb, "", scope, "", idParam, false, false, false)
+	annotateEntityOperationCommand(cmd, parent, verb, "", scope, "", idParam, false, false, false, "")
 	parent.AddCommand(cmd)
 	storeEntityDataFuncs(cmd, op)
 	SetCommandResponseMeta(cmd, ResponseOpenAPIMeta{
@@ -1349,7 +1380,7 @@ func generateBulkActionCommand(parent *cobra.Command, ba BulkActionInfo) {
 				return err
 			}
 			if result != nil {
-				MustPrint(result, Flags.FormatOptions)
+				_ = RenderResult(result)
 			}
 			return nil
 		},
@@ -1362,7 +1393,7 @@ func generateBulkActionCommand(parent *cobra.Command, ba BulkActionInfo) {
 		}
 	}
 
-	annotateEntityOperationCommand(cmd, parent, "action", "", "collection", ba.Name, "id", ba.LookupFunc != nil, ba.FilterFunc != nil, false)
+	annotateEntityOperationCommand(cmd, parent, "action", "", "collection", ba.Name, "id", ba.LookupFunc != nil, ba.FilterFunc != nil, false, "")
 	parent.AddCommand(cmd)
 	dataFuncRegistry.Store(cmd, execute)
 	SetCommandResponseMeta(cmd, ResponseOpenAPIMeta{Type: ba.ResponseType})

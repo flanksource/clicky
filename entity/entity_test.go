@@ -1,4 +1,4 @@
-package clicky
+package entity
 
 import (
 	"encoding/json"
@@ -6,7 +6,15 @@ import (
 	"testing"
 
 	"github.com/flanksource/clicky/api"
+	"github.com/flanksource/clicky/formatters"
 )
+
+// formatForTest renders o with the given options using a fresh format manager.
+// The entity package cannot import the root clicky package (which owns the
+// clicky.Format helper), so tests render through formatters directly.
+func formatForTest(o any, opts formatters.FormatOptions) (string, error) {
+	return formatters.NewFormatManager().FormatWithOptions(opts, o)
+}
 
 type sampleTableEntity struct {
 	ID     string
@@ -107,7 +115,7 @@ func TestWrappedEntityPrettyAndHTMLFormatting(t *testing.T) {
 
 	for _, tt := range testCases {
 		for _, format := range formats {
-			output, err := Format(tt.input, FormatOptions{
+			output, err := formatForTest(tt.input, formatters.FormatOptions{
 				Format:  format,
 				NoColor: true,
 			})
@@ -160,7 +168,7 @@ func TestWrappedEntityClickyRowsIncludeHiddenID(t *testing.T) {
 	}
 
 	for _, tt := range testCases {
-		output, err := Format(tt.input, FormatOptions{Format: "html-react"})
+		output, err := formatForTest(tt.input, formatters.FormatOptions{Format: "html-react"})
 		if err != nil {
 			t.Fatalf("%s html-react format failed: %v", tt.name, err)
 		}

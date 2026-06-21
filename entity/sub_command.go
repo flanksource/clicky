@@ -1,4 +1,4 @@
-package clicky
+package entity
 
 import (
 	"strings"
@@ -75,7 +75,7 @@ func flushPendingSubCommands(root *cobra.Command) {
 				if actionName == "" {
 					actionName = p.cmd.Use
 				}
-				annotateEntityOperationCommand(p.cmd, parent, "action", "", "collection", actionName, "", false, false, false)
+				annotateEntityOperationCommand(p.cmd, parent, "action", "", "collection", actionName, "", false, false, false, "")
 			}
 			parent.AddCommand(p.cmd)
 		}

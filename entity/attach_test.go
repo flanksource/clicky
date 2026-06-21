@@ -7,7 +7,6 @@ import (
 	. "github.com/onsi/gomega"
 	"github.com/spf13/cobra"
 
-	"github.com/flanksource/clicky"
 	"github.com/flanksource/clicky/api"
 )
 
@@ -99,7 +98,7 @@ var _ = Describe("EntityOptions sourcing from another entity", func() {
 	BeforeEach(resetFilterRegistry)
 
 	It("resolves a task entity's owner options from the users entity lookup", func() {
-		clicky.RegisterEntity(clicky.Entity[filterTestUser, filterTestUserOpts, filterTestUser]{
+		RegisterEntity(Entity[filterTestUser, filterTestUserOpts, filterTestUser]{
 			Name: "attach-users",
 			List: func(filterTestUserOpts) ([]filterTestUser, error) {
 				return []filterTestUser{{ID: "u1", Name: "Alice"}, {ID: "u2", Name: "Bob"}}, nil
@@ -108,20 +107,20 @@ var _ = Describe("EntityOptions sourcing from another entity", func() {
 
 		RegisterFilter(NamedFilter{Name: "attach-users-src", Source: EntityOptions("attach-users")})
 
-		clicky.RegisterEntity(clicky.Entity[filterTestUser, attachTaskOpts, filterTestUser]{
+		RegisterEntity(Entity[filterTestUser, attachTaskOpts, filterTestUser]{
 			Name:    "attach-tasks",
-			Filters: []clicky.Filter[attachTaskOpts]{Use[attachTaskOpts]("attach-users-src").As("owner")},
+			Filters: []Filter[attachTaskOpts]{Use[attachTaskOpts]("attach-users-src").As("owner")},
 			List:    func(attachTaskOpts) ([]filterTestUser, error) { return nil, nil },
 		})
 
 		root := &cobra.Command{Use: "root"}
-		clicky.GenerateCLI(root)
+		GenerateCLI(root)
 
 		listCmd, _, err := root.Find([]string{"attach-tasks", "list"})
 		Expect(err).ToNot(HaveOccurred())
 		Expect(listCmd).ToNot(BeNil())
 
-		lookupFunc := clicky.GetLookupFunc(listCmd)
+		lookupFunc := GetLookupFunc(listCmd)
 		Expect(lookupFunc).ToNot(BeNil())
 
 		resp, err := lookupFunc(map[string]string{}, nil)

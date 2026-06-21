@@ -1,4 +1,4 @@
-package clicky
+package entity
 
 import (
 	"context"
@@ -210,7 +210,7 @@ func addNamedCommand[T any, R any](
 		subFilters = carrier.Filters()
 	}
 	if meta := GetCommandOpenAPIMeta(parent); meta != nil {
-		annotateEntityOperationCommand(cmd, parent, "action", "", "collection", name, "", len(subFilters) > 0, false, false)
+		annotateEntityOperationCommand(cmd, parent, "action", "", "collection", name, "", len(subFilters) > 0, false, false, "")
 	}
 	if len(subFilters) > 0 {
 		lookupFuncRegistry.Store(cmd, buildLookupFunc[T](subFilters))
@@ -364,22 +364,16 @@ func addNamedCommand[T any, R any](
 			// being collapsed to its Error() line. The error is still
 			// returned so cobra exits non-zero.
 			if rich, ok := renderableError(err); ok {
-				if specErr := Flags.ParseFormatSpec(); specErr != nil {
-					return specErr
+				if renderErr := RenderResult(rich); renderErr != nil {
+					return renderErr
 				}
-				PrintAndWriteSinks(rich, Flags.FormatOptions)
 			} else {
 				logger.GetSlogLogger().WithSkipReportLevel(2).Errorf("Command %s failed: %v", name, err)
 			}
 			return err
 		}
 
-		if err := Flags.ParseFormatSpec(); err != nil {
-			return err
-		}
-		PrintAndWriteSinks(result, Flags.FormatOptions)
-
-		return nil
+		return RenderResult(result)
 	}
 
 	return cmd

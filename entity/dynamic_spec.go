@@ -1,4 +1,4 @@
-package clicky
+package entity
 
 import (
 	"context"
@@ -33,6 +33,10 @@ type DynamicEntitySpec struct {
 	Name     string
 	Parent   string
 	Aliases  []string
+	// Icon is an opaque UI icon name emitted on the surface (x-clicky.surfaces[].icon).
+	Icon string
+	// Title overrides the auto-generated surface title when non-empty.
+	Title    string
 	ListType reflect.Type // generated struct type: flag binding + OpenAPI params
 	ItemType reflect.Type // generated item struct type for the response schema
 	List     ContextDataFunc
@@ -67,6 +71,8 @@ func RegisterDynamicEntity(spec DynamicEntitySpec) {
 		Name:       spec.Name,
 		Parent:     spec.Parent,
 		Aliases:    spec.Aliases,
+		Icon:       spec.Icon,
+		Title:      spec.Title,
 		Type:       responseType,
 		ListType:   spec.ListType,
 		FilterRefs: spec.FilterRefs,
