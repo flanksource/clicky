@@ -1,6 +1,30 @@
 package clicky
 
-import "github.com/flanksource/clicky/api"
+import (
+	"github.com/flanksource/clicky/api"
+	"github.com/spf13/cobra"
+)
+
+// --- entity registration surface (subset used by the entityreg lint tests) ---
+
+type EntityItem interface {
+	GetID() string
+	GetName() string
+}
+
+type EntityBuilder[T EntityItem, ListOpts any, R any] struct{}
+
+func NewEntity[T EntityItem, ListOpts any, R any](name string) *EntityBuilder[T, ListOpts, R] {
+	return &EntityBuilder[T, ListOpts, R]{}
+}
+
+func (b *EntityBuilder[T, ListOpts, R]) List(fn func(ListOpts) ([]T, error)) *EntityBuilder[T, ListOpts, R] {
+	return b
+}
+
+func (b *EntityBuilder[T, ListOpts, R]) Register() {}
+
+func GenerateCLI(parent *cobra.Command) {}
 
 func Text(content string, styles ...string) api.Text { return api.Text{} }
 

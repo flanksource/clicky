@@ -32,20 +32,55 @@ type Result struct {
 
 // Violation is a display-oriented analysis diagnostic.
 type Violation struct {
-	Package string `json:"package,omitempty"`
-	File    string `json:"file,omitempty"`
-	Line    int    `json:"line,omitempty"`
-	Column  int    `json:"column,omitempty"`
-	Rule    string `json:"rule,omitempty"`
-	Message string `json:"message,omitempty"`
+	Package  string   `json:"package,omitempty"`
+	File     string   `json:"file,omitempty"`
+	Line     int      `json:"line,omitempty"`
+	Column   int      `json:"column,omitempty"`
+	Severity Severity `json:"severity,omitempty"`
+	Rule     string   `json:"rule,omitempty"`
+	Message  string   `json:"message,omitempty"`
 }
 
-// HasIssues reports whether the lint run found diagnostics or execution errors.
+// HasIssues reports whether the lint run found any diagnostics (error or
+// warning) or execution errors. Used to decide whether output is worth showing.
 func (r *Result) HasIssues() bool {
 	if r == nil {
 		return false
 	}
 	return len(r.Violations) > 0 || len(r.Errors) > 0
+}
+
+// HasErrors reports whether the run found error-severity violations or
+// execution errors. This — not HasIssues — drives the non-zero exit status;
+// warnings are advisory.
+func (r *Result) HasErrors() bool {
+	if r == nil {
+		return false
+	}
+	return r.ErrorCount() > 0 || len(r.Errors) > 0
+}
+
+// ErrorCount counts error-severity violations.
+func (r *Result) ErrorCount() int {
+	return r.countSeverity(SeverityError)
+}
+
+// WarningCount counts warning-severity violations.
+func (r *Result) WarningCount() int {
+	return r.countSeverity(SeverityWarning)
+}
+
+func (r *Result) countSeverity(sev Severity) int {
+	if r == nil {
+		return 0
+	}
+	n := 0
+	for _, v := range r.Violations {
+		if v.Severity == sev {
+			n++
+		}
+	}
+	return n
 }
 
 // Run loads the requested Go packages, runs clickylint, and returns normalized
@@ -106,21 +141,32 @@ func Run(opts RunOptions) (*Result, error) {
 		for _, diag := range act.Diagnostics {
 			pos := act.Package.Fset.PositionFor(diag.Pos, false)
 			result.Violations = append(result.Violations, Violation{
-				Package: act.Package.PkgPath,
-				File:    pos.Filename,
-				Line:    pos.Line,
-				Column:  pos.Column,
-				Rule:    RuleForMessage(diag.Message),
-				Message: diag.Message,
+				Package:  act.Package.PkgPath,
+				File:     pos.Filename,
+				Line:     pos.Line,
+				Column:   pos.Column,
+				Severity: severityFromCategory(diag.Category),
+				Rule:     RuleForMessage(diag.Message),
+				Message:  diag.Message,
 			})
 		}
 	}
 
 	sortViolations(result.Violations)
 	result.Errors = uniqueStrings(result.Errors)
-	result.Success = !result.HasIssues()
+	result.Success = !result.HasErrors()
 	result.Duration = time.Since(start)
 	return result, nil
+}
+
+// severityFromCategory maps a go/analysis Diagnostic.Category onto a Severity,
+// defaulting to error so an unclassified diagnostic fails loudly rather than
+// being silently demoted to a warning.
+func severityFromCategory(category string) Severity {
+	if Severity(category) == SeverityWarning {
+		return SeverityWarning
+	}
+	return SeverityError
 }
 
 // RuleForMessage derives a stable rule bucket from a go/analysis diagnostic.

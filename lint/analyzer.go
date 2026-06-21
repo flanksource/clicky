@@ -62,11 +62,14 @@ func run(pass *analysis.Pass) (any, error) {
 		switch node := n.(type) {
 		case *ast.CompositeLit:
 			checkCompositeLiteral(pass, node)
+			checkManualCobraCommand(pass, node)
 		case *ast.FuncDecl:
 			checkFuncReturnType(pass, node)
 			checkRenderBuilderRenderCalls(pass, node)
 		case *ast.CallExpr:
 			checkDirectStdout(pass, node)
+			checkHTTPHandlerRegistration(pass, node)
+			checkEntityTableProvider(pass, node)
 		}
 	})
 
@@ -134,11 +137,11 @@ func checkCompositeLiteral(pass *analysis.Pass, lit *ast.CompositeLit) {
 
 	if typeName == "Text" {
 		if len(lit.Elts) > 0 {
-			pass.Reportf(lit.Pos(),
+			report(pass, SeverityWarning, lit.Pos(),
 				"avoid direct api.Text struct literal; use clicky.Text(...) or api.Text{}.Append(...)")
 		}
 	} else if helper, ok := helperBackedTypes[typeName]; ok {
-		pass.Reportf(lit.Pos(),
+		report(pass, SeverityWarning, lit.Pos(),
 			"avoid direct api.%s struct literal; use %s", typeName, helper)
 	}
 
@@ -170,12 +173,12 @@ func checkContentField(pass *analysis.Pass, kv *ast.KeyValueExpr) {
 	switch v := kv.Value.(type) {
 	case *ast.BinaryExpr:
 		if v.Op == token.ADD {
-			pass.Reportf(kv.Value.Pos(),
+			report(pass, SeverityWarning, kv.Value.Pos(),
 				"avoid string concatenation in Content field; use .Append()/.Appendf()")
 		}
 	case *ast.CallExpr:
 		if isFmtSprintf(v) {
-			pass.Reportf(kv.Value.Pos(),
+			report(pass, SeverityWarning, kv.Value.Pos(),
 				"avoid fmt.Sprintf in Content field; use .Appendf()")
 		}
 	}
@@ -206,7 +209,7 @@ func checkChildrenField(pass *analysis.Pass, kv *ast.KeyValueExpr) {
 			continue
 		}
 		if isClickyTextType(pass, innerLit) {
-			pass.Reportf(kv.Pos(),
+			report(pass, SeverityWarning, kv.Pos(),
 				"avoid Children slice literal with api.Text elements; use .Add()/.Append() chaining")
 			return
 		}
@@ -227,7 +230,7 @@ func checkFuncReturnType(pass *analysis.Pass, fn *ast.FuncDecl) {
 	for _, result := range fn.Type.Results.List {
 		t := pass.TypesInfo.TypeOf(result.Type)
 		if t != nil && isClickyTextTypesType(t) {
-			pass.Reportf(fn.Name.Pos(),
+			report(pass, SeverityWarning, fn.Name.Pos(),
 				"%s returns api.Text; return api.Textable interface or rename to Pretty/PrettyFull/PrettyRow",
 				name)
 			return
