@@ -7,6 +7,16 @@ type Textable interface {
 	Markdown() string
 }
 
+type ColumnDef struct {
+	Name  string
+	Label string
+}
+
+type TableProvider interface {
+	Columns() []ColumnDef
+	Row() map[string]any
+}
+
 type Text struct {
 	Content  string
 	Style    string

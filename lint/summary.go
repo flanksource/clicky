@@ -25,20 +25,24 @@ func NewSummaryView(result *Result, limit int) *SummaryView {
 }
 
 func (s *SummaryView) Pretty() api.Text {
-	violations := 0
-	errors := 0
+	errs, warns, loadErrs := 0, 0, 0
 	if s.Result != nil {
-		violations = len(s.Result.Violations)
-		errors = len(s.Result.Errors)
+		errs = s.Result.ErrorCount()
+		warns = s.Result.WarningCount()
+		loadErrs = len(s.Result.Errors)
 	}
 	style := "text-blue-500"
-	if violations == 0 && errors == 0 {
+	switch {
+	case errs == 0 && warns == 0 && loadErrs == 0:
 		style = "text-green-600"
-	}
-	text := fmt.Sprintf("Lint summary: %d violations", violations)
-	if errors > 0 {
-		text += fmt.Sprintf(" (%d errors)", errors)
+	case errs > 0 || loadErrs > 0:
 		style = "text-red-500"
+	default:
+		style = "text-yellow-600"
+	}
+	text := fmt.Sprintf("Lint summary: %d errors, %d warnings", errs, warns)
+	if loadErrs > 0 {
+		text += fmt.Sprintf(" (%d load errors)", loadErrs)
 	}
 	return api.Text{Content: text, Style: style}
 }
@@ -65,24 +69,26 @@ type linterSummaryNode struct {
 }
 
 func (n *linterSummaryNode) Pretty() api.Text {
-	count := len(n.violations)
-	if len(n.errors) > 0 {
-		text := "❌ " + n.linter
-		if count > 0 {
-			text += fmt.Sprintf(" (%d violations, error)", count)
+	errs, warns := 0, 0
+	for _, v := range n.violations {
+		if v.Severity == SeverityWarning {
+			warns++
 		} else {
-			text += " (error)"
+			errs++
 		}
+	}
+	if len(n.errors) > 0 || errs > 0 {
+		text := fmt.Sprintf("❌ %s (%d errors, %d warnings)", n.linter, errs, warns)
 		if summary := firstErrorLine(strings.Join(n.errors, "\n")); summary != "" {
 			text += " - " + summary
 		}
 		return api.Text{Content: text, Style: "text-red-600"}
 	}
-	if count == 0 {
+	if warns == 0 {
 		return api.Text{Content: "✅ " + n.linter, Style: "text-green-600"}
 	}
 	return api.Text{
-		Content: fmt.Sprintf("⚠ %s (%d violations)", n.linter, count),
+		Content: fmt.Sprintf("⚠ %s (%d warnings)", n.linter, warns),
 		Style:   "text-yellow-600",
 	}
 }
@@ -98,6 +104,7 @@ func (n *linterSummaryNode) GetChildren() []api.TreeNode {
 
 	type ruleGroup struct {
 		rule       string
+		severity   Severity
 		violations []Violation
 	}
 	byRule := map[string]*ruleGroup{}
@@ -109,7 +116,7 @@ func (n *linterSummaryNode) GetChildren() []api.TreeNode {
 		}
 		g, ok := byRule[key]
 		if !ok {
-			g = &ruleGroup{rule: key}
+			g = &ruleGroup{rule: key, severity: v.Severity}
 			byRule[key] = g
 			order = append(order, key)
 		}
@@ -117,6 +124,9 @@ func (n *linterSummaryNode) GetChildren() []api.TreeNode {
 	}
 	sort.Slice(order, func(i, j int) bool {
 		left, right := byRule[order[i]], byRule[order[j]]
+		if (left.severity == SeverityWarning) != (right.severity == SeverityWarning) {
+			return left.severity != SeverityWarning // errors first
+		}
 		if len(left.violations) != len(right.violations) {
 			return len(left.violations) > len(right.violations)
 		}
@@ -127,6 +137,7 @@ func (n *linterSummaryNode) GetChildren() []api.TreeNode {
 		g := byRule[key]
 		children = append(children, &ruleSummaryNode{
 			rule:       g.rule,
+			severity:   g.severity,
 			workDir:    n.workDir,
 			violations: g.violations,
 			limit:      n.limit,
@@ -147,17 +158,22 @@ func (n *linterErrorNode) GetChildren() []api.TreeNode { return nil }
 
 type ruleSummaryNode struct {
 	rule       string
+	severity   Severity
 	workDir    string
 	violations []Violation
 	limit      int
 }
 
 func (n *ruleSummaryNode) Pretty() api.Text {
-	text := fmt.Sprintf("%s (%d)", n.rule, len(n.violations))
+	label, style := "error", "text-red-500"
+	if n.severity == SeverityWarning {
+		label, style = "warning", "text-yellow-600"
+	}
+	text := fmt.Sprintf("[%s] %s (%d)", label, n.rule, len(n.violations))
 	if msg := firstMessage(n.violations); msg != "" {
 		text += " - " + msg
 	}
-	return api.Text{Content: text, Style: "text-blue-500"}
+	return api.Text{Content: text, Style: style}
 }
 
 func (n *ruleSummaryNode) GetChildren() []api.TreeNode {

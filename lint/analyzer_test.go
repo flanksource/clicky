@@ -51,4 +51,16 @@ var _ = Describe("clickylint", func() {
 		results := analysistest.Run(GinkgoT(), testdata, lint.Analyzer, "directstdout/mainpkg")
 		Expect(results).NotTo(BeEmpty())
 	})
+
+	It("flags manual cobra commands, raw http handlers, and entities missing TableProvider", func() {
+		testdata := analysistest.TestData()
+		results := analysistest.Run(GinkgoT(), testdata, lint.Analyzer, "entityreg/bad")
+		Expect(results).NotTo(BeEmpty())
+	})
+
+	It("allows registered entities with TableProvider and grouping commands", func() {
+		testdata := analysistest.TestData()
+		results := analysistest.Run(GinkgoT(), testdata, lint.Analyzer, "entityreg/good")
+		Expect(results).NotTo(BeEmpty())
+	})
 })

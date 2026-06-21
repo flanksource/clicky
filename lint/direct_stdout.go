@@ -46,7 +46,7 @@ func checkDirectStdout(pass *analysis.Pass, call *ast.CallExpr) {
 	// SelectorExpr (os.Stdout), not an ident. Handle this first because
 	// the package-import branch below requires sel.X to be an ident.
 	if isOsStdStream(sel.X) && isWriterMethod(sel.Sel.Name) {
-		pass.Reportf(call.Pos(),
+		report(pass, SeverityError, call.Pos(),
 			"avoid direct os.%s.%s; prefer clicky.Println / clicky.Fprintln "+
 				"(silence with //clicky:allow-stdout)",
 			selectorTarget(sel.X), sel.Sel.Name)
@@ -60,14 +60,14 @@ func checkDirectStdout(pass *analysis.Pass, call *ast.CallExpr) {
 
 	switch {
 	case isFmtPrintFamily(pkg, sel):
-		pass.Reportf(call.Pos(),
+		report(pass, SeverityError, call.Pos(),
 			"avoid %s.%s; prefer clicky.Println / clicky.Printf or the commons logger "+
 				"so writes serialize with the task renderer (silence with //clicky:allow-stdout)",
 			pkg.Name, sel.Sel.Name)
 
 	case isFmtFprintFamily(pkg, sel):
 		if len(call.Args) > 0 && isOsStdStream(call.Args[0]) {
-			pass.Reportf(call.Args[0].Pos(),
+			report(pass, SeverityError, call.Args[0].Pos(),
 				"avoid fmt.%s writing to os.%s; prefer clicky.Println/Printf/Fprintln "+
 					"(silence with //clicky:allow-stdout)",
 				sel.Sel.Name, selectorTarget(call.Args[0]))

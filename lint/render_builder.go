@@ -44,7 +44,7 @@ func checkRenderBuilderRenderCalls(pass *analysis.Pass, fn *ast.FuncDecl) {
 		if !isClickyRenderType(pass, pass.TypesInfo.TypeOf(sel.X)) {
 			return true
 		}
-		pass.Reportf(call.Pos(),
+		report(pass, SeverityWarning, call.Pos(),
 			"avoid .%s() inside clicky render builders; return api.Text/api.Textable and let the formatter render it",
 			sel.Sel.Name)
 		return true

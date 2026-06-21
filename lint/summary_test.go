@@ -80,8 +80,8 @@ func TestSummaryViewSurfacesErrors(t *testing.T) {
 	}
 
 	view := NewSummaryView(result, 5)
-	if got := view.Pretty().String(); !strings.Contains(got, "1 errors") {
-		t.Fatalf("expected root error count, got %q", got)
+	if got := view.Pretty().String(); !strings.Contains(got, "1 load errors") {
+		t.Fatalf("expected root load error count, got %q", got)
 	}
 	linter := view.GetChildren()[0].(*linterSummaryNode)
 	if got := linter.Pretty().String(); !strings.Contains(got, "package load failed") {
