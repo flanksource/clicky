@@ -46,7 +46,11 @@ type ToolInfo struct {
 	Path          string
 	ClickyVerb    string
 	ClickyScope   string
-	Operation     *rpc.RPCOperation
+	// Group is the tool-group this tool belongs to (clicky/tool-group). When
+	// non-empty the preferences UI presents the group as a single entry and the
+	// group's preference governs every member tool.
+	Group     string
+	Operation *rpc.RPCOperation
 }
 
 func toolInfo(name string, op *rpc.RPCOperation) ToolInfo {
@@ -57,6 +61,7 @@ func toolInfo(name string, op *rpc.RPCOperation) ToolInfo {
 	info.OperationName = op.Name
 	info.Method = strings.ToUpper(op.Method)
 	info.Path = op.Path
+	info.Group = op.Group
 	if op.Clicky != nil {
 		info.ClickyVerb = op.Clicky.Verb
 		info.ClickyScope = op.Clicky.Scope

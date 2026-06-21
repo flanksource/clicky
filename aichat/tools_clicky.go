@@ -76,7 +76,7 @@ func (t *ClickyToolset) DefineRegisteredTools(g *genkit.Genkit) []registeredTool
 // completion/help trees are not useful tools.
 func toolableOperation(op *rpc.RPCOperation) bool {
 	cmd := op.Command
-	if cmd == nil || !cmd.Runnable() || cmd.Hidden {
+	if cmd == nil || !cmd.Runnable() || cmd.Hidden() {
 		return false
 	}
 	if fields := strings.Fields(op.Name); len(fields) > 0 {
