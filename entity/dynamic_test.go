@@ -8,7 +8,6 @@ import (
 	. "github.com/onsi/gomega"
 	"github.com/spf13/cobra"
 
-	"github.com/flanksource/clicky"
 	"github.com/flanksource/clicky/api"
 )
 
@@ -77,7 +76,7 @@ var _ = Describe("Dynamic entity registration", func() {
 			Register()
 
 		root := &cobra.Command{Use: "root"}
-		clicky.GenerateCLI(root)
+		GenerateCLI(root)
 
 		listCmd, _, err := root.Find([]string{"dyn-tickets", "list"})
 		Expect(err).ToNot(HaveOccurred())
@@ -85,7 +84,7 @@ var _ = Describe("Dynamic entity registration", func() {
 		Expect(listCmd.Flags().Lookup("status")).ToNot(BeNil(), "the filter property becomes a CLI flag")
 
 		// List returns rows wrapped with an injected _id.
-		dataFunc := clicky.GetContextDataFunc(listCmd)
+		dataFunc := GetContextDataFunc(listCmd)
 		Expect(dataFunc).ToNot(BeNil())
 		rows, err := dataFunc(context.Background(), map[string]string{}, nil)
 		Expect(err).ToNot(HaveOccurred())
@@ -94,7 +93,7 @@ var _ = Describe("Dynamic entity registration", func() {
 		Expect(string(rowsJSON)).To(ContainSubstring(`"_id":"t1"`))
 
 		// The lookup resolves the named filter's options.
-		lookupFunc := clicky.GetLookupFunc(listCmd)
+		lookupFunc := GetLookupFunc(listCmd)
 		Expect(lookupFunc).ToNot(BeNil())
 		lookup, err := lookupFunc(map[string]string{}, nil)
 		Expect(err).ToNot(HaveOccurred())
@@ -110,14 +109,14 @@ var _ = Describe("Dynamic entity registration", func() {
 			List(func(context.Context, map[string]string) ([]map[string]any, error) { return nil, nil }).
 			Register()
 
-		clicky.RegisterEntity(clicky.Entity[staticIssue, staticIssueOpts, staticIssue]{
+		RegisterEntity(Entity[staticIssue, staticIssueOpts, staticIssue]{
 			Name:    "static-issues",
-			Filters: []clicky.Filter[staticIssueOpts]{Use[staticIssueOpts]("dyn-status").As("status")},
+			Filters: []Filter[staticIssueOpts]{Use[staticIssueOpts]("dyn-status").As("status")},
 			List:    func(staticIssueOpts) ([]staticIssue, error) { return nil, nil },
 		})
 
 		root := &cobra.Command{Use: "root"}
-		clicky.GenerateCLI(root)
+		GenerateCLI(root)
 
 		dynOptions := lookupOptionsJSON(root, "dyn-issues")
 		staticOptions := lookupOptionsJSON(root, "static-issues")
@@ -142,7 +141,7 @@ type staticIssueOpts struct {
 func lookupOptionsJSON(root *cobra.Command, entityName string) string {
 	listCmd, _, err := root.Find([]string{entityName, "list"})
 	Expect(err).ToNot(HaveOccurred())
-	lookupFunc := clicky.GetLookupFunc(listCmd)
+	lookupFunc := GetLookupFunc(listCmd)
 	Expect(lookupFunc).ToNot(BeNil())
 	resp, err := lookupFunc(map[string]string{}, nil)
 	Expect(err).ToNot(HaveOccurred())

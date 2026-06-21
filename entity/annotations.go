@@ -1,4 +1,4 @@
-package clicky
+package entity
 
 import (
 	"strconv"
@@ -12,6 +12,8 @@ const (
 	annotationClickyEntityParent       = "clicky/entity-parent"
 	annotationClickyEntityAliases      = "clicky/entity-aliases"
 	annotationClickyEntityAdmin        = "clicky/entity-admin"
+	annotationClickyEntityIcon         = "clicky/entity-icon"
+	annotationClickyEntityTitle        = "clicky/entity-title"
 	annotationClickyOperationVerb      = "clicky/operation-verb"
 	annotationClickyOperationMethod    = "clicky/operation-method"
 	annotationClickyOperationScope     = "clicky/operation-scope"
@@ -20,6 +22,7 @@ const (
 	annotationClickySupportsLookup     = "clicky/supports-lookup"
 	annotationClickySupportsFilterMode = "clicky/supports-filter-mode"
 	annotationClickyOptionalID         = "clicky/operation-optional-id"
+	annotationClickyToolGroup          = "clicky/tool-group"
 )
 
 // CommandOpenAPIMeta is the clicky-specific metadata attached to generated
@@ -30,6 +33,11 @@ type CommandOpenAPIMeta struct {
 	Parent             string
 	Aliases            []string
 	Admin              bool
+	// Icon is an opaque UI icon name (e.g. "database"); clicky never interprets
+	// it — it is emitted verbatim on the surface for the frontend to resolve.
+	Icon string
+	// Title overrides the auto-generated surface title when non-empty.
+	Title              string
 	Verb               string
 	Method             string
 	Scope              string
@@ -42,6 +50,11 @@ type CommandOpenAPIMeta struct {
 	// generated REST path must NOT carry an {id} segment — otherwise the no-id
 	// call collides with the entity's get-by-id route.
 	OptionalID bool
+	// ToolGroup names the group an operation belongs to. It is set on the entity
+	// and inherited by every operation (a per-action override may replace it).
+	// AI tool-preference layers use it to enable/disable a set of related tools
+	// as one unit.
+	ToolGroup string
 }
 
 func GetCommandOpenAPIMeta(cmd *cobra.Command) *CommandOpenAPIMeta {
@@ -54,6 +67,8 @@ func GetCommandOpenAPIMeta(cmd *cobra.Command) *CommandOpenAPIMeta {
 		Parent:             cmd.Annotations[annotationClickyEntityParent],
 		Aliases:            splitAnnotationList(cmd.Annotations[annotationClickyEntityAliases]),
 		Admin:              parseAnnotationBool(cmd.Annotations[annotationClickyEntityAdmin]),
+		Icon:               cmd.Annotations[annotationClickyEntityIcon],
+		Title:              cmd.Annotations[annotationClickyEntityTitle],
 		Verb:               cmd.Annotations[annotationClickyOperationVerb],
 		Method:             cmd.Annotations[annotationClickyOperationMethod],
 		Scope:              cmd.Annotations[annotationClickyOperationScope],
@@ -62,6 +77,7 @@ func GetCommandOpenAPIMeta(cmd *cobra.Command) *CommandOpenAPIMeta {
 		SupportsLookup:     parseAnnotationBool(cmd.Annotations[annotationClickySupportsLookup]),
 		SupportsFilterMode: parseAnnotationBool(cmd.Annotations[annotationClickySupportsFilterMode]),
 		OptionalID:         parseAnnotationBool(cmd.Annotations[annotationClickyOptionalID]),
+		ToolGroup:          cmd.Annotations[annotationClickyToolGroup],
 	}
 
 	if meta.Entity == "" {
@@ -80,6 +96,9 @@ func annotateEntityCommand(cmd *cobra.Command, entity EntityInfo) {
 	setCommandAnnotation(cmd, annotationClickyEntityParent, entity.Parent)
 	setCommandAnnotation(cmd, annotationClickyEntityAliases, strings.Join(entity.Aliases, ","))
 	setCommandAnnotation(cmd, annotationClickyEntityAdmin, strconv.FormatBool(entity.IsAdmin))
+	setCommandAnnotation(cmd, annotationClickyEntityIcon, entity.Icon)
+	setCommandAnnotation(cmd, annotationClickyEntityTitle, entity.Title)
+	setCommandAnnotation(cmd, annotationClickyToolGroup, entity.ToolGroup)
 }
 
 func annotateEntityOperationCommand(
@@ -93,6 +112,7 @@ func annotateEntityOperationCommand(
 	supportsLookup bool,
 	supportsFilterMode bool,
 	optionalID bool,
+	toolGroup string,
 ) {
 	if cmd == nil {
 		return
@@ -107,6 +127,9 @@ func annotateEntityOperationCommand(
 	setCommandAnnotation(cmd, annotationClickySupportsLookup, strconv.FormatBool(supportsLookup))
 	setCommandAnnotation(cmd, annotationClickySupportsFilterMode, strconv.FormatBool(supportsFilterMode))
 	setCommandAnnotation(cmd, annotationClickyOptionalID, strconv.FormatBool(optionalID))
+	// Applied after inheritance: a non-empty per-action override replaces the
+	// inherited entity group; empty is a no-op (setCommandAnnotation skips "").
+	setCommandAnnotation(cmd, annotationClickyToolGroup, toolGroup)
 }
 
 func inheritEntityAnnotations(cmd *cobra.Command, parent *cobra.Command) {
@@ -119,6 +142,9 @@ func inheritEntityAnnotations(cmd *cobra.Command, parent *cobra.Command) {
 	setCommandAnnotation(cmd, annotationClickyEntityParent, meta.Parent)
 	setCommandAnnotation(cmd, annotationClickyEntityAliases, strings.Join(meta.Aliases, ","))
 	setCommandAnnotation(cmd, annotationClickyEntityAdmin, strconv.FormatBool(meta.Admin))
+	setCommandAnnotation(cmd, annotationClickyEntityIcon, meta.Icon)
+	setCommandAnnotation(cmd, annotationClickyEntityTitle, meta.Title)
+	setCommandAnnotation(cmd, annotationClickyToolGroup, meta.ToolGroup)
 }
 
 func setCommandAnnotation(cmd *cobra.Command, key string, value string) {

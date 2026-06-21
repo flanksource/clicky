@@ -1,4 +1,4 @@
-package clicky
+package entity
 
 import (
 	"context"
@@ -29,6 +29,14 @@ func (b *EntityBuilder[T, ListOpts, R]) Parent(parent string) *EntityBuilder[T, 
 
 func (b *EntityBuilder[T, ListOpts, R]) Aliases(aliases ...string) *EntityBuilder[T, ListOpts, R] {
 	b.entity.Aliases = append(b.entity.Aliases, aliases...)
+	return b
+}
+
+// ToolGroup names the group this entity's operations belong to. Every generated
+// operation inherits it (an action can override it via WithToolGroup). AI
+// tool-preference layers use the group to enable/disable related tools together.
+func (b *EntityBuilder[T, ListOpts, R]) ToolGroup(group string) *EntityBuilder[T, ListOpts, R] {
+	b.entity.ToolGroup = group
 	return b
 }
 
@@ -63,8 +71,22 @@ func (b *EntityBuilder[T, ListOpts, R]) GetWithFlags(flags ActionFlags, fn func(
 	return b
 }
 
+func (b *EntityBuilder[T, ListOpts, R]) GetWithContext(fn func(context.Context, string) (R, error)) *EntityBuilder[T, ListOpts, R] {
+	b.entity.GetWithContext = fn
+	return b
+}
+
 func (b *EntityBuilder[T, ListOpts, R]) Create(fn func(map[string]any) (R, error)) *EntityBuilder[T, ListOpts, R] {
 	b.entity.Create = fn
+	return b
+}
+
+// CreateWithContext sets the context-aware create handler. The context carries
+// request-scoped state (e.g. the originating *http.Request via
+// rpc.RequestFromContext), letting handlers read the raw nested JSON body the
+// executor would otherwise flatten to string flags.
+func (b *EntityBuilder[T, ListOpts, R]) CreateWithContext(fn func(context.Context, map[string]any) (R, error)) *EntityBuilder[T, ListOpts, R] {
+	b.entity.CreateWithContext = fn
 	return b
 }
 
@@ -73,8 +95,20 @@ func (b *EntityBuilder[T, ListOpts, R]) Update(fn func(string, map[string]any) (
 	return b
 }
 
+// UpdateWithContext sets the context-aware update handler. See CreateWithContext.
+func (b *EntityBuilder[T, ListOpts, R]) UpdateWithContext(fn func(context.Context, string, map[string]any) (R, error)) *EntityBuilder[T, ListOpts, R] {
+	b.entity.UpdateWithContext = fn
+	return b
+}
+
 func (b *EntityBuilder[T, ListOpts, R]) Delete(fn func(string) error) *EntityBuilder[T, ListOpts, R] {
 	b.entity.Delete = fn
+	return b
+}
+
+// DeleteWithContext sets the context-aware delete handler. See CreateWithContext.
+func (b *EntityBuilder[T, ListOpts, R]) DeleteWithContext(fn func(context.Context, string) error) *EntityBuilder[T, ListOpts, R] {
+	b.entity.DeleteWithContext = fn
 	return b
 }
 

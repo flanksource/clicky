@@ -1,4 +1,4 @@
-package clicky
+package entity
 
 // PageInfo carries the effective paging window for a list response.
 type PageInfo struct {

@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/flanksource/clicky"
 	"github.com/flanksource/clicky/api"
 )
 
@@ -17,7 +16,7 @@ type DynamicListFunc func(ctx context.Context, opts map[string]string) ([]map[st
 type DynamicGetFunc func(ctx context.Context, id string) (map[string]any, error)
 
 // DynamicEntityBuilder assembles a schema-driven entity and registers it through
-// clicky.RegisterDynamicEntity. Filters referenced by x-clicky-filter must be
+// RegisterDynamicEntity. Filters referenced by x-clicky-filter must be
 // registered (RegisterFilter / RegisterFilterSpec) before Register is called.
 type DynamicEntityBuilder struct {
 	name   string
@@ -59,10 +58,12 @@ func (b *DynamicEntityBuilder) Register() {
 
 	filters, filterRefs := b.buildFilters(ps)
 
-	spec := clicky.DynamicEntitySpec{
+	spec := DynamicEntitySpec{
 		Name:       b.name,
 		Parent:     ps.Parent,
 		Aliases:    ps.Aliases,
+		Icon:       ps.Icon,
+		Title:      ps.Title,
 		ListType:   ps.listType(),
 		ItemType:   ps.itemType(),
 		List:       b.listDataFunc(ps),
@@ -70,11 +71,11 @@ func (b *DynamicEntityBuilder) Register() {
 		Filters:    filters,
 		FilterRefs: filterRefs,
 	}
-	clicky.RegisterDynamicEntity(spec)
+	RegisterDynamicEntity(spec)
 }
 
-func (b *DynamicEntityBuilder) buildFilters(ps *parsedSchema) ([]clicky.DynamicFilter, map[string]string) {
-	var filters []clicky.DynamicFilter
+func (b *DynamicEntityBuilder) buildFilters(ps *parsedSchema) ([]DynamicFilter, map[string]string) {
+	var filters []DynamicFilter
 	refs := map[string]string{}
 	for _, f := range ps.Fields {
 		if f.Filter == "" {
@@ -87,7 +88,7 @@ func (b *DynamicEntityBuilder) buildFilters(ps *parsedSchema) ([]clicky.DynamicF
 		if label == "" {
 			label = nf.label()
 		}
-		filters = append(filters, clicky.DynamicFilter{
+		filters = append(filters, DynamicFilter{
 			Key:        key,
 			Label:      label,
 			Type:       nf.Type,
@@ -120,7 +121,7 @@ func (b *DynamicEntityBuilder) buildFilters(ps *parsedSchema) ([]clicky.DynamicF
 	return filters, refs
 }
 
-func (b *DynamicEntityBuilder) listDataFunc(ps *parsedSchema) clicky.ContextDataFunc {
+func (b *DynamicEntityBuilder) listDataFunc(ps *parsedSchema) ContextDataFunc {
 	idKey, nameKey := ps.IDKey, ps.NameKey
 	return func(ctx context.Context, flags map[string]string, _ []string) (any, error) {
 		rows, err := b.listFn(ctx, flags)
@@ -135,7 +136,7 @@ func (b *DynamicEntityBuilder) listDataFunc(ps *parsedSchema) clicky.ContextData
 	}
 }
 
-func (b *DynamicEntityBuilder) getDataFunc(ps *parsedSchema) clicky.ContextDataFunc {
+func (b *DynamicEntityBuilder) getDataFunc(ps *parsedSchema) ContextDataFunc {
 	if b.getFn == nil {
 		return nil
 	}
@@ -156,7 +157,7 @@ func (b *DynamicEntityBuilder) getDataFunc(ps *parsedSchema) clicky.ContextDataF
 	}
 }
 
-// dynamicItem adapts a map[string]any row to clicky.EntityItem and injects the
+// dynamicItem adapts a map[string]any row to EntityItem and injects the
 // _id field on marshal, mirroring the static entityWithID wrapper.
 type dynamicItem struct {
 	idKey   string
@@ -166,6 +167,18 @@ type dynamicItem struct {
 
 func (d dynamicItem) GetID() string   { return toStringValue(d.data[d.idKey]) }
 func (d dynamicItem) GetName() string { return toStringValue(d.data[d.nameKey]) }
+
+// PrettyRow exposes the map-backed row to clicky's table formatter, which
+// reflects exported struct fields and so would otherwise emit empty cells for a
+// dynamic entity. Returning the data keyed by column name lets the clicky-json
+// table (and every other renderer) populate cells from the underlying map.
+func (d dynamicItem) PrettyRow(_ interface{}) map[string]api.Text {
+	out := make(map[string]api.Text, len(d.data))
+	for k, v := range d.data {
+		out[k] = api.Text{Content: toStringValue(v)}
+	}
+	return out
+}
 
 func (d dynamicItem) MarshalJSON() ([]byte, error) {
 	out := make(map[string]any, len(d.data)+1)

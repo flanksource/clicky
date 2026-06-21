@@ -1,4 +1,4 @@
-package clicky
+package entity
 
 import (
 	"fmt"

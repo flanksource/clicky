@@ -6,7 +6,6 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/flanksource/clicky"
 	"github.com/flanksource/clicky/api"
 )
 
@@ -116,8 +115,8 @@ func (s entitySource) fetch(fc FilterContext) (map[string]api.Textable, error) {
 	return itemsToOptions(result), nil
 }
 
-func findEntity(name string) (clicky.EntityInfo, bool) {
-	for _, info := range clicky.GetEntities() {
+func findEntity(name string) (EntityInfo, bool) {
+	for _, info := range GetEntities() {
 		if info.Name == name {
 			return info, true
 		}
@@ -127,16 +126,16 @@ func findEntity(name string) (clicky.EntityInfo, bool) {
 			}
 		}
 	}
-	return clicky.EntityInfo{}, false
+	return EntityInfo{}, false
 }
 
-func findListOperation(info clicky.EntityInfo) (clicky.EntityOperation, bool) {
+func findListOperation(info EntityInfo) (EntityOperation, bool) {
 	for _, op := range info.Operations {
 		if op.Verb == "list" {
 			return op, true
 		}
 	}
-	return clicky.EntityOperation{}, false
+	return EntityOperation{}, false
 }
 
 // itemsToOptions reflects a list result (a slice of EntityItem, or a paged
@@ -158,7 +157,7 @@ func itemsToOptions(result any) map[string]api.Textable {
 	out := make(map[string]api.Textable, rv.Len())
 	for i := 0; i < rv.Len(); i++ {
 		el := rv.Index(i)
-		item, ok := el.Interface().(clicky.EntityItem)
+		item, ok := el.Interface().(EntityItem)
 		if !ok {
 			continue
 		}
@@ -167,7 +166,7 @@ func itemsToOptions(result any) map[string]api.Textable {
 	return out
 }
 
-func entityItemLabel(el reflect.Value, item clicky.EntityItem) api.Textable {
+func entityItemLabel(el reflect.Value, item EntityItem) api.Textable {
 	if short, ok := el.Interface().(api.PrettyShort); ok {
 		if t := short.PrettyShort(); t != nil {
 			return t
