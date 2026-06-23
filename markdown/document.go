@@ -4,10 +4,12 @@ import (
 	"fmt"
 	"html"
 	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/flanksource/clicky/api"
 	"github.com/flanksource/clicky/formatters"
+	"gopkg.in/yaml.v3"
 )
 
 const DocumentVersion = 1
@@ -19,30 +21,28 @@ type Document struct {
 	Filename string         `json:"filename,omitempty"`
 	Metadata map[string]any `json:"metadata,omitempty"`
 	Root     Node           `json:"root"`
-	Source   string         `json:"source,omitempty"`
 }
 
 // Node is the intermediate semantic tree produced from Goldmark's AST.
 type Node struct {
-	Kind           string            `json:"kind"`
-	Text           string            `json:"text,omitempty"`
-	Children       []Node            `json:"children,omitempty"`
-	Items          []Node            `json:"items,omitempty"`
-	Attributes     map[string]string `json:"attributes,omitempty"`
-	Level          int               `json:"level,omitempty"`
-	Language       string            `json:"language,omitempty"`
-	Source         string            `json:"source,omitempty"`
-	RawHTML        string            `json:"html,omitempty"`
-	Href           string            `json:"href,omitempty"`
-	Title          string            `json:"title,omitempty"`
-	ID             string            `json:"id,omitempty"`
-	Severity       string            `json:"severity,omitempty"`
-	Checked        *bool             `json:"checked,omitempty"`
-	Ordered        bool              `json:"ordered,omitempty"`
-	Align          string            `json:"align,omitempty"`
-	SourceMarkdown string            `json:"sourceMarkdown,omitempty"`
-	LineStart      int               `json:"lineStart,omitempty"`
-	LineEnd        int               `json:"lineEnd,omitempty"`
+	Kind       string            `json:"kind"`
+	Text       string            `json:"text,omitempty"`
+	Children   []Node            `json:"children,omitempty"`
+	Items      []Node            `json:"items,omitempty"`
+	Attributes map[string]string `json:"attributes,omitempty"`
+	Level      int               `json:"level,omitempty"`
+	Language   string            `json:"language,omitempty"`
+	Source     string            `json:"source,omitempty"`
+	RawHTML    string            `json:"html,omitempty"`
+	Href       string            `json:"href,omitempty"`
+	Title      string            `json:"title,omitempty"`
+	ID         string            `json:"id,omitempty"`
+	Severity   string            `json:"severity,omitempty"`
+	Checked    *bool             `json:"checked,omitempty"`
+	Ordered    bool              `json:"ordered,omitempty"`
+	Align      string            `json:"align,omitempty"`
+	LineStart  int               `json:"lineStart,omitempty"`
+	LineEnd    int               `json:"lineEnd,omitempty"`
 }
 
 func (d *Document) String() string {
@@ -67,10 +67,15 @@ func (d *Document) Markdown() string {
 	if d == nil {
 		return ""
 	}
-	if d.Source != "" {
-		return d.Source
+	body := d.Root.Markdown()
+	frontmatter := documentFrontmatter(d.Metadata, d.Filename)
+	if frontmatter == "" {
+		return body
 	}
-	return d.Root.Markdown()
+	if body == "" {
+		return frontmatter
+	}
+	return frontmatter + "\n\n" + body
 }
 
 // ClickyDocument exports the parsed tree using the same JSON envelope consumed
@@ -234,9 +239,6 @@ func (n Node) HTML() string {
 }
 
 func (n Node) Markdown() string {
-	if n.Kind == "document" && n.SourceMarkdown != "" {
-		return n.SourceMarkdown
-	}
 	switch n.Kind {
 	case "document":
 		return strings.TrimSpace(joinNodeMarkdown(n.Children, "\n\n"))
@@ -305,16 +307,20 @@ func (n Node) Markdown() string {
 		}
 		return head + "\n" + quoteLines(body, "    ")
 	case "collapsed":
-		return "<details>\n<summary>" + n.Title + "</summary>\n\n" + joinNodeMarkdown(n.Children, "\n\n") + "\n</details>"
+		content := strings.TrimSpace(joinNodeMarkdown(n.Children, "\n\n"))
+		if content == "" {
+			return "<details>\n<summary>" + n.Title + "</summary>\n</details>"
+		}
+		return "<details>\n<summary>" + n.Title + "</summary>\n" + content + "\n</details>"
 	case "thematic_break":
 		return "---"
 	case "table":
 		return tableMarkdown(n)
 	case "raw-html", "html":
 		if n.Source != "" {
-			return n.Source
+			return strings.TrimSpace(n.Source)
 		}
-		return n.RawHTML
+		return strings.TrimSpace(n.RawHTML)
 	case "footnote_ref":
 		return "[^" + n.ID + "]"
 	case "footnote":
@@ -329,22 +335,19 @@ func (n Node) Markdown() string {
 // ClickyNode converts the markdown node to Clicky's concrete document JSON node.
 func (n Node) ClickyNode() formatters.ClickyNode {
 	node := formatters.ClickyNode{
-		Kind:           n.Kind,
-		Plain:          n.String(),
-		Text:           n.Text,
-		HTML:           n.RawHTML,
-		Level:          n.Level,
-		Language:       n.Language,
-		Source:         n.Source,
-		Href:           n.Href,
-		ID:             n.ID,
-		Severity:       n.Severity,
-		Ordered:        n.Ordered,
-		Checked:        n.Checked,
-		Attributes:     cloneStringMap(n.Attributes),
-		SourceMarkdown: n.SourceMarkdown,
-		LineStart:      n.LineStart,
-		LineEnd:        n.LineEnd,
+		Kind:       n.Kind,
+		Plain:      n.String(),
+		Text:       n.Text,
+		HTML:       n.RawHTML,
+		Level:      n.Level,
+		Language:   n.Language,
+		Source:     n.Source,
+		Href:       n.Href,
+		ID:         n.ID,
+		Severity:   n.Severity,
+		Ordered:    n.Ordered,
+		Checked:    n.Checked,
+		Attributes: cloneStringMap(n.Attributes),
 	}
 
 	switch n.Kind {
@@ -457,7 +460,7 @@ func joinNodeHTML(nodes []Node, sep string) string {
 func joinNodeMarkdown(nodes []Node, sep string) string {
 	parts := make([]string, 0, len(nodes))
 	for _, node := range nodes {
-		if s := strings.TrimSpace(node.Markdown()); s != "" {
+		if s := node.Markdown(); strings.TrimSpace(s) != "" {
 			parts = append(parts, s)
 		}
 	}
@@ -507,6 +510,52 @@ func cloneMetadata(in map[string]any) map[string]any {
 		out[k] = v
 	}
 	return out
+}
+
+func documentFrontmatter(metadata map[string]any, filename string) string {
+	filtered := frontmatterMetadata(metadata, filename)
+	if len(filtered) == 0 {
+		return ""
+	}
+
+	keys := make([]string, 0, len(filtered))
+	for key := range filtered {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+
+	lines := []string{"---"}
+	for _, key := range keys {
+		lines = append(lines, frontmatterEntry(key, filtered[key])...)
+	}
+	lines = append(lines, "---")
+	return strings.Join(lines, "\n")
+}
+
+func frontmatterMetadata(metadata map[string]any, filename string) map[string]any {
+	if len(metadata) == 0 {
+		return nil
+	}
+	out := make(map[string]any, len(metadata))
+	for key, value := range metadata {
+		if key == "filename" && filename != "" && fmt.Sprint(value) == filename {
+			continue
+		}
+		out[key] = value
+	}
+	return out
+}
+
+func frontmatterEntry(key string, value any) []string {
+	raw, err := yaml.Marshal(map[string]any{key: value})
+	if err != nil {
+		return []string{fmt.Sprintf("%s: %v", key, value)}
+	}
+	rendered := strings.TrimRight(string(raw), "\n")
+	if rendered == "" {
+		return []string{key + ":"}
+	}
+	return strings.Split(rendered, "\n")
 }
 
 func cloneStringMap(in map[string]string) map[string]string {

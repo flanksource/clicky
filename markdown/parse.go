@@ -50,9 +50,6 @@ func Parse(source []byte, opts ...Option) (*Document, error) {
 	if options.Admonitions {
 		converted.Children = foldAdmonitions(converted.Children)
 	}
-	if options.PreserveSource {
-		converted.SourceMarkdown = string(source)
-	}
 
 	if metadata == nil {
 		metadata = map[string]any{}
@@ -69,7 +66,6 @@ func Parse(source []byte, opts ...Option) (*Document, error) {
 		Filename: options.Filename,
 		Metadata: metadata,
 		Root:     converted,
-		Source:   string(source),
 	}, nil
 }
 
@@ -461,9 +457,6 @@ func (p *parserState) applyBlockSource(out *Node, node gast.Node) {
 		out.LineStart = p.lineForOffset(first.Start)
 		out.LineEnd = p.lineForOffset(max(0, last.Stop-1))
 	}
-	if p.options.PreserveSource && first.Start >= 0 && last.Stop >= first.Start && last.Stop <= len(p.body) {
-		out.SourceMarkdown = string(p.body[first.Start:last.Stop])
-	}
 }
 
 func nodeAttributes(node gast.Node) map[string]string {
@@ -498,7 +491,6 @@ func foldAdmonitions(nodes []Node) []Node {
 		}
 		admonition.LineStart = node.LineStart
 		admonition.LineEnd = node.LineEnd
-		admonition.SourceMarkdown = node.SourceMarkdown
 		if inlineBody != "" {
 			admonition.Children = append(admonition.Children, Node{
 				Kind: "paragraph",
@@ -522,9 +514,6 @@ func foldAdmonitions(nodes []Node) []Node {
 				LineEnd:   body.LineEnd,
 			})
 			admonition.LineEnd = body.LineEnd
-			if body.SourceMarkdown != "" {
-				admonition.SourceMarkdown = strings.TrimRight(admonition.SourceMarkdown, "\n") + "\n" + body.SourceMarkdown
-			}
 			i++
 		}
 		out = append(out, admonition)

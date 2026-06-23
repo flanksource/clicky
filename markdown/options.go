@@ -5,25 +5,23 @@ type Option func(*Options)
 
 // Options controls how markdown source is parsed and preserved.
 type Options struct {
-	Filename       string
-	GFM            bool
-	Footnotes      bool
-	Frontmatter    bool
-	Admonitions    bool
-	PreserveHTML   bool
-	PreserveSource bool
-	SourceSpans    bool
+	Filename     string
+	GFM          bool
+	Footnotes    bool
+	Frontmatter  bool
+	Admonitions  bool
+	PreserveHTML bool
+	SourceSpans  bool
 }
 
 func defaultOptions() Options {
 	return Options{
-		GFM:            true,
-		Footnotes:      true,
-		Frontmatter:    true,
-		Admonitions:    true,
-		PreserveHTML:   true,
-		PreserveSource: true,
-		SourceSpans:    true,
+		GFM:          true,
+		Footnotes:    true,
+		Frontmatter:  true,
+		Admonitions:  true,
+		PreserveHTML: true,
+		SourceSpans:  true,
 	}
 }
 
@@ -76,13 +74,6 @@ func WithAdmonitions(enabled bool) Option {
 func WithPreserveHTML(enabled bool) Option {
 	return func(o *Options) {
 		o.PreserveHTML = enabled
-	}
-}
-
-// WithPreserveSource controls whether source markdown snippets are attached to nodes.
-func WithPreserveSource(enabled bool) Option {
-	return func(o *Options) {
-		o.PreserveSource = enabled
 	}
 }
 

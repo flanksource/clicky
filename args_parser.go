@@ -8,13 +8,7 @@ import (
 	"regexp"
 	"strings"
 	"unicode/utf8"
-
-	"github.com/flanksource/clicky/api"
 )
-
-type Help interface {
-	Help() api.Textable
-}
 
 // ParseArgumentsAsMap parses HTTPie-style command line arguments into a map
 // Supports:

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -19,6 +20,7 @@ import (
 	"github.com/flanksource/clicky/extensions"
 	"github.com/flanksource/clicky/formatters"
 	"github.com/flanksource/clicky/lint"
+	md "github.com/flanksource/clicky/markdown"
 	"github.com/flanksource/commons/logger"
 )
 
@@ -39,28 +41,42 @@ func main() {
 
 func newRootCommand() *cobra.Command {
 	var schemaFile string
+	var inputFormat string
 	var options formatters.FormatOptions
 
 	rootCmd := &cobra.Command{
 		Use:   "clicky",
-		Short: "A CLI tool for formatting structured data using YAML schema definitions",
+		Short: "A CLI tool for formatting structured data and markdown",
 		Long: `Clicky is a flexible CLI tool that formats structured data (JSON, YAML, etc.)
 using YAML schema definitions. It supports multiple output formats including
-pretty-printed tables, HTML, PDF, Markdown, and more.
+pretty-printed tables, HTML, PDF, Markdown, and more. Schema-less stdin and
+file input can be rendered with --input-format.
 
 For backward compatibility, you can use the root command directly, or use the
 'pretty' subcommand explicitly.`,
 		Example: `  clicky --schema order-schema.yaml order1.json order2.yaml
   clicky pretty --schema user-schema.yaml --format html --output reports/ users.json
+  cat examples/kitchen-sink.md | clicky --input-format auto --format clicky-json
+  clicky --input-format auto --format html examples/kitchen-sink.md
   clicky version`,
 		Args: func(cmd *cobra.Command, args []string) error {
 			// If no subcommand and no args, show help
-			if len(args) == 0 && schemaFile == "" {
-				return fmt.Errorf("requires either a subcommand or data files with --schema flag")
+			if len(args) == 0 && schemaFile == "" && inputFormat == "" && !hasStdinInput(cmd) {
+				return fmt.Errorf("requires either a subcommand, data files with --schema flag, or --input-format for stdin")
 			}
 			return nil
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {
+			effectiveInputFormat := inputFormat
+			if schemaFile == "" && effectiveInputFormat == "" && len(args) == 0 && hasStdinInput(cmd) {
+				effectiveInputFormat = "auto"
+			}
+			if schemaFile == "" && effectiveInputFormat != "" {
+				options.ResolveNoColor()
+				options.Format = options.ResolveFormat()
+				return renderInput(cmd, args, effectiveInputFormat, options)
+			}
+
 			// If no args but subcommands exist, user probably wants help
 			if len(args) == 0 {
 				return cmd.Help()
@@ -99,6 +115,7 @@ For backward compatibility, you can use the root command directly, or use the
 
 	// Add flags to root command for backward compatibility
 	rootCmd.Flags().StringVar(&schemaFile, "schema", "", "YAML file containing PrettyObject schema")
+	rootCmd.Flags().StringVar(&inputFormat, "input-format", "", "Schema-less input format for stdin/files: auto, markdown/md, json, yaml/yml, text")
 	formatters.BindPFlags(rootCmd.Flags(), &options)
 
 	// Add subcommands
@@ -114,6 +131,18 @@ For backward compatibility, you can use the root command directly, or use the
 		MCPCommand()
 
 	return rootCmd
+}
+
+func hasStdinInput(cmd *cobra.Command) bool {
+	in := cmd.InOrStdin()
+	if file, ok := in.(*os.File); ok {
+		info, err := file.Stat()
+		if err != nil {
+			return false
+		}
+		return info.Mode()&os.ModeCharDevice == 0
+	}
+	return in != nil
 }
 
 func newPrettyCommand() *cobra.Command {
@@ -611,7 +640,7 @@ If no packages are given, defaults to ./... in the current directory.`,
 			if err := renderLintResult(cmd, result, opts); err != nil {
 				return err
 			}
-			if result.HasIssues() {
+			if result.HasErrors() {
 				return lintExitError{result: result}
 			}
 			return nil
@@ -637,11 +666,14 @@ func (e lintExitError) Error() string {
 		return "clickylint found issues"
 	}
 	parts := []string{}
-	if count := len(e.result.Violations); count > 0 {
-		parts = append(parts, fmt.Sprintf("%d violations", count))
+	if count := e.result.ErrorCount(); count > 0 {
+		parts = append(parts, fmt.Sprintf("%d errors", count))
+	}
+	if count := e.result.WarningCount(); count > 0 {
+		parts = append(parts, fmt.Sprintf("%d warnings", count))
 	}
 	if count := len(e.result.Errors); count > 0 {
-		parts = append(parts, fmt.Sprintf("%d errors", count))
+		parts = append(parts, fmt.Sprintf("%d load errors", count))
 	}
 	return "clickylint found " + strings.Join(parts, ", ")
 }
@@ -1092,6 +1124,290 @@ fields:
 `
 }
 
+// renderInput reads schema-less stdin or files, parses each one according to
+// --input-format, and renders it through the normal Clicky formatter manager.
+func renderInput(cmd *cobra.Command, args []string, inputFormat string, options formatters.FormatOptions) error {
+	normalized, err := normalizeInputFormat(inputFormat)
+	if err != nil {
+		return err
+	}
+	if err := options.ParseFormatSpec(); err != nil {
+		return err
+	}
+
+	manager := formatters.NewFormatManager()
+	if len(args) == 0 {
+		data, err := io.ReadAll(cmd.InOrStdin())
+		if err != nil {
+			return fmt.Errorf("failed to read stdin: %w", err)
+		}
+		return renderInputBytes(cmd, manager, data, "stdin", normalized, options)
+	}
+
+	for _, filename := range args {
+		data, err := os.ReadFile(filename)
+		if err != nil {
+			return fmt.Errorf("failed to read %s: %w", filename, err)
+		}
+		if err := renderInputBytes(cmd, manager, data, filename, normalized, options); err != nil {
+			return fmt.Errorf("error processing %s: %w", filename, err)
+		}
+	}
+	return nil
+}
+
+func renderInputBytes(cmd *cobra.Command, manager *formatters.FormatManager, data []byte, sourceName, inputFormat string, options formatters.FormatOptions) error {
+	parsed, detectedFormat, err := parseInputData(data, sourceName, inputFormat)
+	if err != nil {
+		return err
+	}
+	logger.Tracef("Parsed %s as %s\n", sourceName, detectedFormat)
+
+	sinks := options.Sinks
+	if len(sinks) == 0 {
+		sinks = []formatters.FormatSink{{Format: options.ResolveFormat()}}
+	}
+	for _, sink := range sinks {
+		if err := renderInputSink(cmd, manager, parsed, sourceName, sink, options); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func renderInputSink(cmd *cobra.Command, manager *formatters.FormatManager, value any, sourceName string, sink formatters.FormatSink, options formatters.FormatOptions) error {
+	sinkOpts := options
+	sinkOpts.Sinks = nil
+	sinkOpts.Format = sink.Format
+	sinkOpts.Output = sink.File
+	if sinkOpts.Output == "" {
+		sinkOpts.Output = options.Output
+	}
+
+	switch sinkOpts.Output {
+	case "", "stdout", "-", "/dev/stdout":
+		sinkOpts.Output = ""
+		if isFileOnlyFormat(sinkOpts.Format) {
+			return fmt.Errorf("%s output requires --output or a format=file sink", sinkOpts.Format)
+		}
+		output, err := manager.FormatWithOptions(sinkOpts, value)
+		if err != nil {
+			return fmt.Errorf("failed to format %s output: %w", sinkOpts.Format, err)
+		}
+		fmt.Fprint(cmd.OutOrStdout(), output)
+		if sinkOpts.Format == "pretty" && !strings.HasSuffix(output, "\n") {
+			fmt.Fprintln(cmd.OutOrStdout())
+		}
+		return nil
+	case "stderr", "/dev/stderr":
+		sinkOpts.Output = ""
+		if isFileOnlyFormat(sinkOpts.Format) {
+			return fmt.Errorf("%s output requires --output or a format=file sink", sinkOpts.Format)
+		}
+		output, err := manager.FormatWithOptions(sinkOpts, value)
+		if err != nil {
+			return fmt.Errorf("failed to format %s output: %w", sinkOpts.Format, err)
+		}
+		fmt.Fprint(cmd.ErrOrStderr(), output)
+		if sinkOpts.Format == "pretty" && !strings.HasSuffix(output, "\n") {
+			fmt.Fprintln(cmd.ErrOrStderr())
+		}
+		return nil
+	default:
+		outputFile := resolveInputOutputPath(sinkOpts.Output, sourceName, sinkOpts.Format)
+		if err := os.MkdirAll(filepath.Dir(outputFile), 0755); err != nil {
+			return fmt.Errorf("failed to create output directory: %w", err)
+		}
+		if isFileOnlyFormat(sinkOpts.Format) {
+			sinkOpts.Output = outputFile
+			if err := manager.FormatToFile(sinkOpts, value); err != nil {
+				return fmt.Errorf("failed to write %s output: %w", sinkOpts.Format, err)
+			}
+			return nil
+		}
+		sinkOpts.Output = ""
+		output, err := manager.FormatWithOptions(sinkOpts, value)
+		if err != nil {
+			return fmt.Errorf("failed to format %s output: %w", sinkOpts.Format, err)
+		}
+		if err := os.WriteFile(outputFile, []byte(output), 0644); err != nil {
+			return fmt.Errorf("failed to write output file: %w", err)
+		}
+		logger.Tracef("Output written to %s\n", outputFile)
+		return nil
+	}
+}
+
+func parseInputData(data []byte, sourceName, inputFormat string) (any, string, error) {
+	format := inputFormat
+	if format == "auto" {
+		format = detectInputFormat(data, sourceName)
+	}
+
+	switch format {
+	case "markdown":
+		doc, err := md.Parse(data, md.WithFilename(sourceName))
+		if err != nil {
+			return nil, format, fmt.Errorf("failed to parse markdown: %w", err)
+		}
+		return doc, format, nil
+	case "json":
+		var value any
+		if err := json.Unmarshal(data, &value); err != nil {
+			return nil, format, fmt.Errorf("failed to parse JSON: %w", err)
+		}
+		return value, format, nil
+	case "yaml":
+		var value any
+		if err := yaml.Unmarshal(data, &value); err != nil {
+			return nil, format, fmt.Errorf("failed to parse YAML: %w", err)
+		}
+		return value, format, nil
+	case "text":
+		return clicky.Text(string(data)), format, nil
+	default:
+		return nil, format, fmt.Errorf("unsupported input format %q", inputFormat)
+	}
+}
+
+func normalizeInputFormat(format string) (string, error) {
+	switch strings.ToLower(strings.TrimSpace(format)) {
+	case "", "auto":
+		return "auto", nil
+	case "markdown", "md":
+		return "markdown", nil
+	case "json":
+		return "json", nil
+	case "yaml", "yml":
+		return "yaml", nil
+	case "text", "txt", "plain":
+		return "text", nil
+	default:
+		return "", fmt.Errorf("unsupported --input-format %q (supported: auto, markdown/md, json, yaml/yml, text)", format)
+	}
+}
+
+func detectInputFormat(data []byte, sourceName string) string {
+	if byExt := inputFormatFromExtension(sourceName); byExt != "" {
+		return byExt
+	}
+
+	trimmed := bytes.TrimSpace(data)
+	if len(trimmed) == 0 {
+		return "text"
+	}
+	if json.Valid(trimmed) {
+		return "json"
+	}
+	if looksLikeMarkdown(trimmed) {
+		return "markdown"
+	}
+	if looksLikeYAML(trimmed) {
+		return "yaml"
+	}
+	return "text"
+}
+
+func inputFormatFromExtension(sourceName string) string {
+	switch strings.ToLower(filepath.Ext(sourceName)) {
+	case ".md", ".markdown":
+		return "markdown"
+	case ".json":
+		return "json"
+	case ".yaml", ".yml":
+		return "yaml"
+	case ".txt", ".text", ".log":
+		return "text"
+	default:
+		return ""
+	}
+}
+
+func looksLikeMarkdown(data []byte) bool {
+	text := string(data)
+	if strings.HasPrefix(text, "---\n") && strings.Contains(text[4:], "\n---") {
+		return true
+	}
+	lines := strings.Split(text, "\n")
+	for i, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			continue
+		}
+		switch {
+		case strings.HasPrefix(trimmed, "#"):
+			return true
+		case strings.HasPrefix(trimmed, ">"):
+			return true
+		case strings.HasPrefix(trimmed, "```"), strings.HasPrefix(trimmed, "~~~"):
+			return true
+		case strings.HasPrefix(trimmed, "!!! "):
+			return true
+		case strings.HasPrefix(trimmed, "<details"), strings.HasPrefix(trimmed, "<section"), strings.HasPrefix(trimmed, "<table"):
+			return true
+		case strings.HasPrefix(trimmed, "[^") && strings.Contains(trimmed, "]:"):
+			return true
+		case strings.HasPrefix(trimmed, "- [ ] "), strings.HasPrefix(trimmed, "- [x] "), strings.HasPrefix(trimmed, "- [X] "):
+			return true
+		case strings.HasPrefix(trimmed, "|") && i+1 < len(lines) && strings.Contains(lines[i+1], "---"):
+			return true
+		case isOrderedMarkdownList(trimmed):
+			return true
+		}
+	}
+	return false
+}
+
+func isOrderedMarkdownList(line string) bool {
+	dot := strings.Index(line, ".")
+	if dot <= 0 || dot >= len(line)-1 {
+		return false
+	}
+	for _, r := range line[:dot] {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return line[dot+1] == ' '
+}
+
+func looksLikeYAML(data []byte) bool {
+	var value any
+	if err := yaml.Unmarshal(data, &value); err != nil {
+		return false
+	}
+	switch value.(type) {
+	case map[string]any, []any:
+		return true
+	default:
+		return false
+	}
+}
+
+func resolveInputOutputPath(outputPattern, sourceName, format string) string {
+	if strings.Contains(outputPattern, "*") || filepath.Ext(outputPattern) == "" {
+		base := "stdin"
+		if sourceName != "" && sourceName != "stdin" {
+			base = strings.TrimSuffix(filepath.Base(sourceName), filepath.Ext(sourceName))
+		}
+		ext := getOutputExtension(format)
+		if strings.Contains(outputPattern, "*") {
+			return strings.ReplaceAll(outputPattern, "*", base)
+		}
+		return filepath.Join(outputPattern, base+ext)
+	}
+	return outputPattern
+}
+
+func isFileOnlyFormat(format string) bool {
+	switch strings.ToLower(format) {
+	case "excel", "xlsx":
+		return true
+	default:
+		return false
+	}
+}
+
 // formatDataFile loads a data file and formats it using the provided options
 func formatDataFile(manager *formatters.FormatManager, dataFile string, options formatters.FormatOptions) error {
 	// Load data file based on extension
@@ -1189,16 +1505,22 @@ func getOutputExtension(format string) string {
 	switch strings.ToLower(format) {
 	case "json":
 		return ".json"
+	case "clicky-json":
+		return ".clicky.json"
 	case "yaml", "yml":
 		return ".yaml"
 	case "csv":
 		return ".csv"
-	case "html":
+	case "html", "html-react", "html-static":
 		return ".html"
 	case "markdown", "md":
 		return ".md"
 	case "pdf":
 		return ".pdf"
+	case "excel", "xlsx":
+		return ".xlsx"
+	case "slack":
+		return ".json"
 	default:
 		return ".txt"
 	}
