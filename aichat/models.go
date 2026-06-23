@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"sync"
 )
 
 // Provider is a Genkit provider name (the prefix of a "provider/model" id).
@@ -53,9 +54,9 @@ type ModelInfo struct {
 // (Anthropic claude-sonnet-4 is captain's NewAnthropic default).
 const DefaultModelID = "anthropic/claude-sonnet-4-5"
 
-// catalog is the v1 model menu. Mirrors captain pkg/ai provider defaults so the
-// chat agrees with the rest of the stack.
-var catalog = []Model{
+// defaultCatalog is the v1 model menu. Mirrors captain pkg/ai provider defaults
+// so the chat agrees with the rest of the stack.
+var defaultCatalog = []Model{
 	{ID: "anthropic/claude-sonnet-4-6", Provider: ProviderAnthropic, Label: "Claude Sonnet 4.6", Reasoning: true, ContextWindow: 200000},
 	{ID: "anthropic/claude-opus-4-8", Provider: ProviderAnthropic, Label: "Claude Opus 4.8", Reasoning: true, ContextWindow: 200000},
 	{ID: "anthropic/claude-haiku-4-5", Provider: ProviderAnthropic, Label: "Claude Haiku 4.5", Reasoning: true, ContextWindow: 200000},
@@ -69,19 +70,118 @@ var catalog = []Model{
 	{ID: "googleai/gemini-2.5-flash", Provider: ProviderGoogle, Label: "Gemini 2.5 Flash", Reasoning: true, ContextWindow: 1048576},
 }
 
-// Catalog returns the configured model menu.
+var (
+	modelRegistryMu sync.RWMutex
+	catalog         = append([]Model(nil), defaultCatalog...)
+)
+
+// Catalog returns the registered model menu.
 func Catalog() []Model {
+	modelRegistryMu.RLock()
+	defer modelRegistryMu.RUnlock()
+
 	out := make([]Model, len(catalog))
 	copy(out, catalog)
 	return out
+}
+
+// RegisterModel adds a model to the global chat model registry, or replaces the
+// existing entry with the same ID while preserving its position in the menu.
+func RegisterModel(model Model) error {
+	return RegisterModels(model)
+}
+
+// RegisterModels adds models to the global chat model registry. Existing IDs
+// are updated in place; new IDs are appended to the menu.
+func RegisterModels(models ...Model) error {
+	normalized, err := normalizeModels(models, false)
+	if err != nil {
+		return err
+	}
+
+	modelRegistryMu.Lock()
+	defer modelRegistryMu.Unlock()
+
+	for _, model := range normalized {
+		updated := false
+		for i := range catalog {
+			if catalog[i].ID == model.ID {
+				catalog[i] = model
+				updated = true
+				break
+			}
+		}
+		if !updated {
+			catalog = append(catalog, model)
+		}
+	}
+	return nil
+}
+
+// SetModelCatalog replaces the global chat model registry. Use RegisterModel or
+// RegisterModels when you only need to extend the built-in catalog.
+func SetModelCatalog(models []Model) error {
+	normalized, err := normalizeModels(models, true)
+	if err != nil {
+		return err
+	}
+
+	modelRegistryMu.Lock()
+	defer modelRegistryMu.Unlock()
+	catalog = append([]Model(nil), normalized...)
+	return nil
+}
+
+// ResetModelCatalog restores the built-in model registry. It is primarily useful
+// for tests that temporarily install custom models.
+func ResetModelCatalog() {
+	modelRegistryMu.Lock()
+	defer modelRegistryMu.Unlock()
+	catalog = append([]Model(nil), defaultCatalog...)
+}
+
+func normalizeModels(models []Model, rejectDuplicateIDs bool) ([]Model, error) {
+	out := make([]Model, 0, len(models))
+	seen := make(map[string]bool, len(models))
+	for _, model := range models {
+		normalized, err := normalizeModel(model)
+		if err != nil {
+			return nil, err
+		}
+		if rejectDuplicateIDs && seen[normalized.ID] {
+			return nil, fmt.Errorf("duplicate model ID %q", normalized.ID)
+		}
+		seen[normalized.ID] = true
+		out = append(out, normalized)
+	}
+	return out, nil
+}
+
+func normalizeModel(model Model) (Model, error) {
+	model.ID = strings.TrimSpace(model.ID)
+	model.Label = strings.TrimSpace(model.Label)
+	if model.ID == "" {
+		return Model{}, fmt.Errorf("model ID is required")
+	}
+	if model.Provider == "" {
+		model.Provider = ProviderOf(model.ID)
+	}
+	if model.Provider == "" {
+		return Model{}, fmt.Errorf("model %q must include a provider, e.g. openai/%s", model.ID, model.ID)
+	}
+	if model.Label == "" {
+		model.Label = model.ID
+	}
+	return model, nil
 }
 
 // CatalogInfo returns the model menu annotated with whether each model's
 // provider is among the registered providers (i.e. selectable). The order
 // mirrors the catalog so the client can render a stable, grouped menu.
 func CatalogInfo(registered []Provider) []ModelInfo {
-	out := make([]ModelInfo, len(catalog))
-	for i, m := range catalog {
+	models := Catalog()
+	out := make([]ModelInfo, len(models))
+	for i, m := range models {
 		out[i] = ModelInfo{
 			ID:            m.ID,
 			Provider:      string(m.Provider),
@@ -100,12 +200,13 @@ func LookupModel(id string) (Model, error) {
 	if id == "" {
 		id = DefaultModelID
 	}
-	for _, m := range catalog {
+	models := Catalog()
+	for _, m := range models {
 		if m.ID == id {
 			return m, nil
 		}
 	}
-	return Model{}, fmt.Errorf("unknown model %q; available: %s", id, strings.Join(modelIDs(), ", "))
+	return Model{}, fmt.Errorf("unknown model %q; available: %s", id, strings.Join(modelIDsFrom(models), ", "))
 }
 
 // defaultModel picks the model used when a request omits one: the catalog
@@ -113,10 +214,13 @@ func LookupModel(id string) (Model, error) {
 // whose provider is configured. Returns false when no configured provider has a
 // catalog model (caller fails loud).
 func defaultModel(registered []Provider) (Model, bool) {
-	if def, err := LookupModel(DefaultModelID); err == nil && providerRegistered(registered, def.Provider) {
-		return def, true
+	models := Catalog()
+	for _, m := range models {
+		if m.ID == DefaultModelID && providerRegistered(registered, m.Provider) {
+			return m, true
+		}
 	}
-	for _, m := range catalog {
+	for _, m := range models {
 		if providerRegistered(registered, m.Provider) {
 			return m, true
 		}
@@ -144,8 +248,12 @@ func ProviderOf(id string) Provider {
 }
 
 func modelIDs() []string {
-	ids := make([]string, len(catalog))
-	for i, m := range catalog {
+	return modelIDsFrom(Catalog())
+}
+
+func modelIDsFrom(models []Model) []string {
+	ids := make([]string, len(models))
+	for i, m := range models {
 		ids[i] = m.ID
 	}
 	sort.Strings(ids)

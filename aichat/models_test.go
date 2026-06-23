@@ -18,6 +18,69 @@ func TestLookupModelUnknownFailsLoud(t *testing.T) {
 	}
 }
 
+func TestRegisterModelAddsAndUpdatesCatalog(t *testing.T) {
+	t.Cleanup(ResetModelCatalog)
+
+	id := "openai/test-custom-model"
+	if err := RegisterModel(Model{ID: id, Label: "Custom", Reasoning: true, ContextWindow: 123}); err != nil {
+		t.Fatalf("RegisterModel: %v", err)
+	}
+
+	m, err := LookupModel(id)
+	if err != nil {
+		t.Fatalf("LookupModel(%q): %v", id, err)
+	}
+	if m.Provider != ProviderOpenAI {
+		t.Errorf("Provider = %q, want %q", m.Provider, ProviderOpenAI)
+	}
+	if m.Label != "Custom" || !m.Reasoning || m.ContextWindow != 123 {
+		t.Errorf("model = %+v, want registered values", m)
+	}
+
+	if err := RegisterModel(Model{ID: id, Provider: ProviderOpenAI, Label: "Updated", ContextWindow: 456}); err != nil {
+		t.Fatalf("RegisterModel update: %v", err)
+	}
+	m, err = LookupModel(id)
+	if err != nil {
+		t.Fatalf("LookupModel(%q) after update: %v", id, err)
+	}
+	if m.Label != "Updated" || m.ContextWindow != 456 || m.Reasoning {
+		t.Errorf("updated model = %+v", m)
+	}
+}
+
+func TestSetModelCatalogAndReset(t *testing.T) {
+	t.Cleanup(ResetModelCatalog)
+
+	if err := SetModelCatalog([]Model{{ID: "openai/only-model", Label: "Only"}}); err != nil {
+		t.Fatalf("SetModelCatalog: %v", err)
+	}
+	if _, err := LookupModel("openai/gpt-4o"); err == nil {
+		t.Error("expected built-in model to be absent after SetModelCatalog")
+	}
+	m, err := LookupModel("openai/only-model")
+	if err != nil {
+		t.Fatalf("LookupModel custom catalog: %v", err)
+	}
+	if m.Provider != ProviderOpenAI || m.Label != "Only" {
+		t.Errorf("model = %+v", m)
+	}
+
+	ResetModelCatalog()
+	if _, err := LookupModel("openai/gpt-4o"); err != nil {
+		t.Fatalf("built-in model should be restored: %v", err)
+	}
+}
+
+func TestRegisterModelValidation(t *testing.T) {
+	if err := RegisterModel(Model{}); err == nil {
+		t.Error("expected missing ID to fail")
+	}
+	if err := SetModelCatalog([]Model{{ID: "openai/dup"}, {ID: "openai/dup"}}); err == nil {
+		t.Error("expected duplicate IDs to fail in SetModelCatalog")
+	}
+}
+
 func TestAnthropicCatalogIncludesRequestedModels(t *testing.T) {
 	for _, id := range []string{
 		"anthropic/claude-haiku-4-5",
