@@ -140,6 +140,11 @@ type ClickyNode struct {
 	BadgeText  string `json:"badgeText,omitempty"`
 	BadgeShape string `json:"badgeShape,omitempty"`
 	BadgeIcon  string `json:"badgeIcon,omitempty"`
+	// Object/execution tree payloads — set for Kind "object-graph" / "execution-tree".
+	// Passed through verbatim to clicky-ui's <ObjectGraph>/<ExecutionTree> roots,
+	// so producers can supply their own node shape without mirroring it here.
+	Objects        any `json:"objects,omitempty"`
+	ExecutionRoots any `json:"executionRoots,omitempty"`
 }
 
 func (f *HTMLReactFormatter) Format(data any, opts FormatOptions) (string, error) {
