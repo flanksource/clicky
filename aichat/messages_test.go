@@ -13,8 +13,6 @@ func raw(v any) json.RawMessage {
 	return b
 }
 
-func boolp(b bool) *bool { return &b }
-
 func TestToGenkitMessagesTextOnly(t *testing.T) {
 	msgs := []UIMessage{
 		{Role: "user", Parts: []UIPart{{Type: "text", Text: "hello"}}},
@@ -96,7 +94,7 @@ func TestToGenkitMessagesApprovalResumeApprovedRestarts(t *testing.T) {
 		{Role: "assistant", Parts: []UIPart{{
 			Type: "dynamic-tool", ToolName: "stack_restart", ToolCallID: "call-9",
 			State: "approval-responded", Input: raw(map[string]any{"id": "x"}),
-			Approval: &Approval{ID: "call-9", Approved: boolp(true)},
+			Approval: &Approval{ID: "call-9", Approved: new(true)},
 		}}},
 	}
 	if !isApprovalResume(msgs) {
@@ -128,7 +126,7 @@ func TestToGenkitMessagesApprovalResumeDeniedResponds(t *testing.T) {
 		{Role: "assistant", Parts: []UIPart{{
 			Type: "dynamic-tool", ToolName: "stack_delete", ToolCallID: "call-7",
 			State: "approval-responded", Input: raw(map[string]any{"id": "x"}),
-			Approval: &Approval{ID: "call-7", Approved: boolp(false), Reason: "too risky"},
+			Approval: &Approval{ID: "call-7", Approved: new(false), Reason: "too risky"},
 		}}},
 	}
 	_, resume, err := toGenkitMessages(msgs)

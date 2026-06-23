@@ -68,8 +68,8 @@ func (p UIPart) toolName() string {
 	if p.ToolName != "" {
 		return p.ToolName
 	}
-	if strings.HasPrefix(p.Type, "tool-") {
-		return strings.TrimPrefix(p.Type, "tool-")
+	if after, ok := strings.CutPrefix(p.Type, "tool-"); ok {
+		return after
 	}
 	return ""
 }
@@ -238,11 +238,11 @@ func addResumeDirective(p UIPart, dirs *resumeDirectives) {
 }
 
 func textOf(m UIMessage) string {
-	var s string
+	var s strings.Builder
 	for _, p := range m.Parts {
 		if p.Type == "text" {
-			s += p.Text
+			s.WriteString(p.Text)
 		}
 	}
-	return s
+	return s.String()
 }
