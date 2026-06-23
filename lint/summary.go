@@ -120,6 +120,11 @@ func (n *linterSummaryNode) GetChildren() []api.TreeNode {
 			byRule[key] = g
 			order = append(order, key)
 		}
+		// A rule with mixed severities takes the highest (error wins), so a group
+		// containing any error isn't mislabeled or sorted as a warning.
+		if v.Severity == SeverityError {
+			g.severity = SeverityError
+		}
 		g.violations = append(g.violations, v)
 	}
 	sort.Slice(order, func(i, j int) bool {

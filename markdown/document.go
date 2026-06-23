@@ -667,8 +667,9 @@ func tableClicky(table Node) ([]formatters.ClickyColumn, []formatters.ClickyRow)
 	}
 	header := rows[0]
 	columns := make([]formatters.ClickyColumn, 0, len(header.Children))
+	seen := map[string]int{}
 	for i, cell := range header.Children {
-		name := slugColumnName(cell.String(), i)
+		name := uniqueColumnName(slugColumnName(cell.String(), i), seen)
 		headerNode := cell.ClickyNode()
 		columns = append(columns, formatters.ClickyColumn{
 			Name:   name,
@@ -701,6 +702,17 @@ func slugColumnName(label string, index int) string {
 	name = strings.Trim(name, "_")
 	if name == "" {
 		return fmt.Sprintf("column_%d", index+1)
+	}
+	return name
+}
+
+// uniqueColumnName disambiguates duplicate column slugs by suffixing repeats
+// (_2, _3, …). ClickyRow.Cells is keyed by column name, so two headers slugging
+// to the same name would otherwise collide and silently drop a column's cells.
+func uniqueColumnName(name string, seen map[string]int) string {
+	seen[name]++
+	if n := seen[name]; n > 1 {
+		return fmt.Sprintf("%s_%d", name, n)
 	}
 	return name
 }

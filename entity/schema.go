@@ -83,6 +83,9 @@ func parseSchema(raw []byte) (*parsedSchema, error) {
 	seen := map[string]int{}
 	for _, name := range names {
 		p := doc.Properties[name]
+		if p == nil {
+			return nil, fmt.Errorf("dynamic entity schema property %q must be an object, got null", name)
+		}
 		goName, err := uniqueGoFieldName(name, seen)
 		if err != nil {
 			return nil, err
@@ -101,9 +104,15 @@ func parseSchema(raw []byte) (*parsedSchema, error) {
 			field.ItemType = p.Items.Type
 		}
 		if p.IsID {
+			if ps.IDKey != "" {
+				return nil, fmt.Errorf("dynamic entity schema has multiple x-clicky-id properties: %q and %q", ps.IDKey, name)
+			}
 			ps.IDKey = name
 		}
 		if p.IsName {
+			if ps.NameKey != "" {
+				return nil, fmt.Errorf("dynamic entity schema has multiple x-clicky-name properties: %q and %q", ps.NameKey, name)
+			}
 			ps.NameKey = name
 		}
 		ps.Fields = append(ps.Fields, field)

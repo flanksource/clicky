@@ -61,6 +61,11 @@ func RegisterDynamicEntity(spec DynamicEntitySpec) {
 	if spec.List == nil {
 		panic("clicky.RegisterDynamicEntity: spec.List must not be nil")
 	}
+	for _, f := range spec.Filters {
+		if f.Options == nil {
+			panic("clicky.RegisterDynamicEntity: DynamicFilter " + f.Key + " has no Options func")
+		}
+	}
 
 	responseType := spec.ItemType
 	if responseType == nil {
@@ -125,9 +130,6 @@ func resolveDynamicLookup(ctx context.Context, filters []DynamicFilter, flagMap 
 	bound := make([]boundFilter, 0, len(filters))
 	for _, df := range filters {
 		df := df
-		if df.Options == nil {
-			panic("clicky.RegisterDynamicEntity: DynamicFilter " + df.Key + " has no Options func")
-		}
 		var selected map[string]api.Textable
 		if df.Selected != nil {
 			selected = df.Selected(ctx, flagMap)

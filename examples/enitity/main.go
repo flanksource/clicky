@@ -1123,6 +1123,10 @@ func serveMarkdownPreview(w http.ResponseWriter, r *http.Request) {
 		format = "clicky-json"
 	}
 	format = normalizeMarkdownPreviewFormat(format)
+	if !markdownPreviewFormats[format] {
+		http.Error(w, fmt.Sprintf("unsupported format: %s", format), http.StatusBadRequest)
+		return
+	}
 
 	if format == "excel" {
 		serveMarkdownPreviewExcel(w, markdownPreviewRows(doc))
@@ -1168,6 +1172,26 @@ func serveMarkdownPreviewExcel(w http.ResponseWriter, rows []markdownPreviewRow)
 	w.Header().Set("Content-Type", clicky.FormatToContentType("excel"))
 	w.Header().Set("Content-Disposition", `inline; filename="markdown-preview.xlsx"`)
 	_, _ = w.Write(data)
+}
+
+// markdownPreviewFormats is the set of formats the preview endpoint accepts
+// (after normalization). It mirrors clicky's known render formats so a bad
+// client-supplied ?format= is rejected as 400 instead of surfacing as a 500.
+var markdownPreviewFormats = map[string]bool{
+	"clicky-json": true,
+	"json":        true,
+	"yaml":        true,
+	"yml":         true,
+	"csv":         true,
+	"html":        true,
+	"html-react":  true,
+	"html-static": true,
+	"markdown":    true,
+	"pdf":         true,
+	"slack":       true,
+	"excel":       true,
+	"tree":        true,
+	"pretty":      true,
 }
 
 func normalizeMarkdownPreviewFormat(format string) string {

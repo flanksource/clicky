@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
 	"os/exec"
 	"strconv"
@@ -351,9 +352,12 @@ func (e *CommandExecutor) ExtractRequestFromHTTP(r *http.Request, op *RPCOperati
 		}
 	}
 
-	// Extract JSON body for POST/PUT requests FIRST (so query params can override)
+	// Extract JSON body for POST/PUT requests FIRST (so query params can override).
+	// Parse the media type so a charset/boundary param (e.g. "application/json;
+	// charset=utf-8") still matches.
 	if r.Method == "POST" || r.Method == "PUT" {
-		if r.Header.Get("Content-Type") == "application/json" && len(bodyBytes) > 0 {
+		mediaType, _, _ := mime.ParseMediaType(r.Header.Get("Content-Type"))
+		if mediaType == "application/json" && len(bodyBytes) > 0 {
 			var bodyData map[string]interface{}
 			if err := json.Unmarshal(bodyBytes, &bodyData); err != nil {
 				return nil, fmt.Errorf("failed to parse JSON body: %w", err)
