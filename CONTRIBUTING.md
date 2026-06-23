@@ -51,8 +51,10 @@ embedded `task/ui/dist/taskui.js` bundle on pushes to main.
 - **Tests** use **Ginkgo/Gomega** (`*_suite_test.go` register the suites). Colocate unit tests next
   to source; keep DB/integration tests behind the `integration` build tag.
 - **Custom API linter** — `lint/` is a `go/analysis` analyzer (run as `clicky lint ./...`) that
-  enforces clicky's render-code rules against the `github.com/flanksource/clicky` module. The rules
-  are documented under "Writing render code" in [CLAUDE.md](CLAUDE.md); follow them or CI fails.
+  enforces clicky's render-code and entity-registration rules against consumers of the
+  `github.com/flanksource/clicky` module (the clicky module itself is skipped). Diagnostics carry a
+  severity: errors fail CI, warnings are advisory. The rules are documented under "Writing render
+  code" in [CLAUDE.md](CLAUDE.md).
 - **Generated artifacts** at the repo root (`out.*`, `*.pdf`, `*.html`, `react.html`, `*-demo`
   binaries) are gitignored scratch output — not source. `task/ui/dist/taskui.js` is committed build
   output auto-rebuilt by CI; regenerate locally with `make task-ui`.

@@ -164,6 +164,7 @@ type OpenAPIExample struct {
 type OpenAPISchema struct {
 	Ref                  string                    `json:"$ref,omitempty"`
 	Type                 string                    `json:"type,omitempty"`
+	Title                string                    `json:"title,omitempty"`
 	Format               string                    `json:"format,omitempty"`
 	Description          string                    `json:"description,omitempty"`
 	Enum                 []interface{}             `json:"enum,omitempty"`
@@ -174,6 +175,32 @@ type OpenAPISchema struct {
 	AdditionalProperties *OpenAPISchema            `json:"additionalProperties,omitempty"`
 	Nullable             bool                      `json:"nullable,omitempty"`
 	Example              interface{}               `json:"example,omitempty"`
+	// Extensions carries vendor keys (e.g. x-clicky-component, x-clicky-workload,
+	// x-clicky-default-source, x-clicky-property) that are merged into the object
+	// at marshal time. They never appear as their own JSON field.
+	Extensions map[string]any `json:"-"`
+}
+
+// MarshalJSON merges Extensions into the marshalled object so vendor x-* keys
+// sit alongside the standard schema keywords.
+func (s OpenAPISchema) MarshalJSON() ([]byte, error) {
+	type alias OpenAPISchema
+	b, err := json.Marshal(alias(s))
+	if err != nil || len(s.Extensions) == 0 {
+		return b, err
+	}
+	var m map[string]json.RawMessage
+	if err := json.Unmarshal(b, &m); err != nil {
+		return nil, err
+	}
+	for k, v := range s.Extensions {
+		raw, err := json.Marshal(v)
+		if err != nil {
+			return nil, err
+		}
+		m[k] = raw
+	}
+	return json.Marshal(m)
 }
 
 // OpenAPIComponents contains reusable components
@@ -710,8 +737,13 @@ func (g *OpenAPIGenerator) buildClickySpecMeta(operations []RPCOperation) *Click
 	return &ClickySpecMeta{Surfaces: surfaces}
 }
 
+// clickySurfaceBaseKey returns the route key for an entity surface. The key is
+// the entity name as registered (singular, matching the /api/v1/<entity> path),
+// so the clicky-ui row-click route /<surface>/<id> resolves against the same
+// singular key the API path uses — no automatic pluralization is applied. The
+// aliases are retained for a future explicit alternate-key mechanism.
 func clickySurfaceBaseKey(entity string, aliases []string) string {
-	return clickyPluralize(entity)
+	return entity
 }
 
 func clickySurfaceCandidateKey(baseKey string, parent string, admin bool) string {
@@ -727,20 +759,6 @@ func clickySurfaceTitle(baseKey string, admin bool) string {
 		return "Admin — " + title
 	}
 	return title
-}
-
-func clickyPluralize(value string) string {
-	switch {
-	case value == "":
-		return value
-	case strings.HasSuffix(value, "s"):
-		return value
-	case strings.HasSuffix(value, "x"), strings.HasSuffix(value, "z"),
-		strings.HasSuffix(value, "ch"), strings.HasSuffix(value, "sh"):
-		return value + "es"
-	default:
-		return value + "s"
-	}
 }
 
 func clickyTitleCase(value string) string {

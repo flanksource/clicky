@@ -54,6 +54,54 @@ func TestOpenAPIGenerator_DynamicEntitySurfaceIcon(t *testing.T) {
 	assert.Empty(t, listOp.Clicky.Icon, "icon must stay surface-only, not on the operation")
 }
 
+// TestOpenAPIGenerator_SurfaceKeyNotPluralized asserts the surface route key is
+// the singular entity name (no automatic pluralization), and that the same key
+// is stamped on the list and get operations. clicky-ui builds a row-click route
+// of /<x-clicky.surface>/<id> and resolves it against x-clicky.surfaces[].key,
+// so spec-key == per-op-surface == /api/v1/<name> path segment must all match
+// for the navigation to resolve. The name ends in a consonant, where the old
+// naive pluralizer would have appended "s".
+func TestOpenAPIGenerator_SurfaceKeyNotPluralized(t *testing.T) {
+	const entityName = "openapi-policy-stack"
+	root := &cobra.Command{Use: "testapp"}
+
+	clicky.NewEntity[openAPISchemaListItem, openAPISchemaOpts, openAPISchemaDetail](entityName).
+		List(func(openAPISchemaOpts) ([]openAPISchemaListItem, error) {
+			return nil, nil
+		}).
+		Get(func(id string) (openAPISchemaDetail, error) {
+			return openAPISchemaDetail{ID: id, Name: id}, nil
+		}).
+		Register()
+
+	clicky.GenerateCLI(root)
+
+	spec, err := NewOpenAPIGenerator(nil).GenerateFromCobra(root)
+	require.NoError(t, err)
+	require.NotNil(t, spec.Clicky, "spec must carry x-clicky surfaces")
+
+	var surface *ClickySurface
+	for i := range spec.Clicky.Surfaces {
+		if spec.Clicky.Surfaces[i].Entity == entityName {
+			surface = &spec.Clicky.Surfaces[i]
+			break
+		}
+	}
+	require.NotNil(t, surface, "surface for %q missing", entityName)
+	assert.Equal(t, entityName, surface.Key,
+		"surface key must be the singular entity name, not pluralized")
+
+	listOp := spec.Paths["/api/v1/"+entityName]["get"]
+	require.NotNil(t, listOp.Clicky, "list operation should carry x-clicky meta")
+	assert.Equal(t, entityName, listOp.Clicky.Surface,
+		"list op surface must equal the singular key (matches the /api/v1/<name> path)")
+
+	getOp := spec.Paths["/api/v1/"+entityName+"/{id}"]["get"]
+	require.NotNil(t, getOp.Clicky, "get operation should carry x-clicky meta")
+	assert.Equal(t, entityName, getOp.Clicky.Surface,
+		"get op surface must equal the singular key so the row-click route resolves")
+}
+
 func TestOpenAPIGenerator_NewOpenAPIGenerator(t *testing.T) {
 	tests := []struct {
 		name   string

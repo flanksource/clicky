@@ -15,12 +15,12 @@ import (
 	"sync"
 	"time"
 
+	"github.com/flanksource/clicky/entity"
 	"github.com/flanksource/clicky/formatters"
 	"github.com/flanksource/clicky/task"
 	flanksourceContext "github.com/flanksource/commons/context"
 	"github.com/google/uuid"
 	"github.com/spf13/cobra"
-	"github.com/spf13/pflag"
 
 	"github.com/flanksource/clicky"
 )
@@ -32,7 +32,6 @@ type MCPServer struct {
 	promptRegistry *PromptRegistry
 	rootCmd        *cobra.Command
 	verbose        bool
-	execMu         sync.Mutex
 }
 
 const maxSSEMessageBytes = 1 << 20
@@ -550,91 +549,29 @@ func (s *MCPServer) executeToolWithTaskManager(ctx context.Context, tool *ToolDe
 	// Create a task for the tool execution
 	task := clicky.StartTask(fmt.Sprintf("MCP: %s", tool.Name),
 		func(ctx flanksourceContext.Context, t *clicky.Task) (interface{}, error) {
-			s.execMu.Lock()
-			defer s.execMu.Unlock()
-
-			// Set up command arguments
 			if tool.Command == nil {
 				return nil, fmt.Errorf("tool command not available")
 			}
 
-			// Apply arguments to command flags
-			if err := s.applyArgsToCommand(tool.Command, args); err != nil {
-				t.Errorf("Failed to apply arguments: %v", err)
-				return nil, err
-			}
-
-			// Apply server-wide format overrides (e.g. forcing Markdown
-			// without ANSI for AI clients). Best-effort: tools that don't
-			// declare matching flags are left alone.
-			applyFormatOverride(tool.Command, s.config.Tools.Format)
-
-			// Capture output by redirecting stdout and stderr
-			oldStdout := os.Stdout
-			oldStderr := os.Stderr
-
-			// Create pipes
-			rOut, wOut, _ := os.Pipe()
-			rErr, wErr, _ := os.Pipe()
-
-			os.Stdout = wOut
-			os.Stderr = wErr
-
-			// Capture output in goroutines
-			outDone := make(chan struct{})
-			errDone := make(chan struct{})
-
-			go func() {
-				defer close(outDone)
-				buf := make([]byte, 1024)
-				for {
-					n, err := rOut.Read(buf)
-					if n > 0 {
-						output.Write(buf[:n])
-						t.Infof("Output: %s", string(buf[:n]))
-					}
-					if err != nil {
-						break
-					}
-				}
-			}()
-
-			go func() {
-				defer close(errDone)
-				buf := make([]byte, 1024)
-				for {
-					n, err := rErr.Read(buf)
-					if n > 0 {
-						errorOutput.Write(buf[:n])
-						t.Warnf("Error: %s", string(buf[:n]))
-					}
-					if err != nil {
-						break
-					}
-				}
-			}()
-
-			// Execute the command
 			t.SetName(fmt.Sprintf("Executing: %s", tool.Name))
 
-			var cmdErr error
-			if tool.Command.RunE != nil {
-				cmdErr = tool.Command.RunE(tool.Command, []string{})
-			} else if tool.Command.Run != nil {
-				tool.Command.Run(tool.Command, []string{})
-			} else {
-				cmdErr = fmt.Errorf("command has no Run function")
+			// Run through the transport-neutral handle, which serializes the
+			// global stdout/stderr capture, resets state, and applies the
+			// arguments + server-wide format overrides.
+			flags, posArgs := splitMCPArgs(args)
+			stdout, stderr, cmdErr := tool.Command.Execute(ctx, entity.ExecuteOptions{
+				Args:            posArgs,
+				Flags:           flags,
+				FormatOverrides: formatOverrides(s.config.Tools.Format),
+			})
+			if stdout != "" {
+				output.WriteString(stdout)
+				t.Infof("Output: %s", stdout)
 			}
-
-			// Restore stdout/stderr
-			_ = wOut.Close()
-			_ = wErr.Close()
-			os.Stdout = oldStdout
-			os.Stderr = oldStderr
-
-			// Wait for output capture to complete
-			<-outDone
-			<-errDone
+			if stderr != "" {
+				errorOutput.WriteString(stderr)
+				t.Warnf("Error: %s", stderr)
+			}
 
 			if cmdErr != nil {
 				if _, err := t.FailedWithError(cmdErr); err != nil {
@@ -703,19 +640,24 @@ func (s *MCPServer) confirmToolExecution(toolName string, args map[string]interf
 	return true
 }
 
-// applyFormatOverride sets --format and --no-color on cmd to match the
-// MCP server's configured format. Silently no-ops when the flag is absent
-// (not every command supports clicky's standard format flags).
-func applyFormatOverride(cmd *cobra.Command, opts *formatters.FormatOptions) {
+// formatOverrides translates the MCP server's configured format into best-effort
+// flag values (format / no-color) applied before tool execution. Returns nil when
+// no format is configured.
+func formatOverrides(opts *formatters.FormatOptions) map[string]string {
 	if opts == nil {
-		return
+		return nil
 	}
+	out := map[string]string{}
 	if name := formatName(opts); name != "" {
-		setFlagBestEffort(cmd, "format", name)
+		out["format"] = name
 	}
 	if opts.NoColor {
-		setFlagBestEffort(cmd, "no-color", "true")
+		out["no-color"] = "true"
 	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 // formatName picks the canonical format name from FormatOptions.
@@ -742,91 +684,23 @@ func formatName(opts *formatters.FormatOptions) string {
 	return strings.TrimSpace(strings.ToLower(opts.Format))
 }
 
-func setFlagBestEffort(cmd *cobra.Command, name, value string) {
-	flag := lookupCommandFlag(cmd, name)
-	if flag == nil {
-		return
-	}
-	_ = setCommandFlag(flag, value)
-}
-
-// applyArgsToCommand applies arguments to cobra command flags
-func (s *MCPServer) applyArgsToCommand(cmd *cobra.Command, args map[string]interface{}) error {
-	resetCommandState(cmd)
-
-	// Apply each argument
+// splitMCPArgs splits a model-provided MCP argument map into positional args
+// (the "args" key) and string-valued flags (every other key).
+func splitMCPArgs(args map[string]interface{}) (map[string]string, []string) {
+	flags := map[string]string{}
+	var posArgs []string
 	for key, value := range args {
 		if key == "args" {
-			// Handle positional arguments
 			if argArray, ok := value.([]interface{}); ok {
-				strArgs := make([]string, len(argArray))
-				for i, arg := range argArray {
-					strArgs[i] = fmt.Sprintf("%v", arg)
+				for _, arg := range argArray {
+					posArgs = append(posArgs, fmt.Sprintf("%v", arg))
 				}
-				cmd.SetArgs(strArgs)
 			}
 			continue
 		}
-
-		// Find the flag
-		flag := lookupCommandFlag(cmd, key)
-		if flag == nil {
-			return fmt.Errorf("unknown flag: %s", key)
-		}
-
-		// Set the flag value
-		switch v := value.(type) {
-		case bool:
-			if err := setCommandFlag(flag, fmt.Sprintf("%t", v)); err != nil {
-				return fmt.Errorf("failed to set flag %s: %w", key, err)
-			}
-		case string:
-			if err := setCommandFlag(flag, v); err != nil {
-				return fmt.Errorf("failed to set flag %s: %w", key, err)
-			}
-		default:
-			if err := setCommandFlag(flag, fmt.Sprintf("%v", v)); err != nil {
-				return fmt.Errorf("failed to set flag %s: %w", key, err)
-			}
-		}
+		flags[key] = fmt.Sprintf("%v", value)
 	}
-
-	return nil
-}
-
-func setCommandFlag(flag *pflag.Flag, value string) error {
-	if err := flag.Value.Set(value); err != nil {
-		return err
-	}
-	flag.Changed = true
-	return nil
-}
-
-func lookupCommandFlag(cmd *cobra.Command, name string) *pflag.Flag {
-	if flag := cmd.Flags().Lookup(name); flag != nil {
-		return flag
-	}
-	if flag := cmd.PersistentFlags().Lookup(name); flag != nil {
-		return flag
-	}
-	return cmd.InheritedFlags().Lookup(name)
-}
-
-func resetCommandState(cmd *cobra.Command) {
-	cmd.SetArgs(nil)
-	resetFlagSet(cmd.Flags())
-	resetFlagSet(cmd.PersistentFlags())
-	resetFlagSet(cmd.InheritedFlags())
-}
-
-func resetFlagSet(flags *pflag.FlagSet) {
-	if flags == nil {
-		return
-	}
-	flags.VisitAll(func(flag *pflag.Flag) {
-		_ = flag.Value.Set(flag.DefValue)
-		flag.Changed = false
-	})
+	return flags, posArgs
 }
 
 // handlePromptsList handles the MCP prompts/list request

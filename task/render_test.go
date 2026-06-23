@@ -605,3 +605,38 @@ func TestRenderOrder_ProblemsThenRunningThenSuccess(t *testing.T) {
 			idxFailed, idxRunning, idxSuccess, stripped)
 	}
 }
+
+func TestPhysicalRows_AccountsForSoftWrap(t *testing.T) {
+	const width = 40
+	cases := []struct {
+		name string
+		out  string
+		want int
+	}{
+		{"empty", "", 1},
+		{"single short line", "hello", 1},
+		{"three logical lines no wrap", "a\nb\nc", 3},
+		{"exactly width does not wrap", strings.Repeat("x", width), 1},
+		{"one over width wraps to two", strings.Repeat("x", width+1), 2},
+		{"long line wraps to three", strings.Repeat("x", 2*width+1), 3},
+		{"wrapped line plus short line", strings.Repeat("x", width+5) + "\nshort", 3},
+		{"ansi codes do not inflate width", "\x1b[31m" + strings.Repeat("x", width) + "\x1b[0m", 1},
+		{"blank logical lines each count once", "\n\n", 3},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := physicalRows(tc.out, width); got != tc.want {
+				t.Errorf("physicalRows(%q, %d) = %d, want %d", tc.out, width, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestPhysicalRows_NonWrappingMatchesNewlineCount(t *testing.T) {
+	// Backward-compat guard: when no line exceeds the width, the returned
+	// ClearLines count (physicalRows-1) must equal the old strings.Count(\n).
+	out := "line one\nline two\nline three"
+	if got, want := physicalRows(out, 120)-1, strings.Count(out, "\n"); got != want {
+		t.Errorf("non-wrapping count drifted from newline count: got %d want %d", got, want)
+	}
+}

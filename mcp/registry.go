@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/flanksource/clicky/entity"
 	"github.com/flanksource/clicky/rpc"
 	"github.com/spf13/cobra"
 )
@@ -22,9 +23,9 @@ type ToolDefinition struct {
 	Name         string         `json:"name"`
 	Title        string         `json:"title"`
 	Description  string         `json:"description"`
-	InputSchema  Schema         `json:"inputSchema"`
-	OutputSchema *Schema        `json:"outputSchema,omitempty"`
-	Command      *cobra.Command `json:"-"` // Internal reference
+	InputSchema  Schema                   `json:"inputSchema"`
+	OutputSchema *Schema                  `json:"outputSchema,omitempty"`
+	Command      entity.ExecutableCommand `json:"-"` // Internal reference
 }
 
 // Schema represents a JSON schema for tool input/output
@@ -64,9 +65,7 @@ func NewMcpTool(rpcOp *rpc.RPCOperation) *ToolDefinition {
 	// Get application name for title
 	appName := "app"
 	if rpcOp.Command != nil {
-		if root := getRootCommand(rpcOp.Command); root != nil {
-			appName = root.Name()
-		}
+		appName = rpcOp.Command.RootName()
 	}
 
 	return &ToolDefinition{
@@ -243,14 +242,6 @@ func getCommandPath(cmd *cobra.Command) string {
 	}
 
 	return strings.Join(parts, " ")
-}
-
-// getRootCommand returns the root command
-func getRootCommand(cmd *cobra.Command) *cobra.Command {
-	for cmd.Parent() != nil {
-		cmd = cmd.Parent()
-	}
-	return cmd
 }
 
 // ListToolsResponse represents the MCP tools/list response
