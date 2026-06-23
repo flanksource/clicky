@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.21.27](https://github.com/flanksource/clicky/compare/v1.21.26...v1.21.27) (2026-06-23)
+
+
+### ✨ Features
+
+* **aichat:** add runtime model registry ([58410db](https://github.com/flanksource/clicky/commit/58410dbdaaf73a353005520d5f01fddad99d4275))
+
 ## [1.21.26](https://github.com/flanksource/clicky/compare/v1.21.25...v1.21.26) (2026-06-23)
 
 
