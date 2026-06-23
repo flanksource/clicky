@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"strings"
 
 	"github.com/firebase/genkit/go/ai"
 	"github.com/firebase/genkit/go/core/api"
@@ -25,24 +24,43 @@ type ProviderCredential struct {
 // ProviderCredentialsProvider returns API keys available to the current request.
 type ProviderCredentialsProvider func(context.Context) ([]ProviderCredential, error)
 
+// providerEnvKeys lists the environment variables consulted for each provider's
+// API key, in priority order. A request-scoped credential always takes
+// precedence over these.
+var providerEnvKeys = map[Provider][]string{
+	ProviderAnthropic: {"ANTHROPIC_API_KEY"},
+	ProviderOpenAI:    {"OPENAI_API_KEY"},
+	ProviderGoogle:    {"GOOGLE_API_KEY", "GEMINI_API_KEY"},
+}
+
+// providerOrder is the stable order in which providers are resolved, registered,
+// and reported.
+var providerOrder = []Provider{ProviderAnthropic, ProviderOpenAI, ProviderGoogle}
+
 // initGenkit registers every provider plugin whose API key is present in the
 // supplied credentials or environment, defaulting the model to DefaultModelID.
 // Plugins panic on Init when their key is missing, so an absent key means the
 // provider is simply not registered (and selecting one of its models later fails
 // loud in LookupModel + generation). Fails loud if no providers are configured.
 func initGenkit(ctx context.Context, creds ...ProviderCredential) (*genkit.Genkit, []Provider, error) {
-	var plugins []api.Plugin
-	registered := configuredProviders(creds)
 	keyByProvider := credentialMap(creds)
+	var plugins []api.Plugin
+	var registered []Provider
 
-	if key := firstNonEmptyString(keyByProvider[ProviderAnthropic], os.Getenv("ANTHROPIC_API_KEY")); key != "" {
-		plugins = append(plugins, &anthropic.Anthropic{APIKey: key})
-	}
-	if key := firstNonEmptyString(keyByProvider[ProviderOpenAI], os.Getenv("OPENAI_API_KEY")); key != "" {
-		plugins = append(plugins, &openai.OpenAI{APIKey: key})
-	}
-	if key := firstNonEmptyString(keyByProvider[ProviderGoogle], os.Getenv("GOOGLE_API_KEY"), os.Getenv("GEMINI_API_KEY")); key != "" {
-		plugins = append(plugins, &googlegenai.GoogleAI{APIKey: key})
+	for _, provider := range providerOrder {
+		key := resolveProviderKey(provider, keyByProvider)
+		if key == "" {
+			continue
+		}
+		switch provider {
+		case ProviderAnthropic:
+			plugins = append(plugins, &anthropic.Anthropic{APIKey: key})
+		case ProviderOpenAI:
+			plugins = append(plugins, &openai.OpenAI{APIKey: key})
+		case ProviderGoogle:
+			plugins = append(plugins, &googlegenai.GoogleAI{APIKey: key})
+		}
+		registered = append(registered, provider)
 	}
 
 	if len(plugins) == 0 {
@@ -54,6 +72,56 @@ func initGenkit(ctx context.Context, creds ...ProviderCredential) (*genkit.Genki
 		genkit.WithDefaultModel(DefaultModelID),
 	)
 	return g, registered, nil
+}
+
+// credentialMap indexes request-scoped credentials by provider, keeping the
+// first non-empty key supplied for each provider.
+func credentialMap(creds []ProviderCredential) map[Provider]string {
+	m := make(map[Provider]string, len(creds))
+	for _, c := range creds {
+		if c.APIKey == "" {
+			continue
+		}
+		if _, ok := m[c.Provider]; !ok {
+			m[c.Provider] = c.APIKey
+		}
+	}
+	return m
+}
+
+// resolveProviderKey returns the API key for a provider, preferring a
+// request-scoped credential over the provider's environment variables.
+func resolveProviderKey(provider Provider, keyByProvider map[Provider]string) string {
+	candidates := []string{keyByProvider[provider]}
+	for _, env := range providerEnvKeys[provider] {
+		candidates = append(candidates, os.Getenv(env))
+	}
+	return firstNonEmptyString(candidates...)
+}
+
+// configuredProviders returns the providers that have an API key available
+// (from creds or the environment), in stable provider order. It mirrors the
+// registration logic in initGenkit so callers see the same set of providers the
+// server would actually register.
+func configuredProviders(creds []ProviderCredential) []Provider {
+	keyByProvider := credentialMap(creds)
+	var providers []Provider
+	for _, provider := range providerOrder {
+		if resolveProviderKey(provider, keyByProvider) != "" {
+			providers = append(providers, provider)
+		}
+	}
+	return providers
+}
+
+// firstNonEmptyString returns the first non-empty value, or "" if all are empty.
+func firstNonEmptyString(vals ...string) string {
+	for _, v := range vals {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
 }
 
 const defaultMaxOutputTokens = 4096

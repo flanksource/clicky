@@ -206,7 +206,11 @@ var _ = Describe("E2E Clicky Command Execution", func() {
 				"bad.go": `
 package fixture
 
-import "github.com/flanksource/clicky/api"
+import (
+	"fmt"
+
+	"github.com/flanksource/clicky/api"
+)
 
 type Server struct{ Name string }
 
@@ -216,6 +220,8 @@ func (s Server) Pretty() api.Text {
 	text := api.Text{}.Append(s.Name)
 	return api.Text{}.Append(text.ANSI())
 }
+
+func (s Server) Log() { fmt.Println(s.Name) }
 `,
 				"other.go": `
 package fixture
@@ -234,11 +240,14 @@ var other = api.Text{Content: "other"}
 			cmd.Stderr = &stderr
 
 			err := cmd.Run()
-			Expect(err).To(HaveOccurred(), "lint should fail when violations are found")
+			// Only error-severity violations fail the run; the fmt.Println call is
+			// the error here, while the api.Text rules are advisory warnings.
+			Expect(err).To(HaveOccurred(), "lint should fail when error-severity violations are found")
 
 			output := stdout.String()
 			Expect(output).To(ContainSubstring("Lint summary:"))
 			Expect(output).To(ContainSubstring("clickylint"))
+			Expect(output).To(ContainSubstring("avoid fmt.Println"))
 			Expect(output).To(ContainSubstring("avoid direct api.Text struct literal"))
 			Expect(output).To(ContainSubstring("avoid .ANSI() inside clicky render builders"))
 			Expect(output).To(ContainSubstring("bad.go"))
@@ -270,7 +279,7 @@ func (s Server) Pretty() api.Text {
 
 			err := cmd.Run()
 			Expect(err).ToNot(HaveOccurred(), "lint should pass for clean packages: %s", stderr.String())
-			Expect(stdout.String()).To(ContainSubstring("Lint summary: 0 violations"))
+			Expect(stdout.String()).To(ContainSubstring("Lint summary: 0 errors, 0 warnings"))
 			Expect(stdout.String()).To(ContainSubstring("clickylint"))
 		})
 
@@ -303,9 +312,15 @@ var direct = api.Text{Content: "bad"}
 				"bad.go": `
 package fixture
 
-import "github.com/flanksource/clicky/api"
+import (
+	"fmt"
+
+	"github.com/flanksource/clicky/api"
+)
 
 var direct = api.Text{Content: "bad"}
+
+func emit() { fmt.Println("x") }
 `,
 			})
 			cmd := exec.Command(binaryPath, "lint", "--format", "json", ".")
