@@ -150,6 +150,14 @@ func captureGlobal(execCmd *cobra.Command, args []string) (stdout, stderr string
 		}
 	}()
 
+	// Cobra falls back to parsing os.Args[1:] when a command's args are nil (see
+	// Command.ExecuteC). For a server invocation that would leak the server's own
+	// process flags (e.g. --port) into the executed command, so always pass a
+	// non-nil slice — an empty request must run the command with no args, not the
+	// host process's args.
+	if args == nil {
+		args = []string{}
+	}
 	execCmd.SetArgs(args)
 	cmdErr := execCmd.Execute()
 

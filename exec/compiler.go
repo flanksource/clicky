@@ -31,21 +31,53 @@ var compilerArgumentBasenames = map[string]struct{}{
 	"webpack": {},
 }
 
+// detectCompilers reports whether any process in the tree rooted at root is a
+// compiler/linker. A nil error means the tree was inspected successfully (with
+// or without a match). When every probe fails — no process in the tree could be
+// inspected at all — it returns the first probe error so the caller can tell
+// "no compiler running" apart from "couldn't see the process tree" and avoid
+// advancing startup state on blind detection.
 func detectCompilers(root int32) (bool, error) {
+	var firstErr error
+	visible := false
+	noteErr := func(err error) {
+		if firstErr == nil {
+			firstErr = err
+		}
+	}
 	for _, pid := range collectPids(root) {
 		proc, err := gops.NewProcess(pid)
 		if err != nil {
+			noteErr(err)
 			continue
 		}
-		if name, err := proc.Name(); err == nil && isCompilerExecutable(name) {
-			return true, nil
+		if name, err := proc.Name(); err == nil {
+			visible = true
+			if isCompilerExecutable(name) {
+				return true, nil
+			}
+		} else {
+			noteErr(err)
 		}
-		if exe, err := proc.Exe(); err == nil && isCompilerExecutable(exe) {
-			return true, nil
+		if exe, err := proc.Exe(); err == nil {
+			visible = true
+			if isCompilerExecutable(exe) {
+				return true, nil
+			}
+		} else {
+			noteErr(err)
 		}
-		if args, err := proc.CmdlineSlice(); err == nil && isCompilerCommandLine(args) {
-			return true, nil
+		if args, err := proc.CmdlineSlice(); err == nil {
+			visible = true
+			if isCompilerCommandLine(args) {
+				return true, nil
+			}
+		} else {
+			noteErr(err)
 		}
+	}
+	if !visible && firstErr != nil {
+		return false, firstErr
 	}
 	return false, nil
 }

@@ -188,8 +188,19 @@ func (f Footnote) HTML() string {
 		return ""
 	}
 	escaped := htmlEscapeString(id)
-	return fmt.Sprintf(`<li id="fn-%s">%s <a href="#fnref-%s" aria-label="Back to reference">back</a></li>`,
-		escaped, blockTextableHTML(f.Content), escaped)
+	// Build the element with the content written as its own segment (element-body
+	// position, between `>` and ` <a`) rather than interpolated into the quoted
+	// attribute template. The id is htmlEscapeString'd; the content is already
+	// rendered HTML and never lands inside an attribute's quotes.
+	var b strings.Builder
+	b.WriteString(`<li id="fn-`)
+	b.WriteString(escaped)
+	b.WriteString(`">`)
+	b.WriteString(blockTextableHTML(f.Content))
+	b.WriteString(` <a href="#fnref-`)
+	b.WriteString(escaped)
+	b.WriteString(`" aria-label="Back to reference">back</a></li>`)
+	return b.String()
 }
 
 func (f Footnote) Markdown() string {
