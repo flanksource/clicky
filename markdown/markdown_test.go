@@ -2,6 +2,10 @@ package markdown_test
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
+	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -9,15 +13,16 @@ import (
 	"github.com/flanksource/clicky/markdown"
 )
 
-func TestParseRoundTripFrontmatterAndSourceLines(t *testing.T) {
+func TestParseCanonicalFrontmatterAndSourceLines(t *testing.T) {
 	source := "---\ntitle: Annual Report\n---\n# Report\n\nIntro **bold** and [site](https://example.com).\n\n## Notes\n"
 
 	doc, err := markdown.ParseString(source)
 	if err != nil {
 		t.Fatalf("ParseString returned error: %v", err)
 	}
-	if got := doc.Markdown(); got != source {
-		t.Fatalf("Markdown roundtrip mismatch\nwant:\n%s\ngot:\n%s", source, got)
+	canonical := assertCanonicalMarkdownStable(t, source)
+	if !strings.HasPrefix(canonical, "---\ntitle: Annual Report\n---\n\n# Report\n") {
+		t.Fatalf("canonical markdown did not preserve frontmatter and heading:\n%s", canonical)
 	}
 	if got := doc.Metadata["title"]; got != "Annual Report" {
 		t.Fatalf("frontmatter title = %v, want Annual Report", got)
@@ -119,58 +124,15 @@ func TestParseFootnoteLabels(t *testing.T) {
 }
 
 func TestParseKitchenSinkRoundTripAndClickyJSON(t *testing.T) {
-	source := "---\n" +
-		"title: Kitchen Sink\n" +
-		"version: 1\n" +
-		"---\n" +
-		"# Kitchen Sink\n" +
-		"\n" +
-		"Intro with *emphasis*, **strong**, ~~deleted~~, `inline code`, [a link](https://example.com \"Example\"), ![alt text](image.png), and https://bare.example/path.\n" +
-		"\n" +
-		"> Quoted **content**\n" +
-		"> across lines.\n" +
-		"\n" +
-		"- [x] Completed task\n" +
-		"- [ ] Pending task\n" +
-		"- Plain item\n" +
-		"\n" +
-		"1. Ordered item\n" +
-		"2. Ordered item with nested list\n" +
-		"   - Nested child\n" +
-		"\n" +
-		"| Name | Qty | Notes |\n" +
-		"| :--- | ---: | :---: |\n" +
-		"| Cash | 10 | liquid |\n" +
-		"| Debt | 2 | fixed |\n" +
-		"\n" +
-		"```go\n" +
-		"func main() {\n" +
-		"    println(\"ok\")\n" +
-		"}\n" +
-		"```\n" +
-		"\n" +
-		"!!! warning Review\n" +
-		"    Check this before export.\n" +
-		"\n" +
-		"<details>\n" +
-		"<summary>More detail</summary>\n" +
-		"<p>Hidden <strong>HTML</strong></p>\n" +
-		"</details>\n" +
-		"\n" +
-		"<section data-kind=\"raw\"><span>Raw HTML</span></section>\n" +
-		"\n" +
-		"---\n" +
-		"\n" +
-		"Rates include VAT[^vat].\n" +
-		"\n" +
-		"[^vat]: Value-added tax note.\n"
+	source := readKitchenSink(t)
 
 	doc, err := markdown.ParseString(source)
 	if err != nil {
 		t.Fatalf("ParseString returned error: %v", err)
 	}
-	if got := doc.Markdown(); got != source {
-		t.Fatalf("Markdown roundtrip mismatch\nwant:\n%s\ngot:\n%s", source, got)
+	canonical := assertCanonicalMarkdownStable(t, source)
+	if !strings.HasPrefix(canonical, "---\ntitle: Kitchen Sink\nversion: 1\n---\n\n# Kitchen Sink\n") {
+		t.Fatalf("canonical markdown did not preserve frontmatter and title:\n%s", canonical)
 	}
 	if got := doc.Metadata["title"]; got != "Kitchen Sink" {
 		t.Fatalf("frontmatter title = %v, want Kitchen Sink", got)
@@ -235,6 +197,21 @@ func TestParseKitchenSinkRoundTripAndClickyJSON(t *testing.T) {
 	if payload.Version != 1 || payload.Node.Kind != "document" {
 		t.Fatalf("unexpected kitchen sink payload: %#v", payload)
 	}
+	assertNoParserProvenance(t, out)
+}
+
+func readKitchenSink(t *testing.T) string {
+	t.Helper()
+	_, currentFile, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("failed to locate markdown test file")
+	}
+	sourcePath := filepath.Join(filepath.Dir(currentFile), "..", "examples", "kitchen-sink.md")
+	data, err := os.ReadFile(sourcePath)
+	if err != nil {
+		t.Fatalf("read kitchen sink example: %v", err)
+	}
+	return string(data)
 }
 
 func TestClickyJSONUsesParsedMarkdownProvider(t *testing.T) {
@@ -264,6 +241,7 @@ func TestClickyJSONUsesParsedMarkdownProvider(t *testing.T) {
 	if len(payload.Node.Children) != 2 || payload.Node.Children[0].Kind != "heading" || payload.Node.Children[0].Level != 1 {
 		t.Fatalf("unexpected parsed payload children: %#v", payload.Node.Children)
 	}
+	assertNoParserProvenance(t, out)
 
 	plain, err := clicky.Format("**not parsed**", clicky.FormatOptions{Format: "markdown"})
 	if err != nil {
@@ -271,6 +249,65 @@ func TestClickyJSONUsesParsedMarkdownProvider(t *testing.T) {
 	}
 	if strings.TrimSpace(plain) != "**not parsed**" {
 		t.Fatalf("plain string markdown changed: %q", plain)
+	}
+}
+
+func TestParsedMarkdownHeadingMatchesBuilderClickyNode(t *testing.T) {
+	doc := clicky.MustParseMarkdown("# Report\n")
+	parsedOut, err := clicky.Format(doc, clicky.FormatOptions{Format: "clicky-json"})
+	if err != nil {
+		t.Fatalf("Format parsed markdown: %v", err)
+	}
+	builderOut, err := clicky.Format(clicky.Heading(1, clicky.Text("Report")), clicky.FormatOptions{Format: "clicky-json"})
+	if err != nil {
+		t.Fatalf("Format builder heading: %v", err)
+	}
+
+	var parsed struct {
+		Node struct {
+			Children []map[string]any `json:"children"`
+		} `json:"node"`
+	}
+	if err := json.Unmarshal([]byte(parsedOut), &parsed); err != nil {
+		t.Fatalf("unmarshal parsed clicky-json: %v\n%s", err, parsedOut)
+	}
+	var builder struct {
+		Node map[string]any `json:"node"`
+	}
+	if err := json.Unmarshal([]byte(builderOut), &builder); err != nil {
+		t.Fatalf("unmarshal builder clicky-json: %v\n%s", err, builderOut)
+	}
+	if len(parsed.Node.Children) != 1 {
+		t.Fatalf("parsed markdown children = %d, want 1: %s", len(parsed.Node.Children), parsedOut)
+	}
+	if !reflect.DeepEqual(parsed.Node.Children[0], builder.Node) {
+		t.Fatalf("parsed markdown heading differs from builder heading\nparsed: %#v\nbuilder: %#v", parsed.Node.Children[0], builder.Node)
+	}
+}
+
+func assertCanonicalMarkdownStable(t *testing.T, source string) string {
+	t.Helper()
+	doc, err := markdown.ParseString(source)
+	if err != nil {
+		t.Fatalf("parse original markdown: %v", err)
+	}
+	canonical := doc.Markdown()
+	roundTripped, err := markdown.ParseString(canonical)
+	if err != nil {
+		t.Fatalf("parse canonical markdown: %v\n%s", err, canonical)
+	}
+	if got := roundTripped.Markdown(); got != canonical {
+		t.Fatalf("canonical markdown is not stable\nfirst:\n%s\nsecond:\n%s", canonical, got)
+	}
+	return canonical
+}
+
+func assertNoParserProvenance(t *testing.T, out string) {
+	t.Helper()
+	for _, field := range []string{"sourceMarkdown", "lineStart", "lineEnd"} {
+		if strings.Contains(out, field) {
+			t.Fatalf("clicky-json leaked parser provenance field %q:\n%s", field, out)
+		}
 	}
 }
 
