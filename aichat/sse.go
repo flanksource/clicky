@@ -93,6 +93,10 @@ func (s *sseWriter) toolInputAvailable(callID, name string, input any) error {
 		"toolCallId": callID,
 		"toolName":   name,
 		"input":      input,
+		// clicky tools are discovered dynamically from the Cobra/OpenAPI surface.
+		// Mark them dynamic so the AI SDK stores the toolName explicitly on the
+		// UIMessage part instead of encoding it only in a static `tool-<name>` type.
+		"dynamic": true,
 	})
 }
 

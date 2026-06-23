@@ -152,3 +152,34 @@ func TestTypedToolPartNameFallsBackToTypeSuffix(t *testing.T) {
 		t.Error("isTool = false for tool- prefixed part")
 	}
 }
+
+func TestDynamicToolWithoutNameHasNoFallbackName(t *testing.T) {
+	p := UIPart{Type: "dynamic-tool", ToolCallID: "c1"}
+	if p.toolName() != "" {
+		t.Errorf("toolName = %q, want empty", p.toolName())
+	}
+}
+
+func TestToGenkitMessagesSkipsMalformedToolPart(t *testing.T) {
+	msgs := []UIMessage{
+		{Role: "user", Parts: []UIPart{{Type: "text", Text: "next"}}},
+		{Role: "assistant", Parts: []UIPart{
+			{Type: "tool-", ToolCallID: "bad", State: "output-available", Output: raw(map[string]any{"ok": true})},
+			{Type: "tool-feed_refresh", ToolCallID: "good", State: "output-available", Output: raw(map[string]any{"ok": true})},
+		}},
+	}
+	out, _, err := toGenkitMessages(msgs)
+	if err != nil {
+		t.Fatalf("toGenkitMessages: %v", err)
+	}
+	for _, msg := range out {
+		for _, part := range msg.Content {
+			if part.IsToolRequest() && part.ToolRequest.Name == "" {
+				t.Fatalf("empty tool request emitted: %+v", part.ToolRequest)
+			}
+			if part.IsToolResponse() && part.ToolResponse.Name == "" {
+				t.Fatalf("empty tool response emitted: %+v", part.ToolResponse)
+			}
+		}
+	}
+}
