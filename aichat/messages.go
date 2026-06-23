@@ -68,7 +68,10 @@ func (p UIPart) toolName() string {
 	if p.ToolName != "" {
 		return p.ToolName
 	}
-	return strings.TrimPrefix(p.Type, "tool-")
+	if strings.HasPrefix(p.Type, "tool-") {
+		return strings.TrimPrefix(p.Type, "tool-")
+	}
+	return ""
 }
 
 // pendingApproval reports whether this tool part carries a user approval
@@ -186,13 +189,21 @@ func assistantParts(m UIMessage, resuming bool, dirs *resumeDirectives) (model, 
 		case p.Type == "text" && p.Text != "":
 			model = append(model, ai.NewTextPart(p.Text))
 		case p.isTool():
-			req := &ai.ToolRequest{Name: p.toolName(), Ref: p.ToolCallID, Input: decodeJSON(p.Input)}
+			name := p.toolName()
+			if name == "" || p.ToolCallID == "" {
+				// Older/partial UI message streams can contain malformed tool parts
+				// (for example a `tool-` part without a name). Provider APIs reject
+				// empty tool names, so drop the bad part rather than poisoning the next
+				// chat turn.
+				continue
+			}
+			req := &ai.ToolRequest{Name: name, Ref: p.ToolCallID, Input: decodeJSON(p.Input)}
 			model = append(model, ai.NewToolRequestPart(req))
 			if resuming {
 				addResumeDirective(p, dirs)
 			} else if p.State == "output-available" && len(p.Output) > 0 {
 				toolResp = append(toolResp, ai.NewToolResponsePart(&ai.ToolResponse{
-					Name: p.toolName(), Ref: p.ToolCallID, Output: decodeJSON(p.Output),
+					Name: name, Ref: p.ToolCallID, Output: decodeJSON(p.Output),
 				}))
 			}
 		}

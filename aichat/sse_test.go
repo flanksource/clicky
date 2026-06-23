@@ -97,6 +97,7 @@ func TestSSEToolRoundTrip(t *testing.T) {
 		`"type":"tool-input-available"`,
 		`"toolCallId":"call_1"`,
 		`"toolName":"listThings"`,
+		`"dynamic":true`,
 		`"type":"tool-output-available"`,
 		`"type":"text-delta"`,
 		`"delta":"Found 2"`,
