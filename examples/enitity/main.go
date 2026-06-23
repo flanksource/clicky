@@ -8,9 +8,11 @@ import (
 	"io/fs"
 	"net/http"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -843,8 +845,10 @@ func registerSubCommands(store *demoStore) {
 // metadata-driven `EntityExplorerApp` against `/api/openapi.json` and `/api/v1/...`.
 func newServeUICommand() *cobra.Command {
 	var (
-		host string
-		port int
+		host   string
+		port   int
+		dev    bool
+		uiPort int
 	)
 
 	cmd := &cobra.Command{
@@ -855,9 +859,17 @@ and the embedded React UI built from clicky-ui's metadata-driven entity explorer
 
 The API is served at /api/openapi.json + /api/v1/..., the UI at /. Build the
 Vite frontend with ` + "`cd webapp && pnpm install && pnpm build`" + ` before
-compiling the Go binary so the embedded assets are current.`,
+compiling the Go binary so the embedded assets are current.
+
+With --dev, this command additionally launches the Vite dev server (HMR) from
+webapp/, which resolves @flanksource/clicky-ui from the sibling checked-out
+clicky-ui repo (../../../../clicky-ui/packages/ui/dist) and proxies /api back to
+this Go process. Open the printed Vite URL to develop against local clicky-ui
+source — no embedded rebuild needed. Requires a source checkout with pnpm
+available and ` + "`pnpm install`" + ` already run in webapp/.`,
 		Example: `  entity-demo serve-ui --port 8080
-  entity-demo serve-ui --host 0.0.0.0 --port 9090`,
+  entity-demo serve-ui --host 0.0.0.0 --port 9090
+  entity-demo serve-ui --dev               # API + Vite HMR against local clicky-ui`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if port < 1 || port > 65535 {
 				return fmt.Errorf("invalid port: %d", port)
@@ -945,6 +957,16 @@ compiling the Go binary so the embedded assets are current.`,
 				}
 			}()
 
+			if dev {
+				vite, err := startViteDevServer(ctx, cmd, host, port, uiPort)
+				if err != nil {
+					return err
+				}
+				// ctx cancellation (Ctrl-C) kills the Vite process group via the
+				// CommandContext Cancel hook; Wait reaps it on shutdown.
+				defer func() { _ = vite.Wait() }()
+			}
+
 			select {
 			case <-ctx.Done():
 				shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -958,8 +980,66 @@ compiling the Go binary so the embedded assets are current.`,
 
 	cmd.Flags().StringVar(&host, "host", "localhost", "Host to bind the server to")
 	cmd.Flags().IntVarP(&port, "port", "p", 8080, "Port to bind the server to")
+	cmd.Flags().BoolVar(&dev, "dev", false, "Launch the Vite dev server (HMR) against the checked-out clicky-ui instead of using the embedded build")
+	cmd.Flags().IntVar(&uiPort, "ui-port", 5173, "Port for the Vite dev server (only used with --dev)")
 
 	return cmd
+}
+
+// startViteDevServer launches `pnpm dev` in webapp/ for --dev mode. It points
+// Vite's /api proxy back at this Go process via CLICKY_EXAMPLE_API_URL (read by
+// webapp/vite.config.ts), so the HMR dev server — which resolves
+// @flanksource/clicky-ui from the sibling checked-out clicky-ui repo — talks to
+// the live executor API. The returned command is bound to ctx: Ctrl-C kills the
+// whole Vite process group (pnpm + its node/esbuild children) and the caller
+// reaps it with Wait.
+func startViteDevServer(ctx context.Context, cmd *cobra.Command, apiHost string, apiPort, uiPort int) (*exec.Cmd, error) {
+	webappDir, err := webappDevDir()
+	if err != nil {
+		return nil, err
+	}
+	apiURL := fmt.Sprintf("http://%s:%d", apiHost, apiPort)
+
+	// `pnpm exec vite` runs the dev server binary directly so --port/--strictPort
+	// reach Vite; `pnpm dev -- ...` would forward them past Vite's arg parser and
+	// it would silently fall back to the default port.
+	vite := exec.CommandContext(ctx, "pnpm", "exec", "vite", "--port", strconv.Itoa(uiPort), "--strictPort")
+	vite.Dir = webappDir
+	vite.Env = append(os.Environ(), "CLICKY_EXAMPLE_API_URL="+apiURL)
+	vite.Stdout = cmd.OutOrStdout()
+	vite.Stderr = cmd.ErrOrStderr()
+	// Run Vite in its own process group so we can signal the whole tree; the
+	// default CommandContext kill only targets pnpm and would orphan node/vite.
+	vite.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	vite.Cancel = func() error {
+		if vite.Process == nil {
+			return nil
+		}
+		return syscall.Kill(-vite.Process.Pid, syscall.SIGTERM)
+	}
+	vite.WaitDelay = 5 * time.Second
+
+	if err := vite.Start(); err != nil {
+		return nil, fmt.Errorf("start vite dev server in %s (is pnpm installed and `pnpm install` run there?): %w", webappDir, err)
+	}
+
+	fmt.Fprintf(cmd.OutOrStdout(), "   • Dev UI (Vite): http://localhost:%d/  (HMR, clicky-ui from ../../../../clicky-ui, /api → %s)\n", uiPort, apiURL)
+	return vite, nil
+}
+
+// webappDevDir locates the webapp/ source directory next to this file. --dev is
+// a from-source convenience, so it resolves via the compile-time source path
+// (runtime.Caller) and fails loudly when run from a relocated binary.
+func webappDevDir() (string, error) {
+	_, thisFile, _, ok := runtime.Caller(0)
+	if !ok {
+		return "", fmt.Errorf("cannot locate webapp/ for --dev: runtime caller unavailable")
+	}
+	dir := filepath.Join(filepath.Dir(thisFile), "webapp")
+	if _, err := os.Stat(filepath.Join(dir, "package.json")); err != nil {
+		return "", fmt.Errorf("webapp/package.json not found at %s — run --dev from a source checkout: %w", dir, err)
+	}
+	return dir, nil
 }
 
 // newWebappHandler returns an http.Handler that serves the embedded Vite

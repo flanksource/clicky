@@ -1,0 +1,1 @@
+dev: killport 9096; go run main.go serve-ui --port 9096 --dev

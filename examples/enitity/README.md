@@ -91,6 +91,35 @@ task ci                # build webapp + Go binary (for CI)
 always succeeds before the frontend has been built; it renders a short
 message telling you to run `task webapp:build` (or `task build`).
 
+### Developing against a local clicky-ui
+
+`serve-ui --dev` runs the Go executor API **and** launches the Vite dev server
+(HMR) from `webapp/` in one process. Vite resolves `@flanksource/clicky-ui`
+from the sibling checkout at `../../../../clicky-ui/packages/ui/dist` and proxies
+`/api` back to this Go process (it injects `CLICKY_EXAMPLE_API_URL` so the proxy
+follows `--host`/`--port`). Open the printed Vite URL (default
+`http://localhost:5173/`) — edits to clicky-ui source show up on reload without
+rebuilding the embedded bundle.
+
+```bash
+cd examples/enitity
+task dev                              # = serve-ui --dev (Go API + Vite HMR)
+# or directly, choosing ports:
+go run . serve-ui --dev --port 8080 --ui-port 5173
+```
+
+Prerequisites (all from a source checkout):
+
+- `pnpm install` has been run once in `webapp/`.
+- `github.com/flanksource/clicky-ui` is checked out beside `clicky/` and its
+  library dist is built. To pick up clicky-ui source edits live, run its build in
+  watch mode in that repo (e.g. `pnpm --filter @flanksource/clicky-ui build`,
+  re-run on change) — Vite excludes clicky-ui from its prebundle, so a rebuilt
+  dist is reflected on the next reload.
+
+Use `task webapp:dev` instead to run only the Vite dev server when the Go API is
+already up on port 8080.
+
 ## Playwright E2E
 
 The Playwright suite lives in `e2e/` and runs against the real demo app:

@@ -40,6 +40,12 @@ tasks:
     cmds:
       - ./{{.BINARY_NAME}} serve-ui --host {{.HOST}} --port {{.PORT}} {{.CLI_ARGS}}
 
+  dev:
+    desc: Start the Go API server and the Vite HMR dev server together (live clicky-ui)
+    deps: [build]
+    cmds:
+      - ./{{.BINARY_NAME}} serve-ui --host {{.HOST}} --port {{.PORT}} --dev {{.CLI_ARGS}}
+
   webapp:build:
     desc: Build the optional Vite webapp when webapp/package.json is present
     dir: webapp
@@ -51,6 +57,13 @@ tasks:
         fi
         pnpm install
         pnpm build
+
+  webapp:dev:
+    desc: Run only the Vite HMR dev server (expects the Go API already running on 8080)
+    dir: webapp
+    cmds:
+      - pnpm install
+      - pnpm dev
 
   e2e:
     desc: Run Playwright e2e tests for the entity demo
