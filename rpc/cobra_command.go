@@ -84,6 +84,10 @@ func (c *CobraExecutableCommand) Execute(ctx context.Context, opts entity.Execut
 		Run:   cmd.Run,
 		RunE:  cmd.RunE,
 		Args:  cmd.Args,
+		// The returned error is surfaced via the ExecutionResponse; let cobra not
+		// also print usage + "Error: …" into the captured stderr buffer.
+		SilenceUsage:  true,
+		SilenceErrors: true,
 	}
 	cmd.Flags().VisitAll(func(flag *pflag.Flag) {
 		execCmd.Flags().AddFlag(flag)

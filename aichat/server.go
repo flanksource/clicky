@@ -210,6 +210,13 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	// Enforce local runtime limits (budget/size → 402/413) before initializing the
+	// provider runtime, so a deterministic local rejection isn't masked by a 503
+	// from runtime setup.
+	if err := enforceRuntimeSettings(req, settings); err != nil {
+		http.Error(w, err.Error(), statusForRuntimeSettingsError(err))
+		return
+	}
 	rt, err := s.runtime(ctx)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusServiceUnavailable)
@@ -230,10 +237,6 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	msgs = contextualGenkitMessages(req, msgs)
-	if err := enforceRuntimeSettings(req, settings); err != nil {
-		http.Error(w, err.Error(), statusForRuntimeSettingsError(err))
-		return
-	}
 
 	if err := s.persistIncoming(ctx, req); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)

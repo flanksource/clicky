@@ -73,6 +73,26 @@ func TestSummaryViewTruncatesLocationsAtLimit(t *testing.T) {
 	}
 }
 
+func TestSummaryViewEscalatesRuleSeverityToHighest(t *testing.T) {
+	// A rule with a warning first and an error second must be labeled error, not
+	// take the severity of whichever violation was seen first.
+	result := &Result{
+		Linter: "clickylint",
+		Violations: []Violation{
+			{File: "a.go", Line: 1, Column: 1, Rule: "mixed", Message: "mixed; warn", Severity: SeverityWarning},
+			{File: "b.go", Line: 2, Column: 1, Rule: "mixed", Message: "mixed; err", Severity: SeverityError},
+		},
+	}
+
+	rule, ok := NewSummaryView(result, 5).GetChildren()[0].GetChildren()[0].(*ruleSummaryNode)
+	if !ok {
+		t.Fatalf("expected a *ruleSummaryNode")
+	}
+	if rule.severity != SeverityError {
+		t.Fatalf("expected rule group severity %q (highest wins), got %q", SeverityError, rule.severity)
+	}
+}
+
 func TestSummaryViewSurfacesErrors(t *testing.T) {
 	result := &Result{
 		Linter: "clickylint",

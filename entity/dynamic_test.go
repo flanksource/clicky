@@ -43,6 +43,24 @@ var _ = Describe("parseSchema", func() {
 		Expect(err).To(HaveOccurred())
 	})
 
+	It("errors on a null property schema instead of panicking", func() {
+		_, err := parseSchema([]byte(`{"properties":{"id":{"type":"string","x-clicky-id":true},"bad":null}}`))
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("bad"))
+	})
+
+	It("rejects multiple x-clicky-id properties", func() {
+		_, err := parseSchema([]byte(`{"properties":{"a":{"type":"string","x-clicky-id":true},"b":{"type":"string","x-clicky-id":true}}}`))
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("multiple x-clicky-id"))
+	})
+
+	It("rejects multiple x-clicky-name properties", func() {
+		_, err := parseSchema([]byte(`{"properties":{"id":{"type":"string","x-clicky-id":true},"a":{"type":"string","x-clicky-name":true},"b":{"type":"string","x-clicky-name":true}}}`))
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("multiple x-clicky-name"))
+	})
+
 	It("builds a ListOpts type with only the filterable fields", func() {
 		ps, err := parseSchema([]byte(ticketSchema))
 		Expect(err).ToNot(HaveOccurred())

@@ -1392,7 +1392,11 @@ func resolveInputOutputPath(outputPattern, sourceName, format string) string {
 		}
 		ext := getOutputExtension(format)
 		if strings.Contains(outputPattern, "*") {
-			return strings.ReplaceAll(outputPattern, "*", base)
+			resolved := strings.ReplaceAll(outputPattern, "*", base)
+			if filepath.Ext(resolved) == "" {
+				resolved += ext
+			}
+			return resolved
 		}
 		return filepath.Join(outputPattern, base+ext)
 	}
@@ -1453,6 +1457,9 @@ func formatDataFile(manager *formatters.FormatManager, dataFile string, options 
 			ext := getOutputExtension(options.Format)
 			if strings.Contains(options.Output, "*") {
 				outputFile = strings.ReplaceAll(options.Output, "*", base)
+				if filepath.Ext(outputFile) == "" {
+					outputFile += ext
+				}
 			} else {
 				outputFile = filepath.Join(options.Output, base+ext)
 			}

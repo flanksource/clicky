@@ -15,6 +15,9 @@ func TestModelIDForRequestUsesRuntimeDefaultOnlyWhenRequestOmitsModel(t *testing
 	if got := modelIDForRequest(ChatRequest{Model: "googleai/gemini-2.5-flash"}, settings); got != "googleai/gemini-2.5-flash" {
 		t.Fatalf("modelIDForRequest(explicit) = %q", got)
 	}
+	if got := modelIDForRequest(ChatRequest{Model: "  openai/o4-mini  "}, settings); got != "openai/o4-mini" {
+		t.Fatalf("modelIDForRequest(padded) = %q, want trimmed", got)
+	}
 }
 
 func TestEnforceRuntimeSettingsRejectsBudgetExhaustion(t *testing.T) {

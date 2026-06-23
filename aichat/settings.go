@@ -42,8 +42,8 @@ func statusForRuntimeSettingsError(err error) int {
 }
 
 func modelIDForRequest(req ChatRequest, settings RuntimeSettings) string {
-	if strings.TrimSpace(req.Model) != "" {
-		return req.Model
+	if model := strings.TrimSpace(req.Model); model != "" {
+		return model
 	}
 	return strings.TrimSpace(settings.DefaultModel)
 }
