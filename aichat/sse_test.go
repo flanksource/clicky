@@ -131,7 +131,7 @@ func assertDataLines(t *testing.T, got, want string) {
 
 func dataLines(s string) []string {
 	var out []string
-	for _, line := range strings.Split(s, "\n") {
+	for line := range strings.SplitSeq(s, "\n") {
 		if strings.HasPrefix(line, "data: ") {
 			out = append(out, line)
 		}

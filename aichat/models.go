@@ -2,6 +2,7 @@ package aichat
 
 import (
 	"fmt"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -230,12 +231,7 @@ func defaultModel(registered []Provider) (Model, bool) {
 
 // providerRegistered reports whether p is among the configured providers.
 func providerRegistered(registered []Provider, p Provider) bool {
-	for _, r := range registered {
-		if r == p {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(registered, p)
 }
 
 // ProviderOf extracts the provider from a "provider/model" id without requiring
