@@ -92,15 +92,30 @@ lookups; CEL expressions drive row filtering/transforms (see `CEL_FILTERS.md`).
 ### Writing render code (enforced by `clicky lint ./...`)
 
 The bundled analyzer enforces these API-usage rules — follow them in any code that builds clicky
-render primitives:
+render primitives. Diagnostics are split by severity: **errors** fail the run (non-zero exit);
+**warnings** are advisory and do not. JSON output and the tree summary report the severity per rule.
+
+**Errors** (structural — bypassing clicky's generated surfaces or corrupting the renderer):
+
+- **No manual `cobra.Command` with `Run`/`RunE`** — register the operation as an entity
+  (`clicky.NewEntity(...).Register()` + `GenerateCLI`) or via `entity.AddCommand`, so it joins the
+  generated CLI/REST/MCP surfaces. Bare grouping commands (no `Run`/`RunE`) are fine.
+- **No direct `net/http` handler registration** (`http.HandleFunc`/`http.Handle`/
+  `(*http.ServeMux).HandleFunc`/`.Handle`) — expose data via a registered entity and serve it
+  through the rpc layer instead of raw handlers that collide with the auto-routed `/api/v1/*` space.
+- **No direct writes to `os.Stdout`/`os.Stderr`** in library code — route through
+  `clicky.Infof`/the log writer so the task renderer's terminal accounting stays correct.
+  File-level opt-out: `//clicky:allow-stdout`.
+
+**Warnings** (preferences for how `Pretty()`/render builders are written, plus entity ergonomics):
 
 - Build `Text` via `clicky.Text(...)` or `api.Text{}.Append(...)` chaining — **not** `api.Text{...}`
   struct literals, and not `Children:` slice literals.
 - A function returning `api.Text` must be named `Pretty`/`PrettyFull`/`PrettyRow`; otherwise return
-  the `api.Textable` interface.
-- **No direct writes to `os.Stdout`/`os.Stderr`** in library code — route through
-  `clicky.Infof`/the log writer so the task renderer's terminal accounting stays correct.
-  File-level opt-out: `//clicky:allow-stdout`.
+  the `api.Textable` interface. Don't call `.ANSI()`/`.HTML()`/`.Markdown()`/`.String()` inside a
+  render builder — return `api.Text`/`api.Textable` and let the formatter render it.
+- An entity registered via `NewEntity`/`RegisterEntity` whose item type does not implement
+  `api.TableProvider` (`Columns()`/`Row()`) is flagged — add it so list output can render as a table.
 
 ### Actions, filters & error rendering (from project memory)
 

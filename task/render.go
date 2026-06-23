@@ -225,5 +225,29 @@ func (tm *Manager) interactiveRender(lastLines int) int {
 	fmt.Fprint(output, out)
 	tm.bufferMutex.Unlock()
 
-	return strings.Count(out, "\n")
+	// Return PHYSICAL rows, not logical lines. A line wider than the terminal
+	// soft-wraps onto multiple rows; counting newlines (strings.Count) would
+	// undercount, so the next tick's ClearLines moves the cursor up too few
+	// rows and frames stack/smear. ClearLines(n) clears the current row plus n
+	// rows above, so the count to return is physicalRows-1 — which equals the
+	// old newline count exactly when nothing wraps.
+	return physicalRows(out, api.GetTerminalWidth()) - 1
+}
+
+// physicalRows returns how many terminal rows out occupies when printed at the
+// given width, accounting for soft-wrapping of lines wider than width.
+func physicalRows(out string, width int) int {
+	if width <= 0 {
+		width = 120
+	}
+	rows := 0
+	for _, line := range strings.Split(out, "\n") {
+		w := lipgloss.Width(line)
+		if w <= width {
+			rows++
+		} else {
+			rows += (w-1)/width + 1
+		}
+	}
+	return rows
 }

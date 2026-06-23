@@ -67,6 +67,8 @@ test-*
 .cache
 *.db
 clicky
+!cmd/clicky/
+!cmd/clicky/*_test.go
 !lint/testdata/src/github.com/flanksource/clicky/
 !lint/testdata/src/github.com/flanksource/clicky/stub.go
 .task
@@ -109,3 +111,4 @@ go.work.sum
 .todos/
 todos-bak/
 specs/
+examples/src

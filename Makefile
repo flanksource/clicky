@@ -72,15 +72,20 @@ $(GOLANGCI_LINT): $(LOCALBIN)
 
 
 # Go module directories (each has its own go.mod)
-GO_MODULES := . valkey examples examples/uber_demo
+GO_MODULES := . aichat valkey examples examples/enitity examples/uber_demo
 
-# Format code and tidy all modules
-fmt:
-	gofmt -s -w .
+# Run go mod tidy in every module
+.PHONY: tidy
+tidy:
 	@for dir in $(GO_MODULES); do \
 		echo "go mod tidy: $$dir"; \
 		(cd $$dir && go mod tidy) || exit 1; \
 	done
+
+# Format code and tidy all modules
+.PHONY: fmt
+fmt: tidy
+	gofmt -s -w .
 
 # Run all checks
 check: fmt lint test

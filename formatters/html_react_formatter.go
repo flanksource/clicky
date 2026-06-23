@@ -125,9 +125,6 @@ type ClickyNode struct {
 	Level           int                `json:"level,omitempty"`
 	Severity        string             `json:"severity,omitempty"`
 	Attributes      map[string]string  `json:"attributes,omitempty"`
-	SourceMarkdown  string             `json:"sourceMarkdown,omitempty"`
-	LineStart       int                `json:"lineStart,omitempty"`
-	LineEnd         int                `json:"lineEnd,omitempty"`
 	Href            string             `json:"href,omitempty"`
 	Target          string             `json:"target,omitempty"`
 	Command         string             `json:"command,omitempty"`
