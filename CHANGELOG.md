@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.21.28](https://github.com/flanksource/clicky/compare/v1.21.27...v1.21.28) (2026-06-23)
+
+
+### 🐛 Bug Fixes
+
+* **aichat:** preserve dynamic tool names across chat turns ([156744d](https://github.com/flanksource/clicky/commit/156744d7550f8d14091250e6f5cbaf887e404ea8))
+
 ## [1.21.27](https://github.com/flanksource/clicky/compare/v1.21.26...v1.21.27) (2026-06-23)
 
 
