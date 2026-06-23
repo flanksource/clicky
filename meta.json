@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
   "actor_id": "9969d04d3bce1c08f01c2a383c215a60",
-  "chunk_hash": "1d58fa5700b5dfd9b62b6c87c7e99ea883f98de601813c5096b59160691c2d5c",
-  "prev_wal": "61ef6ff251fc003eb6ec21386997e4253648e275"
+  "chunk_hash": "3f3ff06245bc10e496835e3bca1794cd2102a061cdcf3a98687024f6ee631cda",
+  "prev_wal": "bad0bc72bc434a345111e6b9c8ca0f3e05f11531"
 }
