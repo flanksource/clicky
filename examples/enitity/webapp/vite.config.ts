@@ -24,9 +24,18 @@ export default defineConfig({
     },
     dedupe: ["react", "react-dom", "@tanstack/react-query"],
   },
+  // Don't pre-bundle the linked clicky-ui: it's aliased to a sibling checkout's
+  // dist, so a freshly exported symbol would otherwise 404 from a stale Vite
+  // prebundle. Excluding it makes a clicky-ui `pnpm build` show up on reload.
+  optimizeDeps: {
+    exclude: ["@flanksource/clicky-ui"],
+  },
   server: {
     fs: {
-      allow: [clickyUiDist],
+      // Setting `allow` replaces Vite's defaults, so list the webapp root itself
+      // (index.html, src/, node_modules) alongside the out-of-root clicky-ui
+      // dist the alias points at — otherwise Vite 403s its own index.html.
+      allow: [__dirname, clickyUiDist],
     },
     proxy: {
       "/api": apiTarget,
