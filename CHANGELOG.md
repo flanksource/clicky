@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.21.32](https://github.com/flanksource/clicky/compare/v1.21.31...v1.21.32) (2026-06-26)
+
+
+### 👷 CI/CD
+
+* **release:** check out branch tip for GoReleaser and decouple submodule tags ([7cb946d](https://github.com/flanksource/clicky/commit/7cb946d709cca6e196819a9119fbf5219fa63150))
+
 ## [1.21.31](https://github.com/flanksource/clicky/compare/v1.21.30...v1.21.31) (2026-06-26)
 
 
