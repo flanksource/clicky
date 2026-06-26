@@ -92,7 +92,7 @@ brews:
       name: homebrew-tap
       branch: main
       token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
-    folder: Formula
+    directory: Formula
     homepage: https://github.com/{{ .Env.GITHUB_OWNER | default "flanksource" }}/clicky
     description: "A command-line tool for parsing and formatting structured data with schemas"
     license: "MIT"
@@ -112,7 +112,7 @@ scoops:
       name: scoop-bucket
       branch: main
       token: "{{ .Env.SCOOP_BUCKET_GITHUB_TOKEN }}"
-    folder: bucket
+    directory: bucket
     homepage: https://github.com/{{ .Env.GITHUB_OWNER | default "flanksource" }}/clicky
     description: "A command-line tool for parsing and formatting structured data with schemas"
     license: "MIT"
