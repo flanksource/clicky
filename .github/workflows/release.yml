@@ -114,6 +114,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
+          # semantic-release pushed the release commit/tag after this workflow
+          # started, so check out the live branch tip (not the trigger SHA),
+          # otherwise GoReleaser sees the previous tag at HEAD and fails with
+          # "git tag vX was not made against commit <sha>".
+          ref: ${{ github.ref_name }}
           fetch-depth: 0
 
       - name: Fetch tags
@@ -163,7 +168,11 @@ jobs:
   # uninstallable) and commit that pin before tagging.
   release-submodules:
     name: Release Sub-modules
-    needs: [semantic-release, goreleaser]
+    # Only needs the semantic-release tag (clicky@vX.Y.Z) to pin against — the
+    # sub-module tags must publish even if GoReleaser's binary/Homebrew/Docker
+    # release fails, otherwise `go get .../aichat` stays broken on an unrelated
+    # packaging error.
+    needs: semantic-release
     if: needs.semantic-release.outputs.new_release_published == 'true'
     runs-on: ubuntu-latest
     steps:
