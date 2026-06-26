@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.21.31](https://github.com/flanksource/clicky/compare/v1.21.30...v1.21.31) (2026-06-26)
+
+
+### 👷 CI/CD
+
+* **release:** rename goreleaser folder field to directory ([29bb8d6](https://github.com/flanksource/clicky/commit/29bb8d6575c8757250d4cc717425a56c4a2cc866))
+
 ## [1.21.30](https://github.com/flanksource/clicky/compare/v1.21.29...v1.21.30) (2026-06-26)
 
 
