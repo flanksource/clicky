@@ -81,8 +81,9 @@ func findProjectRoot() string {
 }
 
 type capturedPTY struct {
-	mu  sync.Mutex
-	buf bytes.Buffer
+	mu   sync.Mutex
+	buf  bytes.Buffer
+	done chan struct{} // closed once the reader goroutine drains the PTY to EOF
 }
 
 func (c *capturedPTY) Write(p []byte) (int, error) {
@@ -95,6 +96,20 @@ func (c *capturedPTY) String() string {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return c.buf.String()
+}
+
+// waitDrained blocks until the reader goroutine has read the PTY to EOF, so the
+// helper's final output (e.g. the "OK=true" result line written just before it
+// exits) is guaranteed to be in the buffer before assertions snapshot it.
+// Without this, snapshotting right after process exit races the async reader and
+// drops the last line on slower hosts (observed on Linux CI).
+func (c *capturedPTY) waitDrained(t *testing.T, timeout time.Duration) {
+	t.Helper()
+	select {
+	case <-c.done:
+	case <-time.After(timeout):
+		t.Fatalf("timeout waiting for PTY reader to drain; output so far: %q", clickytext.StripANSI(c.String()))
+	}
 }
 
 type promptPrettyItem struct {
@@ -222,7 +237,7 @@ func TestPromptChooseConfirmsSelectionAndRestoresTerminal(t *testing.T) {
 	_, err = ptmx.Write([]byte{'\r'})
 	require.NoError(t, err)
 
-	requireExitWithin(t, cmd, 10*time.Second)
+	requireExitWithin(t, cmd, capture, 10*time.Second)
 	after := getTerminalFlags(t, int(ptmx.Fd()))
 	assertFlagsMatch(t, before, after)
 
@@ -240,7 +255,7 @@ func TestPromptChooseCancel(t *testing.T) {
 	_, err := ptmx.Write([]byte{27})
 	require.NoError(t, err)
 
-	requireExitWithin(t, cmd, 10*time.Second)
+	requireExitWithin(t, cmd, capture, 10*time.Second)
 	output := clickytext.StripANSI(capture.String())
 	require.Contains(t, output, "RESULT= OK=false")
 }
@@ -263,7 +278,7 @@ func TestPromptMultiSelectConfirmsSelections(t *testing.T) {
 	_, err = ptmx.Write([]byte{'\r'})
 	require.NoError(t, err)
 
-	requireExitWithin(t, cmd, 10*time.Second)
+	requireExitWithin(t, cmd, capture, 10*time.Second)
 	output := clickytext.StripANSI(capture.String())
 	require.Contains(t, output, "RESULT=alpha,beta OK=true")
 }
@@ -282,7 +297,7 @@ func TestPromptTextValidation(t *testing.T) {
 	_, err = ptmx.Write([]byte("moshe\r"))
 	require.NoError(t, err)
 
-	requireExitWithin(t, cmd, 10*time.Second)
+	requireExitWithin(t, cmd, capture, 10*time.Second)
 	output := clickytext.StripANSI(capture.String())
 	require.Contains(t, output, "RESULT=moshe OK=true")
 }
@@ -297,7 +312,7 @@ func TestPromptTextSecretDoesNotEchoInput(t *testing.T) {
 	_, err := ptmx.Write([]byte("shh\r"))
 	require.NoError(t, err)
 
-	requireExitWithin(t, cmd, 10*time.Second)
+	requireExitWithin(t, cmd, capture, 10*time.Second)
 	output := clickytext.StripANSI(capture.String())
 	require.Contains(t, output, "RESULT_LEN=3 OK=true")
 	if strings.Contains(output, "shh") {
@@ -318,7 +333,7 @@ func TestPromptStopsTaskRenderingBeforePrompt(t *testing.T) {
 	_, err = ptmx.Write([]byte{'\r'})
 	require.NoError(t, err)
 
-	requireExitWithin(t, cmd, 10*time.Second)
+	requireExitWithin(t, cmd, capture, 10*time.Second)
 	output := clickytext.StripANSI(capture.String())
 
 	if !strings.Contains(output, "TAKEOVER-MARKER") {
@@ -350,8 +365,9 @@ func startPromptHelper(t *testing.T, mode string) (*os.File, *capturedPTY, termi
 	ptmx, err := pty.StartWithSize(cmd, &pty.Winsize{Rows: 24, Cols: 80})
 	require.NoError(t, err)
 
-	capture := &capturedPTY{}
+	capture := &capturedPTY{done: make(chan struct{})}
 	go func() {
+		defer close(capture.done)
 		buffer := make([]byte, 4096)
 		pending := ""
 
@@ -414,7 +430,7 @@ func waitForCapturedText(t *testing.T, capture *capturedPTY, want string) {
 	t.Fatalf("timeout waiting for %q in output: %q", want, clickytext.StripANSI(capture.String()))
 }
 
-func requireExitWithin(t *testing.T, cmd *exec.Cmd, timeout time.Duration) {
+func requireExitWithin(t *testing.T, cmd *exec.Cmd, capture *capturedPTY, timeout time.Duration) {
 	t.Helper()
 
 	done := make(chan error, 1)
@@ -424,6 +440,9 @@ func requireExitWithin(t *testing.T, cmd *exec.Cmd, timeout time.Duration) {
 
 	select {
 	case err := <-done:
+		// Wait for the reader to drain the PTY before returning so callers that
+		// snapshot capture.String() see the helper's final output.
+		capture.waitDrained(t, timeout)
 		if err == nil {
 			return
 		}
