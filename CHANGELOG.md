@@ -5,6 +5,61 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.21.29](https://github.com/flanksource/clicky/compare/v1.21.28...v1.21.29) (2026-06-26)
+
+
+### ⚠ BREAKING CHANGES
+
+* **cli:** Removed SourceMarkdown field from markdown Node and Document structures; removed PreserveSource option from markdown parser. Parser provenance fields are no longer included in clicky-json output.
+* **lint:** Violation struct now includes Severity field; Result.Success now depends on HasErrors() rather than HasIssues().
+* **rpc:** RPCOperation.Command is now entity.ExecutableCommand instead of *cobra.Command. Callers must wrap cobra commands with NewCobraExecutableCommand or use the new interface methods (Path, Name, RootName, Runnable, Hidden, IsBoolFlag, Execute).
+* **entity:** Internal package reorganization; public API preserved via root clicky re-exports.
+* **aichat:** ApprovalPolicy signature unchanged but ToolApprovalPolicy takes precedence; initGenkit now accepts optional ProviderCredential args; ThreadStore.Delete method added to interface; ClickyToolset.DefineTools now wraps DefineRegisteredTools which returns registeredTool structs.
+
+### ♻️ Code Refactoring
+
+* **entity,rpc,mcp,task:** extract entity model to subpackage and unify command execution ([074db76](https://github.com/flanksource/clicky/commit/074db7682fd3dadb6aabf800fc47939782691b33))
+* **entity:** move entity package from root clicky to dedicated subpackage ([4a7a96b](https://github.com/flanksource/clicky/commit/4a7a96be0b1d8c54ff3dc3aaa9950ea06fd4e9d5))
+* **entity:** reorganize entity-related files into dedicated package ([042e4f6](https://github.com/flanksource/clicky/commit/042e4f6f223a3466ca1da96a5f597337b258c134))
+* **rpc:** extract cobra command execution to entity.ExecutableCommand adapter ([de23c99](https://github.com/flanksource/clicky/commit/de23c997673f2164b32528833f4d335e591bbe16))
+
+
+### ✅ Tests
+
+* **markdown:** add kitchen sink roundtrip and clicky JSON test ([0b9045a](https://github.com/flanksource/clicky/commit/0b9045af69ee2128c85f6482cfe8ddd3391037af))
+* **prompt_test:** Fix race condition in PTY output capture by waiting for reader drain ([812891a](https://github.com/flanksource/clicky/commit/812891a9b35b0fe1897b9ed4d406adcef9f30949))
+
+
+### ✨ Features
+
+* **aichat:** Add tool grouping support for preferences UI ([da7cc53](https://github.com/flanksource/clicky/commit/da7cc5332fd39c9d19859b44df7bc511a5e96d47))
+* **aichat:** Add tool preferences, runtime settings, and request-scoped provider credentials ([c800642](https://github.com/flanksource/clicky/commit/c800642ea1119420d2e295b661baf055b70a3ca2))
+* **api:** add support for markdown block elements (heading, blockquote, footnotes) ([ebbb9ac](https://github.com/flanksource/clicky/commit/ebbb9ac4c139e815048ae8b3929e1a4fe5e9dc9d))
+* **cli:** add schema-less input format support for markdown, json, yaml, and text ([89e6d71](https://github.com/flanksource/clicky/commit/89e6d71cb30a6723c461da5a8ea8a81fb88db997))
+* **docs,entity,examples:** Add local docs server and improve entity authoring guidance ([9679a4a](https://github.com/flanksource/clicky/commit/9679a4ac0629f1e5c6dac7b4eee6e6b85fcfc44e))
+* **entity:** add reusable named filters with typed and dynamic entity support ([7a830f3](https://github.com/flanksource/clicky/commit/7a830f312dae3b6178ab2b79c0e009cdc0ae4789))
+* **examples:** add markdown editor page with preview API ([c8076ea](https://github.com/flanksource/clicky/commit/c8076ea4713495da4de18b6d57152f782251d83d))
+* **examples/entity:** add Vite HMR dev server support for local clicky-ui development ([9912ca1](https://github.com/flanksource/clicky/commit/9912ca1658648a6bb4e0afa0995698089fcc63e7))
+* **exec:** detect compiler activity during process startup ([dc6ebb8](https://github.com/flanksource/clicky/commit/dc6ebb8d3fef20fdb42632ec907d692c15c98b70))
+* **lint:** add severity levels and entity registration checks ([6c5ce9b](https://github.com/flanksource/clicky/commit/6c5ce9b4839a587b49504719a37ebdaed8057c22))
+* **markdown:** Add markdown parsing with structured document support ([656e8e4](https://github.com/flanksource/clicky/commit/656e8e456834e82c07fedbb933b516bd42d94fc6))
+
+
+### 🐛 Bug Fixes
+
+* **aichat,entity,markdown,rpc,cmd,lint:** address CodeRabbit findings on PR [#119](https://github.com/flanksource/clicky/issues/119) ([1742312](https://github.com/flanksource/clicky/commit/17423120ed39d6e1841797ee385e0d4cb1ca940b)), closes [#127](https://github.com/flanksource/clicky/issues/127) [#128](https://github.com/flanksource/clicky/issues/128)
+* **rpc,aichat,lint,api,exec:** address PR [#119](https://github.com/flanksource/clicky/issues/119) CI failures and review comments ([e5e0aea](https://github.com/flanksource/clicky/commit/e5e0aeae5e6ce5ff5dadd4b34e0e22d210c6612b))
+
+
+### 👷 CI/CD
+
+* **release:** add sub-module release workflow ([e273b40](https://github.com/flanksource/clicky/commit/e273b404bca1ff7ca56ff0524c3751b80620ef56))
+
+
+### 📚 Documentation
+
+* **gitignore:** Remove *.md from gitignore and add documentation files ([71862e0](https://github.com/flanksource/clicky/commit/71862e0fd2ebc4b46c4ec20cbe4b9b266b9d9f1e))
+
 ## [1.21.28](https://github.com/flanksource/clicky/compare/v1.21.27...v1.21.28) (2026-06-23)
 
 
