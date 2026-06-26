@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.21.30](https://github.com/flanksource/clicky/compare/v1.21.29...v1.21.30) (2026-06-26)
+
+
+### 🐛 Bug Fixes
+
+* **aichat:** pin clicky require to v1.21.29 so go get works ([95378c7](https://github.com/flanksource/clicky/commit/95378c720a13cf252c84a90f659b4248e51f599b))
+
 ## [1.21.29](https://github.com/flanksource/clicky/compare/v1.21.28...v1.21.29) (2026-06-26)
 
 
