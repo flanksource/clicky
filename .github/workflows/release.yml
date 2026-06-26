@@ -154,9 +154,79 @@ jobs:
           SCOOP_BUCKET_GITHUB_TOKEN: ${{ secrets.SCOOP_BUCKET_GITHUB_TOKEN }}
           GITHUB_OWNER: ${{ github.repository_owner }}
 
+  # Publish the in-repo Go sub-modules (aichat, valkey, …) by pushing
+  # path-prefixed tags (`aichat/vX.Y.Z`). A Go module nested in the repo is only
+  # `go get`-able once such a tag exists; the root release tag does not cover it.
+  # Each sub-module's `replace github.com/flanksource/clicky => ../` is ignored by
+  # downstream consumers, so its `require` pin governs — we bump it to the freshly
+  # released version (valkey otherwise pins the non-existent clicky v0.0.0 and is
+  # uninstallable) and commit that pin before tagging.
+  release-submodules:
+    name: Release Sub-modules
+    needs: [semantic-release, goreleaser]
+    if: needs.semantic-release.outputs.new_release_published == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # The release commit/tag was pushed by semantic-release after this
+          # workflow started, so fetch the live branch tip, not the trigger SHA.
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Tag and push sub-modules
+        env:
+          GH_TOKEN: ${{ secrets.FLANKBOT }}
+          VERSION: ${{ needs.semantic-release.outputs.new_release_version }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          tags=()
+          # Publishable sub-modules: every nested go.mod that requires the root
+          # module, excluding the //go:build ignore example demos. The root
+          # go.mod has no slash so `*/go.mod` already skips it.
+          for modfile in $(git ls-files '*/go.mod'); do
+            dir="${modfile%/go.mod}"
+            case "$dir" in examples|examples/*) continue ;; esac
+            grep -q 'github.com/flanksource/clicky ' "$modfile" || continue
+            (cd "$dir" && go mod edit -require="github.com/flanksource/clicky@v${VERSION}")
+            git add "$dir/go.mod"
+            tags+=("${dir}/v${VERSION}")
+          done
+
+          if [ ${#tags[@]} -eq 0 ]; then
+            echo "No publishable sub-modules found"
+            exit 0
+          fi
+
+          if ! git diff --cached --quiet; then
+            git commit -m "chore(release): pin sub-modules to v${VERSION} [skip ci]"
+          fi
+
+          for tag in "${tags[@]}"; do
+            git tag -f "$tag"
+          done
+
+          git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git"
+          git push origin "HEAD:${{ github.ref_name }}"
+          for tag in "${tags[@]}"; do
+            echo "Pushing tag $tag"
+            git push -f origin "refs/tags/${tag}"
+          done
+
   announce:
     name: Announce Release
-    needs: [semantic-release, goreleaser]
+    needs: [semantic-release, goreleaser, release-submodules]
     if: needs.semantic-release.outputs.new_release_published == 'true'
     runs-on: ubuntu-latest
     steps:
