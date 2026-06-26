@@ -5,7 +5,7 @@ go 1.26.1
 require (
 	github.com/firebase/genkit/go v1.8.0
 	github.com/flanksource/captain v0.0.7
-	github.com/flanksource/clicky v1.21.29
+	github.com/flanksource/clicky v1.21.32
 	github.com/spf13/cobra v1.10.2
 )
 
