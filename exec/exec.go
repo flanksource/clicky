@@ -104,6 +104,16 @@ type Process struct {
 	// process group (Setpgid) / Windows process group (CREATE_NEW_PROCESS_GROUP)
 	// so the whole descendant tree can be terminated atomically via KillTree.
 	newProcessGroup bool
+
+	// wantStdioPipe, when true, connects the child's stdin to a writable pipe
+	// (Stdin) and its stdout to a readable pipe (StdoutReader) for bidirectional
+	// line-protocol traffic (e.g. JSON-RPC). The child's stdout BYPASSES
+	// captureOutput so a long-lived server's output does not accumulate
+	// unboundedly in memory; stderr stays captured (bounded). stdin/stdoutR are
+	// the parent-side ends, published under mu once Run() has started the child.
+	wantStdioPipe bool
+	stdin         io.WriteCloser
+	stdoutR       io.Reader
 }
 
 // ExecResult contains the result of a command execution with structured output and metadata.
@@ -259,6 +269,33 @@ func WithDebug() WrapperOption {
 	})
 }
 
+// WithStdioPipe connects the child's stdin to a writable pipe (accessible via
+// Stdin) and its stdout to a readable pipe (accessible via StdoutReader),
+// enabling bidirectional line-protocol communication such as JSON-RPC. The
+// child's stdout bypasses captureOutput (see the field doc); stderr stays
+// captured. Use for long-lived servers, not one-shot commands.
+func (p *Process) WithStdioPipe() *Process {
+	p.wantStdioPipe = true
+	return p
+}
+
+// Stdin returns the parent-side writer for the child's stdin. It is nil until
+// Run() has started the child (callers using Supervise should obtain it in the
+// SuperviseOptions.OnStarted callback). Closing it sends EOF to the child.
+func (p *Process) Stdin() io.WriteCloser {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	return p.stdin
+}
+
+// StdoutReader returns the parent-side reader for the child's stdout. It is nil
+// until Run() has started the child. Only valid when WithStdioPipe was set.
+func (p *Process) StdoutReader() io.Reader {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	return p.stdoutR
+}
+
 func (p *Process) clone() *Process {
 	cloned := &Process{
 		Cwd:              p.Cwd,
@@ -270,6 +307,7 @@ func (p *Process) clone() *Process {
 		log:              p.log,
 		Shell:            p.Shell,
 		newProcessGroup:  p.newProcessGroup,
+		wantStdioPipe:    p.wantStdioPipe,
 		done:             make(chan struct{}),
 	}
 
@@ -634,6 +672,23 @@ func (p *Process) Run() *Process {
 		defer close(p.done)
 	}
 
+	// Close the parent-side stdio pipe ends when Run returns so they do not leak
+	// across supervised restarts (the child has already exited / EOF'd by then).
+	if p.wantStdioPipe {
+		defer func() {
+			p.mu.Lock()
+			sin, sout := p.stdin, p.stdoutR
+			p.stdin, p.stdoutR = nil, nil
+			p.mu.Unlock()
+			if sin != nil {
+				_ = sin.Close()
+			}
+			if c, ok := sout.(io.Closer); ok && c != nil {
+				_ = c.Close()
+			}
+		}()
+	}
+
 	if p.log == nil {
 		p.log = logger.GetLogger("exec")
 	}
@@ -669,13 +724,43 @@ func (p *Process) Run() *Process {
 	}
 
 	cmd.Stderr = p.captureOutput.GetStderrWriter()
-	cmd.Stdout = p.captureOutput.GetStdoutWriter()
+
+	// childStdinR / childStdoutW are the child-side ends of the stdio pipes; the
+	// parent must close them right after Start() so the child gets EOF on its
+	// stdin when p.stdin is closed and the parent's reader sees EOF when the
+	// child exits. They stay nil unless WithStdioPipe was set.
+	var childStdinR, childStdoutW *os.File
+	if p.wantStdioPipe {
+		var perr error
+		var stdinW *os.File
+		childStdinR, stdinW, perr = os.Pipe()
+		if perr != nil {
+			p.Err = fmt.Errorf("stdin pipe: %w", perr)
+			return p
+		}
+		var stdoutR *os.File
+		stdoutR, childStdoutW, perr = os.Pipe()
+		if perr != nil {
+			_ = childStdinR.Close()
+			_ = stdinW.Close()
+			p.Err = fmt.Errorf("stdout pipe: %w", perr)
+			return p
+		}
+		cmd.Stdin = childStdinR
+		cmd.Stdout = childStdoutW
+		p.mu.Lock()
+		p.stdin = stdinW
+		p.stdoutR = stdoutR
+		p.mu.Unlock()
+	} else {
+		cmd.Stdout = p.captureOutput.GetStdoutWriter()
+	}
 
 	applyProcessGroup(cmd, p.newProcessGroup)
-	if p.newProcessGroup {
-		// Force-close the stdout/stderr pipes 2s after the direct child
-		// exits so Wait() can return even when orphaned descendants still
-		// hold them open. Go 1.20+ feature.
+	if p.newProcessGroup || p.wantStdioPipe {
+		// Force-close the stdio pipes shortly after the direct child exits so
+		// Wait() can return even when orphaned descendants (e.g. tsx→node→claude)
+		// still hold them open. Go 1.20+ feature.
 		cmd.WaitDelay = 2 * time.Second
 	}
 
@@ -704,6 +789,16 @@ func (p *Process) Run() *Process {
 		p.pid = cmd.Process.Pid
 	}
 	p.mu.Unlock()
+
+	// Close the parent's copies of the child-side pipe ends now that the child
+	// has inherited them: without this the parent's StdoutReader never sees EOF
+	// (the parent still holds a write end) and the child never sees stdin EOF.
+	if childStdinR != nil {
+		_ = childStdinR.Close()
+	}
+	if childStdoutW != nil {
+		_ = childStdoutW.Close()
+	}
 
 	// Wait for completion. The lock is intentionally NOT held across Wait():
 	// probes (IsRunning/Pid/KillTree) must stay responsive for the whole

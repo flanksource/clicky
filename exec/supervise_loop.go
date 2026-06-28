@@ -203,6 +203,12 @@ func (s *SupervisedProcess) runLoop() {
 				s.status = StatusRunning
 			}
 			s.mu.Unlock()
+
+			// Notify after the child is current and running so the callback can
+			// read proc.Stdin()/StdoutReader(). Must return promptly (see doc).
+			if s.opts.OnStarted != nil {
+				s.opts.OnStarted(proc)
+			}
 		}
 
 		if s.opts.DetectPorts && proc.IsRunning() {
