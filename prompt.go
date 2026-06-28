@@ -1,6 +1,7 @@
 package clicky
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -13,6 +14,7 @@ import (
 	"github.com/charmbracelet/huh"
 	"github.com/flanksource/clicky/api"
 	"github.com/flanksource/clicky/internal/gumchoose"
+	"github.com/flanksource/clicky/prompt"
 	"github.com/flanksource/clicky/task"
 	"golang.org/x/term"
 )
@@ -211,15 +213,41 @@ func PromptSelect[T any](items []T, opts PromptSelectOptions[T]) (T, bool) {
 	return Prompt(items, opts)
 }
 
+// PromptSelectCtx is PromptSelect with a context: when no TTY is attached and an
+// interactive prompt sink is installed (prompt.SetDefault), the choice is routed
+// to the sink — inheriting any prompt.Scope on ctx — instead of failing. CLIs keep
+// the terminal prompt; servers (the dashboard) get a JSON-schema form.
+func PromptSelectCtx[T any](ctx context.Context, items []T, opts PromptSelectOptions[T]) (T, bool) {
+	return promptSelectCtx(ctx, items, opts)
+}
+
+// PromptMultiSelectCtx is PromptMultiSelect with a context (see PromptSelectCtx).
+func PromptMultiSelectCtx[T any](ctx context.Context, items []T, opts PromptMultiSelectOptions[T]) ([]T, bool) {
+	return promptMultiSelectCtx(ctx, items, opts)
+}
+
+// PromptTextCtx is PromptText with a context (see PromptSelectCtx).
+func PromptTextCtx(ctx context.Context, opts PromptTextOptions) (string, bool) {
+	return promptTextCtx(ctx, opts)
+}
+
 // PromptMultiSelect renders a configurable ANSI multi-select prompt.
 func PromptMultiSelect[T any](items []T, opts PromptMultiSelectOptions[T]) ([]T, bool) {
+	return promptMultiSelectCtx(context.Background(), items, opts)
+}
+
+func promptMultiSelectCtx[T any](ctx context.Context, items []T, opts PromptMultiSelectOptions[T]) ([]T, bool) {
 	if len(items) == 0 {
 		return nil, false
 	}
 
+	if prompt.PreferSink(ctx) {
+		return promptMultiSelectViaSink(ctx, items, opts)
+	}
+
 	session, err := newPromptSession()
 	if err != nil {
-		return nil, false
+		return promptMultiSelectViaSink(ctx, items, opts)
 	}
 	defer session.Close()
 
@@ -263,14 +291,22 @@ func PromptMultiSelect[T any](items []T, opts PromptMultiSelectOptions[T]) ([]T,
 
 // Prompt is the shared ANSI list prompt runner used by PromptChoose and PromptSelect.
 func Prompt[T any](items []T, opts PromptSelectOptions[T]) (T, bool) {
+	return promptSelectCtx(context.Background(), items, opts)
+}
+
+func promptSelectCtx[T any](ctx context.Context, items []T, opts PromptSelectOptions[T]) (T, bool) {
 	var zero T
 	if len(items) == 0 {
 		return zero, false
 	}
 
+	if prompt.PreferSink(ctx) {
+		return promptSelectViaSink(ctx, items, opts)
+	}
+
 	session, err := newPromptSession()
 	if err != nil {
-		return zero, false
+		return promptSelectViaSink(ctx, items, opts)
 	}
 	defer session.Close()
 
@@ -302,8 +338,18 @@ func Prompt[T any](items []T, opts PromptSelectOptions[T]) (T, bool) {
 
 // PromptText renders an ANSI text entry prompt.
 func PromptText(opts PromptTextOptions) (string, bool) {
+	return promptTextCtx(context.Background(), opts)
+}
+
+func promptTextCtx(ctx context.Context, opts PromptTextOptions) (string, bool) {
+	if prompt.PreferSink(ctx) {
+		return prompt.GlobalManager().Text(ctx, promptTitle(opts.Title, "Enter a value"), opts.Default, opts.Secret)
+	}
 	session, err := newPromptSession()
 	if err != nil {
+		if m := prompt.GlobalManager(); m != nil {
+			return m.Text(ctx, promptTitle(opts.Title, "Enter a value"), opts.Default, opts.Secret)
+		}
 		return "", false
 	}
 	defer session.Close()
@@ -332,6 +378,49 @@ func PromptText(opts PromptTextOptions) (string, bool) {
 	}
 
 	return value, true
+}
+
+// promptSelectViaSink routes a single-choice prompt to the installed interactive
+// sink (the dashboard) when no terminal is available. Returns (zero,false) when no
+// sink is installed or the user cancelled.
+func promptSelectViaSink[T any](ctx context.Context, items []T, opts PromptSelectOptions[T]) (T, bool) {
+	var zero T
+	m := prompt.GlobalManager()
+	if m == nil {
+		return zero, false
+	}
+	labels := make([]string, len(items))
+	for i, item := range items {
+		labels[i] = defaultPromptLabel(item, opts.Render)
+	}
+	idxs, ok := m.Select(ctx, promptTitle(opts.Title, "Choose an option"), labels, false)
+	if !ok || len(idxs) == 0 || idxs[0] < 0 || idxs[0] >= len(items) {
+		return zero, false
+	}
+	return items[idxs[0]], true
+}
+
+// promptMultiSelectViaSink is the multi-select counterpart to promptSelectViaSink.
+func promptMultiSelectViaSink[T any](ctx context.Context, items []T, opts PromptMultiSelectOptions[T]) ([]T, bool) {
+	m := prompt.GlobalManager()
+	if m == nil {
+		return nil, false
+	}
+	labels := make([]string, len(items))
+	for i, item := range items {
+		labels[i] = defaultPromptLabel(item, opts.Render)
+	}
+	idxs, ok := m.Select(ctx, promptTitle(opts.Title, "Choose one or more options"), labels, true)
+	if !ok {
+		return nil, false
+	}
+	selected := make([]T, 0, len(idxs))
+	for _, i := range idxs {
+		if i >= 0 && i < len(items) {
+			selected = append(selected, items[i])
+		}
+	}
+	return selected, true
 }
 
 func newPromptForm(session *promptSession, field huh.Field) *huh.Form {
