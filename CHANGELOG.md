@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.21.33](https://github.com/flanksource/clicky/compare/v1.21.32...v1.21.33) (2026-06-28)
+
+
+### ⚠ BREAKING CHANGES
+
+* **prompt:** PromptSelect, PromptMultiSelect, and PromptText now delegate to context-aware internal functions; behavior is unchanged for callers without a Scope.
+
+### ✨ Features
+
+* **exec:** add bidirectional stdio pipes for long-lived processes ([e93b8ca](https://github.com/flanksource/clicky/commit/e93b8ca2b80436d13a3d1915355331d7a5d7d0cc))
+* **prompt:** add context-aware prompt routing and interactive sink support ([07e5ab6](https://github.com/flanksource/clicky/commit/07e5ab6c72a34ed6d6a56fa697b0aeaa9141f2cf))
+
+
+### 🐛 Bug Fixes
+
+* **ci,prompt,exec:** tidy go.mod and address review findings ([c1a9660](https://github.com/flanksource/clicky/commit/c1a9660240bcfe4f0f529b5c8524a17b142255a5))
+* **ci:** tidy example submodule go.mod files ([fa5980c](https://github.com/flanksource/clicky/commit/fa5980c241bab6c63656adffab73063c56a9195a))
+
+
+### 🔧 Maintenance
+
+* **release:** pin sub-modules to v1.21.32 [skip ci] ([216e838](https://github.com/flanksource/clicky/commit/216e838fac14cf7f520f2e30e6c34f91dfda6a92))
+
 ## [1.21.32](https://github.com/flanksource/clicky/compare/v1.21.31...v1.21.32) (2026-06-26)
 
 
