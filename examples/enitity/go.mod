@@ -3,7 +3,7 @@ module github.com/flanksource/clicky/examples/enitity
 go 1.26.1
 
 require (
-	github.com/flanksource/clicky v1.21.8
+	github.com/flanksource/clicky v1.21.32
 	github.com/flanksource/clicky/aichat v0.0.0
 	github.com/spf13/cobra v1.10.2
 )
