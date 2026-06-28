@@ -87,7 +87,8 @@ func (f Filter) matches(s PromptSnapshot) bool {
 		return false
 	}
 	for k, v := range f.Labels {
-		if s.Labels[k] != v {
+		got, ok := s.Labels[k]
+		if !ok || got != v {
 			return false
 		}
 	}

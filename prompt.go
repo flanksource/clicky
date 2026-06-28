@@ -343,12 +343,12 @@ func PromptText(opts PromptTextOptions) (string, bool) {
 
 func promptTextCtx(ctx context.Context, opts PromptTextOptions) (string, bool) {
 	if prompt.PreferSink(ctx) {
-		return prompt.GlobalManager().Text(ctx, promptTitle(opts.Title, "Enter a value"), opts.Default, opts.Secret)
+		return promptTextViaSink(ctx, prompt.GlobalManager(), opts)
 	}
 	session, err := newPromptSession()
 	if err != nil {
 		if m := prompt.GlobalManager(); m != nil {
-			return m.Text(ctx, promptTitle(opts.Title, "Enter a value"), opts.Default, opts.Secret)
+			return promptTextViaSink(ctx, m, opts)
 		}
 		return "", false
 	}
@@ -380,6 +380,32 @@ func promptTextCtx(ctx context.Context, opts PromptTextOptions) (string, bool) {
 	return value, true
 }
 
+// promptTextViaSink routes a text prompt to the installed interactive sink and
+// re-applies opts.Validate after each answer. The caller's validator is a Go
+// closure that cannot cross into the JSON-schema form, so the sink path enforces
+// it by re-prompting (surfacing the error in the title) until the value validates
+// or the user cancels — keeping it as strict as the terminal path.
+func promptTextViaSink(ctx context.Context, m *prompt.Manager, opts PromptTextOptions) (string, bool) {
+	if m == nil {
+		return "", false
+	}
+	base := promptTitle(opts.Title, "Enter a value")
+	title := base
+	for {
+		value, ok := m.Text(ctx, title, opts.Default, opts.Secret)
+		if !ok {
+			return "", false
+		}
+		if opts.Validate != nil {
+			if err := opts.Validate(value); err != nil {
+				title = fmt.Sprintf("%s (%s)", base, err)
+				continue
+			}
+		}
+		return value, true
+	}
+}
+
 // promptSelectViaSink routes a single-choice prompt to the installed interactive
 // sink (the dashboard) when no terminal is available. Returns (zero,false) when no
 // sink is installed or the user cancelled.
@@ -393,7 +419,7 @@ func promptSelectViaSink[T any](ctx context.Context, items []T, opts PromptSelec
 	for i, item := range items {
 		labels[i] = defaultPromptLabel(item, opts.Render)
 	}
-	idxs, ok := m.Select(ctx, promptTitle(opts.Title, "Choose an option"), labels, false)
+	idxs, ok := m.Select(ctx, promptTitle(opts.Title, "Choose an option"), labels, prompt.SelectOptions{})
 	if !ok || len(idxs) == 0 || idxs[0] < 0 || idxs[0] >= len(items) {
 		return zero, false
 	}
@@ -410,7 +436,7 @@ func promptMultiSelectViaSink[T any](ctx context.Context, items []T, opts Prompt
 	for i, item := range items {
 		labels[i] = defaultPromptLabel(item, opts.Render)
 	}
-	idxs, ok := m.Select(ctx, promptTitle(opts.Title, "Choose one or more options"), labels, true)
+	idxs, ok := m.Select(ctx, promptTitle(opts.Title, "Choose one or more options"), labels, prompt.SelectOptions{Multi: true, MaxItems: opts.Limit})
 	if !ok {
 		return nil, false
 	}

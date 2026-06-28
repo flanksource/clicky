@@ -3,6 +3,7 @@ package valkey_test
 import (
 	"time"
 
+	"github.com/alicebob/miniredis/v2"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	valkeygo "github.com/valkey-io/valkey-go"
@@ -14,15 +15,19 @@ import (
 var _ = Describe("Valkey PromptStore", func() {
 	var (
 		client valkeygo.Client
+		mr     *miniredis.Miniredis
 		store  prompt.Store
 	)
 
 	BeforeEach(func() {
-		client, _ = newClient()
+		client, mr = newClient()
 		store = valkey.NewPromptStore(client, valkey.PromptStoreConfig{KeyPrefix: "app:", Retention: time.Hour})
 	})
 
-	AfterEach(func() { client.Close() })
+	AfterEach(func() {
+		client.Close()
+		mr.Close()
+	})
 
 	It("round-trips a snapshot and filters by owner and labels", func() {
 		Expect(store.Set(prompt.PromptSnapshot{

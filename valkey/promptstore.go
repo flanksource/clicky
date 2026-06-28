@@ -70,17 +70,32 @@ func (s *promptStore) Set(snap prompt.PromptSnapshot) error {
 }
 
 func (s *promptStore) Get(id string) (prompt.PromptSnapshot, bool) {
+	snap, missing, err := s.getSnapshot(id)
+	if err != nil || missing {
+		return prompt.PromptSnapshot{}, false
+	}
+	return snap, true
+}
+
+// getSnapshot distinguishes a genuinely-absent key (missing=true, err=nil) from a
+// transient read/decode failure (err!=nil). List relies on this so a temporary
+// Valkey hiccup never prunes a still-live prompt from the index — only a key the
+// backend explicitly reports as gone is pruned.
+func (s *promptStore) getSnapshot(id string) (prompt.PromptSnapshot, bool, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), opTimeout)
 	defer cancel()
 	data, err := s.client.Do(ctx, s.client.B().Get().Key(s.key(id)).Build()).AsBytes()
 	if err != nil {
-		return prompt.PromptSnapshot{}, false
+		if valkey.IsValkeyNil(err) {
+			return prompt.PromptSnapshot{}, true, nil
+		}
+		return prompt.PromptSnapshot{}, false, err
 	}
 	var snap prompt.PromptSnapshot
 	if err := json.Unmarshal(data, &snap); err != nil {
-		return prompt.PromptSnapshot{}, false
+		return prompt.PromptSnapshot{}, false, err
 	}
-	return snap, true
+	return snap, false, nil
 }
 
 func (s *promptStore) Delete(id string) error {
@@ -109,8 +124,13 @@ func (s *promptStore) List(filter prompt.Filter) []prompt.PromptSnapshot {
 	out := make([]prompt.PromptSnapshot, 0, len(ids))
 	var stale []string
 	for _, id := range ids {
-		snap, ok := s.Get(id)
-		if !ok {
+		snap, missing, err := s.getSnapshot(id)
+		if err != nil {
+			// Transient read/decode failure: leave the index member in place so a
+			// momentary backend error never permanently drops a live prompt.
+			continue
+		}
+		if missing {
 			// The snapshot key expired but its index member lingers; prune it.
 			stale = append(stale, id)
 			continue
@@ -148,7 +168,8 @@ func filterMatches(f prompt.Filter, s prompt.PromptSnapshot) bool {
 		return false
 	}
 	for k, v := range f.Labels {
-		if s.Labels[k] != v {
+		got, ok := s.Labels[k]
+		if !ok || got != v {
 			return false
 		}
 	}

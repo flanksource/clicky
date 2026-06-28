@@ -146,7 +146,7 @@ func TestSelectViaManagerWithScope(t *testing.T) {
 	ctx := WithScope(context.Background(), Scope{Owner: "todo-9", Labels: map[string]string{"session": "s9"}})
 	got := make(chan []int, 1)
 	go func() {
-		idx, ok := m.Select(ctx, "Pick", []string{"a", "b", "c"}, false)
+		idx, ok := m.Select(ctx, "Pick", []string{"a", "b", "c"}, SelectOptions{})
 		if !ok {
 			got <- nil
 			return
@@ -174,6 +174,52 @@ func TestSelectViaManagerWithScope(t *testing.T) {
 	}
 	if idx := <-got; len(idx) != 1 || idx[0] != 2 {
 		t.Fatalf("expected selected index [2], got %v", idx)
+	}
+}
+
+func TestResolveTwiceRejectsSecondAndKeepsFirstAnswer(t *testing.T) {
+	m := NewManager(NewMemory(MemoryConfig{}))
+	done := make(chan struct{})
+	go func() {
+		_, _ = m.Ask(context.Background(), Prompt{ID: "r1", Schema: SelectSchema("Pick", []string{"a", "b"})})
+		close(done)
+	}()
+	waitPending(t, m, "r1")
+
+	if err := m.Resolve("r1", Answer{Values: map[string]any{"choice": "1"}}); err != nil {
+		t.Fatalf("first resolve: %v", err)
+	}
+	<-done
+
+	// The prompt was claimed by the first resolve, so a second (valid) answer must
+	// be rejected rather than overwrite the stored snapshot.
+	if err := m.Resolve("r1", Answer{Values: map[string]any{"choice": "0"}}); err == nil {
+		t.Fatal("expected the second resolve to be rejected")
+	}
+	snap, _ := m.Snapshot("r1")
+	if snap.Value["choice"] != "1" {
+		t.Fatalf("stored answer changed after a rejected second resolve: %+v", snap.Value)
+	}
+}
+
+func TestFilterMatchesRequiresLabelKeyPresence(t *testing.T) {
+	f := Filter{Labels: map[string]string{"session": ""}}
+	if f.matches(PromptSnapshot{}) {
+		t.Fatal("a snapshot missing the label key must not match an empty-value label filter")
+	}
+	if !f.matches(PromptSnapshot{Labels: map[string]string{"session": ""}}) {
+		t.Fatal("a snapshot carrying the exact empty-value label must match")
+	}
+}
+
+func TestMemoryStoreExpiresResolvedSnapshotOnGet(t *testing.T) {
+	store := NewMemory(MemoryConfig{Retention: time.Minute})
+	stale := time.Now().Add(-2 * time.Minute).UTC().Format(time.RFC3339)
+	if err := store.Set(PromptSnapshot{ID: "old", State: string(StateAnswered), ResolvedAt: stale}); err != nil {
+		t.Fatalf("set: %v", err)
+	}
+	if _, ok := store.Get("old"); ok {
+		t.Fatal("expected a resolved snapshot older than the retention window to expire on Get")
 	}
 }
 
