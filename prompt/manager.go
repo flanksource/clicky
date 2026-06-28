@@ -2,6 +2,7 @@ package prompt
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -58,7 +59,9 @@ func (m *Manager) Ask(ctx context.Context, p Prompt) (Answer, error) {
 
 	select {
 	case <-ctx.Done():
-		m.finalize(p.ID, StateExpired, Answer{Cancelled: true, At: time.Now()})
+		if err := m.finalize(p.ID, StateExpired, Answer{Cancelled: true, At: time.Now()}); err != nil {
+			return Answer{}, errors.Join(ctx.Err(), err)
+		}
 		return Answer{}, ctx.Err()
 	case ans := <-ch:
 		return ans, nil
@@ -74,12 +77,6 @@ func (m *Manager) Resolve(id string, ans Answer) error {
 	if !ok {
 		return fmt.Errorf("no prompt %q", id)
 	}
-	m.mu.Lock()
-	ch, pending := m.pending[id]
-	m.mu.Unlock()
-	if !pending {
-		return fmt.Errorf("prompt %q is not pending", id)
-	}
 	if ans.At.IsZero() {
 		ans.At = time.Now()
 	}
@@ -89,13 +86,24 @@ func (m *Manager) Resolve(id string, ans Answer) error {
 	} else if err := Validate(snap.Schema, ans.Values); err != nil {
 		return fmt.Errorf("answer for prompt %q: %w", id, err)
 	}
-	select {
-	case ch <- ans:
-		m.finalize(id, state, ans)
-		return nil
-	default:
+	// Claim the pending entry under the lock before delivering: removing it here
+	// means a second concurrent Resolve sees it as gone and cannot also send an
+	// answer (and overwrite the stored snapshot) once Ask has drained the channel.
+	m.mu.Lock()
+	ch, pending := m.pending[id]
+	if pending {
+		delete(m.pending, id)
+	}
+	m.mu.Unlock()
+	if !pending {
 		return fmt.Errorf("prompt %q was already resolved", id)
 	}
+	// ch is buffered (cap 1) and now exclusively owned, so this never blocks.
+	ch <- ans
+	if err := m.finalize(id, state, ans); err != nil {
+		return fmt.Errorf("persist resolution for prompt %q: %w", id, err)
+	}
+	return nil
 }
 
 // Pending returns the prompt's snapshot if it is still awaiting an answer.
@@ -115,10 +123,10 @@ func (m *Manager) Snapshot(id string) (PromptSnapshot, bool) { return m.store.Ge
 // List returns snapshots matching filter (newest first).
 func (m *Manager) List(filter Filter) []PromptSnapshot { return m.store.List(filter) }
 
-func (m *Manager) finalize(id string, state State, ans Answer) {
+func (m *Manager) finalize(id string, state State, ans Answer) error {
 	snap, ok := m.store.Get(id)
 	if !ok {
-		return
+		return nil
 	}
 	snap.State = string(state)
 	snap.Cancelled = ans.Cancelled
@@ -126,7 +134,7 @@ func (m *Manager) finalize(id string, state State, ans Answer) {
 		snap.Value = ans.Values
 	}
 	snap.ResolvedAt = ans.At.UTC().Format(time.RFC3339)
-	_ = m.store.Set(snap)
+	return m.store.Set(snap)
 }
 
 func (m *Manager) clearPending(id string) {

@@ -91,21 +91,29 @@ func (p Prompt) withScope(s Scope) Prompt {
 	return p
 }
 
+// SelectOptions configures Manager.Select. Multi toggles checkbox vs radio;
+// MaxItems (> 0, multi only) caps the number of selections so the sink path
+// enforces the same limit as the terminal multi-select.
+type SelectOptions struct {
+	Multi    bool
+	MaxItems int
+}
+
 // Select asks the user to choose among labels and returns the chosen indices.
-// multi toggles checkbox vs radio. ok is false when the prompt was cancelled. The
-// prompt inherits any Scope on ctx. This is the entry point the clicky root routes
-// PromptSelect/PromptMultiSelect to when no TTY is attached.
-func (m *Manager) Select(ctx context.Context, title string, labels []string, multi bool) ([]int, bool) {
+// ok is false when the prompt was cancelled. The prompt inherits any Scope on ctx.
+// This is the entry point the clicky root routes PromptSelect/PromptMultiSelect to
+// when no TTY is attached.
+func (m *Manager) Select(ctx context.Context, title string, labels []string, opts SelectOptions) ([]int, bool) {
 	schema := SelectSchema(title, labels)
-	if multi {
-		schema = MultiSelectSchema(title, labels)
+	if opts.Multi {
+		schema = MultiSelectSchema(title, labels, opts.MaxItems)
 	}
 	p := Prompt{Kind: "select", Title: title, Schema: schema, CreatedAt: time.Now()}.withScope(ScopeFrom(ctx))
 	ans, err := m.Ask(ctx, p)
 	if err != nil || ans.Cancelled {
 		return nil, false
 	}
-	if multi {
+	if opts.Multi {
 		return SelectedIndexes(ans), true
 	}
 	if i := SelectedIndex(ans); i >= 0 {

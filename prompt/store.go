@@ -56,6 +56,7 @@ func (m *memoryStore) Set(snap PromptSnapshot) error {
 func (m *memoryStore) Get(id string) (PromptSnapshot, bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	m.gcLocked()
 	s, ok := m.byID[id]
 	return s, ok
 }

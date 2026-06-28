@@ -778,6 +778,16 @@ func (p *Process) Run() *Process {
 	// without a lock we control.
 	var runErr error
 	if startErr := cmd.Start(); startErr != nil {
+		// Close the child-side pipe ends the parent still holds; the deferred
+		// cleanup only closes the parent-side ends, so without this the two
+		// child-side descriptors leak on every failed start (e.g. a restart
+		// policy retrying a bad path).
+		if childStdinR != nil {
+			_ = childStdinR.Close()
+		}
+		if childStdoutW != nil {
+			_ = childStdoutW.Close()
+		}
 		p.mu.Lock()
 		p.Err = startErr
 		p.mu.Unlock()

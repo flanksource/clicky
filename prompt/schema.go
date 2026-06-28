@@ -46,24 +46,29 @@ func SelectSchema(title string, options []string) json.RawMessage {
 }
 
 // MultiSelectSchema builds an object schema whose "choice" is an array of option
-// indices.
-func MultiSelectSchema(title string, options []string) json.RawMessage {
+// indices. uniqueItems rejects a repeated selection; maxItems (when > 0) caps the
+// number of selections so the sink/dashboard path enforces the same limit as the
+// terminal multi-select.
+func MultiSelectSchema(title string, options []string, maxItems int) json.RawMessage {
 	enum, labels := indexEnum(options)
-	doc := map[string]any{
-		"type": "object",
-		"properties": map[string]any{
-			choiceKey: map[string]any{
-				"type":  "array",
-				"title": title,
-				"items": map[string]any{
-					"type":          "string",
-					"enum":          enum,
-					"x-enum-labels": labels,
-				},
-				"x-enum-display": "checkbox",
-			},
+	choice := map[string]any{
+		"type":  "array",
+		"title": title,
+		"items": map[string]any{
+			"type":          "string",
+			"enum":          enum,
+			"x-enum-labels": labels,
 		},
-		"required": []string{choiceKey},
+		"uniqueItems":    true,
+		"x-enum-display": "checkbox",
+	}
+	if maxItems > 0 {
+		choice["maxItems"] = maxItems
+	}
+	doc := map[string]any{
+		"type":       "object",
+		"properties": map[string]any{choiceKey: choice},
+		"required":   []string{choiceKey},
 	}
 	b, _ := json.Marshal(doc)
 	return b
