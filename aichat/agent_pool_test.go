@@ -4,7 +4,6 @@ import (
 	"testing"
 	"time"
 
-	captainai "github.com/flanksource/captain/pkg/ai"
 	capapi "github.com/flanksource/captain/pkg/api"
 )
 
@@ -19,7 +18,7 @@ func (f *fakeStreamProvider) isClosed() bool {
 func countingFactory() (AgentProviderFactory, *int, *[]*fakeStreamProvider) {
 	var calls int
 	var made []*fakeStreamProvider
-	factory := func(cfg captainai.Config) (captainai.StreamingProvider, error) {
+	factory := func(cfg capapi.Config) (capapi.StreamingProvider, error) {
 		calls++
 		p := &fakeStreamProvider{model: cfg.Model.Name, backend: cfg.Model.Backend}
 		made = append(made, p)
@@ -28,7 +27,7 @@ func countingFactory() (AgentProviderFactory, *int, *[]*fakeStreamProvider) {
 	return factory, &calls, &made
 }
 
-var testAgentConfig = captainai.Config{Model: capapi.Model{Name: "claude-agent-sonnet", Backend: captainai.BackendClaudeAgent}}
+var testAgentConfig = capapi.Config{Model: capapi.Model{Name: "claude-agent-sonnet", Backend: capapi.BackendClaudeAgent}}
 
 func TestProviderPoolReusesEntry(t *testing.T) {
 	factory, calls, _ := countingFactory()
