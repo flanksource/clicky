@@ -1,12 +1,18 @@
-// Package cache defines clicky's generic cache-browser contract: a read/admin
-// API over a key-value cache keyspace (valkey/redis or anything shaped like
-// it) that groups keys into a prefix tree, serves per-key detail, search,
-// whole-keyspace stats, and key/prefix deletion.
+// Package cache defines clicky's cache contracts and a dependency-free
+// in-process backend for them:
 //
-// The package mirrors the metrics split: the interface plus the HTTP handler
-// live here in the root module, while backend implementations live in their
-// own modules (github.com/flanksource/clicky/valkey) so the root module never
-// pulls in client dependencies.
+//   - Store (store.go) is a minimal Redis-shaped key/value surface — the
+//     strings and sorted sets that the domain stores (prompt.Store,
+//     metrics.Timeseries) are written once against. NewMemory is the in-process
+//     implementation; valkey.NewStore is the cross-process one.
+//   - Browser (this file) is a read/admin API over a whole cache keyspace
+//     (valkey/redis or anything shaped like it): a prefix tree, per-key detail,
+//     search, whole-keyspace stats, and key/prefix deletion.
+//
+// The package mirrors the metrics split: the interfaces plus the HTTP handler
+// live here in the root module, while the valkey-backed implementations live in
+// their own module (github.com/flanksource/clicky/valkey) so the root module
+// never pulls in client dependencies.
 package cache
 
 import (
