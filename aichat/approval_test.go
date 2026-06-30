@@ -68,6 +68,11 @@ func TestCatalogInfoMarksConfiguredProviders(t *testing.T) {
 		if m.Label == "" {
 			t.Errorf("model %q has no label", m.ID)
 		}
+		// Agent models are gated on local backend availability, not on the
+		// registered Genkit providers passed here, so skip them for this check.
+		if model, err := LookupModel(m.ID); err == nil && model.Engine == EngineAgent {
+			continue
+		}
 		if m.Provider == string(ProviderAnthropic) {
 			if !m.Configured {
 				t.Errorf("%q should be configured", m.ID)

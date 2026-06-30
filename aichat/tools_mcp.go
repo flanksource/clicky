@@ -21,9 +21,10 @@ type MCPServer struct {
 	StreamableHTTP bool              // remote: use streamable HTTP instead of SSE
 }
 
-// MCPTools connects to the configured MCP servers via Genkit's MCP host and
-// returns their active tools as ToolRefs. Returns nil when no servers configured.
-func MCPTools(ctx context.Context, g *genkit.Genkit, servers []MCPServer) ([]ai.ToolRef, error) {
+// MCPRegisteredTools connects to the configured MCP servers via Genkit's MCP
+// host and returns active tools with catalog metadata. Returns nil when no
+// servers configured.
+func MCPRegisteredTools(ctx context.Context, g *genkit.Genkit, servers []MCPServer) ([]registeredTool, error) {
 	if len(servers) == 0 {
 		return nil, nil
 	}
@@ -43,11 +44,25 @@ func MCPTools(ctx context.Context, g *genkit.Genkit, servers []MCPServer) ([]ai.
 	if err != nil {
 		return nil, fmt.Errorf("mcp tools: %w", err)
 	}
-	refs := make([]ai.ToolRef, len(tools))
+	refs := make([]registeredTool, len(tools))
 	for i, t := range tools {
-		refs[i] = t
+		catalog := mcpCatalogEntry(t)
+		refs[i] = registeredTool{
+			ref:     t,
+			info:    ToolInfo{Name: t.Name()},
+			catalog: &catalog,
+		}
 	}
 	return refs, nil
+}
+
+// MCPTools is the compatibility helper for callers that only need ToolRefs.
+func MCPTools(ctx context.Context, g *genkit.Genkit, servers []MCPServer) ([]ai.ToolRef, error) {
+	tools, err := MCPRegisteredTools(ctx, g, servers)
+	if err != nil {
+		return nil, err
+	}
+	return toolRefs(tools), nil
 }
 
 func clientOptions(s MCPServer) (mcp.MCPClientOptions, error) {

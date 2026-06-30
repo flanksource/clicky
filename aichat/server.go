@@ -39,6 +39,10 @@ type Options struct {
 	// MCP tools. They are useful for structured client-action outputs that are
 	// not Cobra commands.
 	CustomTools []ToolDefinition
+	// ToolFilter decides whether a discovered tool should be exposed to the
+	// model. Return false to hide CLI/UI operations that should not be callable
+	// from chat.
+	ToolFilter func(ToolInfo) bool
 	// SettingsProvider supplies per-request defaults and limits owned by the
 	// embedding application. It is evaluated after the request is decoded but
 	// before model selection/generation, so it can default the model and reject
@@ -49,6 +53,14 @@ type Options struct {
 	// plus any process env keys, so org-scoped connection stores can drive model
 	// availability and generation.
 	ProviderCredentials ProviderCredentialsProvider
+	// Agent configures the captain agent-framework engine that serves
+	// EngineAgent models (claude-agent, codex). The zero value is a safe,
+	// read-mostly posture; see AgentOptions.
+	Agent AgentOptions
+	// AgentProviderFactory builds the captain StreamingProvider for an agent
+	// turn. When nil a default backed by captain's pkg/ai provider registry is
+	// used. Tests inject a fake to avoid spawning real subprocesses.
+	AgentProviderFactory AgentProviderFactory
 }
 
 const defaultSystem = "You are an operator assistant for this application. " +
@@ -66,6 +78,8 @@ type Server struct {
 	once      sync.Once
 	opts      Options
 	approval  approvalPredicate
+	pool      *providerPool
+	closeOnce sync.Once
 }
 
 type chatRuntime struct {
@@ -81,11 +95,27 @@ func NewServer(opts Options) *Server {
 	if system == "" {
 		system = defaultSystem
 	}
+	factory := opts.AgentProviderFactory
+	if factory == nil {
+		factory = defaultAgentProviderFactory
+	}
 	return &Server{
 		system:   system,
 		opts:     opts,
 		approval: resolveApprovalPolicy(opts.ToolApprovalPolicy, opts.ApprovalPolicy, opts.RequireApprovalFor),
+		pool:     newProviderPool(factory, opts.Agent.IdleTTL),
 	}
+}
+
+// Close releases the agent engine's pooled supervised providers. Safe to call
+// more than once. The Genkit engine holds no closable resources.
+func (s *Server) Close() error {
+	s.closeOnce.Do(func() {
+		if s.pool != nil {
+			s.pool.closeAll()
+		}
+	})
+	return nil
 }
 
 // Handler returns the http.Handler serving the chat API: POST /api/chat (the
@@ -96,6 +126,7 @@ func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /api/chat", s.handleChat)
 	mux.HandleFunc("GET /api/chat/models", s.handleModels)
+	mux.HandleFunc("GET /api/chat/tools", s.handleTools)
 	s.registerThreadRoutes(mux)
 	return mux
 }
@@ -184,15 +215,19 @@ func (s *Server) buildTools(ctx context.Context, g *genkit.Genkit) ([]registered
 		return nil, err
 	}
 	tools = append(tools, customTools...)
-	mcpTools, err := MCPTools(ctx, g, s.opts.MCPServers)
+	mcpTools, err := MCPRegisteredTools(ctx, g, s.opts.MCPServers)
 	if err != nil {
 		return nil, err
 	}
-	for _, tool := range mcpTools {
-		tools = append(tools, registeredTool{
-			ref:  tool,
-			info: ToolInfo{Name: tool.Name()},
-		})
+	tools = append(tools, mcpTools...)
+	if s.opts.ToolFilter != nil {
+		filtered := tools[:0]
+		for _, tool := range tools {
+			if s.opts.ToolFilter(tool.info) {
+				filtered = append(filtered, tool)
+			}
+		}
+		tools = filtered
 	}
 	return tools, nil
 }
@@ -202,6 +237,10 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 	var req ChatRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, fmt.Sprintf("invalid request body: %v", err), http.StatusBadRequest)
+		return
+	}
+	if err := validateRequestConfig(req); err != nil {
+		http.Error(w, err.Error(), statusForRuntimeSettingsError(err))
 		return
 	}
 
@@ -216,6 +255,18 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 	if err := enforceRuntimeSettings(req, settings); err != nil {
 		http.Error(w, err.Error(), statusForRuntimeSettingsError(err))
 		return
+	}
+	if err := s.enforceRequestBudget(ctx, req); err != nil {
+		http.Error(w, err.Error(), statusForRuntimeSettingsError(err))
+		return
+	}
+	// Route agent-framework models to the captain agent engine before building
+	// the Genkit runtime, which the agent path does not use.
+	if id := modelIDForRequest(req, settings); id != "" {
+		if m, lookupErr := LookupModel(id); lookupErr == nil && m.Engine == EngineAgent {
+			s.serveAgentChat(w, r, m, req)
+			return
+		}
 	}
 	rt, err := s.runtime(ctx)
 	if err != nil {
@@ -249,11 +300,32 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.stream(ctx, sse, rt, model, req.ReasoningEffort, msgs, resume, req.ThreadID, req.ToolPreferences); err != nil {
+	if err := s.stream(ctx, sse, rt, model, req.ReasoningEffort, req.Budget, req.Temperature, msgs, resume, req.ThreadID, req.ToolPreferences); err != nil {
 		// Headers are already sent; surface the error as an SSE error part.
 		_ = sse.errorPart(err.Error())
 	}
 	_ = sse.done()
+}
+
+func (s *Server) enforceRequestBudget(ctx context.Context, req ChatRequest) error {
+	if req.Budget.Cost <= 0 || req.ThreadID == "" || s.opts.Threads == nil {
+		return nil
+	}
+	thread, err := s.opts.Threads.Get(ctx, req.ThreadID)
+	if err != nil {
+		return runtimeSettingsError{status: http.StatusBadRequest, msg: err.Error()}
+	}
+	if thread.TotalCostUsd >= req.Budget.Cost {
+		return runtimeSettingsError{
+			status: http.StatusPaymentRequired,
+			msg: fmt.Sprintf(
+				"chat cost budget exhausted: $%.4f used of $%.4f",
+				thread.TotalCostUsd,
+				req.Budget.Cost,
+			),
+		}
+	}
+	return nil
 }
 
 // persistIncoming appends the latest user message to its thread when the request
@@ -307,7 +379,7 @@ func (s *Server) resolveModel(id string, providers []Provider) (Model, error) {
 // surfaced as a tool-approval-request so the client can approve/deny and resume.
 // When resume directives are supplied, the interrupted calls are restarted
 // (approved) or responded-to (denied) instead of re-prompting.
-func (s *Server) stream(ctx context.Context, sse *sseWriter, rt chatRuntime, model Model, effort Effort, msgs []*ai.Message, resume *resumeDirectives, threadID string, toolPrefs ToolPreferences) error {
+func (s *Server) stream(ctx context.Context, sse *sseWriter, rt chatRuntime, model Model, effort Effort, budget ChatBudget, temperature *float64, msgs []*ai.Message, resume *resumeDirectives, threadID string, toolPrefs ToolPreferences) error {
 	if err := sse.start(); err != nil {
 		return err
 	}
@@ -324,7 +396,7 @@ func (s *Server) stream(ctx context.Context, sse *sseWriter, rt chatRuntime, mod
 		preferences:     toolPrefs,
 		defaultApproval: s.approval,
 	})
-	opts := generateOptions(model, effort, s.system, msgs, toolsForRequest(rt.tools, toolPrefs), cb, resumeOptions(resume)...)
+	opts := generateOptions(model, effort, budget, temperature, s.system, msgs, toolsForRequest(rt.tools, toolPrefs), cb, resumeOptions(resume)...)
 	resp, err := genkit.Generate(ctx, rt.g, opts...)
 	if err != nil {
 		return err
@@ -350,9 +422,17 @@ func (s *Server) usageMetadata(ctx context.Context, model Model, resp *ai.ModelR
 	if resp == nil || resp.Usage == nil {
 		return nil
 	}
-	u := resp.Usage
-	turnCost := costUSD(model.ID, u)
-	turn := TurnUsage{InputTokens: u.InputTokens, OutputTokens: u.OutputTokens + u.ThoughtsTokens, CostUSD: turnCost}
+	usage := genkitUsageBreakdown(resp.Usage)
+	cost := costForUsage(model.ID, usage)
+	turnCost := cost.TotalUsd
+	turn := TurnUsage{
+		InputTokens:      usage.InputTokens,
+		OutputTokens:     usage.OutputTokens,
+		ReasoningTokens:  usage.ReasoningTokens,
+		CacheReadTokens:  usage.CacheReadTokens,
+		CacheWriteTokens: usage.CacheWriteTokens,
+		CostUSD:          turnCost,
+	}
 
 	threadCost := turnCost
 	if threadID != "" && s.opts.Threads != nil {
@@ -364,14 +444,11 @@ func (s *Server) usageMetadata(ctx context.Context, model Model, resp *ai.ModelR
 	}
 
 	return map[string]any{
-		"usage": map[string]any{
-			"inputTokens":  u.InputTokens,
-			"outputTokens": turn.OutputTokens,
-			"totalTokens":  u.TotalTokens,
-		},
+		"usage":         usage,
+		"costBreakdown": cost,
 		"cost":          turnCost,
 		"threadCostUsd": threadCost,
-		"contextTokens": u.InputTokens,
+		"contextTokens": usage.InputTokens,
 	}
 }
 

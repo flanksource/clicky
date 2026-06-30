@@ -1,10 +1,12 @@
 package aichat
 
 import (
+	"context"
 	"regexp"
 	"testing"
 
 	"github.com/firebase/genkit/go/ai"
+	"github.com/firebase/genkit/go/genkit"
 	"github.com/flanksource/clicky"
 	"github.com/flanksource/clicky/rpc"
 	"github.com/spf13/cobra"
@@ -71,6 +73,25 @@ func TestClickyToolsetExecutesInProcess(t *testing.T) {
 	}
 }
 
+func TestClickyToolCatalogPreservesInputSchema(t *testing.T) {
+	ts := buildToolset(t)
+	g := genkit.Init(context.Background())
+	tools := ts.DefineRegisteredTools(g)
+	catalog := toolCatalog(tools)
+	if len(catalog.Tools) != 1 {
+		t.Fatalf("tools = %d, want 1", len(catalog.Tools))
+	}
+	tool := catalog.Tools[0]
+	if tool.Source != "clicky" || tool.OperationName != "greet-opts" {
+		t.Fatalf("tool = %+v, want clicky greet-opts", tool)
+	}
+	props := tool.InputSchema["properties"].(map[string]any)
+	name := props["name"].(map[string]any)
+	if name["type"] != "string" || name["description"] == "" {
+		t.Fatalf("name schema = %v", name)
+	}
+}
+
 func TestJSONSchemaConversion(t *testing.T) {
 	s := rpc.Schema{
 		Type: "object",
@@ -123,6 +144,84 @@ func TestToolNameMatchesProviderCharset(t *testing.T) {
 		if got := toolName(raw); !valid.MatchString(got) {
 			t.Errorf("toolName(%q) = %q is not a valid provider tool name", raw, got)
 		}
+	}
+}
+
+func TestToolableOperationSkipsCobraHelpAndCompletion(t *testing.T) {
+	runnable := func(use string) *cobra.Command {
+		return &cobra.Command{Use: use, Run: func(cmd *cobra.Command, args []string) {}}
+	}
+	cases := []struct {
+		name string
+		op   *rpc.RPCOperation
+		want bool
+	}{
+		{
+			name: "operation name completion",
+			op: &rpc.RPCOperation{
+				Name:    "completion bash",
+				Command: rpc.NewCobraExecutableCommand(runnable("bash")),
+			},
+			want: false,
+		},
+		{
+			name: "operation name help",
+			op: &rpc.RPCOperation{
+				Name:    "help accounts",
+				Command: rpc.NewCobraExecutableCommand(runnable("accounts")),
+			},
+			want: false,
+		},
+		{
+			name: "x-clicky command completion",
+			op: &rpc.RPCOperation{
+				Name:    "bash",
+				Command: rpc.NewCobraExecutableCommand(runnable("bash")),
+				Clicky:  &rpc.ClickyOperationMeta{Command: "completion/bash"},
+			},
+			want: false,
+		},
+		{
+			name: "leaf help command",
+			op: &rpc.RPCOperation{
+				Name:    "docs",
+				Command: rpc.NewCobraExecutableCommand(runnable("help")),
+			},
+			want: false,
+		},
+		{
+			name: "ordinary helpful command",
+			op: &rpc.RPCOperation{
+				Name:    "helpful report",
+				Command: rpc.NewCobraExecutableCommand(runnable("helpful")),
+			},
+			want: true,
+		},
+		{
+			// A hyphen is part of the command name, not a path separator: "help-desk"
+			// must not be mistaken for the built-in `help` command.
+			name: "hyphenated command is not the help builtin",
+			op: &rpc.RPCOperation{
+				Name:    "help-desk",
+				Command: rpc.NewCobraExecutableCommand(runnable("help-desk")),
+			},
+			want: true,
+		},
+		{
+			name: "underscored command is not the completion builtin",
+			op: &rpc.RPCOperation{
+				Name:    "completion_report",
+				Command: rpc.NewCobraExecutableCommand(runnable("completion_report")),
+			},
+			want: true,
+		},
+	}
+	for _, tt := range cases {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := toolableOperation(tt.op); got != tt.want {
+				t.Fatalf("toolableOperation() = %v, want %v", got, tt.want)
+			}
+		})
 	}
 }
 

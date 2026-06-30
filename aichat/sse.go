@@ -85,6 +85,26 @@ func (s *sseWriter) textEnd(id string) error {
 	return s.part(map[string]any{"type": "text-end", "id": id})
 }
 
+// --- reasoning parts ---
+//
+// Reasoning parts mirror the text parts (start / delta / end) and carry the
+// model's extended-thinking stream. They are emitted by the agent engine from
+// captain EventThinking events; the Genkit engine folds reasoning into output
+// text and does not use them.
+
+func (s *sseWriter) reasoningStart(id string) error {
+	return s.part(map[string]any{"type": "reasoning-start", "id": id})
+}
+
+// reasoningDelta uses wire field `delta` (NOT `text`), like textDelta.
+func (s *sseWriter) reasoningDelta(id, delta string) error {
+	return s.part(map[string]any{"type": "reasoning-delta", "id": id, "delta": delta})
+}
+
+func (s *sseWriter) reasoningEnd(id string) error {
+	return s.part(map[string]any{"type": "reasoning-end", "id": id})
+}
+
 // --- tool parts ---
 
 func (s *sseWriter) toolInputAvailable(callID, name string, input any) error {

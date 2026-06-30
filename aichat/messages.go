@@ -16,6 +16,8 @@ type ChatRequest struct {
 	Messages        []UIMessage     `json:"messages"`
 	Model           string          `json:"model,omitempty"`
 	ReasoningEffort Effort          `json:"reasoningEffort,omitempty"`
+	Temperature     *float64        `json:"temperature,omitempty"`
+	Budget          ChatBudget      `json:"budget,omitempty"`
 	ToolPreferences ToolPreferences `json:"toolPreferences,omitempty"`
 	// Context is the human-readable serialized context summary sent by
 	// clicky-ui. ContextItems carries the same attachments with app-owned
@@ -26,6 +28,18 @@ type ChatRequest struct {
 	// conversation this turn belongs to. Distinct from ID, which is the AI SDK
 	// client chat id and not a server thread.
 	ThreadID string `json:"threadId,omitempty"`
+	// ProviderSessionID carries the captain agent session id back from a prior
+	// agent turn so a stateless client (no ThreadID) can resume the same agent
+	// session. It is echoed in the finish metadata of every agent turn. Ignored
+	// by the Genkit engine and by threaded turns (which persist it server-side).
+	ProviderSessionID string `json:"providerSessionId,omitempty"`
+}
+
+// ChatBudget carries per-request limits from clicky-ui. Zero values are
+// unbounded and preserve backend defaults.
+type ChatBudget struct {
+	Cost      float64 `json:"cost,omitempty"`
+	MaxTokens int     `json:"maxTokens,omitempty"`
 }
 
 type ChatContextItem struct {

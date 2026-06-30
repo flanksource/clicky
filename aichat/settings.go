@@ -48,6 +48,28 @@ func modelIDForRequest(req ChatRequest, settings RuntimeSettings) string {
 	return strings.TrimSpace(settings.DefaultModel)
 }
 
+func validateRequestConfig(req ChatRequest) error {
+	if req.Temperature != nil && (*req.Temperature < 0 || *req.Temperature > 2) {
+		return runtimeSettingsError{
+			status: http.StatusBadRequest,
+			msg:    fmt.Sprintf("invalid temperature %v (valid: 0.0-2.0)", *req.Temperature),
+		}
+	}
+	if req.Budget.Cost < 0 {
+		return runtimeSettingsError{
+			status: http.StatusBadRequest,
+			msg:    fmt.Sprintf("invalid budget cost %.4f (must be >= 0)", req.Budget.Cost),
+		}
+	}
+	if req.Budget.MaxTokens < 0 {
+		return runtimeSettingsError{
+			status: http.StatusBadRequest,
+			msg:    fmt.Sprintf("invalid budget maxTokens %d (must be >= 0)", req.Budget.MaxTokens),
+		}
+	}
+	return nil
+}
+
 func enforceRuntimeSettings(req ChatRequest, settings RuntimeSettings) error {
 	if settings.MonthlyBudgetUSD > 0 && settings.CurrentMonthCostUSD >= settings.MonthlyBudgetUSD {
 		return runtimeSettingsError{

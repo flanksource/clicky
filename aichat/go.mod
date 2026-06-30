@@ -4,7 +4,7 @@ go 1.26.1
 
 require (
 	github.com/firebase/genkit/go v1.8.0
-	github.com/flanksource/captain v0.0.7
+	github.com/flanksource/captain v0.0.8
 	github.com/flanksource/clicky v1.21.33
 	github.com/spf13/cobra v1.10.2
 )
@@ -68,7 +68,7 @@ require (
 	github.com/goccy/go-yaml v1.19.2 // indirect
 	github.com/golang/groupcache v0.0.0-20241129210726-2c02b8208cf8 // indirect
 	github.com/google/cel-go v0.27.0 // indirect
-	github.com/google/dotprompt/go v0.0.0-20251014011017-8d056e027254 // indirect
+	github.com/google/dotprompt/go v0.0.0-20260502013637-5cd4a8405ca3 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/google/s2a-go v0.1.9 // indirect
 	github.com/google/uuid v1.6.0 // indirect

@@ -66,7 +66,8 @@ func (t *ClickyToolset) DefineRegisteredTools(g *genkit.Genkit) []registeredTool
 			t.handlerFor(op),
 			ai.WithInputSchema(schema),
 		)
-		refs = append(refs, registeredTool{ref: tool, info: toolInfo(name, op)})
+		catalog := clickyCatalogEntry(name, op, schema)
+		refs = append(refs, registeredTool{ref: tool, info: toolInfo(name, op), catalog: &catalog})
 	}
 	return refs
 }
@@ -75,17 +76,46 @@ func (t *ClickyToolset) DefineRegisteredTools(g *genkit.Genkit) []registeredTool
 // Pure grouping commands (no Run), hidden commands, and cobra's auto-generated
 // completion/help trees are not useful tools.
 func toolableOperation(op *rpc.RPCOperation) bool {
+	if op == nil {
+		return false
+	}
 	cmd := op.Command
 	if cmd == nil || !cmd.Runnable() || cmd.Hidden() {
 		return false
 	}
-	if fields := strings.Fields(op.Name); len(fields) > 0 {
-		switch fields[0] {
-		case "completion", "help":
-			return false
-		}
+	if isCobraHelpOrCompletionTool(op) {
+		return false
 	}
 	return true
+}
+
+func isCobraHelpOrCompletionTool(op *rpc.RPCOperation) bool {
+	candidates := []string{op.Name}
+	if op.Clicky != nil {
+		candidates = append(candidates, op.Clicky.Command)
+	}
+	if cmd := op.Command; cmd != nil {
+		candidates = append(candidates, cmd.Path(), cmd.Name())
+	}
+	for _, candidate := range candidates {
+		if commandStartsWithCobraBuiltin(candidate) {
+			return true
+		}
+	}
+	return false
+}
+
+func commandStartsWithCobraBuiltin(raw string) bool {
+	// Split only on path separators ('/' and whitespace). Cobra command names
+	// may legitimately contain '-' and '_' (e.g. "help-desk", "completion_report"),
+	// so those must stay intact to avoid misclassifying them as the built-in
+	// `help`/`completion` commands.
+	replacer := strings.NewReplacer("/", " ")
+	fields := strings.Fields(strings.ToLower(replacer.Replace(raw)))
+	if len(fields) == 0 {
+		return false
+	}
+	return fields[0] == "completion" || fields[0] == "help"
 }
 
 // toolName converts a clicky operation name ("stack get") into a provider-safe
