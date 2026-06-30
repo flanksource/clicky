@@ -5,6 +5,35 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.21.34](https://github.com/flanksource/clicky/compare/v1.21.33...v1.21.34) (2026-06-30)
+
+
+### ♻️ Code Refactoring
+
+* Refactor cache and store layer with abstract cache.Store interface ([b766cd3](https://github.com/flanksource/clicky/commit/b766cd3cdbc4baeb42147430dda0e4f01c29e718))
+* **aichat:** depend on captain pkg/api runtime contract over pkg/ai ([21ce9d1](https://github.com/flanksource/clicky/commit/21ce9d17ccae4e7d6f1b7103259a9423f1570dba))
+
+
+### ✨ Features
+
+* **agent:** add captain agent-framework engine for claude-agent and codex models ([10d1a6e](https://github.com/flanksource/clicky/commit/10d1a6ec7983f1cb12788c805e89eefa13b2514d))
+
+
+### 🐛 Bug Fixes
+
+* Fix and improve markdown parsing and entity metadata handling ([fd070b0](https://github.com/flanksource/clicky/commit/fd070b0f7e4145290413f9f8de6716e01834184b))
+
+
+### 📦 Build System
+
+* **aichat:** require captain v0.0.9 for the pkg/api runtime contract ([25a484b](https://github.com/flanksource/clicky/commit/25a484b6dc0fae329b87ec5d8b82e74b37136a98))
+* **examples:** bump indirect captain to v0.0.9 ([05d1a4e](https://github.com/flanksource/clicky/commit/05d1a4ed0bdb4d6932217057f3a4e9ba2c105f39))
+
+
+### 🔧 Maintenance
+
+* **release:** pin sub-modules to v1.21.33 [skip ci] ([250ebf9](https://github.com/flanksource/clicky/commit/250ebf9885a27c2a29a05d89ef73a897725e9650))
+
 ## [1.21.33](https://github.com/flanksource/clicky/compare/v1.21.32...v1.21.33) (2026-06-28)
 
 
