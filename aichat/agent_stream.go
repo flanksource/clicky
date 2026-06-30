@@ -3,13 +3,13 @@ package aichat
 import (
 	"fmt"
 
-	captainai "github.com/flanksource/captain/pkg/ai"
+	capapi "github.com/flanksource/captain/pkg/api"
 )
 
 // agentStreamResult is what draining one agent turn captured for the finish part.
 type agentStreamResult struct {
 	sessionID string
-	usage     *captainai.Usage
+	usage     *capapi.Usage
 	cost      float64
 }
 
@@ -134,47 +134,47 @@ func (e *agentEmitter) closeOpen() error {
 // drainAgentEvents maps the captain event stream onto SSE parts and returns the
 // captured session id, usage and cost. An EventError closes any open block and
 // is returned as an error so the caller surfaces it as an SSE error part.
-func drainAgentEvents(sse *sseWriter, ch <-chan captainai.Event) (agentStreamResult, error) {
+func drainAgentEvents(sse *sseWriter, ch <-chan capapi.Event) (agentStreamResult, error) {
 	em := &agentEmitter{sse: sse, openTools: map[string]bool{}}
 	var res agentStreamResult
 	for ev := range ch {
 		switch ev.Kind {
-		case captainai.EventText:
+		case capapi.EventText:
 			if ev.Text == "" {
 				continue
 			}
 			if err := em.onText(ev.Text); err != nil {
 				return res, err
 			}
-		case captainai.EventThinking:
+		case capapi.EventThinking:
 			if ev.Text == "" {
 				continue
 			}
 			if err := em.onReasoning(ev.Text); err != nil {
 				return res, err
 			}
-		case captainai.EventToolUse:
+		case capapi.EventToolUse:
 			if ev.Tool == "" {
 				continue
 			}
 			if err := em.onToolUse(ev.ToolCallID, ev.Tool, ev.Input); err != nil {
 				return res, err
 			}
-		case captainai.EventToolResult:
+		case capapi.EventToolResult:
 			if err := em.onToolResult(ev.ToolCallID, ev.Text, ev.Success); err != nil {
 				return res, err
 			}
-		case captainai.EventSystem:
+		case capapi.EventSystem:
 			if ev.SessionID != "" {
 				res.sessionID = ev.SessionID
 			}
-		case captainai.EventResult:
+		case capapi.EventResult:
 			if ev.SessionID != "" {
 				res.sessionID = ev.SessionID
 			}
 			res.usage = ev.Usage
 			res.cost = ev.CostUSD
-		case captainai.EventError:
+		case capapi.EventError:
 			_ = em.closeOpen()
 			_ = em.closeDangling()
 			return res, fmt.Errorf("%s", ev.Error)

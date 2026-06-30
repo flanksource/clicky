@@ -11,7 +11,6 @@ import (
 	"sync"
 	"testing"
 
-	captainai "github.com/flanksource/captain/pkg/ai"
 	capapi "github.com/flanksource/captain/pkg/api"
 )
 
@@ -20,25 +19,25 @@ import (
 // io.Closer so the provider-pool tests can observe teardown.
 type fakeStreamProvider struct {
 	model     string
-	backend   captainai.Backend
-	events    []captainai.Event
+	backend   capapi.Backend
+	events    []capapi.Event
 	streamErr error
 
 	mu     sync.Mutex
 	closed bool
 }
 
-func (f *fakeStreamProvider) GetModel() string              { return f.model }
-func (f *fakeStreamProvider) GetBackend() captainai.Backend { return f.backend }
-func (f *fakeStreamProvider) Execute(context.Context, captainai.Request) (*captainai.Response, error) {
+func (f *fakeStreamProvider) GetModel() string           { return f.model }
+func (f *fakeStreamProvider) GetBackend() capapi.Backend { return f.backend }
+func (f *fakeStreamProvider) Execute(context.Context, capapi.Spec) (*capapi.Response, error) {
 	return nil, fmt.Errorf("fakeStreamProvider.Execute not used")
 }
 
-func (f *fakeStreamProvider) ExecuteStream(_ context.Context, _ captainai.Request) (<-chan captainai.Event, error) {
+func (f *fakeStreamProvider) ExecuteStream(_ context.Context, _ capapi.Spec) (<-chan capapi.Event, error) {
 	if f.streamErr != nil {
 		return nil, f.streamErr
 	}
-	ch := make(chan captainai.Event, len(f.events))
+	ch := make(chan capapi.Event, len(f.events))
 	for _, ev := range f.events {
 		ch <- ev
 	}
@@ -117,8 +116,8 @@ func containsType(parts []map[string]any, typ string) bool {
 
 // agentServer builds a server whose agent engine uses the supplied fake,
 // recording every Config the factory is asked to build.
-func agentServer(opts Options, fake *fakeStreamProvider, configs *[]captainai.Config) *Server {
-	opts.AgentProviderFactory = func(cfg captainai.Config) (captainai.StreamingProvider, error) {
+func agentServer(opts Options, fake *fakeStreamProvider, configs *[]capapi.Config) *Server {
+	opts.AgentProviderFactory = func(cfg capapi.Config) (capapi.StreamingProvider, error) {
 		if configs != nil {
 			*configs = append(*configs, cfg)
 		}
@@ -130,19 +129,19 @@ func agentServer(opts Options, fake *fakeStreamProvider, configs *[]captainai.Co
 func TestAgentChatStreamsEventsAsSSE(t *testing.T) {
 	fake := &fakeStreamProvider{
 		model:   "claude-agent-sonnet",
-		backend: captainai.BackendClaudeAgent,
-		events: []captainai.Event{
-			{Kind: captainai.EventSystem, SessionID: "sess-1"},
-			{Kind: captainai.EventText, Text: "Hello "},
-			{Kind: captainai.EventText, Text: "world"},
-			{Kind: captainai.EventThinking, Text: "let me think"},
-			{Kind: captainai.EventToolUse, ToolCallID: "call-1", Tool: "Read", Input: map[string]any{"file": "main.go"}},
-			{Kind: captainai.EventToolResult, ToolCallID: "call-1", Text: "package main", Success: true},
-			{Kind: captainai.EventResult, SessionID: "sess-1", CostUSD: 0.0123,
-				Usage: &captainai.Usage{InputTokens: 100, OutputTokens: 40, ReasoningTokens: 10}},
+		backend: capapi.BackendClaudeAgent,
+		events: []capapi.Event{
+			{Kind: capapi.EventSystem, SessionID: "sess-1"},
+			{Kind: capapi.EventText, Text: "Hello "},
+			{Kind: capapi.EventText, Text: "world"},
+			{Kind: capapi.EventThinking, Text: "let me think"},
+			{Kind: capapi.EventToolUse, ToolCallID: "call-1", Tool: "Read", Input: map[string]any{"file": "main.go"}},
+			{Kind: capapi.EventToolResult, ToolCallID: "call-1", Text: "package main", Success: true},
+			{Kind: capapi.EventResult, SessionID: "sess-1", CostUSD: 0.0123,
+				Usage: &capapi.Usage{InputTokens: 100, OutputTokens: 40, ReasoningTokens: 10}},
 		},
 	}
-	var configs []captainai.Config
+	var configs []capapi.Config
 	s := agentServer(Options{System: "be helpful"}, fake, &configs)
 	defer s.Close()
 
@@ -188,7 +187,7 @@ func TestAgentChatStreamsEventsAsSSE(t *testing.T) {
 	}
 
 	// Backend is selected explicitly from the catalog (not inferred from the id).
-	if len(configs) != 1 || configs[0].Model.Backend != captainai.BackendClaudeAgent {
+	if len(configs) != 1 || configs[0].Model.Backend != capapi.BackendClaudeAgent {
 		t.Fatalf("provider configs = %+v, want one claude-agent config", configs)
 	}
 
@@ -221,11 +220,11 @@ func TestAgentChatStreamsEventsAsSSE(t *testing.T) {
 func TestAgentToolResultErrorIsFlagged(t *testing.T) {
 	fake := &fakeStreamProvider{
 		model:   "claude-agent-sonnet",
-		backend: captainai.BackendClaudeAgent,
-		events: []captainai.Event{
-			{Kind: captainai.EventToolUse, ToolCallID: "c9", Tool: "Bash", Input: map[string]any{"command": "false"}},
-			{Kind: captainai.EventToolResult, ToolCallID: "c9", Text: "permission denied", Success: false},
-			{Kind: captainai.EventResult, Usage: &captainai.Usage{InputTokens: 1, OutputTokens: 1}},
+		backend: capapi.BackendClaudeAgent,
+		events: []capapi.Event{
+			{Kind: capapi.EventToolUse, ToolCallID: "c9", Tool: "Bash", Input: map[string]any{"command": "false"}},
+			{Kind: capapi.EventToolResult, ToolCallID: "c9", Text: "permission denied", Success: false},
+			{Kind: capapi.EventResult, Usage: &capapi.Usage{InputTokens: 1, OutputTokens: 1}},
 		},
 	}
 	s := agentServer(Options{}, fake, nil)
@@ -247,10 +246,10 @@ func TestAgentDanglingToolCallIsClosed(t *testing.T) {
 	// the UI card does not hang pending.
 	fake := &fakeStreamProvider{
 		model:   "claude-agent-sonnet",
-		backend: captainai.BackendClaudeAgent,
-		events: []captainai.Event{
-			{Kind: captainai.EventToolUse, ToolCallID: "cX", Tool: "Read", Input: map[string]any{"file": "x"}},
-			{Kind: captainai.EventResult, Usage: &captainai.Usage{InputTokens: 1, OutputTokens: 1}},
+		backend: capapi.BackendClaudeAgent,
+		events: []capapi.Event{
+			{Kind: capapi.EventToolUse, ToolCallID: "cX", Tool: "Read", Input: map[string]any{"file": "x"}},
+			{Kind: capapi.EventResult, Usage: &capapi.Usage{InputTokens: 1, OutputTokens: 1}},
 		},
 	}
 	s := agentServer(Options{}, fake, nil)
@@ -269,10 +268,10 @@ func TestAgentDanglingToolCallIsClosed(t *testing.T) {
 func TestAgentChatSurfacesEventErrorAsSSE(t *testing.T) {
 	fake := &fakeStreamProvider{
 		model:   "claude-agent-sonnet",
-		backend: captainai.BackendClaudeAgent,
-		events: []captainai.Event{
-			{Kind: captainai.EventText, Text: "partial"},
-			{Kind: captainai.EventError, Error: "model overloaded"},
+		backend: capapi.BackendClaudeAgent,
+		events: []capapi.Event{
+			{Kind: capapi.EventText, Text: "partial"},
+			{Kind: capapi.EventError, Error: "model overloaded"},
 		},
 	}
 	s := agentServer(Options{}, fake, nil)
@@ -295,17 +294,17 @@ func TestAgentChatSurfacesEventErrorAsSSE(t *testing.T) {
 }
 
 func TestAgentSessionResumeReusesProvider(t *testing.T) {
-	resultEvents := []captainai.Event{
-		{Kind: captainai.EventSystem, SessionID: "sess-9"},
-		{Kind: captainai.EventText, Text: "ok"},
-		{Kind: captainai.EventResult, SessionID: "sess-9",
-			Usage: &captainai.Usage{InputTokens: 5, OutputTokens: 2}},
+	resultEvents := []capapi.Event{
+		{Kind: capapi.EventSystem, SessionID: "sess-9"},
+		{Kind: capapi.EventText, Text: "ok"},
+		{Kind: capapi.EventResult, SessionID: "sess-9",
+			Usage: &capapi.Usage{InputTokens: 5, OutputTokens: 2}},
 	}
-	fake := &fakeStreamProvider{model: "claude-agent-sonnet", backend: captainai.BackendClaudeAgent, events: resultEvents}
+	fake := &fakeStreamProvider{model: "claude-agent-sonnet", backend: capapi.BackendClaudeAgent, events: resultEvents}
 
 	var factoryCalls int
 	s := NewServer(Options{
-		AgentProviderFactory: func(cfg captainai.Config) (captainai.StreamingProvider, error) {
+		AgentProviderFactory: func(cfg capapi.Config) (capapi.StreamingProvider, error) {
 			factoryCalls++
 			return fake, nil
 		},
@@ -397,11 +396,11 @@ func TestAgentRequestCarriesBudgetAndTemperature(t *testing.T) {
 func TestAgentModelsInCatalog(t *testing.T) {
 	cases := map[string]struct {
 		engine     Engine
-		backend    captainai.Backend
+		backend    capapi.Backend
 		agentModel string
 	}{
-		"claude-agent-sonnet":         {EngineAgent, captainai.BackendClaudeAgent, ""},
-		"codex-gpt-5-codex":           {EngineAgent, captainai.BackendCodexCLI, "gpt-5-codex"},
+		"claude-agent-sonnet":         {EngineAgent, capapi.BackendClaudeAgent, ""},
+		"codex-gpt-5-codex":           {EngineAgent, capapi.BackendCodexCLI, "gpt-5-codex"},
 		"anthropic/claude-sonnet-4-6": {EngineGenkit, "", ""},
 	}
 	for id, want := range cases {

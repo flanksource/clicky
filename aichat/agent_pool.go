@@ -7,13 +7,13 @@ import (
 	"sync/atomic"
 	"time"
 
-	captainai "github.com/flanksource/captain/pkg/ai"
+	capapi "github.com/flanksource/captain/pkg/api"
 )
 
 // AgentProviderFactory builds a captain StreamingProvider for one agent session.
 // The default (defaultAgentProviderFactory) goes through captain's pkg/ai
 // provider registry; tests inject a fake to avoid spawning real subprocesses.
-type AgentProviderFactory func(cfg captainai.Config) (captainai.StreamingProvider, error)
+type AgentProviderFactory func(cfg capapi.Config) (capapi.StreamingProvider, error)
 
 // defaultAgentIdleTTL is how long an idle pooled provider is kept alive before
 // it is evicted (and its supervised subprocess closed) on the next activity.
@@ -25,7 +25,7 @@ const defaultAgentIdleTTL = 10 * time.Minute
 // while different conversations run in parallel.
 type pooledProvider struct {
 	turn      sync.Mutex
-	provider  captainai.StreamingProvider
+	provider  capapi.StreamingProvider
 	sessionID string // captain agent session id captured from the backend
 	lastUsed  time.Time
 }
@@ -64,7 +64,7 @@ func (p *providerPool) pendingKey() string {
 // acquire returns the pooled provider for key, creating it via the factory on a
 // miss. It first evicts idle entries. The caller MUST hold the returned entry's
 // turn mutex for the duration of the turn.
-func (p *providerPool) acquire(key string, cfg captainai.Config) (*pooledProvider, error) {
+func (p *providerPool) acquire(key string, cfg capapi.Config) (*pooledProvider, error) {
 	p.evictIdle()
 
 	p.mu.Lock()
@@ -163,7 +163,7 @@ func (p *providerPool) closeAll() {
 
 // closeProvider closes a provider if it manages resources (the supervised agent
 // subprocess); buffered/stateless providers need no teardown.
-func closeProvider(prov captainai.StreamingProvider) {
+func closeProvider(prov capapi.StreamingProvider) {
 	if c, ok := prov.(io.Closer); ok {
 		_ = c.Close()
 	}

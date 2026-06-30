@@ -8,7 +8,6 @@ import (
 	"strings"
 	"time"
 
-	captainai "github.com/flanksource/captain/pkg/ai"
 	_ "github.com/flanksource/captain/pkg/ai/provider" // registers the agent backends
 	capapi "github.com/flanksource/captain/pkg/api"
 )
@@ -47,12 +46,12 @@ var defaultAgentReadOnlyTools = []string{"Read", "Glob", "Grep"}
 
 // defaultAgentProviderFactory builds an agent provider from captain's registry
 // and asserts it streams (every agent backend does).
-func defaultAgentProviderFactory(cfg captainai.Config) (captainai.StreamingProvider, error) {
-	prov, err := captainai.NewProvider(cfg)
+func defaultAgentProviderFactory(cfg capapi.Config) (capapi.StreamingProvider, error) {
+	prov, err := capapi.NewProvider(cfg)
 	if err != nil {
 		return nil, err
 	}
-	sp, ok := prov.(captainai.StreamingProvider)
+	sp, ok := prov.(capapi.StreamingProvider)
 	if !ok {
 		return nil, fmt.Errorf("backend %q does not support streaming", cfg.Model.Backend)
 	}
@@ -65,9 +64,9 @@ func defaultAgentProviderFactory(cfg captainai.Config) (captainai.StreamingProvi
 // loud if the probe is wrong.
 func agentModelConfigured(m Model) bool {
 	switch m.Backend {
-	case captainai.BackendCodexCLI:
+	case capapi.BackendCodexCLI:
 		return lookPath("codex")
-	case captainai.BackendClaudeAgent, captainai.BackendClaudeCLI:
+	case capapi.BackendClaudeAgent, capapi.BackendClaudeCLI:
 		return lookPath("tsx")
 	default:
 		return false
@@ -126,7 +125,7 @@ func (s *Server) agentSession(ctx context.Context, req ChatRequest) agentSession
 
 // agentRequest builds the captain request for one turn, applying the safe
 // read-only default when the embedder has not opted into edits.
-func (s *Server) agentRequest(req ChatRequest, resumeID string) captainai.Request {
+func (s *Server) agentRequest(req ChatRequest, resumeID string) capapi.Spec {
 	prompt := latestUserText(req.Messages)
 	if cp := contextPrompt(req); cp != "" {
 		prompt = cp + "\n\n" + prompt
@@ -141,7 +140,7 @@ func (s *Server) agentRequest(req ChatRequest, resumeID string) captainai.Reques
 	if !s.opts.Agent.Edit && perms.Mode == "" && len(perms.Tools.Allow) == 0 {
 		perms.Tools.Allow = defaultAgentReadOnlyTools
 	}
-	return captainai.Request{
+	return capapi.Spec{
 		Prompt:      capapi.Prompt{User: prompt, System: s.system},
 		Model:       capapi.Model{Effort: capapi.Effort(req.ReasoningEffort), Temperature: req.Temperature},
 		Budget:      capapi.Budget{Cost: req.Budget.Cost, MaxTokens: req.Budget.MaxTokens},
@@ -188,7 +187,7 @@ func (s *Server) streamAgent(ctx context.Context, sse *sseWriter, model Model, r
 	if req.Budget.Cost > 0 {
 		budgetCost = req.Budget.Cost
 	}
-	entry, err := s.pool.acquire(sess.key, captainai.Config{
+	entry, err := s.pool.acquire(sess.key, capapi.Config{
 		Model:  capapi.Model{Name: captainModel(model), Backend: model.Backend},
 		Budget: capapi.Budget{Cost: budgetCost, MaxTokens: req.Budget.MaxTokens},
 	})

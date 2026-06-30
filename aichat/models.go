@@ -7,7 +7,7 @@ import (
 	"strings"
 	"sync"
 
-	captainai "github.com/flanksource/captain/pkg/ai"
+	capapi "github.com/flanksource/captain/pkg/api"
 )
 
 // Provider is a Genkit provider name (the prefix of a "provider/model" id).
@@ -59,9 +59,9 @@ type Model struct {
 	// Genkit API path; EngineAgent routes through captain's agent framework.
 	Engine Engine
 	// Backend is the captain ai.Backend for EngineAgent models (e.g.
-	// captainai.BackendClaudeAgent, captainai.BackendCodexCLI). Unused for
+	// capapi.BackendClaudeAgent, capapi.BackendCodexCLI). Unused for
 	// EngineGenkit.
-	Backend captainai.Backend
+	Backend capapi.Backend
 	// AgentModel is the model slug passed to the captain backend when it differs
 	// from ID (e.g. menu id "codex-gpt-5-codex" → backend model "gpt-5-codex").
 	// Empty means use ID. Unused for EngineGenkit.
@@ -103,10 +103,10 @@ var defaultCatalog = []Model{
 	// supervised local subprocess that owns its own tools; ids carry the
 	// backend prefix captain's InferBackend recognises, and Backend is set
 	// explicitly so codex slugs (which look like gpt-*) are not misrouted.
-	{ID: "claude-agent-sonnet", Engine: EngineAgent, Backend: captainai.BackendClaudeAgent, Provider: "claude-agent", Label: "Claude Agent · Sonnet", Reasoning: true, ContextWindow: 200000},
-	{ID: "claude-agent-opus", Engine: EngineAgent, Backend: captainai.BackendClaudeAgent, Provider: "claude-agent", Label: "Claude Agent · Opus", Reasoning: true, ContextWindow: 200000},
-	{ID: "claude-agent-haiku", Engine: EngineAgent, Backend: captainai.BackendClaudeAgent, Provider: "claude-agent", Label: "Claude Agent · Haiku", Reasoning: true, ContextWindow: 200000},
-	{ID: "codex-gpt-5-codex", Engine: EngineAgent, Backend: captainai.BackendCodexCLI, AgentModel: "gpt-5-codex", Provider: "codex-cli", Label: "Codex · GPT-5", Reasoning: true, ContextWindow: 400000},
+	{ID: "claude-agent-sonnet", Engine: EngineAgent, Backend: capapi.BackendClaudeAgent, Provider: "claude-agent", Label: "Claude Agent · Sonnet", Reasoning: true, ContextWindow: 200000},
+	{ID: "claude-agent-opus", Engine: EngineAgent, Backend: capapi.BackendClaudeAgent, Provider: "claude-agent", Label: "Claude Agent · Opus", Reasoning: true, ContextWindow: 200000},
+	{ID: "claude-agent-haiku", Engine: EngineAgent, Backend: capapi.BackendClaudeAgent, Provider: "claude-agent", Label: "Claude Agent · Haiku", Reasoning: true, ContextWindow: 200000},
+	{ID: "codex-gpt-5-codex", Engine: EngineAgent, Backend: capapi.BackendCodexCLI, AgentModel: "gpt-5-codex", Provider: "codex-cli", Label: "Codex · GPT-5", Reasoning: true, ContextWindow: 400000},
 }
 
 var (
