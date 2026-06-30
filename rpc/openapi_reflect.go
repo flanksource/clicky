@@ -48,8 +48,14 @@ func (g *OpenAPIGenerator) convertGoTypeWithSeen(t reflect.Type, seen map[reflec
 		return &OpenAPISchema{Type: "string", Format: "date-time"}
 	}
 
-	if t.Implements(schemaDescriberType) || reflect.PtrTo(t).Implements(schemaDescriberType) {
+	if t.Implements(schemaDescriberType) {
 		describer := reflect.New(t).Elem().Interface().(SchemaDescriber)
+		return schemaFromMap(describer.JSONSchema())
+	}
+	// Pointer-receiver describer: the value type doesn't satisfy the interface, so
+	// construct a *t (reflect.New(t)) rather than its Elem to avoid a failed assertion.
+	if reflect.PointerTo(t).Implements(schemaDescriberType) {
+		describer := reflect.New(t).Interface().(SchemaDescriber)
 		return schemaFromMap(describer.JSONSchema())
 	}
 

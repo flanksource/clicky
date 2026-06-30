@@ -31,7 +31,7 @@ func (s *SummaryView) Pretty() api.Text {
 		warns = s.Result.WarningCount()
 		loadErrs = len(s.Result.Errors)
 	}
-	style := "text-blue-500"
+	var style string
 	switch {
 	case errs == 0 && warns == 0 && loadErrs == 0:
 		style = "text-green-600"
