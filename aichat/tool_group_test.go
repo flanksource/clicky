@@ -63,11 +63,11 @@ func TestGroupAskForcesApprovalForMembers(t *testing.T) {
 	}
 }
 
-func TestGroupKeyWinsOverMemberKey(t *testing.T) {
+func TestMemberKeyOverridesGroupKey(t *testing.T) {
 	prefs := ToolPreferences{"billing": ToolModeEnabled, "invoice_get": ToolModeDisabled}
 	mode, ok := effectivePreference(prefs, ToolInfo{Name: "invoice_get", Group: "billing"})
-	if !ok || mode != ToolModeEnabled {
-		t.Errorf("effectivePreference = (%q,%v), want (enabled,true) — group key must win", mode, ok)
+	if !ok || mode != ToolModeDisabled {
+		t.Errorf("effectivePreference = (%q,%v), want (disabled,true) — member key must win", mode, ok)
 	}
 }
 

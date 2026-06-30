@@ -18,20 +18,32 @@ type Thread struct {
 	Messages  []UIMessage `json:"messages"`
 
 	// Cumulative usage across all turns in this thread.
-	TotalInputTokens  int     `json:"totalInputTokens"`
-	TotalOutputTokens int     `json:"totalOutputTokens"`
-	TotalCostUsd      float64 `json:"totalCostUsd"`
+	TotalInputTokens      int     `json:"totalInputTokens"`
+	TotalOutputTokens     int     `json:"totalOutputTokens"`
+	TotalReasoningTokens  int     `json:"totalReasoningTokens"`
+	TotalCacheReadTokens  int     `json:"totalCacheReadTokens"`
+	TotalCacheWriteTokens int     `json:"totalCacheWriteTokens"`
+	TotalCostUsd          float64 `json:"totalCostUsd"`
 	// LastContextTokens is the most recent turn's input-token count, which
 	// approximates current context-window occupancy for a usage gauge.
 	LastContextTokens int `json:"lastContextTokens"`
+
+	// ProviderSessionID is the captain agent session id for EngineAgent turns,
+	// captured from the backend so a later turn (or a turn after the supervised
+	// provider has been idle-evicted) resumes the same session instead of
+	// starting fresh. Empty for Genkit-only threads.
+	ProviderSessionID string `json:"providerSessionId,omitempty"`
 }
 
 // TurnUsage is one generation's token usage and computed cost, accumulated onto
 // a Thread by AddUsage.
 type TurnUsage struct {
-	InputTokens  int
-	OutputTokens int
-	CostUSD      float64
+	InputTokens      int
+	OutputTokens     int
+	ReasoningTokens  int
+	CacheReadTokens  int
+	CacheWriteTokens int
+	CostUSD          float64
 }
 
 // ThreadStore persists conversations so a client can list past threads and
@@ -47,6 +59,10 @@ type ThreadStore interface {
 	// AddUsage accumulates one turn's token usage and cost onto a thread and
 	// returns the updated thread so the caller can report cumulative totals.
 	AddUsage(ctx context.Context, id string, u TurnUsage) (*Thread, error)
+	// SetProviderSession records the captain agent session id for a thread so a
+	// later turn resumes the same agent session. Called by the agent engine
+	// after a turn yields a session id.
+	SetProviderSession(ctx context.Context, id, providerSessionID string) error
 }
 
 // memThreadStore is an in-process ThreadStore for demos and tests. IDs are
@@ -122,6 +138,18 @@ func (s *memThreadStore) Delete(_ context.Context, id string) error {
 	return nil
 }
 
+func (s *memThreadStore) SetProviderSession(_ context.Context, id, providerSessionID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	t, ok := s.threads[id]
+	if !ok {
+		return fmt.Errorf("thread %q not found", id)
+	}
+	t.ProviderSessionID = providerSessionID
+	t.UpdatedAt = time.Now()
+	return nil
+}
+
 func (s *memThreadStore) AddUsage(_ context.Context, id string, u TurnUsage) (*Thread, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -131,6 +159,9 @@ func (s *memThreadStore) AddUsage(_ context.Context, id string, u TurnUsage) (*T
 	}
 	t.TotalInputTokens += u.InputTokens
 	t.TotalOutputTokens += u.OutputTokens
+	t.TotalReasoningTokens += u.ReasoningTokens
+	t.TotalCacheReadTokens += u.CacheReadTokens
+	t.TotalCacheWriteTokens += u.CacheWriteTokens
 	t.TotalCostUsd += u.CostUSD
 	t.LastContextTokens = u.InputTokens
 	t.UpdatedAt = time.Now()

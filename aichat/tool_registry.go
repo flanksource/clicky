@@ -10,8 +10,9 @@ import (
 )
 
 type registeredTool struct {
-	ref  ai.ToolRef
-	info ToolInfo
+	ref     ai.ToolRef
+	info    ToolInfo
+	catalog *ToolCatalogEntry
 }
 
 type toolRuntimeConfig struct {
@@ -77,7 +78,8 @@ func DefineCustomTools(g *genkit.Genkit, defs []ToolDefinition) ([]registeredToo
 			},
 			ai.WithInputSchema(schema),
 		)
-		out = append(out, registeredTool{ref: tool, info: info})
+		catalog := customCatalogEntry(def, name, schema)
+		out = append(out, registeredTool{ref: tool, info: info, catalog: &catalog})
 	}
 	return out, nil
 }
@@ -127,15 +129,17 @@ func normalizedPreference(prefs ToolPreferences, name string) (ToolMode, bool) {
 	return normalizeToolMode(mode)
 }
 
-// effectivePreference resolves the ToolMode for a tool. A tool that belongs to a
-// group is governed solely by the group's preference — the preferences UI hides
-// the individual members, so a member-name key is ignored when a group is set.
-// Ungrouped tools resolve by their own name.
+// effectivePreference resolves the ToolMode for a tool. A tool-name preference
+// is an explicit per-tool override, then group preferences apply to remaining
+// grouped tools. Ungrouped tools resolve by their own name.
 func effectivePreference(prefs ToolPreferences, info ToolInfo) (ToolMode, bool) {
+	if mode, ok := normalizedPreference(prefs, info.Name); ok {
+		return mode, true
+	}
 	if info.Group != "" {
 		return normalizedPreference(prefs, info.Group)
 	}
-	return normalizedPreference(prefs, info.Name)
+	return "", false
 }
 
 // ToolEntry is one row in the tool-preferences UI: either a single ungrouped

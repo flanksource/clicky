@@ -1,6 +1,7 @@
 package aichat
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"strings"
@@ -41,6 +42,49 @@ func TestEnforceRuntimeSettingsRejectsBudgetExhaustion(t *testing.T) {
 	})
 	if err == nil || !strings.Contains(err.Error(), "token budget exhausted") {
 		t.Fatalf("token budget error = %v", err)
+	}
+}
+
+func TestValidateRequestConfigRejectsInvalidBudgetAndTemperature(t *testing.T) {
+	temp := 2.1
+	err := validateRequestConfig(ChatRequest{Temperature: &temp})
+	if err == nil || !strings.Contains(err.Error(), "temperature") {
+		t.Fatalf("temperature error = %v", err)
+	}
+	if statusForRuntimeSettingsError(err) != http.StatusBadRequest {
+		t.Fatalf("temperature status = %d", statusForRuntimeSettingsError(err))
+	}
+
+	err = validateRequestConfig(ChatRequest{Budget: ChatBudget{Cost: -0.1}})
+	if err == nil || !strings.Contains(err.Error(), "budget cost") {
+		t.Fatalf("budget cost error = %v", err)
+	}
+
+	err = validateRequestConfig(ChatRequest{Budget: ChatBudget{MaxTokens: -1}})
+	if err == nil || !strings.Contains(err.Error(), "maxTokens") {
+		t.Fatalf("maxTokens error = %v", err)
+	}
+}
+
+func TestRequestBudgetRejectsExhaustedThread(t *testing.T) {
+	ctx := context.Background()
+	store := NewMemThreadStore()
+	thread, err := store.Create(ctx, "t")
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if _, err := store.AddUsage(ctx, thread.ID, TurnUsage{CostUSD: 1.25}); err != nil {
+		t.Fatalf("AddUsage: %v", err)
+	}
+	s := NewServer(Options{Threads: store})
+	defer s.Close()
+
+	err = s.enforceRequestBudget(ctx, ChatRequest{ThreadID: thread.ID, Budget: ChatBudget{Cost: 1}})
+	if err == nil || !strings.Contains(err.Error(), "cost budget exhausted") {
+		t.Fatalf("budget error = %v", err)
+	}
+	if statusForRuntimeSettingsError(err) != http.StatusPaymentRequired {
+		t.Fatalf("status = %d", statusForRuntimeSettingsError(err))
 	}
 }
 

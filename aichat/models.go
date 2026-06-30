@@ -6,6 +6,8 @@ import (
 	"sort"
 	"strings"
 	"sync"
+
+	captainai "github.com/flanksource/captain/pkg/ai"
 )
 
 // Provider is a Genkit provider name (the prefix of a "provider/model" id).
@@ -29,14 +31,41 @@ const (
 	EffortHigh   Effort = "high"
 )
 
-// Model describes one entry in the chat model menu. ID is the full Genkit
-// "provider/model" id passed to ai.WithModelName.
+// Engine selects which execution path serves a model: the in-process Genkit
+// runtime (API providers with caller-injected tools + human approval) or
+// captain's consolidated agent framework (claude-agent / codex, which own their
+// own tools and run as supervised local subprocesses).
+type Engine string
+
+const (
+	// EngineGenkit (the zero value) is the Firebase Genkit API path.
+	EngineGenkit Engine = ""
+	// EngineAgent routes the turn through a captain pkg/ai StreamingProvider.
+	EngineAgent Engine = "agent"
+)
+
+// Model describes one entry in the chat model menu. For EngineGenkit models ID
+// is the full Genkit "provider/model" id passed to ai.WithModelName. For
+// EngineAgent models ID is the menu/catalog key (e.g. "claude-agent-sonnet");
+// Backend and AgentModel describe how to construct the captain provider.
 type Model struct {
 	ID            string
 	Provider      Provider
 	Label         string // human-friendly menu label
 	Reasoning     bool   // model honours Effort
 	ContextWindow int    // max context tokens, for a usage gauge's denominator
+
+	// Engine selects the execution path. The zero value (EngineGenkit) is the
+	// Genkit API path; EngineAgent routes through captain's agent framework.
+	Engine Engine
+	// Backend is the captain ai.Backend for EngineAgent models (e.g.
+	// captainai.BackendClaudeAgent, captainai.BackendCodexCLI). Unused for
+	// EngineGenkit.
+	Backend captainai.Backend
+	// AgentModel is the model slug passed to the captain backend when it differs
+	// from ID (e.g. menu id "codex-gpt-5-codex" → backend model "gpt-5-codex").
+	// Empty means use ID. Unused for EngineGenkit.
+	AgentModel string
 }
 
 // ModelInfo is the JSON shape served at GET /api/chat/models so a client model
@@ -69,6 +98,15 @@ var defaultCatalog = []Model{
 	{ID: "openai/o4-mini", Provider: ProviderOpenAI, Label: "OpenAI o4-mini", Reasoning: true, ContextWindow: 200000},
 	{ID: "googleai/gemini-2.5-pro", Provider: ProviderGoogle, Label: "Gemini 2.5 Pro", Reasoning: true, ContextWindow: 1048576},
 	{ID: "googleai/gemini-2.5-flash", Provider: ProviderGoogle, Label: "Gemini 2.5 Flash", Reasoning: true, ContextWindow: 1048576},
+
+	// Agent-framework models (captain pkg/ai StreamingProvider). These run a
+	// supervised local subprocess that owns its own tools; ids carry the
+	// backend prefix captain's InferBackend recognises, and Backend is set
+	// explicitly so codex slugs (which look like gpt-*) are not misrouted.
+	{ID: "claude-agent-sonnet", Engine: EngineAgent, Backend: captainai.BackendClaudeAgent, Provider: "claude-agent", Label: "Claude Agent · Sonnet", Reasoning: true, ContextWindow: 200000},
+	{ID: "claude-agent-opus", Engine: EngineAgent, Backend: captainai.BackendClaudeAgent, Provider: "claude-agent", Label: "Claude Agent · Opus", Reasoning: true, ContextWindow: 200000},
+	{ID: "claude-agent-haiku", Engine: EngineAgent, Backend: captainai.BackendClaudeAgent, Provider: "claude-agent", Label: "Claude Agent · Haiku", Reasoning: true, ContextWindow: 200000},
+	{ID: "codex-gpt-5-codex", Engine: EngineAgent, Backend: captainai.BackendCodexCLI, AgentModel: "gpt-5-codex", Provider: "codex-cli", Label: "Codex · GPT-5", Reasoning: true, ContextWindow: 400000},
 }
 
 var (
@@ -164,6 +202,14 @@ func normalizeModel(model Model) (Model, error) {
 	if model.ID == "" {
 		return Model{}, fmt.Errorf("model ID is required")
 	}
+	if model.Engine == EngineAgent {
+		if model.Backend == "" {
+			return Model{}, fmt.Errorf("agent model %q must set Backend (e.g. claude-agent, codex-cli)", model.ID)
+		}
+		if model.Provider == "" {
+			model.Provider = Provider(model.Backend)
+		}
+	}
 	if model.Provider == "" {
 		model.Provider = ProviderOf(model.ID)
 	}
@@ -183,12 +229,18 @@ func CatalogInfo(registered []Provider) []ModelInfo {
 	models := Catalog()
 	out := make([]ModelInfo, len(models))
 	for i, m := range models {
+		configured := providerRegistered(registered, m.Provider)
+		if m.Engine == EngineAgent {
+			// Agent models are gated on local backend availability (the CLI/SDK
+			// being installed), not on a Genkit API key.
+			configured = agentModelConfigured(m)
+		}
 		out[i] = ModelInfo{
 			ID:            m.ID,
 			Provider:      string(m.Provider),
 			Label:         m.Label,
 			Reasoning:     m.Reasoning,
-			Configured:    providerRegistered(registered, m.Provider),
+			Configured:    configured,
 			ContextWindow: m.ContextWindow,
 		}
 	}
@@ -222,7 +274,7 @@ func defaultModel(registered []Provider) (Model, bool) {
 		}
 	}
 	for _, m := range models {
-		if providerRegistered(registered, m.Provider) {
+		if m.Engine == EngineGenkit && providerRegistered(registered, m.Provider) {
 			return m, true
 		}
 	}

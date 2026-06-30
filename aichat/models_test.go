@@ -113,7 +113,7 @@ func TestEffortConfigPerProvider(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			cfg := effortConfig(c.model, c.effort)
+			cfg := effortConfig(c.model, c.effort, ChatBudget{}, nil)
 			if c.wantNil {
 				if cfg != nil {
 					t.Errorf("cfg = %v, want nil", cfg)
@@ -128,9 +128,20 @@ func TestEffortConfigPerProvider(t *testing.T) {
 }
 
 func TestAnthropicEffortConfigSetsMaxTokens(t *testing.T) {
-	cfg := effortConfig(Model{Provider: ProviderAnthropic, Reasoning: true}, EffortHigh)
-	if got := cfg["max_tokens"]; got != anthropicThinkingBudget(EffortHigh)+defaultMaxOutputTokens {
+	cfg := effortConfig(Model{Provider: ProviderAnthropic, Reasoning: true}, EffortHigh, ChatBudget{MaxTokens: 1000}, nil)
+	if got := cfg["max_tokens"]; got != anthropicThinkingBudget(EffortHigh)+1000 {
 		t.Errorf("max_tokens = %v, want thinking budget plus visible output budget", got)
+	}
+}
+
+func TestEffortConfigAppliesTemperatureAndMaxTokens(t *testing.T) {
+	temp := 0.4
+	cfg := effortConfig(Model{Provider: ProviderOpenAI}, EffortNone, ChatBudget{MaxTokens: 1200}, &temp)
+	if got := cfg["temperature"]; got != temp {
+		t.Errorf("temperature = %v, want %v", got, temp)
+	}
+	if got := cfg["maxOutputTokens"]; got != 1200 {
+		t.Errorf("maxOutputTokens = %v, want 1200", got)
 	}
 }
 

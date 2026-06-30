@@ -130,22 +130,21 @@ const defaultMaxOutputTokens = 4096
 // an Effort value into the provider's native reasoning control. Anthropic also
 // requires max_tokens on every request, so return a config for Anthropic even
 // when no reasoning effort is selected.
-func effortConfig(m Model, e Effort) map[string]any {
+func effortConfig(m Model, e Effort, budget ChatBudget, temperature *float64) map[string]any {
+	cfg := map[string]any{}
 	switch m.Provider {
 	case ProviderOpenAI:
-		if !m.Reasoning || e == EffortNone {
-			return nil
+		if m.Reasoning && e != EffortNone {
+			// OpenAI o-series: reasoning_effort low|medium|high.
+			cfg["reasoning_effort"] = string(e)
 		}
-		// OpenAI o-series: reasoning_effort low|medium|high.
-		return map[string]any{"reasoning_effort": string(e)}
 	case ProviderGoogle:
-		if !m.Reasoning || e == EffortNone {
-			return nil
+		if m.Reasoning && e != EffortNone {
+			// Gemini 2.5+: thinkingConfig.thinkingBudget (token budget).
+			cfg["thinkingConfig"] = map[string]any{"thinkingBudget": geminiThinkingBudget(e)}
 		}
-		// Gemini 2.5+: thinkingConfig.thinkingBudget (token budget).
-		return map[string]any{"thinkingConfig": map[string]any{"thinkingBudget": geminiThinkingBudget(e)}}
 	case ProviderAnthropic:
-		cfg := map[string]any{"max_tokens": anthropicMaxTokens(e)}
+		cfg["max_tokens"] = anthropicMaxTokens(e, budget.MaxTokens)
 		if m.Reasoning && e != EffortNone {
 			// Anthropic: extended-thinking budget tokens.
 			cfg["thinking"] = map[string]any{
@@ -153,10 +152,19 @@ func effortConfig(m Model, e Effort) map[string]any {
 				"budget_tokens": anthropicThinkingBudget(e),
 			}
 		}
-		return cfg
 	default:
 		return nil
 	}
+	if temperature != nil {
+		cfg["temperature"] = *temperature
+	}
+	if budget.MaxTokens > 0 && m.Provider != ProviderAnthropic {
+		cfg["maxOutputTokens"] = budget.MaxTokens
+	}
+	if len(cfg) == 0 {
+		return nil
+	}
+	return cfg
 }
 
 func anthropicThinkingBudget(e Effort) int {
@@ -172,14 +180,17 @@ func anthropicThinkingBudget(e Effort) int {
 	}
 }
 
-func anthropicMaxTokens(e Effort) int {
+func anthropicMaxTokens(e Effort, maxOutputTokens int) int {
+	if maxOutputTokens <= 0 {
+		maxOutputTokens = defaultMaxOutputTokens
+	}
 	budget := anthropicThinkingBudget(e)
 	if budget == 0 {
-		return defaultMaxOutputTokens
+		return maxOutputTokens
 	}
 	// Anthropic's thinking budget is counted inside max_tokens. Leave room for
 	// the visible answer in addition to the hidden thinking budget.
-	return budget + defaultMaxOutputTokens
+	return budget + maxOutputTokens
 }
 
 func geminiThinkingBudget(e Effort) int {
@@ -198,7 +209,7 @@ func geminiThinkingBudget(e Effort) int {
 // generateOptions assembles the Generate options for a chat turn: model,
 // messages, tools, system prompt, optional effort config, and the streaming
 // callback.
-func generateOptions(m Model, e Effort, system string, msgs []*ai.Message, tools []ai.ToolRef, stream ai.ModelStreamCallback, extra ...ai.GenerateOption) []ai.GenerateOption {
+func generateOptions(m Model, e Effort, budget ChatBudget, temperature *float64, system string, msgs []*ai.Message, tools []ai.ToolRef, stream ai.ModelStreamCallback, extra ...ai.GenerateOption) []ai.GenerateOption {
 	opts := []ai.GenerateOption{
 		ai.WithModelName(m.ID),
 		ai.WithMessages(msgs...),
@@ -209,7 +220,7 @@ func generateOptions(m Model, e Effort, system string, msgs []*ai.Message, tools
 	if len(tools) > 0 {
 		opts = append(opts, ai.WithTools(tools...))
 	}
-	if cfg := effortConfig(m, e); cfg != nil {
+	if cfg := effortConfig(m, e, budget, temperature); cfg != nil {
 		opts = append(opts, ai.WithConfig(cfg))
 	}
 	if stream != nil {
