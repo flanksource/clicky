@@ -29,10 +29,10 @@ const (
 // Cobra commands so the RPC/OpenAPI layer can expose entity semantics without
 // guessing from paths or operationIds.
 type CommandOpenAPIMeta struct {
-	Entity             string
-	Parent             string
-	Aliases            []string
-	Admin              bool
+	Entity  string
+	Parent  string
+	Aliases []string
+	Admin   bool
 	// Icon is an opaque UI icon name (e.g. "database"); clicky never interprets
 	// it — it is emitted verbatim on the surface for the frontend to resolve.
 	Icon string
@@ -80,7 +80,7 @@ func GetCommandOpenAPIMeta(cmd *cobra.Command) *CommandOpenAPIMeta {
 		ToolGroup:          cmd.Annotations[annotationClickyToolGroup],
 	}
 
-	if meta.Entity == "" {
+	if meta.Entity == "" && meta.ToolGroup == "" {
 		return nil
 	}
 

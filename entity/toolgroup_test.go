@@ -55,6 +55,25 @@ func TestToolGroupEntityLevelAnnotation(t *testing.T) {
 	}
 }
 
+func TestToolGroupOnlyCommandMetadata(t *testing.T) {
+	cmd := &cobra.Command{
+		Use: "sync",
+		Annotations: map[string]string{
+			annotationClickyToolGroup: "Admin Write",
+		},
+	}
+	meta := GetCommandOpenAPIMeta(cmd)
+	if meta == nil {
+		t.Fatal("GetCommandOpenAPIMeta returned nil for a command with only a tool group")
+	}
+	if meta.Entity != "" {
+		t.Fatalf("Entity = %q, want empty", meta.Entity)
+	}
+	if meta.ToolGroup != "Admin Write" {
+		t.Fatalf("ToolGroup = %q, want Admin Write", meta.ToolGroup)
+	}
+}
+
 type toolGroupOpts struct{}
 
 func TestToolGroupBuilderAndAction(t *testing.T) {

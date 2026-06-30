@@ -213,11 +213,11 @@ func (p *parserState) convert(node gast.Node) Node {
 	case *gast.FencedCodeBlock:
 		out := p.containerNode("code_block", n)
 		out.Language = strings.TrimSpace(string(n.Language(p.body)))
-		out.Source = string(n.Text(p.body))
+		out.Source = string(n.Lines().Value(p.body))
 		return out
 	case *gast.CodeBlock:
 		out := p.containerNode("code_block", n)
-		out.Source = string(n.Text(p.body))
+		out.Source = string(n.Lines().Value(p.body))
 		return out
 	case *gast.List:
 		out := p.containerNode("list", n)
@@ -267,7 +267,12 @@ func (p *parserState) convert(node gast.Node) Node {
 		out := p.containerNode(kind, node)
 		out.Children = p.convertChildren(node)
 		if len(out.Children) == 0 {
-			out.Text = string(node.Text(p.body))
+			out.Text = p.inlineText(node)
+			if out.Text == "" {
+				// inlineText only walks child Text nodes; a leaf block keeps its
+				// content on its own line segments, so fall back to those.
+				out.Text = p.nodeLineText(node)
+			}
 		}
 		return out
 	}
@@ -314,6 +319,21 @@ func (p *parserState) convertText(n *gast.Text) Node {
 	return Node{Kind: "text", Text: text}
 }
 
+// nodeLineText returns text held directly on a leaf block node's line segments
+// (goldmark stores block content there, not as child Text nodes). Inline nodes
+// have no lines and return "".
+func (p *parserState) nodeLineText(node gast.Node) string {
+	// Lines() panics on inline nodes; only block leaves carry line segments.
+	if node.Type() != gast.TypeBlock {
+		return ""
+	}
+	lines := node.Lines()
+	if lines == nil || lines.Len() == 0 {
+		return ""
+	}
+	return string(lines.Value(p.body))
+}
+
 func (p *parserState) inlineText(node gast.Node) string {
 	var b strings.Builder
 	for child := node.FirstChild(); child != nil; child = child.NextSibling() {
@@ -323,7 +343,7 @@ func (p *parserState) inlineText(node gast.Node) string {
 		case *gast.String:
 			b.Write(c.Value)
 		default:
-			b.WriteString(string(child.Text(p.body)))
+			b.WriteString(p.inlineText(child))
 		}
 	}
 	return b.String()
@@ -374,7 +394,13 @@ func (p *parserState) convertTaskBlock(block gast.Node) (Node, *bool) {
 }
 
 func (p *parserState) convertHTMLBlock(n *gast.HTMLBlock) Node {
-	raw := string(n.Text(p.body))
+	// gast.Node.Text is deprecated; reproduce HTMLBlock.Text exactly: the block's
+	// raw lines plus its closing line (e.g. the "</div>" terminating an HTML block).
+	lines := n.Lines().Value(p.body)
+	if n.HasClosure() {
+		lines = append(lines, n.ClosureLine.Value(p.body)...)
+	}
+	raw := string(lines)
 	out := p.containerNode("raw-html", n)
 	if !p.options.PreserveHTML {
 		out.Kind = "text"

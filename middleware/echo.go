@@ -61,7 +61,9 @@ func EchoMiddleware(config MiddlewareConfig) []echo.MiddlewareFunc {
 		}
 		// Note: Template field is not available in Echo v4 logger config
 
-		middlewares = append(middlewares, middleware.LoggerWithConfig(loggerConfig))
+		// config.Logger preserves echo's format-string request logging, which the
+		// non-deprecated RequestLogger middleware (config.RequestLogger) does not offer.
+		middlewares = append(middlewares, middleware.LoggerWithConfig(loggerConfig)) //nolint:staticcheck // deprecated echo API retained for format-string logging
 	}
 
 	// Apply Recover middleware
@@ -129,11 +131,14 @@ func EchoMiddleware(config MiddlewareConfig) []echo.MiddlewareFunc {
 
 	// Apply Timeout middleware
 	if config.Timeout != nil {
-		timeoutConfig := middleware.TimeoutConfig{
+		// config.Timeout uses echo's Timeout middleware (hard deadline → 503); the
+		// non-deprecated ContextTimeout (config.ContextTimeout) has different,
+		// context-cancellation semantics, so it is not a drop-in replacement.
+		timeoutConfig := middleware.TimeoutConfig{ //nolint:staticcheck // deprecated echo API retained for hard-timeout semantics
 			Timeout: config.Timeout.Timeout,
 		}
 
-		middlewares = append(middlewares, middleware.TimeoutWithConfig(timeoutConfig))
+		middlewares = append(middlewares, middleware.TimeoutWithConfig(timeoutConfig)) //nolint:staticcheck // see TimeoutConfig above
 	}
 
 	// Apply Secure middleware

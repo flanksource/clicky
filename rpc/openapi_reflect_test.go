@@ -111,6 +111,32 @@ func TestSchemaForStructOrder(t *testing.T) {
 	}
 }
 
+// ptrDescriber implements SchemaDescriber on its POINTER receiver only, so the
+// value type does not satisfy the interface.
+type ptrDescriber struct {
+	Raw string `json:"raw"`
+}
+
+func (*ptrDescriber) JSONSchema() map[string]any {
+	return map[string]any{"type": "string", "format": "uuid"}
+}
+
+type ptrDescriberHolder struct {
+	ID ptrDescriber `json:"id"`
+}
+
+// TestSchemaForStructPointerReceiverDescriber guards the pointer-receiver path:
+// the reflect code must construct a *ptrDescriber (not its Elem) or the
+// SchemaDescriber assertion panics.
+func TestSchemaForStructPointerReceiverDescriber(t *testing.T) {
+	s := SchemaForStruct(ptrDescriberHolder{}) // must not panic
+	m := marshalSchema(t, s)
+	id := m["properties"].(map[string]any)["id"].(map[string]any)
+	if id["type"] != "string" || id["format"] != "uuid" {
+		t.Errorf("id schema = %v, want {type:string, format:uuid}", id)
+	}
+}
+
 func TestSchemaFromMapExtensions(t *testing.T) {
 	s := schemaFromMap(map[string]any{
 		"type":               "string",
