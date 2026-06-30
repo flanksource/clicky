@@ -4,7 +4,7 @@ go 1.26.1
 
 require (
 	github.com/flanksource/clicky v1.21.33
-	github.com/flanksource/clicky/aichat v0.0.0
+	github.com/flanksource/clicky/aichat v1.21.34-0.20260630075958-cd55f2f4fce3
 	github.com/spf13/cobra v1.10.2
 )
 
@@ -50,8 +50,8 @@ require (
 	github.com/fatih/color v1.18.0 // indirect
 	github.com/felixge/httpsnoop v1.0.4 // indirect
 	github.com/firebase/genkit/go v1.8.0 // indirect
-	github.com/flanksource/captain v0.0.8 // indirect
-	github.com/flanksource/commons v1.51.3 // indirect
+	github.com/flanksource/captain v0.0.9 // indirect
+	github.com/flanksource/commons v1.53.1 // indirect
 	github.com/flanksource/gomplate/v3 v3.24.82 // indirect
 	github.com/flanksource/is-healthy v1.0.88 // indirect
 	github.com/flanksource/kubectl-neat v1.0.4 // indirect
