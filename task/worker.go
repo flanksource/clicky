@@ -162,6 +162,16 @@ func (w *worker) executeTask(task *Task) {
 
 	// Execute with retry logic
 	w.executeWithRetry(task)
+
+	// The task is now terminal — executeWithRetry only returns once retries are
+	// exhausted, and runFunc is invoked nowhere else. Release it so the state the
+	// task closure captured (parsed inputs, accumulators, large intermediate
+	// outputs) is collected immediately instead of being pinned for the manager's
+	// run-retention window. Completed tasks are kept only for viewing; the
+	// lightweight result and snapshot carry everything that surface needs.
+	task.mu.Lock()
+	task.runFunc = nil
+	task.mu.Unlock()
 }
 
 // executeWithRetry handles task execution with exponential backoff retry
