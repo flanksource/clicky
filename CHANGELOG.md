@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.21.35](https://github.com/flanksource/clicky/compare/v1.21.34...v1.21.35) (2026-07-02)
+
+
+### 🔧 Maintenance
+
+* remove dependabot configuration ([622e2e9](https://github.com/flanksource/clicky/commit/622e2e9fcad4f2878cba5e4a86c2b69db67f16c6))
+* **release:** pin sub-modules to v1.21.34 [skip ci] ([aa49584](https://github.com/flanksource/clicky/commit/aa49584288d2ffcbea3bc82225e58147e1aaa164))
+
 ## [1.21.34](https://github.com/flanksource/clicky/compare/v1.21.33...v1.21.34) (2026-06-30)
 
 
