@@ -81,30 +81,35 @@ type ModelInfo struct {
 }
 
 // DefaultModelID is the chat backend's default, mirroring captain pkg/ai
-// (Anthropic claude-sonnet-4 is captain's NewAnthropic default).
-const DefaultModelID = "anthropic/claude-sonnet-4-5"
+// (Anthropic Sonnet 5 is captain's default).
+const DefaultModelID = "anthropic/claude-sonnet-5"
 
-// defaultCatalog is the v1 model menu. Mirrors captain pkg/ai provider defaults
-// so the chat agrees with the rest of the stack.
+// defaultCatalog is the model menu: only the latest generally-available model
+// per tier for each provider — no preview or superseded entries. Mirrors
+// captain pkg/ai's catalog so the chat agrees with the rest of the stack.
+//
+// Provider currency (reviewed 2026-07-02):
+//   - Anthropic: Fable 5 (most capable), Opus 4.8, Sonnet 5, Haiku 4.5. Mythos 5
+//     is Project Glasswing invite-only, so it is intentionally excluded.
+//   - OpenAI: GPT-5.5 (flagship) and GPT-5.4 mini. GPT-5.6 is preview-only.
+//   - Google: Gemini 2.5 Pro is the newest GA Pro (all Gemini 3.x Pro models are
+//     still preview), paired with the GA Gemini 3.5 Flash.
 var defaultCatalog = []Model{
-	{ID: "anthropic/claude-sonnet-4-6", Provider: ProviderAnthropic, Label: "Claude Sonnet 4.6", Reasoning: true, ContextWindow: 200000},
-	{ID: "anthropic/claude-opus-4-8", Provider: ProviderAnthropic, Label: "Claude Opus 4.8", Reasoning: true, ContextWindow: 200000},
+	{ID: "anthropic/claude-fable-5", Provider: ProviderAnthropic, Label: "Claude Fable 5", Reasoning: true, ContextWindow: 1000000},
+	{ID: "anthropic/claude-opus-4-8", Provider: ProviderAnthropic, Label: "Claude Opus 4.8", Reasoning: true, ContextWindow: 1000000},
+	{ID: "anthropic/claude-sonnet-5", Provider: ProviderAnthropic, Label: "Claude Sonnet 5", Reasoning: true, ContextWindow: 1000000},
 	{ID: "anthropic/claude-haiku-4-5", Provider: ProviderAnthropic, Label: "Claude Haiku 4.5", Reasoning: true, ContextWindow: 200000},
-	{ID: "anthropic/claude-sonnet-4-5", Provider: ProviderAnthropic, Label: "Claude Sonnet 4.5", Reasoning: true, ContextWindow: 200000},
-	{ID: "anthropic/claude-opus-4-1", Provider: ProviderAnthropic, Label: "Claude Opus 4.1", Reasoning: true, ContextWindow: 200000},
-	{ID: "anthropic/claude-3-5-haiku-latest", Provider: ProviderAnthropic, Label: "Claude 3.5 Haiku", Reasoning: false, ContextWindow: 200000},
-	{ID: "openai/gpt-4o", Provider: ProviderOpenAI, Label: "GPT-4o", Reasoning: false, ContextWindow: 128000},
-	{ID: "openai/o3", Provider: ProviderOpenAI, Label: "OpenAI o3", Reasoning: true, ContextWindow: 200000},
-	{ID: "openai/o4-mini", Provider: ProviderOpenAI, Label: "OpenAI o4-mini", Reasoning: true, ContextWindow: 200000},
+	{ID: "openai/gpt-5.5", Provider: ProviderOpenAI, Label: "GPT-5.5", Reasoning: true, ContextWindow: 1000000},
+	{ID: "openai/gpt-5.4-mini", Provider: ProviderOpenAI, Label: "GPT-5.4 mini", Reasoning: true, ContextWindow: 400000},
 	{ID: "googleai/gemini-2.5-pro", Provider: ProviderGoogle, Label: "Gemini 2.5 Pro", Reasoning: true, ContextWindow: 1048576},
-	{ID: "googleai/gemini-2.5-flash", Provider: ProviderGoogle, Label: "Gemini 2.5 Flash", Reasoning: true, ContextWindow: 1048576},
+	{ID: "googleai/gemini-3.5-flash", Provider: ProviderGoogle, Label: "Gemini 3.5 Flash", Reasoning: true, ContextWindow: 1048576},
 
 	// Agent-framework models (captain pkg/ai StreamingProvider). These run a
 	// supervised local subprocess that owns its own tools; ids carry the
 	// backend prefix captain's InferBackend recognises, and Backend is set
 	// explicitly so codex slugs (which look like gpt-*) are not misrouted.
-	{ID: "claude-agent-sonnet", Engine: EngineAgent, Backend: capapi.BackendClaudeAgent, Provider: "claude-agent", Label: "Claude Agent · Sonnet", Reasoning: true, ContextWindow: 200000},
-	{ID: "claude-agent-opus", Engine: EngineAgent, Backend: capapi.BackendClaudeAgent, Provider: "claude-agent", Label: "Claude Agent · Opus", Reasoning: true, ContextWindow: 200000},
+	{ID: "claude-agent-sonnet", Engine: EngineAgent, Backend: capapi.BackendClaudeAgent, Provider: "claude-agent", Label: "Claude Agent · Sonnet", Reasoning: true, ContextWindow: 1000000},
+	{ID: "claude-agent-opus", Engine: EngineAgent, Backend: capapi.BackendClaudeAgent, Provider: "claude-agent", Label: "Claude Agent · Opus", Reasoning: true, ContextWindow: 1000000},
 	{ID: "claude-agent-haiku", Engine: EngineAgent, Backend: capapi.BackendClaudeAgent, Provider: "claude-agent", Label: "Claude Agent · Haiku", Reasoning: true, ContextWindow: 200000},
 	{ID: "codex-gpt-5-codex", Engine: EngineAgent, Backend: capapi.BackendCodexCLI, AgentModel: "gpt-5-codex", Provider: "codex-cli", Label: "Codex · GPT-5", Reasoning: true, ContextWindow: 400000},
 }
