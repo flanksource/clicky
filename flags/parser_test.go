@@ -6,6 +6,7 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/spf13/cobra"
 
 	"github.com/flanksource/commons/duration"
 )
@@ -75,6 +76,11 @@ type DisabledFlagOptions struct {
 	Active int `flag:"active" help:"Active"`
 }
 
+type HiddenFlagOptions struct {
+	DBURL string `flag:"db-url" hidden:"true" help:"Infra DSN"`
+	Name  string `flag:"name" help:"Name"`
+}
+
 var _ = Describe("Flags", func() {
 	Context("when parsing args struct", func() {
 		It("should extract args field correctly", func() {
@@ -122,6 +128,32 @@ var _ = Describe("Flags", func() {
 			Expect(err).ToNot(HaveOccurred())
 			Expect(fields).To(HaveLen(1))
 			Expect(fields[0].FlagName).To(Equal("active"))
+		})
+	})
+
+	Context("when parsing hidden flags", func() {
+		It("should mark a hidden:\"true\" field and leave others visible", func() {
+			fields, err := ParseStructFields(reflect.TypeOf(HiddenFlagOptions{}))
+			Expect(err).ToNot(HaveOccurred())
+			byName := map[string]FieldInfo{}
+			for _, f := range fields {
+				byName[f.FlagName] = f
+			}
+			Expect(byName["db-url"].Hidden).To(BeTrue())
+			Expect(byName["name"].Hidden).To(BeFalse())
+		})
+
+		It("should hide the bound cobra flag so it is dropped from help and schemas", func() {
+			cmd := &cobra.Command{Use: "do"}
+			fields, err := ParseStructFields(reflect.TypeOf(HiddenFlagOptions{}))
+			Expect(err).ToNot(HaveOccurred())
+			for _, f := range fields {
+				BindFlag(cmd, f)
+			}
+			dbURL := cmd.Flags().Lookup("db-url")
+			Expect(dbURL).ToNot(BeNil())
+			Expect(dbURL.Hidden).To(BeTrue())
+			Expect(cmd.Flags().Lookup("name").Hidden).To(BeFalse())
 		})
 	})
 
