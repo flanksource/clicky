@@ -21,6 +21,7 @@ library in your own application, see [CLAUDE.md](CLAUDE.md) and [README.md](READ
 make build          # build ./clicky from ./cmd/clicky (NEVER run `go build` directly)
 make test           # go test -v ./...   (ROOT module only — example modules are separate)
 make lint           # golangci-lint v2.8.0 (pinned into .bin/) + go vet ./...
+make lint-clicky-ui # run clicky-ui's custom oxlint rules against the entity demo webapp
 make fmt            # gofmt -s -w . and `go mod tidy` across every module in GO_MODULES
 make check          # fmt + lint + test
 make task-ui        # rebuild the embedded Preact task-UI bundle (task/ui/dist/taskui.js)
