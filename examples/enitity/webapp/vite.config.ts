@@ -7,7 +7,10 @@ import { defineConfig } from "vite";
 // `entity-demo serve-ui --dev`, so Vite's proxy targets the same process.
 const apiTarget = process.env.CLICKY_EXAMPLE_API_URL || "http://localhost:8080";
 
-const clickyUiDist = path.resolve(__dirname, "../../../../clicky-ui/packages/ui/dist");
+const clickyUiDist = path.resolve(
+  __dirname,
+  "../../../../clicky-ui/packages/ui/dist",
+);
 
 export default defineConfig({
   // The example app is embedded and served from "/", so root-relative assets
@@ -17,9 +20,13 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
-      "@flanksource/clicky-ui/styles.css": path.join(clickyUiDist, "styles.css"),
+      "@flanksource/clicky-ui/styles.css": path.join(
+        clickyUiDist,
+        "styles.css",
+      ),
       "@flanksource/clicky-ui/chat": path.join(clickyUiDist, "chat.js"),
       "@flanksource/clicky-ui/ai": path.join(clickyUiDist, "ai.js"),
+      "@flanksource/clicky-ui/icons": path.join(clickyUiDist, "icons.js"),
       "@flanksource/clicky-ui": path.join(clickyUiDist, "index.js"),
     },
     dedupe: ["react", "react-dom", "@tanstack/react-query"],

@@ -60,10 +60,13 @@ install: build
 	mv clicky /usr/local/bin/clicky
 
 # Run linter
-.PHONY: lint
+.PHONY: lint lint-clicky-ui
 lint: golangci-lint
 	$(GOLANGCI_LINT) run ./...
 	go vet ./...
+
+lint-clicky-ui:
+	cd examples/enitity/webapp && pnpm install --frozen-lockfile && pnpm run lint:clicky-ui
 
 .PHONY: golangci-lint
 golangci-lint: $(GOLANGCI_LINT) ## Download golangci-lint locally if necessary.

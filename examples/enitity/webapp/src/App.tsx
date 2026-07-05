@@ -1,5 +1,11 @@
 import { useMemo } from "react";
-import { Link, Routes, Route, useLocation, useNavigate } from "react-router-dom";
+import {
+  Link,
+  Routes,
+  Route,
+  useLocation,
+  useNavigate,
+} from "react-router-dom";
 import {
   DensitySwitcher,
   EntityExplorerApp,
@@ -8,6 +14,11 @@ import {
   ThemeSwitcher,
   type RouterAdapter,
 } from "@flanksource/clicky-ui";
+import {
+  UiLayoutDashboard,
+  UiLink,
+  UiMarkdown,
+} from "@flanksource/clicky-ui/icons";
 import { apiClient } from "./api";
 import { ChatWidget } from "./ChatWidget";
 import { LinkExampleCommandPage, LinkExamplesPage } from "./LinkExamplesPage";
@@ -42,9 +53,12 @@ export function App() {
       <header className="border-b border-border/70 bg-background/90 backdrop-blur">
         <div className="mx-auto flex w-full max-w-7xl items-center justify-between gap-4 px-6 py-3">
           <div>
-            <div className="text-sm font-semibold tracking-tight">Clicky Entity Example</div>
+            <div className="text-sm font-semibold tracking-tight">
+              Clicky Entity Example
+            </div>
             <div className="text-xs text-muted-foreground">
-              Metadata-driven explorer plus interactive Link and LinkCommand demos
+              Metadata-driven explorer plus interactive Link and LinkCommand
+              demos
             </div>
           </div>
           <div className="flex items-center gap-3">
@@ -57,7 +71,10 @@ export function App() {
                 className={topNavLinkClass(activeSection === "explorer")}
                 aria-current={activeSection === "explorer" ? "page" : undefined}
               >
-                <Icon name="ph:squares-four" className="text-muted-foreground" />
+                <Icon
+                  icon={UiLayoutDashboard}
+                  className="text-muted-foreground"
+                />
                 Explorer
               </Link>
               <Link
@@ -65,7 +82,7 @@ export function App() {
                 className={topNavLinkClass(activeSection === "links")}
                 aria-current={activeSection === "links" ? "page" : undefined}
               >
-                <Icon name="ph:link" className="text-muted-foreground" />
+                <Icon icon={UiLink} className="text-muted-foreground" />
                 Link Examples
               </Link>
               <Link
@@ -73,7 +90,7 @@ export function App() {
                 className={topNavLinkClass(activeSection === "markdown")}
                 aria-current={activeSection === "markdown" ? "page" : undefined}
               >
-                <Icon name="ph:markdown-logo" className="text-muted-foreground" />
+                <Icon icon={UiMarkdown} className="text-muted-foreground" />
                 Markdown
               </Link>
             </nav>
@@ -88,7 +105,10 @@ export function App() {
       <div className="min-h-0 flex-1">
         <Routes>
           <Route path="/links" element={<LinkExamplesPage />} />
-          <Route path="/links/commands/:operationId" element={<LinkExampleCommandPage />} />
+          <Route
+            path="/links/commands/:operationId"
+            element={<LinkExampleCommandPage />}
+          />
           <Route path="/markdown" element={<MarkdownEditorPage />} />
           <Route
             path="*"

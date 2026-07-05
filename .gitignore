@@ -85,6 +85,7 @@ clicky
 !task/ui/tsconfig.json
 !examples/enitity/Taskfile.yaml
 !examples/enitity/webapp/index.html
+!examples/enitity/webapp/.oxlintrc.json
 !examples/enitity/webapp/package.json
 !examples/enitity/webapp/pnpm-lock.yaml
 !examples/enitity/webapp/pnpm-workspace.yaml
