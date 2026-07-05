@@ -454,6 +454,21 @@ generated dynamically and reflects the current state of the CLI commands.`,
 	return cmd
 }
 
+// normalizeWildcardNames replaces every "{name}" path segment with "{}" so two
+// patterns that differ only in wildcard name compare equal — matching Go 1.22's
+// ServeMux, which treats e.g. "/config/{config}/test" and "/config/{id}/test" as
+// the same (conflicting) route. Used only for duplicate detection; the original
+// pattern (with its real param name) is what gets registered.
+func normalizeWildcardNames(pattern string) string {
+	segments := strings.Split(pattern, "/")
+	for i, seg := range segments {
+		if strings.HasPrefix(seg, "{") && strings.HasSuffix(seg, "}") {
+			segments[i] = "{}"
+		}
+	}
+	return strings.Join(segments, "/")
+}
+
 // registerExecutionRoutes registers dynamic command execution routes based on the RPC service
 func (s *SwaggerServer) registerExecutionRoutes(mux *http.ServeMux) {
 	if s.executor == nil || s.executor.service == nil {
@@ -472,7 +487,14 @@ func (s *SwaggerServer) registerExecutionRoutes(mux *http.ServeMux) {
 		}
 
 		pattern := method + " " + sanitized
-		if existingOp, found := registered[pattern]; found {
+		// Go 1.22's ServeMux treats two patterns that differ only in wildcard NAME
+		// (e.g. ".../{config}/test" vs ".../{id}/test") as conflicting and panics
+		// when both are registered. Dedupe on a name-normalized key so the second
+		// such route is skipped rather than crashing the server on startup;
+		// handleExecuteCommand re-matches every request against all operations
+		// (FindOperation), so the skipped route stays reachable via the survivor.
+		dedupeKey := method + " " + normalizeWildcardNames(sanitized)
+		if existingOp, found := registered[dedupeKey]; found {
 			fmt.Printf("⚠️  Warning: Duplicate endpoint detected\n")
 			fmt.Printf("    Path: %s\n", pattern)
 			fmt.Printf("    Already registered by: %s\n", existingOp)
@@ -480,7 +502,7 @@ func (s *SwaggerServer) registerExecutionRoutes(mux *http.ServeMux) {
 			return false
 		}
 
-		registered[pattern] = opName
+		registered[dedupeKey] = opName
 		mux.HandleFunc(pattern, s.handleExecuteCommand)
 		routeCount++
 		return true
