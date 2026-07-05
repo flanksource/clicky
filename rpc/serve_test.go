@@ -299,6 +299,29 @@ func TestSanitizePathParams(t *testing.T) {
 	}
 }
 
+func TestNormalizeWildcardNames(t *testing.T) {
+	tests := []struct {
+		input string
+		want  string
+	}{
+		{"/api/v1/config/{id}/test", "/api/v1/config/{}/test"},
+		{"/api/v1/config/{config}/test", "/api/v1/config/{}/test"},
+		{"/api/v1/users", "/api/v1/users"},
+		{"/api/v1/{company_id}/plans/{plan_name}", "/api/v1/{}/plans/{}"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			assert.Equal(t, tt.want, normalizeWildcardNames(tt.input))
+		})
+	}
+	// The core invariant: two routes that differ only in wildcard name — which
+	// Go 1.22's ServeMux treats as conflicting — normalize to the same dedupe key.
+	assert.Equal(t,
+		normalizeWildcardNames("/api/v1/config/{config}/test"),
+		normalizeWildcardNames("/api/v1/config/{id}/test"),
+		"patterns differing only in wildcard name must dedupe together")
+}
+
 // Integration test that verifies the complete flow
 func TestSwaggerServer_Integration(t *testing.T) {
 	// Create test server
