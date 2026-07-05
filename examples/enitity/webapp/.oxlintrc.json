@@ -1,0 +1,17 @@
+{
+  "$schema": "https://raw.githubusercontent.com/oxc-project/oxc/main/npm/oxlint/configuration_schema.json",
+  "jsPlugins": [
+    {
+      "name": "clicky-ui",
+      "specifier": "../../../../clicky-ui/packages/ui/oxlint-plugins/clicky-ui.js"
+    }
+  ],
+  "rules": {
+    "clicky-ui/prefer-clicky-components": "error",
+    "clicky-ui/no-adhoc-overlay": "error",
+    "clicky-ui/prefer-tailwind-classes": "error",
+    "clicky-ui/prefer-theme-tokens": "error",
+    "clicky-ui/prefer-clicky-icons": "error"
+  },
+  "ignorePatterns": ["dist", "node_modules"]
+}

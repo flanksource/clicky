@@ -1,5 +1,8 @@
 import { useMemo } from "react";
-import { useOperations, type OperationsApiClient } from "@flanksource/clicky-ui";
+import {
+  useOperations,
+  type OperationsApiClient,
+} from "@flanksource/clicky-ui";
 import {
   ChatWindowManagerProvider,
   ChatFab,
@@ -7,11 +10,12 @@ import {
   type ContextTypeConfig,
 } from "@flanksource/clicky-ui/ai";
 import { clickyOperationsToTools } from "@flanksource/clicky-ui/chat";
+import { UiBoxes, UiCloud, UiUsersThree } from "@flanksource/clicky-ui/icons";
 
 const TYPE_CONFIG: ContextTypeConfig = {
-  stack: { icon: "ph:stack", className: "text-blue-600 bg-blue-50" },
-  cluster: { icon: "ph:cloud", className: "text-emerald-600 bg-emerald-50" },
-  team: { icon: "ph:users-three", className: "text-violet-600 bg-violet-50" },
+  stack: { icon: UiBoxes, className: "text-blue-600 bg-blue-50" },
+  cluster: { icon: UiCloud, className: "text-emerald-600 bg-emerald-50" },
+  team: { icon: UiUsersThree, className: "text-violet-600 bg-violet-50" },
 };
 
 /** Multi-window chat shell for the entity demo: a launch FAB plus up to six
@@ -24,7 +28,10 @@ const TYPE_CONFIG: ContextTypeConfig = {
  *  assistant EntityExplorerApp used to mount internally). */
 export function ChatWidget({ client }: { client: OperationsApiClient }) {
   const { operations } = useOperations(client);
-  const tools = useMemo(() => clickyOperationsToTools(operations), [operations]);
+  const tools = useMemo(
+    () => clickyOperationsToTools(operations),
+    [operations],
+  );
 
   return (
     <ChatWindowManagerProvider storageId="entity-demo">
