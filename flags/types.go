@@ -39,6 +39,7 @@ type FieldInfo struct {
 	DefaultValue string
 	ShortFlag    string
 	Required     bool
+	Hidden       bool
 	IsStdin      bool
 	IsArgs       bool
 }

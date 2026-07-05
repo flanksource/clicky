@@ -126,5 +126,11 @@ func BindFlag(cmd *cobra.Command, info FieldInfo) *FlagValue {
 		_ = cmd.MarkFlagRequired(info.FlagName)
 	}
 
+	// Hidden flags stay usable on the CLI but are dropped from --help and from
+	// generated tool/OpenAPI schemas (the RPC converter skips flag.Hidden).
+	if info.Hidden && info.FlagName != "" {
+		_ = cmd.Flags().MarkHidden(info.FlagName)
+	}
+
 	return fv
 }
