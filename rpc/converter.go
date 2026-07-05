@@ -74,8 +74,12 @@ func (c *Converter) ConvertCommand(cmd *cobra.Command) (*RPCOperation, error) {
 		}
 	}
 
-	// Process flags
-	cmd.Flags().VisitAll(func(flag *pflag.Flag) {
+	// Process flags. Use LocalNonPersistentFlags so only this command's own
+	// operation flags become schema parameters — never the inherited persistent
+	// globals (format/log-level/properties/config/company/entity/limit/...) that
+	// cobra folds into Flags(), nor the command's own persistent flags which
+	// exist to cascade to children rather than parameterize this operation.
+	cmd.LocalNonPersistentFlags().VisitAll(func(flag *pflag.Flag) {
 		if flag.Hidden {
 			return
 		}
