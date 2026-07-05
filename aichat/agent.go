@@ -10,6 +10,7 @@ import (
 
 	_ "github.com/flanksource/captain/pkg/ai/provider" // registers the agent backends
 	capapi "github.com/flanksource/captain/pkg/api"
+	"github.com/flanksource/commons-db/shell"
 )
 
 // AgentOptions configures the captain agent engine (EngineAgent models). The
@@ -143,11 +144,10 @@ func (s *Server) agentRequest(req ChatRequest, resumeID string) capapi.Spec {
 	return capapi.Spec{
 		Prompt:      capapi.Prompt{User: prompt, System: s.system},
 		Model:       capapi.Model{Effort: capapi.Effort(req.ReasoningEffort), Temperature: req.Temperature},
-		Budget:      capapi.Budget{Cost: req.Budget.Cost, MaxTokens: req.Budget.MaxTokens},
+		Budget:      capapi.Budget{Cost: req.Budget.Cost, MaxTokens: req.Budget.MaxTokens, MaxTurns: s.opts.Agent.MaxTurns},
 		Permissions: perms,
-		Context:     capapi.Context{Dir: s.opts.Agent.Cwd},
+		Setup:       &shell.Setup{Cwd: s.opts.Agent.Cwd},
 		SessionID:   resumeID,
-		MaxTurns:    s.opts.Agent.MaxTurns,
 	}
 }
 

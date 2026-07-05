@@ -55,7 +55,7 @@ func TestSetModelCatalogAndReset(t *testing.T) {
 	if err := SetModelCatalog([]Model{{ID: "openai/only-model", Label: "Only"}}); err != nil {
 		t.Fatalf("SetModelCatalog: %v", err)
 	}
-	if _, err := LookupModel("openai/gpt-4o"); err == nil {
+	if _, err := LookupModel("openai/gpt-5.5"); err == nil {
 		t.Error("expected built-in model to be absent after SetModelCatalog")
 	}
 	m, err := LookupModel("openai/only-model")
@@ -67,7 +67,7 @@ func TestSetModelCatalogAndReset(t *testing.T) {
 	}
 
 	ResetModelCatalog()
-	if _, err := LookupModel("openai/gpt-4o"); err != nil {
+	if _, err := LookupModel("openai/gpt-5.5"); err != nil {
 		t.Fatalf("built-in model should be restored: %v", err)
 	}
 }
@@ -84,7 +84,7 @@ func TestRegisterModelValidation(t *testing.T) {
 func TestAnthropicCatalogIncludesRequestedModels(t *testing.T) {
 	for _, id := range []string{
 		"anthropic/claude-haiku-4-5",
-		"anthropic/claude-sonnet-4-6",
+		"anthropic/claude-sonnet-5",
 		"anthropic/claude-opus-4-8",
 	} {
 		m, err := LookupModel(id)

@@ -401,7 +401,7 @@ func TestAgentModelsInCatalog(t *testing.T) {
 	}{
 		"claude-agent-sonnet":         {EngineAgent, capapi.BackendClaudeAgent, ""},
 		"codex-gpt-5-codex":           {EngineAgent, capapi.BackendCodexCLI, "gpt-5-codex"},
-		"anthropic/claude-sonnet-4-6": {EngineGenkit, "", ""},
+		"anthropic/claude-sonnet-5": {EngineGenkit, "", ""},
 	}
 	for id, want := range cases {
 		m, err := LookupModel(id)
