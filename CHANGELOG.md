@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.21.36](https://github.com/flanksource/clicky/compare/v1.21.35...v1.21.36) (2026-07-05)
+
+
+### ✅ Tests
+
+* skip PDF formatter integration test ([3f66763](https://github.com/flanksource/clicky/commit/3f66763b0a4081c4f26108163d8d3e083765a8b7))
+
+
+### 🐛 Bug Fixes
+
+* **deps:** patch security vulnerabilities ([9535cca](https://github.com/flanksource/clicky/commit/9535cca8d1595522a739ca5c383c45171ccd54ad))
+
+
+### 🔧 Maintenance
+
+* **release:** pin sub-modules to v1.21.35 [skip ci] ([9bd97b7](https://github.com/flanksource/clicky/commit/9bd97b705513fc94675e073714bb352f9b5a3105))
+
 ## [1.21.35](https://github.com/flanksource/clicky/compare/v1.21.34...v1.21.35) (2026-07-02)
 
 
