@@ -2,6 +2,7 @@ package formatters
 
 import (
 	"fmt"
+	"sort"
 
 	"github.com/flanksource/clicky/api"
 )
@@ -39,6 +40,49 @@ func (f *MarkdownFormatter) Format(data interface{}) (string, error) {
 
 // FormatPrettyData formats PrettyData as Markdown
 func (f *MarkdownFormatter) FormatPrettyData(data *api.PrettyData, opts FormatOptions) (string, error) {
+	if data == nil {
+		return "", nil
+	}
+	if ordered, ok := schemaOrderedMarkdown(data); ok {
+		return ordered.Markdown(), nil
+	}
 
 	return data.Markdown(), nil
+}
+
+func schemaOrderedMarkdown(data *api.PrettyData) (api.TextList, bool) {
+	if data == nil || data.Schema == nil || data.TypedMap == nil {
+		return nil, false
+	}
+
+	values := *data.TypedMap
+	seen := map[string]bool{}
+	out := api.TextList{}
+
+	appendField := func(name, label string, value api.TypedValue) {
+		if label == "" {
+			label = api.PrettifyFieldName(name)
+		}
+		out = append(out, api.Text{}.Append(label+": ", "text-muted").Add(value.Value()))
+		seen[name] = true
+	}
+
+	for _, field := range data.Schema.Fields {
+		if value, ok := values[field.Name]; ok {
+			appendField(field.Name, field.Label, value)
+		}
+	}
+
+	extra := make([]string, 0, len(values))
+	for name := range values {
+		if !seen[name] {
+			extra = append(extra, name)
+		}
+	}
+	sort.Strings(extra)
+	for _, name := range extra {
+		appendField(name, "", values[name])
+	}
+
+	return out, len(out) > 0
 }
