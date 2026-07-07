@@ -6,14 +6,19 @@ import (
 )
 
 // TimingMiddleware installs a request-scoped Timings accumulator into the
-// request context and stamps a Server-Timing response header on the first
-// WriteHeader/Write. The header carries a `total` metric plus any phase metrics
-// business logic contributed via AddTiming/Track.
+// request context and stamps a Server-Timing response header. The header is
+// written on the first WriteHeader/Write, or — for handlers that return without
+// writing anything — once the handler returns. It carries a `total` metric plus
+// any phase metrics business logic contributed via AddTiming/Track.
 func TimingMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ctx, timings := WithTimings(r.Context())
 		rec := &timingRecorder{ResponseWriter: w, timings: timings, start: time.Now()}
 		next.ServeHTTP(rec, r.WithContext(ctx))
+		// Handlers that return without writing never trigger the write-path
+		// stamp; do it here so the header is emitted regardless. stamp() is
+		// idempotent, so a handler that already wrote is unaffected.
+		rec.stamp()
 	})
 }
 
