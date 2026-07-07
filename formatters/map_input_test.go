@@ -112,3 +112,33 @@ func TestMapStringAnyWithNestedTable(t *testing.T) {
 		}
 	}
 }
+
+func TestMarkdownFormatterPreservesSchemaFieldOrder(t *testing.T) {
+	type orderedDocument struct {
+		Summary      string `json:"summary" pretty:"label=Summary"`
+		Transactions string `json:"transactions" pretty:"label=Transactions"`
+		Rules        string `json:"rules" pretty:"label=Business Rules"`
+		Eligibility  string `json:"eligibility" pretty:"label=Eligibility"`
+	}
+
+	out, err := NewMarkdownFormatter().Format(orderedDocument{
+		Summary:      "summary section",
+		Transactions: "transactions section",
+		Rules:        "rules section",
+		Eligibility:  "eligibility section",
+	})
+	if err != nil {
+		t.Fatalf("MarkdownFormatter.Format returned error: %v", err)
+	}
+
+	summary := strings.Index(out, "Summary:")
+	transactions := strings.Index(out, "Transactions:")
+	rules := strings.Index(out, "Business Rules:")
+	eligibility := strings.Index(out, "Eligibility:")
+	if summary < 0 || transactions < 0 || rules < 0 || eligibility < 0 {
+		t.Fatalf("missing expected section labels in output:\n%s", out)
+	}
+	if !(summary < transactions && transactions < rules && rules < eligibility) {
+		t.Fatalf("sections rendered out of schema order:\n%s", out)
+	}
+}
