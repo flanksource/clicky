@@ -39,6 +39,21 @@ func TestMiddlewareTotalOnlyWhenNoPhases(t *testing.T) {
 	}
 }
 
+func TestMiddlewareStampsWhenHandlerDoesNotWrite(t *testing.T) {
+	handler := TimingMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		AddTiming(r.Context(), "find", 2*time.Millisecond)
+		// Return without calling WriteHeader/Write/Flush.
+	}))
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/", nil))
+
+	got := rec.Header().Get("Server-Timing")
+	if !serverTimingRe.MatchString(got) {
+		t.Fatalf("Server-Timing = %q, want match %s", got, serverTimingRe)
+	}
+}
+
 func TestMiddlewarePreservesFlush(t *testing.T) {
 	handler := TimingMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		f, ok := w.(http.Flusher)

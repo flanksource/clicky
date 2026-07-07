@@ -472,7 +472,7 @@ func normalizeWildcardNames(pattern string) string {
 // registerExecutionRoutes registers dynamic command execution routes based on the RPC service
 func (s *SwaggerServer) registerExecutionRoutes(mux *http.ServeMux) {
 	if s.executor == nil || s.executor.service == nil {
-		fmt.Printf("⚠️  Warning: Executor has no service; no routes registered\n")
+		clicky.Warnf("Executor has no service; no routes registered")
 		return
 	}
 
@@ -482,7 +482,7 @@ func (s *SwaggerServer) registerExecutionRoutes(mux *http.ServeMux) {
 	registerRoute := func(method, path, opName string) bool {
 		sanitized, ok := sanitizePathParams(path)
 		if !ok {
-			fmt.Printf("⚠️  Warning: Skipping route with invalid path params: %s %s\n", method, path)
+			clicky.Warnf("Skipping route with invalid path params: %s %s", method, path)
 			return false
 		}
 
@@ -495,10 +495,7 @@ func (s *SwaggerServer) registerExecutionRoutes(mux *http.ServeMux) {
 		// (FindOperation), so the skipped route stays reachable via the survivor.
 		dedupeKey := method + " " + normalizeWildcardNames(sanitized)
 		if existingOp, found := registered[dedupeKey]; found {
-			fmt.Printf("⚠️  Warning: Duplicate endpoint detected\n")
-			fmt.Printf("    Path: %s\n", pattern)
-			fmt.Printf("    Already registered by: %s\n", existingOp)
-			fmt.Printf("    Skipping: %s\n", opName)
+			clicky.Warnf("Duplicate endpoint %s already registered by %q; skipping %q", pattern, existingOp, opName)
 			return false
 		}
 
@@ -526,7 +523,7 @@ func (s *SwaggerServer) registerExecutionRoutes(mux *http.ServeMux) {
 			registerRoute(http.MethodGet, path, op.Name+" lookup")
 		}
 	}
-	fmt.Printf("✅ Registered %d executor routes\n", routeCount)
+	clicky.Infof("Registered %d executor routes", routeCount)
 }
 
 // sanitizePathParams replaces invalid characters in {param} names with underscores
