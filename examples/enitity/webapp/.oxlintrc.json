@@ -3,7 +3,7 @@
   "jsPlugins": [
     {
       "name": "clicky-ui",
-      "specifier": "../../../../clicky-ui/packages/ui/oxlint-plugins/clicky-ui.js"
+      "specifier": "@flanksource/clicky-ui/oxlint-plugins"
     }
   ],
   "rules": {
