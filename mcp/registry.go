@@ -20,12 +20,23 @@ type ToolRegistry struct {
 
 // ToolDefinition represents an MCP tool definition
 type ToolDefinition struct {
-	Name         string         `json:"name"`
-	Title        string         `json:"title"`
-	Description  string         `json:"description"`
+	Name         string                   `json:"name"`
+	Title        string                   `json:"title"`
+	Description  string                   `json:"description"`
 	InputSchema  Schema                   `json:"inputSchema"`
 	OutputSchema *Schema                  `json:"outputSchema,omitempty"`
+	Annotations  *ToolAnnotations         `json:"annotations,omitempty"`
+	Meta         map[string]any           `json:"_meta,omitempty"`
 	Command      entity.ExecutableCommand `json:"-"` // Internal reference
+}
+
+// ToolAnnotations are the well-known MCP tool annotations.
+type ToolAnnotations struct {
+	Title           string `json:"title,omitempty"`
+	ReadOnlyHint    *bool  `json:"readOnlyHint,omitempty"`
+	DestructiveHint *bool  `json:"destructiveHint,omitempty"`
+	IdempotentHint  *bool  `json:"idempotentHint,omitempty"`
+	OpenWorldHint   *bool  `json:"openWorldHint,omitempty"`
 }
 
 // Schema represents a JSON schema for tool input/output
@@ -73,8 +84,146 @@ func NewMcpTool(rpcOp *rpc.RPCOperation) *ToolDefinition {
 		Title:       fmt.Sprintf("%s %s", appName, rpcOp.Name),
 		Description: rpcOp.Description,
 		InputSchema: inputSchema,
+		Annotations: toolAnnotations(rpcOp),
+		Meta:        clickyToolMeta(rpcOp),
 		Command:     rpcOp.Command,
 	}
+}
+
+const clickyToolMetaKey = "com.flanksource.clicky/tool"
+
+func toolAnnotations(rpcOp *rpc.RPCOperation) *ToolAnnotations {
+	hints := operationToolHints(rpcOp)
+	annotations := &ToolAnnotations{
+		Title:           hints.Title,
+		ReadOnlyHint:    hints.ReadOnlyHint,
+		DestructiveHint: hints.DestructiveHint,
+		IdempotentHint:  hints.IdempotentHint,
+		OpenWorldHint:   hints.OpenWorldHint,
+	}
+
+	readOnly, destructive, idempotent := inferredToolSemantics(rpcOp)
+	if annotations.ReadOnlyHint == nil {
+		annotations.ReadOnlyHint = readOnly
+	}
+	if annotations.DestructiveHint == nil {
+		annotations.DestructiveHint = destructive
+	}
+	if annotations.IdempotentHint == nil {
+		annotations.IdempotentHint = idempotent
+	}
+
+	if annotations.Title == "" &&
+		annotations.ReadOnlyHint == nil &&
+		annotations.DestructiveHint == nil &&
+		annotations.IdempotentHint == nil &&
+		annotations.OpenWorldHint == nil {
+		return nil
+	}
+	return annotations
+}
+
+func inferredToolSemantics(rpcOp *rpc.RPCOperation) (readOnly *bool, destructive *bool, idempotent *bool) {
+	if rpcOp == nil {
+		return nil, nil, nil
+	}
+	method := strings.ToUpper(rpcOp.Method)
+	verb := ""
+	if rpcOp.Clicky != nil {
+		verb = strings.ToLower(rpcOp.Clicky.Verb)
+	}
+
+	switch {
+	case method == "GET" || method == "HEAD" || verb == "list" || verb == "get":
+		return boolPtr(true), boolPtr(false), boolPtr(true)
+	case method == "DELETE" || verb == "delete":
+		return boolPtr(false), boolPtr(true), boolPtr(true)
+	case method == "PUT" || verb == "update":
+		return boolPtr(false), boolPtr(true), boolPtr(true)
+	case method == "PATCH":
+		return boolPtr(false), boolPtr(true), boolPtr(false)
+	case method == "POST" || verb == "create":
+		return boolPtr(false), boolPtr(false), boolPtr(false)
+	case verb == "action":
+		return boolPtr(false), boolPtr(true), nil
+	default:
+		return nil, nil, nil
+	}
+}
+
+func clickyToolMeta(rpcOp *rpc.RPCOperation) map[string]any {
+	hints := operationToolHints(rpcOp)
+	meta := map[string]any{}
+	if hints.Icon != "" {
+		meta["icon"] = hints.Icon
+	}
+	if hints.Group != "" {
+		meta["group"] = hints.Group
+	}
+	if hints.Parent != "" {
+		meta["parent"] = hints.Parent
+	}
+	if hints.DefaultPermission != "" {
+		meta["defaultPermission"] = string(hints.DefaultPermission)
+	}
+	if hints.Strict != nil {
+		meta["strict"] = *hints.Strict
+	}
+	if len(meta) == 0 {
+		return nil
+	}
+	return map[string]any{clickyToolMetaKey: meta}
+}
+
+func operationToolHints(rpcOp *rpc.RPCOperation) entity.MCPToolHints {
+	if rpcOp == nil {
+		return entity.MCPToolHints{}
+	}
+	hints := rpcOp.ToolHints
+	if rpcOp.Clicky != nil {
+		clickyHints := rpcOp.Clicky.ToolHints
+		if hints.Title == "" {
+			hints.Title = clickyHints.Title
+		}
+		if hints.ReadOnlyHint == nil {
+			hints.ReadOnlyHint = clickyHints.ReadOnlyHint
+		}
+		if hints.DestructiveHint == nil {
+			hints.DestructiveHint = clickyHints.DestructiveHint
+		}
+		if hints.IdempotentHint == nil {
+			hints.IdempotentHint = clickyHints.IdempotentHint
+		}
+		if hints.OpenWorldHint == nil {
+			hints.OpenWorldHint = clickyHints.OpenWorldHint
+		}
+		if hints.Icon == "" {
+			hints.Icon = clickyHints.Icon
+		}
+		if hints.Group == "" {
+			hints.Group = clickyHints.Group
+		}
+		if hints.Parent == "" {
+			hints.Parent = clickyHints.Parent
+		}
+		if hints.DefaultPermission == "" {
+			hints.DefaultPermission = clickyHints.DefaultPermission
+		}
+		if hints.Strict == nil {
+			hints.Strict = clickyHints.Strict
+		}
+		if hints.Group == "" {
+			hints.Group = rpcOp.Clicky.Group
+		}
+	}
+	if hints.Group == "" {
+		hints.Group = rpcOp.Group
+	}
+	return hints
+}
+
+func boolPtr(v bool) *bool {
+	return &v
 }
 
 // NewMcpToolWithConfig creates an MCP ToolDefinition from a generic RPC operation with config overrides
