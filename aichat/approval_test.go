@@ -47,6 +47,41 @@ func TestToolPreferencesOverrideDefaultApproval(t *testing.T) {
 	}
 }
 
+func TestToolModeNormalizesCanonicalAndLegacyLabels(t *testing.T) {
+	tests := map[ToolMode]ToolMode{
+		"enabled":  ToolModeOn,
+		"disabled": ToolModeOff,
+		"on":       ToolModeOn,
+		"off":      ToolModeOff,
+		"ask":      ToolModeAsk,
+		"auto":     ToolModeAuto,
+	}
+	for input, want := range tests {
+		got, ok := normalizeToolMode(input)
+		if !ok || got != want {
+			t.Fatalf("normalizeToolMode(%q) = (%q,%v), want (%q,true)", input, got, ok, want)
+		}
+	}
+}
+
+func TestDefaultPermissionModes(t *testing.T) {
+	defaultGate := func(ToolInfo, any) bool { return true }
+	ctx := withToolRuntime(context.Background(), toolRuntimeConfig{defaultApproval: defaultGate})
+
+	if shouldRequireApproval(ctx, nil, ToolInfo{Name: "auto_run", DefaultPermission: ToolModeOn}, nil) {
+		t.Error("default permission on should bypass approval")
+	}
+	if !shouldRequireApproval(ctx, nil, ToolInfo{Name: "manual", DefaultPermission: ToolModeAsk}, nil) {
+		t.Error("default permission ask should require approval")
+	}
+	if shouldRequireApproval(ctx, nil, ToolInfo{Name: "hidden", DefaultPermission: ToolModeOff}, nil) {
+		t.Error("default permission off should not require approval")
+	}
+	if !shouldRequireApproval(ctx, nil, ToolInfo{Name: "policy", DefaultPermission: ToolModeAuto}, nil) {
+		t.Error("default permission auto should defer to the runtime default approval policy")
+	}
+}
+
 func TestToolsForRequestDropsDisabledTools(t *testing.T) {
 	tools := []registeredTool{
 		{ref: namedTool("stack_list"), info: ToolInfo{Name: "stack_list"}},
@@ -55,6 +90,17 @@ func TestToolsForRequestDropsDisabledTools(t *testing.T) {
 	refs := toolsForRequest(tools, ToolPreferences{"stack_delete": ToolModeDisabled})
 	if len(refs) != 1 || refs[0].Name() != "stack_list" {
 		t.Fatalf("refs = %+v, want only stack_list", refs)
+	}
+}
+
+func TestToolsForRequestDropsDefaultOffTools(t *testing.T) {
+	tools := []registeredTool{
+		{ref: namedTool("visible"), info: ToolInfo{Name: "visible", DefaultPermission: ToolModeAuto}},
+		{ref: namedTool("hidden"), info: ToolInfo{Name: "hidden", DefaultPermission: ToolModeOff}},
+	}
+	refs := toolsForRequest(tools, nil)
+	if len(refs) != 1 || refs[0].Name() != "visible" {
+		t.Fatalf("refs = %+v, want only visible", refs)
 	}
 }
 
