@@ -103,7 +103,7 @@ func TestLiveRenderer_FinalUsesRenderFinal(t *testing.T) {
 	addCompletedTask(tm, "task-x")
 	tm.setLiveRenderer(&fakeLiveRenderer{live: "LIVE-ONLY", final: "FINAL-SUMMARY"})
 
-	tm.renderFinal()
+	tm.renderFinal(false)
 
 	os.Stderr = originalStderr
 	_ = w.Close()
