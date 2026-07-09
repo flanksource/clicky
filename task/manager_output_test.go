@@ -69,6 +69,71 @@ func TestCaptureAndStopFlushesInOrder(t *testing.T) {
 	}
 }
 
+// swapTestPipes replaces os.Stdout/os.Stderr with test-owned pipes so the
+// flush performed by StopCapturingOutput lands somewhere readable. The
+// returned closeWriters must be called after Stop so io.ReadAll sees EOF.
+func swapTestPipes(t *testing.T) (outR, errR *os.File, closeWriters func()) {
+	t.Helper()
+	realStdout := os.Stdout
+	realStderr := os.Stderr
+	t.Cleanup(func() {
+		os.Stdout = realStdout
+		os.Stderr = realStderr
+	})
+
+	outR, outW, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("make stdout pipe: %v", err)
+	}
+	errR, errW, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("make stderr pipe: %v", err)
+	}
+	os.Stdout = outW
+	os.Stderr = errW
+	return outR, errR, func() {
+		outW.Close()
+		errW.Close()
+	}
+}
+
+// TestStopFlushesTrailingOutputWithoutDelay verifies that Stop joins the
+// drain goroutines: a line written immediately before StopCapturingOutput
+// (no sleep) must still appear in the flushed output.
+func TestStopFlushesTrailingOutputWithoutDelay(t *testing.T) {
+	outR, errR, closeWriters := swapTestPipes(t)
+
+	StartCapturingOutput()
+	fmt.Println("trailing-sentinel")
+	StopCapturingOutput()
+	closeWriters()
+
+	stdoutBytes, _ := io.ReadAll(outR)
+	_, _ = io.ReadAll(errR)
+
+	if !bytes.Contains(stdoutBytes, []byte("trailing-sentinel")) {
+		t.Errorf("Stop must flush output written just before it, got %q", stdoutBytes)
+	}
+}
+
+// TestBlankLinesArePreserved verifies that empty lines round-trip through
+// the capture buffer: "a\n\nb\n" must flush with the blank line intact.
+func TestBlankLinesArePreserved(t *testing.T) {
+	outR, errR, closeWriters := swapTestPipes(t)
+
+	StartCapturingOutput()
+	fmt.Print("a\n\nb\n")
+	StopCapturingOutput()
+	closeWriters()
+
+	stdoutBytes, _ := io.ReadAll(outR)
+	_, _ = io.ReadAll(errR)
+
+	if !bytes.Contains(stdoutBytes, []byte("a\n\nb\n")) {
+		t.Errorf("blank line between a and b must be preserved, got %q", stdoutBytes)
+	}
+}
+
 // TestStopWithoutStartIsSafe ensures StopCapturingOutput is a no-op when
 // StartCapturingOutput was never called — gavel relies on this to use
 // defer StopCapturingOutput() across code paths that may not have

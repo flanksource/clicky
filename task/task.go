@@ -732,7 +732,7 @@ func (t *Task) Pretty() api.Text {
 		bufferedLogs = append(bufferedLogs, logger.BufferedLogEntry{Message: fmt.Sprintf("\t... %d more log lines ...", excess)})
 	}
 	for _, log := range bufferedLogs {
-		if level <= log.Level {
+		if level < log.Level {
 			continue
 		}
 		// Hide info logs when task completed successfully and log level is Info (0) or higher

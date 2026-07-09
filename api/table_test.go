@@ -85,7 +85,7 @@ var _ = Describe("WithoutEmptyColumns", func() {
 			{"col": TypedValue{Textable: Text{Content: "  "}}},
 		}
 
-		Expect(func() { table.String() }).NotTo(Panic())
+		Expect(func() { _ = table.String() }).NotTo(Panic())
 		Expect(table.String()).To(BeEmpty())
 		Expect(func() { table.ANSI() }).NotTo(Panic())
 	})
