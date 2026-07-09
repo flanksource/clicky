@@ -20,6 +20,7 @@ type RPCOperation struct {
 	Method            string               `json:"method,omitempty"` // HTTP method
 	Tags              []string             `json:"tags,omitempty"`   // OpenAPI tags (auto-derived from the parent command)
 	Group             string               `json:"group,omitempty"`  // tool-group this operation belongs to (clicky/tool-group)
+	ToolHints         MCPToolHints         `json:"-"`                // MCP annotations and Clicky-specific tool metadata
 	DataFunc          DataFunc             `json:"-"`                // Direct data provider, bypasses stdout capture
 	ContextDataFunc   ContextDataFunc      `json:"-"`                // Context-aware data provider; preferred over DataFunc when set
 	LookupFunc        DataFunc             `json:"-"`                // Direct filter metadata provider
@@ -54,23 +55,25 @@ type ClickySurface struct {
 // extension. SurfaceID/Aliases are internal-only fields used while building
 // the final surface list.
 type ClickyOperationMeta struct {
-	SurfaceID          string   `json:"-"`
-	Command            string   `json:"command,omitempty"`
-	Surface            string   `json:"surface,omitempty"`
-	Entity             string   `json:"-"`
-	Parent             string   `json:"-"`
-	Aliases            []string `json:"-"`
-	Admin              bool     `json:"-"`
-	Icon               string   `json:"-"`
-	Title              string   `json:"-"`
-	Verb               string   `json:"verb,omitempty"`
-	Scope              string   `json:"scope,omitempty"`
-	ActionName         string   `json:"actionName,omitempty"`
-	IDParam            string   `json:"idParam,omitempty"`
-	SupportsLookup     bool     `json:"supportsLookup,omitempty"`
-	SupportsFilterMode bool     `json:"supportsFilterMode,omitempty"`
-	Group              string   `json:"group,omitempty"`
-	Order              int      `json:"-"`
+	SurfaceID          string        `json:"-"`
+	Command            string        `json:"command,omitempty"`
+	Surface            string        `json:"surface,omitempty"`
+	Entity             string        `json:"-"`
+	Parent             string        `json:"-"`
+	Aliases            []string      `json:"-"`
+	Admin              bool          `json:"-"`
+	Icon               string        `json:"-"`
+	Title              string        `json:"-"`
+	Verb               string        `json:"verb,omitempty"`
+	Scope              string        `json:"scope,omitempty"`
+	ActionName         string        `json:"actionName,omitempty"`
+	IDParam            string        `json:"idParam,omitempty"`
+	SupportsLookup     bool          `json:"supportsLookup,omitempty"`
+	SupportsFilterMode bool          `json:"supportsFilterMode,omitempty"`
+	Group              string        `json:"group,omitempty"`
+	ToolHints          MCPToolHints  `json:"-"`
+	OpenAPIToolHints   *MCPToolHints `json:"toolHints,omitempty"`
+	Order              int           `json:"-"`
 }
 
 // RPCParameter represents a parameter in an RPC operation.

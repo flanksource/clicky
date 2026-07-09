@@ -37,6 +37,17 @@ func (b *EntityBuilder[T, ListOpts, R]) Aliases(aliases ...string) *EntityBuilde
 // tool-preference layers use the group to enable/disable related tools together.
 func (b *EntityBuilder[T, ListOpts, R]) ToolGroup(group string) *EntityBuilder[T, ListOpts, R] {
 	b.entity.ToolGroup = group
+	b.entity.ToolHints.Group = group
+	return b
+}
+
+// ToolHints sets MCP-facing annotations and Clicky UI metadata inherited by all
+// generated operations. Per-action hints can override these values.
+func (b *EntityBuilder[T, ListOpts, R]) ToolHints(hints MCPToolHints) *EntityBuilder[T, ListOpts, R] {
+	b.entity.ToolHints = b.entity.ToolHints.merge(hints)
+	if hints.Group != "" {
+		b.entity.ToolGroup = hints.Group
+	}
 	return b
 }
 

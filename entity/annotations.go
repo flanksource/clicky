@@ -23,6 +23,28 @@ const (
 	annotationClickySupportsFilterMode = "clicky/supports-filter-mode"
 	annotationClickyOptionalID         = "clicky/operation-optional-id"
 	annotationClickyToolGroup          = "clicky/tool-group"
+	annotationClickyToolTitle          = "clicky/tool-title"
+	annotationClickyToolIcon           = "clicky/tool-icon"
+	annotationClickyToolParent         = "clicky/tool-parent"
+	annotationClickyToolReadOnlyHint   = "clicky/tool-read-only-hint"
+	annotationClickyToolDestructive    = "clicky/tool-destructive-hint"
+	annotationClickyToolIdempotent     = "clicky/tool-idempotent-hint"
+	annotationClickyToolOpenWorld      = "clicky/tool-open-world-hint"
+	annotationClickyToolPermission     = "clicky/tool-default-permission"
+	annotationClickyToolStrict         = "clicky/tool-strict"
+)
+
+const (
+	AnnotationClickyToolGroup             = annotationClickyToolGroup
+	AnnotationClickyToolTitle             = annotationClickyToolTitle
+	AnnotationClickyToolIcon              = annotationClickyToolIcon
+	AnnotationClickyToolParent            = annotationClickyToolParent
+	AnnotationClickyToolReadOnlyHint      = annotationClickyToolReadOnlyHint
+	AnnotationClickyToolDestructiveHint   = annotationClickyToolDestructive
+	AnnotationClickyToolIdempotentHint    = annotationClickyToolIdempotent
+	AnnotationClickyToolOpenWorldHint     = annotationClickyToolOpenWorld
+	AnnotationClickyToolDefaultPermission = annotationClickyToolPermission
+	AnnotationClickyToolStrict            = annotationClickyToolStrict
 )
 
 // CommandOpenAPIMeta is the clicky-specific metadata attached to generated
@@ -55,11 +77,37 @@ type CommandOpenAPIMeta struct {
 	// AI tool-preference layers use it to enable/disable a set of related tools
 	// as one unit.
 	ToolGroup string
+	ToolHints MCPToolHints
 }
 
 func GetCommandOpenAPIMeta(cmd *cobra.Command) *CommandOpenAPIMeta {
 	if cmd == nil || cmd.Annotations == nil {
 		return nil
+	}
+
+	toolIcon := cmd.Annotations[annotationClickyToolIcon]
+	if toolIcon == "" {
+		toolIcon = cmd.Annotations[annotationClickyEntityIcon]
+	}
+	toolTitle := cmd.Annotations[annotationClickyToolTitle]
+	if toolTitle == "" {
+		toolTitle = cmd.Annotations[annotationClickyEntityTitle]
+	}
+	toolParent := cmd.Annotations[annotationClickyToolParent]
+	if toolParent == "" {
+		toolParent = cmd.Annotations[annotationClickyEntityParent]
+	}
+	toolHints := MCPToolHints{
+		Title:             toolTitle,
+		ReadOnlyHint:      parseAnnotationBoolPtr(cmd.Annotations[annotationClickyToolReadOnlyHint]),
+		DestructiveHint:   parseAnnotationBoolPtr(cmd.Annotations[annotationClickyToolDestructive]),
+		IdempotentHint:    parseAnnotationBoolPtr(cmd.Annotations[annotationClickyToolIdempotent]),
+		OpenWorldHint:     parseAnnotationBoolPtr(cmd.Annotations[annotationClickyToolOpenWorld]),
+		Icon:              toolIcon,
+		Group:             cmd.Annotations[annotationClickyToolGroup],
+		Parent:            toolParent,
+		DefaultPermission: normalizeToolPermission(ToolPermission(cmd.Annotations[annotationClickyToolPermission])),
+		Strict:            parseAnnotationBoolPtr(cmd.Annotations[annotationClickyToolStrict]),
 	}
 
 	meta := &CommandOpenAPIMeta{
@@ -77,10 +125,11 @@ func GetCommandOpenAPIMeta(cmd *cobra.Command) *CommandOpenAPIMeta {
 		SupportsLookup:     parseAnnotationBool(cmd.Annotations[annotationClickySupportsLookup]),
 		SupportsFilterMode: parseAnnotationBool(cmd.Annotations[annotationClickySupportsFilterMode]),
 		OptionalID:         parseAnnotationBool(cmd.Annotations[annotationClickyOptionalID]),
-		ToolGroup:          cmd.Annotations[annotationClickyToolGroup],
+		ToolGroup:          toolHints.Group,
+		ToolHints:          toolHints,
 	}
 
-	if meta.Entity == "" && meta.ToolGroup == "" {
+	if meta.Entity == "" && meta.ToolHints.isZero() {
 		return nil
 	}
 
@@ -98,7 +147,20 @@ func annotateEntityCommand(cmd *cobra.Command, entity EntityInfo) {
 	setCommandAnnotation(cmd, annotationClickyEntityAdmin, strconv.FormatBool(entity.IsAdmin))
 	setCommandAnnotation(cmd, annotationClickyEntityIcon, entity.Icon)
 	setCommandAnnotation(cmd, annotationClickyEntityTitle, entity.Title)
-	setCommandAnnotation(cmd, annotationClickyToolGroup, entity.ToolGroup)
+	hints := entity.ToolHints
+	if hints.Group == "" {
+		hints.Group = entity.ToolGroup
+	}
+	if hints.Parent == "" {
+		hints.Parent = entity.Parent
+	}
+	if hints.Icon == "" {
+		hints.Icon = entity.Icon
+	}
+	if hints.Title == "" {
+		hints.Title = entity.Title
+	}
+	AnnotateTool(cmd, hints)
 }
 
 func annotateEntityOperationCommand(
@@ -112,7 +174,7 @@ func annotateEntityOperationCommand(
 	supportsLookup bool,
 	supportsFilterMode bool,
 	optionalID bool,
-	toolGroup string,
+	toolHints MCPToolHints,
 ) {
 	if cmd == nil {
 		return
@@ -127,9 +189,9 @@ func annotateEntityOperationCommand(
 	setCommandAnnotation(cmd, annotationClickySupportsLookup, strconv.FormatBool(supportsLookup))
 	setCommandAnnotation(cmd, annotationClickySupportsFilterMode, strconv.FormatBool(supportsFilterMode))
 	setCommandAnnotation(cmd, annotationClickyOptionalID, strconv.FormatBool(optionalID))
-	// Applied after inheritance: a non-empty per-action override replaces the
-	// inherited entity group; empty is a no-op (setCommandAnnotation skips "").
-	setCommandAnnotation(cmd, annotationClickyToolGroup, toolGroup)
+	// Applied after inheritance: non-empty per-action hints replace inherited
+	// entity hints; empty values are no-ops.
+	AnnotateTool(cmd, toolHints)
 }
 
 func inheritEntityAnnotations(cmd *cobra.Command, parent *cobra.Command) {
@@ -144,7 +206,35 @@ func inheritEntityAnnotations(cmd *cobra.Command, parent *cobra.Command) {
 	setCommandAnnotation(cmd, annotationClickyEntityAdmin, strconv.FormatBool(meta.Admin))
 	setCommandAnnotation(cmd, annotationClickyEntityIcon, meta.Icon)
 	setCommandAnnotation(cmd, annotationClickyEntityTitle, meta.Title)
-	setCommandAnnotation(cmd, annotationClickyToolGroup, meta.ToolGroup)
+	AnnotateTool(cmd, meta.ToolHints)
+}
+
+// AnnotateTool attaches MCP-facing tool hints to cmd. It is the public helper
+// for commands that are not generated from an EntityBuilder.
+func AnnotateTool(cmd *cobra.Command, hints MCPToolHints) {
+	if cmd == nil {
+		return
+	}
+	setCommandAnnotation(cmd, annotationClickyToolTitle, hints.Title)
+	setCommandAnnotation(cmd, annotationClickyToolIcon, hints.Icon)
+	setCommandAnnotation(cmd, annotationClickyToolParent, hints.Parent)
+	setCommandAnnotation(cmd, annotationClickyToolGroup, hints.Group)
+	if hints.ReadOnlyHint != nil {
+		setCommandAnnotation(cmd, annotationClickyToolReadOnlyHint, strconv.FormatBool(*hints.ReadOnlyHint))
+	}
+	if hints.DestructiveHint != nil {
+		setCommandAnnotation(cmd, annotationClickyToolDestructive, strconv.FormatBool(*hints.DestructiveHint))
+	}
+	if hints.IdempotentHint != nil {
+		setCommandAnnotation(cmd, annotationClickyToolIdempotent, strconv.FormatBool(*hints.IdempotentHint))
+	}
+	if hints.OpenWorldHint != nil {
+		setCommandAnnotation(cmd, annotationClickyToolOpenWorld, strconv.FormatBool(*hints.OpenWorldHint))
+	}
+	setCommandAnnotation(cmd, annotationClickyToolPermission, string(normalizeToolPermission(hints.DefaultPermission)))
+	if hints.Strict != nil {
+		setCommandAnnotation(cmd, annotationClickyToolStrict, strconv.FormatBool(*hints.Strict))
+	}
 }
 
 func setCommandAnnotation(cmd *cobra.Command, key string, value string) {
@@ -160,6 +250,17 @@ func setCommandAnnotation(cmd *cobra.Command, key string, value string) {
 func parseAnnotationBool(value string) bool {
 	parsed, err := strconv.ParseBool(value)
 	return err == nil && parsed
+}
+
+func parseAnnotationBoolPtr(value string) *bool {
+	if value == "" {
+		return nil
+	}
+	parsed, err := strconv.ParseBool(value)
+	if err != nil {
+		return nil
+	}
+	return &parsed
 }
 
 func splitAnnotationList(value string) []string {
