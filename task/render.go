@@ -3,8 +3,11 @@ package task
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/flanksource/commons/text"
+
 	"github.com/flanksource/clicky/api"
 )
 
@@ -33,19 +36,20 @@ func (tm *Manager) PlainRender() {
 	// manager init) so live progress stays out of StartCapturingOutput's
 	// buffer and appears in real time. Guard each line with bufferMutex so
 	// a concurrent log-serializer write cannot split a single line write.
+	// prettyPlainDelta renders only log entries new since the last tick and
+	// advances the per-task cursor, keeping the buffer intact for snapshots
+	// and the final tree.
 	output := tm.renderer.Output()
 	for _, task := range taskSnapshot {
 		if task.PopDirty() {
+			rendered := task.prettyPlainDelta()
 			tm.bufferMutex.Lock()
 			if tm.noColor.Load() {
-				fmt.Fprintf(output, "%s\n", task.Pretty().String())
+				fmt.Fprintf(output, "%s\n", rendered.String())
 			} else {
-				fmt.Fprintf(output, "%s\n", task.Pretty().ANSI())
+				fmt.Fprintf(output, "%s\n", rendered.ANSI())
 			}
 			tm.bufferMutex.Unlock()
-			if task.bufferedLogger != nil {
-				task.bufferedLogger.ClearLogs()
-			}
 		}
 	}
 }
@@ -176,6 +180,45 @@ func (tm *Manager) prettyFromTasks(tasks []*Task) api.Text {
 	}
 
 	return text
+}
+
+// plainSummaryText builds the one-line gray closing summary emitted after a
+// plain render loop ran, e.g. "12 tasks: 10 ok, 2 failed in 3.4s" — the
+// per-tick PlainRender output already printed every task line.
+func plainSummaryText(tasks []*Task) api.Text {
+	var ok, failed int
+	var start, end time.Time
+	for _, t := range tasks {
+		switch t.Status() {
+		case StatusFailed, StatusWarning, StatusCancelled, StatusFAIL, StatusERR:
+			failed++
+		case StatusPending, StatusRunning:
+			// not counted; final summaries normally see only terminal tasks
+		default:
+			ok++
+		}
+		t.mu.Lock()
+		if !t.startTime.IsZero() && (start.IsZero() || t.startTime.Before(start)) {
+			start = t.startTime
+		}
+		if t.endTime.After(end) {
+			end = t.endTime
+		}
+		t.mu.Unlock()
+	}
+
+	label := "tasks"
+	if len(tasks) == 1 {
+		label = "task"
+	}
+	summary := fmt.Sprintf("%d %s: %d ok", len(tasks), label, ok)
+	if failed > 0 {
+		summary += fmt.Sprintf(", %d failed", failed)
+	}
+	if !start.IsZero() && end.After(start) {
+		summary += " in " + text.HumanizeDuration(end.Sub(start))
+	}
+	return api.Text{Content: summary, Style: "text-gray-400"}
 }
 
 // interactiveRender renders tasks in-place using ANSI clear lines.

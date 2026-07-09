@@ -95,7 +95,9 @@ func ClearTasks() {
 	global.groups = activeGroups
 }
 
-// WaitSilent waits for all tasks to complete without displaying results
+// WaitSilent waits for all tasks to complete without displaying results.
+// It stops the renderer and stops output capture (flushing any output
+// buffered by StartCapturingOutput to the restored streams).
 func WaitSilent() int {
 	ticker := time.NewTicker(10 * time.Millisecond)
 	defer ticker.Stop()
@@ -121,6 +123,7 @@ func WaitSilent() int {
 	}
 
 	global.stopRender()
+	global.StopCapturingOutput()
 
 	global.mu.RLock()
 	tasks := global.tasks
@@ -140,7 +143,9 @@ func WaitSilent() int {
 	return 0
 }
 
-// Wait waits for all tasks to complete and returns the appropriate exit code
+// Wait waits for all tasks to complete and returns the appropriate exit code.
+// It stops the renderer and stops output capture (flushing any output
+// buffered by StartCapturingOutput to the restored streams).
 func Wait() int {
 	ticker := time.NewTicker(10 * time.Millisecond)
 	defer ticker.Stop()
@@ -166,6 +171,7 @@ func Wait() int {
 	}
 
 	global.stopRender()
+	global.StopCapturingOutput()
 
 	var failed, canceled int
 

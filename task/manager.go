@@ -67,12 +67,19 @@ type Manager struct {
 	// Task identity tracking for deduplication
 	tasksByIdentity sync.Map // map[string]*Task
 
-	// Render loop control
-	stopRenderCh  chan struct{}
-	renderDone    chan struct{}
-	renderStopped sync.Once
-	renderStarted sync.Once
-	renderOwnsTTY bool
+	// Render loop control. renderState re-arms the lifecycle so a batch of
+	// tasks enqueued after Wait()/stopRender renders again; all fields below
+	// are guarded by mu.
+	stopRenderCh   chan struct{}
+	renderDone     chan struct{}
+	renderStopDone chan struct{}
+	renderState    renderLifecycleState
+	renderOwnsTTY  bool
+
+	// finalRendered marks that renderFinal already emitted the closing output
+	// for the current batch; reset on enqueue so a new batch renders again.
+	// Guarded by mu.
+	finalRendered bool
 
 	// Terminal state
 	originalTermState *term.State
@@ -432,12 +439,13 @@ func (tm *Manager) newTask(name string, opts ...Option) *Task {
 }
 
 func (tm *Manager) enqueue(task *Task) *Task {
-	if !tm.noRender.Load() {
-		tm.renderStarted.Do(func() {
-			if !tm.noProgress.Load() {
-				tm.startRenderLoop()
-			}
-		})
+	if !tm.noRender.Load() && !tm.noProgress.Load() {
+		tm.mu.RLock()
+		idle := tm.renderState == renderIdle
+		tm.mu.RUnlock()
+		if idle {
+			tm.startRenderLoop()
+		}
 	}
 
 	if task.identity != "" {
@@ -451,6 +459,7 @@ func (tm *Manager) enqueue(task *Task) *Task {
 
 	tm.mu.Lock()
 	tm.tasks = append(tm.tasks, task)
+	tm.finalRendered = false
 	tm.mu.Unlock()
 
 	tm.taskQueue.Enqueue(task)

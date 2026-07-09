@@ -124,7 +124,11 @@ func (g *Group) observeTerminal(status Status, now time.Time) {
 }
 
 func (g *Group) GetTasks() []Taskable {
-	return g.Items
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+	items := make([]Taskable, len(g.Items))
+	copy(items, g.Items)
+	return items
 }
 
 type TypedGroup[T any] struct {
@@ -163,7 +167,7 @@ func (g TypedGroup[T]) Add(name string, taskFunc func(flanksourceContext.Context
 // GetResults waits for all tasks in the group and returns typed results
 func (g TypedGroup[T]) GetResults() (map[TypedTask[T]]T, error) {
 	results := make(map[TypedTask[T]]T)
-	for _, item := range g.Items {
+	for _, item := range g.GetTasks() {
 		switch v := item.(type) {
 		case TypedTask[T]:
 			v.WaitFor()
@@ -184,7 +188,8 @@ func (g *Group) Name() string {
 }
 
 func (g *Group) Status() Status {
-	if len(g.Items) == 0 {
+	items := g.GetTasks()
+	if len(items) == 0 {
 		return StatusPending
 	}
 
@@ -193,7 +198,7 @@ func (g *Group) Status() Status {
 	hasFailed := false
 	allCompleted := true
 
-	for _, item := range g.Items {
+	for _, item := range items {
 		status := item.GetTask().Status()
 		switch status {
 		case StatusRunning:
@@ -321,7 +326,10 @@ func (g *Group) Cancel() {
 
 // Duration returns the total duration from first start to last completion
 func (g *TypedGroup[T]) Duration() time.Duration {
-	if g.startTime.IsZero() {
+	g.mu.RLock()
+	startTime := g.startTime
+	g.mu.RUnlock()
+	if startTime.IsZero() {
 		return 0
 	}
 
@@ -329,30 +337,23 @@ func (g *TypedGroup[T]) Duration() time.Duration {
 	var latestEnd time.Time
 	allCompleted := true
 
-	for _, item := range g.Items {
+	for _, item := range g.GetTasks() {
 		status := item.GetTask().Status()
 		if status == StatusPending || status == StatusRunning {
 			allCompleted = false
 			break
 		}
 
-		itemDuration := item.GetTask().Duration()
-		if itemDuration > 0 {
-			if !item.GetTask().endTime.IsZero() && item.GetTask().endTime.After(latestEnd) {
-				latestEnd = item.GetTask().endTime
-			}
+		if end := item.GetTask().EndTime(); !end.IsZero() && end.After(latestEnd) {
+			latestEnd = end
 		}
 	}
 
-	if !allCompleted {
-		return time.Since(g.startTime)
+	if !allCompleted || latestEnd.IsZero() {
+		return time.Since(startTime)
 	}
 
-	if latestEnd.IsZero() {
-		return time.Since(g.startTime)
-	}
-
-	return latestEnd.Sub(g.startTime)
+	return latestEnd.Sub(startTime)
 }
 
 // IsGroup returns true for Group
