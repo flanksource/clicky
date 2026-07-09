@@ -25,13 +25,17 @@ type toolRuntimeContextKey struct{}
 // ToolDefinition describes an app-owned tool registered alongside clicky RPC
 // and MCP tools. Handlers should return JSON-serializable values.
 type ToolDefinition struct {
-	Name        string
-	Description string
-	InputSchema map[string]any
-	Method      string
-	Path        string
-	Verb        string
-	Scope       string
+	Name              string
+	Description       string
+	InputSchema       map[string]any
+	Method            string
+	Path              string
+	Verb              string
+	Scope             string
+	Parent            string
+	Icon              string
+	DefaultPermission ToolMode
+	Strict            *bool
 	// Group, when set, places this custom tool in a tool-group so the
 	// preferences UI presents it under the group rather than individually.
 	Group   string
@@ -61,13 +65,17 @@ func DefineCustomTools(g *genkit.Genkit, defs []ToolDefinition) ([]registeredToo
 			schema = map[string]any{"type": "object", "properties": map[string]any{}}
 		}
 		info := ToolInfo{
-			Name:          name,
-			OperationName: def.Name,
-			Method:        def.Method,
-			Path:          def.Path,
-			ClickyVerb:    def.Verb,
-			ClickyScope:   def.Scope,
-			Group:         def.Group,
+			Name:              name,
+			OperationName:     def.Name,
+			Method:            def.Method,
+			Path:              def.Path,
+			ClickyVerb:        def.Verb,
+			ClickyScope:       def.Scope,
+			Group:             def.Group,
+			Parent:            def.Parent,
+			Icon:              def.Icon,
+			DefaultPermission: defaultPermissionMode(def.DefaultPermission),
+			Strict:            def.Strict,
 		}
 		tool := genkit.DefineTool[any, any](g, name, def.Description,
 			func(tc *ai.ToolContext, input any) (any, error) {
@@ -110,7 +118,11 @@ func toolsForRequest(tools []registeredTool, prefs ToolPreferences) []ai.ToolRef
 	}
 	refs := make([]ai.ToolRef, 0, len(tools))
 	for _, tool := range tools {
-		if mode, ok := effectivePreference(prefs, tool.info); ok && mode == ToolModeDisabled {
+		mode, ok := effectivePreference(prefs, tool.info)
+		if !ok {
+			mode = defaultPermissionMode(tool.info.DefaultPermission)
+		}
+		if mode == ToolModeOff {
 			continue
 		}
 		refs = append(refs, tool.ref)
@@ -186,22 +198,45 @@ func shouldRequireApproval(ctx context.Context, fallback approvalPredicate, tool
 	if ctx != nil {
 		if cfg, ok := toolRuntime(ctx); ok {
 			if mode, ok := effectivePreference(cfg.preferences, tool); ok {
-				switch mode {
-				case ToolModeEnabled:
-					return false
-				case ToolModeAsk:
-					return true
-				case ToolModeDisabled:
-					return false
+				if decision, handled := approvalDecisionForMode(mode); handled {
+					return decision
 				}
+			}
+			if decision, handled := approvalDecisionForMode(defaultPermissionMode(tool.DefaultPermission)); handled {
+				return decision
 			}
 			if cfg.defaultApproval != nil {
 				return cfg.defaultApproval(tool, input)
 			}
 		}
 	}
+	if decision, handled := approvalDecisionForMode(defaultPermissionMode(tool.DefaultPermission)); handled {
+		return decision
+	}
 	if fallback == nil {
 		return false
 	}
 	return fallback(tool, input)
+}
+
+func defaultPermissionMode(mode ToolMode) ToolMode {
+	if normalized, ok := normalizeToolMode(mode); ok {
+		return normalized
+	}
+	return ToolModeAuto
+}
+
+func approvalDecisionForMode(mode ToolMode) (bool, bool) {
+	switch defaultPermissionMode(mode) {
+	case ToolModeOn:
+		return false, true
+	case ToolModeAsk:
+		return true, true
+	case ToolModeOff:
+		return false, true
+	case ToolModeAuto:
+		return false, false
+	default:
+		return false, false
+	}
 }

@@ -97,6 +97,8 @@ func TestAnthropicCatalogIncludesRequestedModels(t *testing.T) {
 	}
 }
 
+// effortConfig now delegates capability gating to captain's registry, so cases
+// use real model ids that resolve there.
 func TestEffortConfigPerProvider(t *testing.T) {
 	cases := []struct {
 		name    string
@@ -105,11 +107,11 @@ func TestEffortConfigPerProvider(t *testing.T) {
 		wantKey string
 		wantNil bool
 	}{
-		{"openai-high", Model{Provider: ProviderOpenAI, Reasoning: true}, EffortHigh, "reasoning_effort", false},
-		{"gemini-medium", Model{Provider: ProviderGoogle, Reasoning: true}, EffortMedium, "thinkingConfig", false},
-		{"anthropic-low", Model{Provider: ProviderAnthropic, Reasoning: true}, EffortLow, "thinking", false},
-		{"anthropic-no-effort-still-sets-max-tokens", Model{Provider: ProviderAnthropic, Reasoning: true}, EffortNone, "max_tokens", false},
-		{"non-reasoning", Model{Provider: ProviderOpenAI, Reasoning: false}, EffortHigh, "", true},
+		{"openai-high", Model{ID: "openai/gpt-5.5", Provider: ProviderOpenAI}, EffortHigh, "reasoning_effort", false},
+		{"gemini-medium", Model{ID: "googleai/gemini-3.5-flash", Provider: ProviderGoogle}, EffortMedium, "thinkingConfig", false},
+		{"anthropic-low", Model{ID: "anthropic/claude-sonnet-5", Provider: ProviderAnthropic}, EffortLow, "thinking", false},
+		{"anthropic-no-effort-still-sets-max-tokens", Model{ID: "anthropic/claude-sonnet-5", Provider: ProviderAnthropic}, EffortNone, "max_tokens", false},
+		{"unknown-model-no-effort-config", Model{ID: "openai/gpt-4o-mini", Provider: ProviderOpenAI}, EffortHigh, "", true},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -128,20 +130,31 @@ func TestEffortConfigPerProvider(t *testing.T) {
 }
 
 func TestAnthropicEffortConfigSetsMaxTokens(t *testing.T) {
-	cfg := effortConfig(Model{Provider: ProviderAnthropic, Reasoning: true}, EffortHigh, ChatBudget{MaxTokens: 1000}, nil)
-	if got := cfg["max_tokens"]; got != anthropicThinkingBudget(EffortHigh)+1000 {
+	cfg := effortConfig(Model{ID: "anthropic/claude-sonnet-4-6", Provider: ProviderAnthropic}, EffortHigh, ChatBudget{MaxTokens: 1000}, nil)
+	if got := cfg["max_tokens"]; got != 24576+1000 {
 		t.Errorf("max_tokens = %v, want thinking budget plus visible output budget", got)
 	}
 }
 
 func TestEffortConfigAppliesTemperatureAndMaxTokens(t *testing.T) {
 	temp := 0.4
-	cfg := effortConfig(Model{Provider: ProviderOpenAI}, EffortNone, ChatBudget{MaxTokens: 1200}, &temp)
+	// gemini-3.5-flash supports temperature; the openai/anthropic adaptive models
+	// do not, so temperature would be gated out for them.
+	cfg := effortConfig(Model{ID: "googleai/gemini-3.5-flash", Provider: ProviderGoogle}, EffortNone, ChatBudget{MaxTokens: 1200}, &temp)
 	if got := cfg["temperature"]; got != temp {
 		t.Errorf("temperature = %v, want %v", got, temp)
 	}
 	if got := cfg["maxOutputTokens"]; got != 1200 {
 		t.Errorf("maxOutputTokens = %v, want 1200", got)
+	}
+}
+
+func TestEffortConfigGatesTemperatureForIncapableModel(t *testing.T) {
+	temp := 0.4
+	// claude-sonnet-5 uses adaptive thinking and does not accept temperature.
+	cfg := effortConfig(Model{ID: "anthropic/claude-sonnet-5", Provider: ProviderAnthropic}, EffortNone, ChatBudget{}, &temp)
+	if _, ok := cfg["temperature"]; ok {
+		t.Errorf("temperature should be gated out for claude-sonnet-5, got %v", cfg)
 	}
 }
 

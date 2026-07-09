@@ -15,24 +15,31 @@ const approvalKey = "approval"
 type ToolMode string
 
 const (
-	ToolModeEnabled  ToolMode = "enabled"
-	ToolModeAsk      ToolMode = "ask"
-	ToolModeDisabled ToolMode = "disabled"
+	ToolModeOn   ToolMode = "on"
+	ToolModeAsk  ToolMode = "ask"
+	ToolModeOff  ToolMode = "off"
+	ToolModeAuto ToolMode = "auto"
+
+	// Backward-compatible aliases for the labels older clients send.
+	ToolModeEnabled  ToolMode = ToolModeOn
+	ToolModeDisabled ToolMode = ToolModeOff
 )
 
 // ToolPreferences carries the clicky-ui tool preference payload. The UI sends
-// "enabled", "ask", or "disabled"; "auto" and "off" are accepted for older
-// callers that used those labels.
+// "on", "ask", "off", or "auto"; "enabled" and "disabled" are accepted for
+// older callers that used those labels.
 type ToolPreferences map[string]ToolMode
 
 func normalizeToolMode(mode ToolMode) (ToolMode, bool) {
 	switch ToolMode(strings.ToLower(strings.TrimSpace(string(mode)))) {
-	case ToolModeEnabled, "auto":
-		return ToolModeEnabled, true
+	case ToolModeOn, "enabled":
+		return ToolModeOn, true
 	case ToolModeAsk:
 		return ToolModeAsk, true
-	case ToolModeDisabled, "off":
-		return ToolModeDisabled, true
+	case ToolModeOff, "disabled":
+		return ToolModeOff, true
+	case ToolModeAuto:
+		return ToolModeAuto, true
 	default:
 		return "", false
 	}
@@ -49,8 +56,12 @@ type ToolInfo struct {
 	// Group is the tool-group this tool belongs to (clicky/tool-group). When
 	// non-empty the preferences UI presents the group as a single entry and the
 	// group's preference governs every member tool.
-	Group     string
-	Operation *rpc.RPCOperation
+	Group             string
+	Parent            string
+	Icon              string
+	DefaultPermission ToolMode
+	Strict            *bool
+	Operation         *rpc.RPCOperation
 }
 
 func toolInfo(name string, op *rpc.RPCOperation) ToolInfo {
@@ -62,9 +73,28 @@ func toolInfo(name string, op *rpc.RPCOperation) ToolInfo {
 	info.Method = strings.ToUpper(op.Method)
 	info.Path = op.Path
 	info.Group = op.Group
+	info.DefaultPermission = ToolMode(op.ToolHints.DefaultPermission)
+	info.Parent = op.ToolHints.Parent
+	info.Icon = op.ToolHints.Icon
+	info.Strict = op.ToolHints.Strict
 	if op.Clicky != nil {
 		info.ClickyVerb = op.Clicky.Verb
 		info.ClickyScope = op.Clicky.Scope
+		if info.Group == "" {
+			info.Group = op.Clicky.Group
+		}
+		if info.DefaultPermission == "" {
+			info.DefaultPermission = ToolMode(op.Clicky.ToolHints.DefaultPermission)
+		}
+		if info.Parent == "" {
+			info.Parent = op.Clicky.ToolHints.Parent
+		}
+		if info.Icon == "" {
+			info.Icon = op.Clicky.ToolHints.Icon
+		}
+		if info.Strict == nil {
+			info.Strict = op.Clicky.ToolHints.Strict
+		}
 	}
 	return info
 }

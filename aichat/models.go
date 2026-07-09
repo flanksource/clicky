@@ -53,6 +53,7 @@ type Model struct {
 	Provider      Provider
 	Label         string // human-friendly menu label
 	Reasoning     bool   // model honours Effort
+	Temperature   bool   // model honours the temperature sampling control
 	ContextWindow int    // max context tokens, for a usage gauge's denominator
 
 	// Engine selects the execution path. The zero value (EngineGenkit) is the
@@ -76,6 +77,7 @@ type ModelInfo struct {
 	Provider      string `json:"provider"`
 	Label         string `json:"label"`
 	Reasoning     bool   `json:"reasoning"`
+	Temperature   bool   `json:"temperature"`
 	Configured    bool   `json:"configured"`
 	ContextWindow int    `json:"contextWindow"`
 }
@@ -98,11 +100,11 @@ var defaultCatalog = []Model{
 	{ID: "anthropic/claude-fable-5", Provider: ProviderAnthropic, Label: "Claude Fable 5", Reasoning: true, ContextWindow: 1000000},
 	{ID: "anthropic/claude-opus-4-8", Provider: ProviderAnthropic, Label: "Claude Opus 4.8", Reasoning: true, ContextWindow: 1000000},
 	{ID: "anthropic/claude-sonnet-5", Provider: ProviderAnthropic, Label: "Claude Sonnet 5", Reasoning: true, ContextWindow: 1000000},
-	{ID: "anthropic/claude-haiku-4-5", Provider: ProviderAnthropic, Label: "Claude Haiku 4.5", Reasoning: true, ContextWindow: 200000},
+	{ID: "anthropic/claude-haiku-4-5", Provider: ProviderAnthropic, Label: "Claude Haiku 4.5", Reasoning: true, Temperature: true, ContextWindow: 200000},
 	{ID: "openai/gpt-5.5", Provider: ProviderOpenAI, Label: "GPT-5.5", Reasoning: true, ContextWindow: 1000000},
 	{ID: "openai/gpt-5.4-mini", Provider: ProviderOpenAI, Label: "GPT-5.4 mini", Reasoning: true, ContextWindow: 400000},
-	{ID: "googleai/gemini-2.5-pro", Provider: ProviderGoogle, Label: "Gemini 2.5 Pro", Reasoning: true, ContextWindow: 1048576},
-	{ID: "googleai/gemini-3.5-flash", Provider: ProviderGoogle, Label: "Gemini 3.5 Flash", Reasoning: true, ContextWindow: 1048576},
+	{ID: "googleai/gemini-2.5-pro", Provider: ProviderGoogle, Label: "Gemini 2.5 Pro", Reasoning: true, Temperature: true, ContextWindow: 1048576},
+	{ID: "googleai/gemini-3.5-flash", Provider: ProviderGoogle, Label: "Gemini 3.5 Flash", Reasoning: true, Temperature: true, ContextWindow: 1048576},
 
 	// Agent-framework models (captain pkg/ai StreamingProvider). These run a
 	// supervised local subprocess that owns its own tools; ids carry the
@@ -245,6 +247,7 @@ func CatalogInfo(registered []Provider) []ModelInfo {
 			Provider:      string(m.Provider),
 			Label:         m.Label,
 			Reasoning:     m.Reasoning,
+			Temperature:   m.Temperature,
 			Configured:    configured,
 			ContextWindow: m.ContextWindow,
 		}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/firebase/genkit/go/ai"
 	"github.com/firebase/genkit/go/core/api"
@@ -11,6 +12,9 @@ import (
 	"github.com/firebase/genkit/go/plugins/anthropic"
 	"github.com/firebase/genkit/go/plugins/compat_oai/openai"
 	"github.com/firebase/genkit/go/plugins/googlegenai"
+
+	capai "github.com/flanksource/captain/pkg/ai"
+	capapi "github.com/flanksource/captain/pkg/api"
 )
 
 // ProviderCredential is a request-scoped API key for one upstream AI provider.
@@ -124,41 +128,16 @@ func firstNonEmptyString(vals ...string) string {
 	return ""
 }
 
-const defaultMaxOutputTokens = 4096
-
-// effortConfig builds the provider-specific generation config that translates
-// an Effort value into the provider's native reasoning control. Anthropic also
-// requires max_tokens on every request, so return a config for Anthropic even
-// when no reasoning effort is selected.
+// effortConfig delegates the effort/temperature translation to captain's shared
+// EffortConfig — the single source of truth for the adaptive-vs-enabled thinking
+// schema and per-model capability gating (reasoning, temperature) — then adds
+// the Genkit non-Anthropic maxOutputTokens cap.
 func effortConfig(m Model, e Effort, budget ChatBudget, temperature *float64) map[string]any {
-	cfg := map[string]any{}
-	switch m.Provider {
-	case ProviderOpenAI:
-		if m.Reasoning && e != EffortNone {
-			// OpenAI o-series: reasoning_effort low|medium|high.
-			cfg["reasoning_effort"] = string(e)
+	cfg := capai.EffortConfig(genkitBackend(m.Provider), bareModelID(m.ID), capapi.Effort(e), budget.MaxTokens, temperature)
+	if m.Provider != ProviderAnthropic && budget.MaxTokens > 0 {
+		if cfg == nil {
+			cfg = map[string]any{}
 		}
-	case ProviderGoogle:
-		if m.Reasoning && e != EffortNone {
-			// Gemini 2.5+: thinkingConfig.thinkingBudget (token budget).
-			cfg["thinkingConfig"] = map[string]any{"thinkingBudget": geminiThinkingBudget(e)}
-		}
-	case ProviderAnthropic:
-		cfg["max_tokens"] = anthropicMaxTokens(e, budget.MaxTokens)
-		if m.Reasoning && e != EffortNone {
-			// Anthropic: extended-thinking budget tokens.
-			cfg["thinking"] = map[string]any{
-				"type":          "enabled",
-				"budget_tokens": anthropicThinkingBudget(e),
-			}
-		}
-	default:
-		return nil
-	}
-	if temperature != nil {
-		cfg["temperature"] = *temperature
-	}
-	if budget.MaxTokens > 0 && m.Provider != ProviderAnthropic {
 		cfg["maxOutputTokens"] = budget.MaxTokens
 	}
 	if len(cfg) == 0 {
@@ -167,43 +146,28 @@ func effortConfig(m Model, e Effort, budget ChatBudget, temperature *float64) ma
 	return cfg
 }
 
-func anthropicThinkingBudget(e Effort) int {
-	switch e {
-	case EffortLow:
-		return 2048
-	case EffortMedium:
-		return 8192
-	case EffortHigh:
-		return 24576
+// genkitBackend maps a Genkit provider to captain's ai.Backend so EffortConfig
+// can resolve the model's capabilities from captain's registry.
+func genkitBackend(p Provider) capapi.Backend {
+	switch p {
+	case ProviderAnthropic:
+		return capapi.BackendAnthropic
+	case ProviderOpenAI:
+		return capapi.BackendOpenAI
+	case ProviderGoogle:
+		return capapi.BackendGemini
 	default:
-		return 0
+		return ""
 	}
 }
 
-func anthropicMaxTokens(e Effort, maxOutputTokens int) int {
-	if maxOutputTokens <= 0 {
-		maxOutputTokens = defaultMaxOutputTokens
+// bareModelID drops the "provider/" prefix from a Genkit model id so captain's
+// registry lookup hits the exact model.
+func bareModelID(id string) string {
+	if i := strings.IndexByte(id, '/'); i >= 0 {
+		return id[i+1:]
 	}
-	budget := anthropicThinkingBudget(e)
-	if budget == 0 {
-		return maxOutputTokens
-	}
-	// Anthropic's thinking budget is counted inside max_tokens. Leave room for
-	// the visible answer in addition to the hidden thinking budget.
-	return budget + maxOutputTokens
-}
-
-func geminiThinkingBudget(e Effort) int {
-	switch e {
-	case EffortLow:
-		return 2048
-	case EffortMedium:
-		return 8192
-	case EffortHigh:
-		return 24576
-	default:
-		return 0
-	}
+	return id
 }
 
 // generateOptions assembles the Generate options for a chat turn: model,
