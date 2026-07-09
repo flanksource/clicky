@@ -38,6 +38,7 @@ func TestDefineCustomToolsRegistersAndFilters(t *testing.T) {
 }
 
 func TestHandleToolsServesCustomToolCatalog(t *testing.T) {
+	strict := false
 	s := NewServer(Options{
 		CustomTools: []ToolDefinition{{
 			Name:        "formula patch",
@@ -47,8 +48,12 @@ func TestHandleToolsServesCustomToolCatalog(t *testing.T) {
 				"properties": map[string]any{"formula": map[string]any{"type": "string"}},
 				"required":   []any{"formula"},
 			},
-			Group:   "Formula",
-			Handler: func(context.Context, any) (any, error) { return map[string]any{"ok": true}, nil },
+			Group:             "Formula",
+			Parent:            "Rules",
+			Icon:              "square-function",
+			DefaultPermission: ToolModeAsk,
+			Strict:            &strict,
+			Handler:           func(context.Context, any) (any, error) { return map[string]any{"ok": true}, nil },
 		}},
 	})
 	defer s.Close()
@@ -69,6 +74,12 @@ func TestHandleToolsServesCustomToolCatalog(t *testing.T) {
 	tool := catalog.Tools[0]
 	if tool.Name != "formula_patch" || tool.Source != "custom" || tool.PreferenceKey != "Formula" {
 		t.Fatalf("tool = %+v, want sanitized custom tool in Formula group", tool)
+	}
+	if tool.Parent != "Rules" || tool.Icon != "square-function" || tool.DefaultPermission != ToolModeAsk {
+		t.Fatalf("tool metadata = %+v, want parent/icon/default permission", tool)
+	}
+	if tool.Strict == nil || *tool.Strict {
+		t.Fatalf("tool.Strict = %v, want false pointer", tool.Strict)
 	}
 	props := tool.InputSchema["properties"].(map[string]any)
 	if _, ok := props["formula"]; !ok {
