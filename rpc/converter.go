@@ -186,8 +186,17 @@ func (c *Converter) ConvertCommand(cmd *cobra.Command) (*RPCOperation, error) {
 		operation.Clicky.IDParam = meta.IDParam
 		operation.Clicky.SupportsLookup = meta.SupportsLookup
 		operation.Clicky.SupportsFilterMode = meta.SupportsFilterMode
-		operation.Clicky.Group = meta.ToolGroup
-		operation.Group = meta.ToolGroup
+		hints := meta.ToolHints
+		if hints.Group == "" {
+			hints.Group = meta.ToolGroup
+		}
+		operation.ToolHints = hints
+		operation.Clicky.ToolHints = hints
+		if !hints.IsZero() {
+			operation.Clicky.OpenAPIToolHints = &hints
+		}
+		operation.Clicky.Group = hints.Group
+		operation.Group = hints.Group
 	}
 
 	if df := clicky.GetDataFunc(cmd); df != nil {
