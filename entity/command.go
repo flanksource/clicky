@@ -210,7 +210,7 @@ func addNamedCommand[T any, R any](
 		subFilters = carrier.Filters()
 	}
 	if meta := GetCommandOpenAPIMeta(parent); meta != nil {
-		annotateEntityOperationCommand(cmd, parent, "action", "", "collection", name, "", len(subFilters) > 0, false, false, "")
+		annotateEntityOperationCommand(cmd, parent, "action", "", "collection", name, "", len(subFilters) > 0, false, false, MCPToolHints{})
 	}
 	if len(subFilters) > 0 {
 		lookupFuncRegistry.Store(cmd, buildLookupFunc[T](subFilters))
