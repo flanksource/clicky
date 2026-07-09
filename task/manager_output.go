@@ -39,9 +39,6 @@ func (w *bufferingWriter) Write(p []byte) (n int, err error) {
 			w.remainder = line
 			break
 		}
-		if line == "" {
-			continue
-		}
 		w.manager.outputBuffer = append(w.manager.outputBuffer, OutputEntry{
 			Timestamp: time.Now(),
 			Stream:    w.stream,
@@ -81,8 +78,17 @@ func (tm *Manager) StartCapturingOutput() {
 	tm.outputBuffer = []OutputEntry{}
 
 	// Create pipes for stdout and stderr
-	tm.stdoutReader, tm.stdoutWriter, _ = os.Pipe()
-	tm.stderrReader, tm.stderrWriter, _ = os.Pipe()
+	var err error
+	tm.stdoutReader, tm.stdoutWriter, err = os.Pipe()
+	if err != nil {
+		panic(fmt.Sprintf("task: failed to create capture pipe: %v", err))
+	}
+	tm.stderrReader, tm.stderrWriter, err = os.Pipe()
+	if err != nil {
+		panic(fmt.Sprintf("task: failed to create capture pipe: %v", err))
+	}
+	tm.stdoutDone = make(chan struct{})
+	tm.stderrDone = make(chan struct{})
 
 	os.Stdout = tm.stdoutWriter
 	os.Stderr = tm.stderrWriter
@@ -90,37 +96,29 @@ func (tm *Manager) StartCapturingOutput() {
 	// Start goroutines to read from pipes and buffer output.
 	// Each goroutine owns a single bufferingWriter so that partial lines
 	// are correctly accumulated across successive reads.
-	go func() {
-		w := &bufferingWriter{stream: "stdout", manager: tm}
-		buf := make([]byte, 4096)
-		for {
-			n, err := tm.stdoutReader.Read(buf)
-			if n > 0 {
-				_, _ = w.Write(buf[:n])
-			}
-			if err != nil {
-				w.Flush()
-				return
-			}
-		}
-	}()
-
-	go func() {
-		w := &bufferingWriter{stream: "stderr", manager: tm}
-		buf := make([]byte, 4096)
-		for {
-			n, err := tm.stderrReader.Read(buf)
-			if n > 0 {
-				_, _ = w.Write(buf[:n])
-			}
-			if err != nil {
-				w.Flush()
-				return
-			}
-		}
-	}()
+	go tm.drainPipe(tm.stdoutReader, "stdout", tm.stdoutDone)
+	go tm.drainPipe(tm.stderrReader, "stderr", tm.stderrDone)
 
 	tm.capturingOutput = true
+}
+
+// drainPipe reads a capture pipe until EOF, buffering complete lines,
+// then flushes the trailing partial line and closes done so
+// StopCapturingOutput can join it before snapshotting the buffer.
+func (tm *Manager) drainPipe(r *os.File, stream string, done chan struct{}) {
+	defer close(done)
+	w := &bufferingWriter{stream: stream, manager: tm}
+	buf := make([]byte, 4096)
+	for {
+		n, err := r.Read(buf)
+		if n > 0 {
+			_, _ = w.Write(buf[:n])
+		}
+		if err != nil {
+			w.Flush()
+			return
+		}
+	}
 }
 
 // StartCapturingOutput replaces os.Stdout and os.Stderr on the global
@@ -167,6 +165,13 @@ func (tm *Manager) StopCapturingOutput() {
 	if tm.stderrWriter != nil {
 		_ = tm.stderrWriter.Close()
 	}
+
+	// Join the drain goroutines so every buffered byte (including the
+	// final partial line) lands in outputBuffer before the snapshot.
+	// bufferMutex must not be held here: the drainers' final Write/Flush
+	// acquire it.
+	<-tm.stdoutDone
+	<-tm.stderrDone
 
 	// Restore original stdout/stderr
 	os.Stdout = tm.originalStdout

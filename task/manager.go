@@ -87,6 +87,8 @@ type Manager struct {
 	stdoutWriter    *os.File
 	stderrReader    *os.File
 	stderrWriter    *os.File
+	stdoutDone      chan struct{}
+	stderrDone      chan struct{}
 }
 
 var global *Manager
@@ -115,6 +117,25 @@ func init() {
 		SetNoColor(true)
 	}
 
+	if !IsForceInteractive() && defaultNoColor(global.isInteractive.Load()) {
+		SetNoColor(true)
+	}
+}
+
+// defaultNoColor mirrors formatters.IsNoColor conventions: color is disabled
+// when output is not a terminal, NO_COLOR is set (https://no-color.org/),
+// COLOR=no|false, or TERM=dumb.
+func defaultNoColor(isInteractive bool) bool {
+	if !isInteractive {
+		return true
+	}
+	if os.Getenv("NO_COLOR") != "" {
+		return true
+	}
+	if v := strings.ToLower(os.Getenv("COLOR")); v == "no" || v == "false" {
+		return true
+	}
+	return os.Getenv("TERM") == "dumb"
 }
 
 func isTestEnvironment() bool {
@@ -262,12 +283,12 @@ func newManagerWithConcurrency(maxConcurrent int) *Manager {
 		select {
 		case success := <-done:
 			if success {
-				fmt.Fprintf(os.Stderr, "All tasks completed gracefully\n")
+				logger.Infof("All tasks completed gracefully")
 			} else {
-				fmt.Fprintf(os.Stderr, "Task shutdown timeout reached\n")
+				logger.Warnf("Task shutdown timeout reached")
 			}
 		case <-time.After(tm.gracefulTimeout + time.Second):
-			fmt.Fprintf(os.Stderr, "Task shutdown timeout exceeded\n")
+			logger.Warnf("Task shutdown timeout exceeded")
 		}
 
 		tm.stopRender()
@@ -486,8 +507,6 @@ func StartGroup[T any](name string, opts ...TaskGroupOption) TypedGroup[T] {
 		cancel:    cancel,
 	}
 
-	global.groups = append(global.groups, group)
-
 	for _, opt := range opts {
 		opt(group)
 	}
@@ -502,6 +521,12 @@ func StartGroup[T any](name string, opts ...TaskGroupOption) TypedGroup[T] {
 	if group.concurrency > 0 {
 		group.sem = semaphore.NewWeighted(int64(group.concurrency))
 	}
+
+	// Publish only after the group is fully constructed so concurrent
+	// SnapshotAll/RunsRaw readers never observe a half-initialized group.
+	global.mu.Lock()
+	global.groups = append(global.groups, group)
+	global.mu.Unlock()
 
 	return TypedGroup[T]{group}
 }
