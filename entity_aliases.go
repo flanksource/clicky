@@ -37,6 +37,8 @@ type (
 	EntityBulkAction    = entity.EntityBulkAction
 	CommandOpenAPIMeta  = entity.CommandOpenAPIMeta
 	ResponseOpenAPIMeta = entity.ResponseOpenAPIMeta
+	MCPToolHints        = entity.MCPToolHints
+	ToolPermission      = entity.ToolPermission
 	DynamicFilter       = entity.DynamicFilter
 	DynamicEntitySpec   = entity.DynamicEntitySpec
 	ContextDataFunc     = entity.ContextDataFunc
@@ -78,6 +80,25 @@ var (
 	GetCommandOpenAPIMeta  = entity.GetCommandOpenAPIMeta
 	GetCommandResponseMeta = entity.GetCommandResponseMeta
 	SetCommandResponseMeta = entity.SetCommandResponseMeta
+	AnnotateTool           = entity.AnnotateTool
+)
+
+const (
+	ToolPermissionAsk  = entity.ToolPermissionAsk
+	ToolPermissionOff  = entity.ToolPermissionOff
+	ToolPermissionOn   = entity.ToolPermissionOn
+	ToolPermissionAuto = entity.ToolPermissionAuto
+
+	AnnotationClickyToolGroup             = entity.AnnotationClickyToolGroup
+	AnnotationClickyToolTitle             = entity.AnnotationClickyToolTitle
+	AnnotationClickyToolIcon              = entity.AnnotationClickyToolIcon
+	AnnotationClickyToolParent            = entity.AnnotationClickyToolParent
+	AnnotationClickyToolReadOnlyHint      = entity.AnnotationClickyToolReadOnlyHint
+	AnnotationClickyToolDestructiveHint   = entity.AnnotationClickyToolDestructiveHint
+	AnnotationClickyToolIdempotentHint    = entity.AnnotationClickyToolIdempotentHint
+	AnnotationClickyToolOpenWorldHint     = entity.AnnotationClickyToolOpenWorldHint
+	AnnotationClickyToolDefaultPermission = entity.AnnotationClickyToolDefaultPermission
+	AnnotationClickyToolStrict            = entity.AnnotationClickyToolStrict
 )
 
 // --- generic function wrappers (a generic func cannot be a var alias) ---

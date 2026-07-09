@@ -75,7 +75,7 @@ func flushPendingSubCommands(root *cobra.Command) {
 				if actionName == "" {
 					actionName = p.cmd.Use
 				}
-				annotateEntityOperationCommand(p.cmd, parent, "action", "", "collection", actionName, "", false, false, false, "")
+				annotateEntityOperationCommand(p.cmd, parent, "action", "", "collection", actionName, "", false, false, false, MCPToolHints{})
 			}
 			parent.AddCommand(p.cmd)
 		}

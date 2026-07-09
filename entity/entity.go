@@ -54,9 +54,9 @@ type EntityItem interface {
 
 // EntityInfo is the type-erased representation stored in the registry.
 type EntityInfo struct {
-	Name        string
-	Parent      string
-	Aliases     []string
+	Name    string
+	Parent  string
+	Aliases []string
 	// Icon is an opaque UI icon name carried through to the OpenAPI surface
 	// (x-clicky.surfaces[].icon). Empty for entities that declare no icon.
 	Icon string
@@ -78,6 +78,7 @@ type EntityInfo struct {
 	// inherited by every generated operation (an action may override it) and is
 	// used by AI tool-preference layers to toggle related tools together.
 	ToolGroup string
+	ToolHints MCPToolHints
 }
 
 // EntityOperation represents a single CRUD operation.
@@ -130,6 +131,7 @@ type ActionInfo struct {
 	// ToolGroup overrides the entity's tool group for this action only. Empty
 	// means the action inherits the entity's group.
 	ToolGroup string
+	ToolHints MCPToolHints
 }
 
 // BulkActionInfo is the type-erased representation of a bulk action.
@@ -315,6 +317,7 @@ type ActionSpec[R any] struct {
 	flags      ActionFlags
 	optionalID bool
 	toolGroup  string
+	toolHints  MCPToolHints
 }
 
 // Action creates a typed custom operation on a single entity by ID.
@@ -368,6 +371,16 @@ func (a *ActionSpec[R]) WithOptionalID() *ActionSpec[R] {
 // (the default) means the action inherits the entity's group.
 func (a *ActionSpec[R]) WithToolGroup(group string) *ActionSpec[R] {
 	a.toolGroup = group
+	a.toolHints.Group = group
+	return a
+}
+
+// WithToolHints overrides this action's inherited MCP tool hints.
+func (a *ActionSpec[R]) WithToolHints(hints MCPToolHints) *ActionSpec[R] {
+	a.toolHints = a.toolHints.merge(hints)
+	if hints.Group != "" {
+		a.toolGroup = hints.Group
+	}
 	return a
 }
 
@@ -391,6 +404,7 @@ func (a *ActionSpec[R]) actionInfo() ActionInfo {
 		ResponseType: responseTypeOf[R](),
 		OptionalID:   a.optionalID,
 		ToolGroup:    a.toolGroup,
+		ToolHints:    a.toolHints,
 	}
 	if a.runCtx != nil {
 		info.ContextDataFunc = func(ctx context.Context, flagMap map[string]string, args []string) (any, error) {
@@ -556,6 +570,7 @@ type Entity[T EntityItem, ListOpts any, R any] struct {
 	// WithToolGroup. AI tool-preference layers use it to toggle related tools
 	// together.
 	ToolGroup string
+	ToolHints MCPToolHints
 }
 
 // entityIDFrom resolves the entity id from the `id` flag or the first
@@ -612,6 +627,13 @@ func RegisterEntity[T EntityItem, ListOpts any, R any](e Entity[T, ListOpts, R])
 		ValidArgs:  e.ValidArgs,
 		FilterRefs: entityFilterRefs(e.Filters),
 		ToolGroup:  e.ToolGroup,
+		ToolHints:  e.ToolHints,
+	}
+	if info.ToolHints.Group == "" {
+		info.ToolHints.Group = info.ToolGroup
+	}
+	if info.ToolGroup == "" {
+		info.ToolGroup = info.ToolHints.Group
 	}
 
 	if e.ListPagedWithContext != nil || e.ListPaged != nil || e.ListWithContext != nil || e.List != nil {
@@ -1022,7 +1044,7 @@ func generateEntityCLI(parent *cobra.Command, entity EntityInfo) {
 			ContextDataFunc: action.ContextDataFunc,
 			FlagsType:       action.FlagsType,
 			ResponseType:    action.ResponseType,
-		}, entity.ValidArgs, "action", "", "entity", action.Name, "id", false, false, action.OptionalID, action.ToolGroup)
+		}, entity.ValidArgs, "action", "", "entity", action.Name, "id", false, false, action.OptionalID, action.ToolHints)
 	}
 
 	for _, ba := range entity.BulkActions {
@@ -1103,7 +1125,7 @@ func generateEntitySubcommand(parent *cobra.Command, entity EntityInfo, op Entit
 			false,
 			false,
 			false,
-			"",
+			MCPToolHints{},
 		)
 	case "create":
 		generateBodyCommand(parent, "create", fmt.Sprintf("Create a %s", entity.Name), op)
@@ -1124,7 +1146,7 @@ func generateEntitySubcommand(parent *cobra.Command, entity EntityInfo, op Entit
 			false,
 			false,
 			false,
-			"",
+			MCPToolHints{},
 		)
 	}
 }
@@ -1185,7 +1207,7 @@ func generateListCommand(parent *cobra.Command, entity EntityInfo, op EntityOper
 		op.BindCompletions(cmd)
 	}
 
-	annotateEntityOperationCommand(cmd, parent, "list", "", "collection", "", "", op.LookupFunc != nil, false, false, "")
+	annotateEntityOperationCommand(cmd, parent, "list", "", "collection", "", "", op.LookupFunc != nil, false, false, MCPToolHints{})
 	parent.AddCommand(cmd)
 	storeEntityDataFuncs(cmd, op)
 	SetCommandResponseMeta(cmd, ResponseOpenAPIMeta{
@@ -1216,7 +1238,7 @@ func generateIDCommand(
 	supportsLookup bool,
 	supportsFilterMode bool,
 	optionalID bool,
-	toolGroup string,
+	toolHints MCPToolHints,
 ) {
 	hasFlags := op.FlagsType != nil
 	idToken := "<id>"
@@ -1263,7 +1285,7 @@ func generateIDCommand(
 	if method == "" {
 		method = op.Method
 	}
-	annotateEntityOperationCommand(cmd, parent, metaVerb, method, scope, actionName, idParam, supportsLookup, supportsFilterMode, optionalID, toolGroup)
+	annotateEntityOperationCommand(cmd, parent, metaVerb, method, scope, actionName, idParam, supportsLookup, supportsFilterMode, optionalID, toolHints)
 	parent.AddCommand(cmd)
 	storeEntityDataFuncs(cmd, op)
 	SetCommandResponseMeta(cmd, ResponseOpenAPIMeta{
@@ -1344,7 +1366,7 @@ func generateBodyCommand(parent *cobra.Command, verb, short string, op EntityOpe
 		scope = "entity"
 		idParam = "id"
 	}
-	annotateEntityOperationCommand(cmd, parent, verb, "", scope, "", idParam, false, false, false, "")
+	annotateEntityOperationCommand(cmd, parent, verb, "", scope, "", idParam, false, false, false, MCPToolHints{})
 	parent.AddCommand(cmd)
 	storeEntityDataFuncs(cmd, op)
 	SetCommandResponseMeta(cmd, ResponseOpenAPIMeta{
@@ -1392,7 +1414,7 @@ func generateBulkActionCommand(parent *cobra.Command, ba BulkActionInfo) {
 		}
 	}
 
-	annotateEntityOperationCommand(cmd, parent, "action", "", "collection", ba.Name, "id", ba.LookupFunc != nil, ba.FilterFunc != nil, false, "")
+	annotateEntityOperationCommand(cmd, parent, "action", "", "collection", ba.Name, "id", ba.LookupFunc != nil, ba.FilterFunc != nil, false, MCPToolHints{})
 	parent.AddCommand(cmd)
 	dataFuncRegistry.Store(cmd, execute)
 	SetCommandResponseMeta(cmd, ResponseOpenAPIMeta{Type: ba.ResponseType})
