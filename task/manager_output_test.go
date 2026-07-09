@@ -7,6 +7,8 @@ import (
 	"os"
 	"testing"
 	"time"
+
+	flanksourceContext "github.com/flanksource/commons/context"
 )
 
 // TestCaptureAndStopFlushesInOrder verifies the core contract: while
@@ -131,6 +133,42 @@ func TestBlankLinesArePreserved(t *testing.T) {
 
 	if !bytes.Contains(stdoutBytes, []byte("a\n\nb\n")) {
 		t.Errorf("blank line between a and b must be preserved, got %q", stdoutBytes)
+	}
+}
+
+// TestWaitFlushesAndStopsCapture verifies that Wait() itself stops output
+// capture: an app that calls StartCapturingOutput then task.Wait() and exits
+// without the shutdown hook must still get its buffered output flushed and
+// os.Stdout restored to the pre-capture file.
+func TestWaitFlushesAndStopsCapture(t *testing.T) {
+	outR, errR, closeWriters := swapTestPipes(t)
+	swappedStdout := os.Stdout
+
+	originalGlobal := global
+	global = newTestManager(1)
+	t.Cleanup(func() {
+		global.StopCapturingOutput()
+		global = originalGlobal
+	})
+
+	StartCapturingOutput()
+	fmt.Println("wait-flush-sentinel")
+
+	StartTask[string]("trivial", func(flanksourceContext.Context, *Task) (string, error) {
+		return "", nil
+	})
+	Wait()
+
+	if os.Stdout != swappedStdout {
+		t.Errorf("Wait must stop capture and restore os.Stdout to the pre-capture file: got %p, want %p", os.Stdout, swappedStdout)
+	}
+
+	closeWriters()
+	stdoutBytes, _ := io.ReadAll(outR)
+	_, _ = io.ReadAll(errR)
+
+	if !bytes.Contains(stdoutBytes, []byte("wait-flush-sentinel")) {
+		t.Errorf("Wait must flush captured output, got %q", stdoutBytes)
 	}
 }
 

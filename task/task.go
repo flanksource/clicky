@@ -12,11 +12,9 @@ import (
 	flanksourceContext "github.com/flanksource/commons/context"
 	"github.com/flanksource/commons/logger"
 	"github.com/flanksource/commons/text"
-	"github.com/samber/lo"
 	"golang.org/x/sync/semaphore"
 
 	"github.com/flanksource/clicky/api"
-	"github.com/flanksource/clicky/formatters"
 )
 
 // Status represents the status of a task
@@ -206,10 +204,11 @@ type Task struct {
 	identity    string // Unique identifier for task deduplication
 
 	// 4-byte types
-	progress   int
-	maxValue   int
-	retryCount int
-	priority   int // Priority for queue ordering (lower = higher priority)
+	progress          int
+	maxValue          int
+	retryCount        int
+	priority          int // Priority for queue ordering (lower = higher priority)
+	plainLogsRendered int // buffered log entries already emitted by PlainRender; guarded by mu
 
 	// Smaller types
 	status Status
@@ -463,6 +462,8 @@ func (t *Task) Status() Status {
 
 // WaitTime returns how long the task waited before starting
 func (t *Task) WaitTime() time.Duration {
+	t.mu.Lock()
+	defer t.mu.Unlock()
 	if t.endTime.IsZero() {
 		return time.Since(t.startTime)
 	}
@@ -471,6 +472,8 @@ func (t *Task) WaitTime() time.Duration {
 
 // StartTime returns when the task started execution
 func (t *Task) StartTime() time.Time {
+	t.mu.Lock()
+	defer t.mu.Unlock()
 	return t.startTime
 }
 
@@ -634,6 +637,14 @@ func (t *Task) Duration() time.Duration {
 	return endTime.Sub(t.startTime)
 }
 
+// EndTime returns when the task reached a terminal state, or the zero time if
+// it is still pending/running.
+func (t *Task) EndTime() time.Time {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.endTime
+}
+
 // IsGroup returns false for Task
 func (t *Task) IsGroup() bool {
 	return false
@@ -666,96 +677,23 @@ func (t *Task) getDuration() string {
 	return text.HumanizeDuration(end.Sub(t.startTime))
 }
 
-// Pretty returns a formatted text representation of the task
+// Pretty returns a formatted text representation of the task with its full
+// buffered log history.
 func (t *Task) Pretty() api.Text {
 	t.mu.Lock()
 	defer t.mu.Unlock()
+	text, _ := t.prettyWithLogOffset(0)
+	return text
+}
 
-	if pretty, ok := t.result.(formatters.PrettyMixin); ok {
-		rv := reflect.ValueOf(pretty)
-		if rv.Kind() != reflect.Ptr || (!rv.IsNil() && rv.Pointer() != reflect.ValueOf(t).Pointer()) {
-			return pretty.Pretty()
-		}
-	}
-
-	var text api.Text
-
-	duration := t.getDuration()
-	displayName := t.name
-	if t.modelName != "" {
-		displayName = t.modelName + " " + displayName
-	}
-	if t.prompt != "" {
-		truncatedPrompt := t.prompt
-		displayName += fmt.Sprintf(" %q", truncatedPrompt)
-	}
-	if t.description != "" {
-		displayName += ": " + t.description
-	}
-
-	text.Content = displayName
-	text.Style = "max-w-[tw-20ch] truncate-suffix"
-	text = text.Space().Append(fmt.Sprintf("%-10s", duration), "")
-
-	// Note: We can't call t.Status() here since it would try to acquire the same mutex
-	// So we directly access t.status and handle the health check inline
-	if health, ok := t.result.(HealthMixin); ok {
-		switch health.Health() {
-		case HealthOK:
-			t.status = StatusSuccess
-		case HealthWarning:
-			t.status = StatusWarning
-		case HealthError:
-			t.status = StatusFailed
-		case HealthPending:
-			t.status = StatusPending
-		}
-	}
-	text = t.status.Apply(text)
-
-	level := t.ctx.Logger.GetLevel()
-	// Add logs as children if present from bufferedLogger
-	bufferedLogs := t.getBufferedLogger().GetLogs()
-	maxLogs := 5
-	if t.ctx.Logger.IsLevelEnabled(logger.Trace2) {
-		maxLogs = 1000
-	} else if t.ctx.Logger.IsLevelEnabled(logger.Trace1) {
-		maxLogs = 100
-	} else if t.ctx.Logger.IsLevelEnabled(logger.Trace) {
-		maxLogs = 50
-	} else if t.ctx.Logger.IsLevelEnabled(logger.Debug) {
-		maxLogs = 20
-	}
-	if len(bufferedLogs) > maxLogs {
-		excess := len(bufferedLogs) - maxLogs
-		bufferedLogs = bufferedLogs[len(bufferedLogs)-maxLogs:]
-		bufferedLogs = append(bufferedLogs, logger.BufferedLogEntry{Message: fmt.Sprintf("\t... %d more log lines ...", excess)})
-	}
-	for _, log := range bufferedLogs {
-		if level < log.Level {
-			continue
-		}
-		// Hide info logs when task completed successfully and log level is Info (0) or higher
-		if t.status == StatusSuccess && level <= logger.Info && log.Level == logger.Info {
-			continue
-		}
-		var logStyle string
-
-		switch log.Level {
-		case logger.Error:
-			logStyle = "text-red-600"
-		case logger.Warn:
-			logStyle = "text-yellow-600"
-		default:
-			logStyle = "text-gray-400"
-		}
-
-		text.Children = append(text.Children, api.Text{
-			Content: fmt.Sprintf("\n%s", lo.Ellipsis(log.Message, 500)),
-			Style:   logStyle,
-		})
-	}
-
+// prettyPlainDelta renders the task line plus only the log entries not yet
+// emitted by a previous PlainRender tick, then advances the cursor. The buffer
+// itself is preserved for Pretty(), snapshots, and the final tree.
+func (t *Task) prettyPlainDelta() api.Text {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	text, total := t.prettyWithLogOffset(t.plainLogsRendered)
+	t.plainLogsRendered = total
 	return text
 }
 
