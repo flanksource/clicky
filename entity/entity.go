@@ -375,6 +375,14 @@ func (a *ActionSpec[R]) WithToolGroup(group string) *ActionSpec[R] {
 	return a
 }
 
+// WithToolPermission sets this action's default approval mode. Actions carry no
+// verb default: unset defers to the entity's ToolPermission or, failing that,
+// the app's approval policy.
+func (a *ActionSpec[R]) WithToolPermission(permission ToolPermission) *ActionSpec[R] {
+	a.toolHints.DefaultPermission = permission
+	return a
+}
+
 // WithToolHints overrides this action's inherited MCP tool hints.
 func (a *ActionSpec[R]) WithToolHints(hints MCPToolHints) *ActionSpec[R] {
 	a.toolHints = a.toolHints.merge(hints)
@@ -1087,6 +1095,9 @@ func promoteListToEntityRoot(entityCmd *cobra.Command) {
 	// lookups for the promoted endpoint.
 	if listMeta := GetCommandOpenAPIMeta(listCmd); listMeta != nil && listMeta.SupportsLookup {
 		setCommandAnnotation(entityCmd, annotationClickySupportsLookup, "true")
+	}
+	if entityCmd.Annotations[annotationClickyToolPermission] == "" {
+		setCommandAnnotation(entityCmd, annotationClickyToolPermission, listCmd.Annotations[annotationClickyToolPermission])
 	}
 
 	if df := GetDataFunc(listCmd); df != nil {

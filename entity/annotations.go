@@ -192,6 +192,24 @@ func annotateEntityOperationCommand(
 	// Applied after inheritance: non-empty per-action hints replace inherited
 	// entity hints; empty values are no-ops.
 	AnnotateTool(cmd, toolHints)
+	if cmd.Annotations[annotationClickyToolPermission] == "" {
+		setCommandAnnotation(cmd, annotationClickyToolPermission, string(verbDefaultToolPermission(verb)))
+	}
+}
+
+// verbDefaultToolPermission is the approval mode a standard entity operation
+// carries when neither the entity nor the action declares one: reads auto-run,
+// mutations ask. Custom actions have no verb default — they declare their own
+// via WithToolPermission or fall through to the app's approval policy.
+func verbDefaultToolPermission(verb string) ToolPermission {
+	switch verb {
+	case "list", "get":
+		return ToolPermissionOn
+	case "create", "update", "delete":
+		return ToolPermissionAsk
+	default:
+		return ""
+	}
 }
 
 func inheritEntityAnnotations(cmd *cobra.Command, parent *cobra.Command) {
