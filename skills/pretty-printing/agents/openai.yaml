@@ -1,0 +1,4 @@
+interface:
+  display_name: "Clicky Pretty Printing"
+  short_description: "Build rich multi-format Clicky output"
+  default_prompt: "Use $pretty-printing to implement rich Clicky output for this Go type."

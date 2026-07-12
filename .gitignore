@@ -88,6 +88,7 @@ clicky
 !examples/enitity/webapp/.oxlintrc.json
 !examples/enitity/webapp/package.json
 !examples/enitity/webapp/pnpm-lock.yaml
+!skills/*/agents/openai.yaml
 !examples/enitity/webapp/pnpm-workspace.yaml
 !examples/enitity/webapp/tsconfig.json
 !examples/enitity/webapp/dist/
