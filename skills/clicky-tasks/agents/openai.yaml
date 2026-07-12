@@ -1,0 +1,4 @@
+interface:
+  display_name: "Clicky Tasks"
+  short_description: "Refactor Go concurrency into Clicky tasks"
+  default_prompt: "Use $clicky-tasks to refactor this Go concurrency flow into Clicky tasks."
