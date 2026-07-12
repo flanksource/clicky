@@ -95,6 +95,15 @@ func NewSwaggerServer(config *ServeConfig, rootCmd *cobra.Command, openAPIConfig
 	return server
 }
 
+// Executor returns the server's command executor, or nil when execution is not
+// enabled. Callers can use it to invoke operations programmatically — resolve an
+// operation with FindOperation(method, path) and run it via ExecuteCommand — so a
+// stored operation descriptor can be replayed through the same code path the HTTP
+// executor routes use.
+func (s *SwaggerServer) Executor() *CommandExecutor {
+	return s.executor
+}
+
 // Start starts the HTTP server
 // RegisterRoutes registers all API routes onto the provided mux.
 // This allows callers to compose the SwaggerServer routes with other handlers.
