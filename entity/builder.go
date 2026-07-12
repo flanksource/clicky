@@ -41,6 +41,14 @@ func (b *EntityBuilder[T, ListOpts, R]) ToolGroup(group string) *EntityBuilder[T
 	return b
 }
 
+// ToolPermission sets the default approval mode inherited by every generated
+// operation, replacing the standard verb defaults (list/get auto-run,
+// create/update/delete ask). A per-action WithToolPermission overrides it.
+func (b *EntityBuilder[T, ListOpts, R]) ToolPermission(permission ToolPermission) *EntityBuilder[T, ListOpts, R] {
+	b.entity.ToolHints.DefaultPermission = permission
+	return b
+}
+
 // ToolHints sets MCP-facing annotations and Clicky UI metadata inherited by all
 // generated operations. Per-action hints can override these values.
 func (b *EntityBuilder[T, ListOpts, R]) ToolHints(hints MCPToolHints) *EntityBuilder[T, ListOpts, R] {
