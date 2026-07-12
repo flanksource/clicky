@@ -9,6 +9,9 @@ import (
 
 	"github.com/firebase/genkit/go/ai"
 	"github.com/firebase/genkit/go/genkit"
+	capai "github.com/flanksource/captain/pkg/ai"
+	capapi "github.com/flanksource/captain/pkg/api"
+	"github.com/flanksource/clicky"
 	"github.com/spf13/cobra"
 )
 
@@ -139,10 +142,25 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusServiceUnavailable)
 		return
 	}
+	infos, err := capai.LiveCatalogInfo(providerStrings(providers))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusServiceUnavailable)
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(CatalogInfo(providers)); err != nil {
+	if err := json.NewEncoder(w).Encode(infos); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
+}
+
+// providerStrings projects the configured Genkit providers to the string form
+// captain's LiveCatalogInfo consumes for its per-request "configured" overlay.
+func providerStrings(providers []Provider) []string {
+	out := make([]string, len(providers))
+	for i, p := range providers {
+		out[i] = string(p)
+	}
+	return out
 }
 
 func (s *Server) availableProviders(ctx context.Context) ([]Provider, error) {
@@ -263,7 +281,7 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 	// Route agent-framework models to the captain agent engine before building
 	// the Genkit runtime, which the agent path does not use.
 	if id := modelIDForRequest(req, settings); id != "" {
-		if m, lookupErr := LookupModel(id); lookupErr == nil && m.Engine == EngineAgent {
+		if m, lookupErr := LookupModel(id); lookupErr == nil && m.IsAgent() {
 			s.serveAgentChat(w, r, m, req)
 			return
 		}
@@ -366,8 +384,8 @@ func (s *Server) resolveModel(id string, providers []Provider) (Model, error) {
 	if err != nil {
 		return Model{}, err
 	}
-	if !providerRegistered(providers, m.Provider) {
-		return Model{}, fmt.Errorf("model %q requires the %q provider, which is not configured (set its API key)", id, m.Provider)
+	if provider := modelProvider(m); !providerRegistered(providers, provider) {
+		return Model{}, fmt.Errorf("model %q requires the %q provider, which is not configured (set its API key)", id, provider)
 	}
 	return m, nil
 }
@@ -396,7 +414,13 @@ func (s *Server) stream(ctx context.Context, sse *sseWriter, rt chatRuntime, mod
 		preferences:     toolPrefs,
 		defaultApproval: s.approval,
 	})
-	opts := generateOptions(model, effort, budget, temperature, s.system, msgs, toolsForRequest(rt.tools, toolPrefs), cb, resumeOptions(resume)...)
+	selectedTools := registeredToolsForRequest(rt.tools, toolPrefs)
+	opts := generateOptions(model, effort, budget, temperature, s.system, msgs, toolRefs(selectedTools), cb, resumeOptions(resume)...)
+	if model.Backend == capapi.BackendAnthropic {
+		if mw := anthropicStrictToolsMiddleware(selectedTools, clicky.Warnf); mw != nil {
+			opts = append(opts, ai.WithMiddleware(mw))
+		}
+	}
 	resp, err := genkit.Generate(ctx, rt.g, opts...)
 	if err != nil {
 		return err

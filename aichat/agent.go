@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"os/exec"
 	"strings"
 	"time"
 
@@ -57,26 +56,6 @@ func defaultAgentProviderFactory(cfg capapi.Config) (capapi.StreamingProvider, e
 		return nil, fmt.Errorf("backend %q does not support streaming", cfg.Model.Backend)
 	}
 	return sp, nil
-}
-
-// agentModelConfigured reports whether the local backend for an agent model is
-// installed (best effort): codex needs the `codex` binary; claude-agent needs
-// `tsx` on PATH (or a provisioned agent dir, created lazily). A turn still fails
-// loud if the probe is wrong.
-func agentModelConfigured(m Model) bool {
-	switch m.Backend {
-	case capapi.BackendCodexCLI:
-		return lookPath("codex")
-	case capapi.BackendClaudeAgent, capapi.BackendClaudeCLI:
-		return lookPath("tsx")
-	default:
-		return false
-	}
-}
-
-func lookPath(bin string) bool {
-	_, err := exec.LookPath(bin)
-	return err == nil
 }
 
 // captainModel returns the model slug passed to the captain backend: AgentModel
