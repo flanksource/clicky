@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"strings"
 
 	"github.com/firebase/genkit/go/ai"
 	"github.com/firebase/genkit/go/core/api"
@@ -133,8 +132,8 @@ func firstNonEmptyString(vals ...string) string {
 // schema and per-model capability gating (reasoning, temperature) — then adds
 // the Genkit non-Anthropic maxOutputTokens cap.
 func effortConfig(m Model, e Effort, budget ChatBudget, temperature *float64) map[string]any {
-	cfg := capai.EffortConfig(genkitBackend(m.Provider), bareModelID(m.ID), capapi.Effort(e), budget.MaxTokens, temperature)
-	if m.Provider != ProviderAnthropic && budget.MaxTokens > 0 {
+	cfg := capai.EffortConfig(m.Backend, m.BareID(), capapi.Effort(e), budget.MaxTokens, temperature)
+	if m.Backend != capapi.BackendAnthropic && budget.MaxTokens > 0 {
 		if cfg == nil {
 			cfg = map[string]any{}
 		}
@@ -144,30 +143,6 @@ func effortConfig(m Model, e Effort, budget ChatBudget, temperature *float64) ma
 		return nil
 	}
 	return cfg
-}
-
-// genkitBackend maps a Genkit provider to captain's ai.Backend so EffortConfig
-// can resolve the model's capabilities from captain's registry.
-func genkitBackend(p Provider) capapi.Backend {
-	switch p {
-	case ProviderAnthropic:
-		return capapi.BackendAnthropic
-	case ProviderOpenAI:
-		return capapi.BackendOpenAI
-	case ProviderGoogle:
-		return capapi.BackendGemini
-	default:
-		return ""
-	}
-}
-
-// bareModelID drops the "provider/" prefix from a Genkit model id so captain's
-// registry lookup hits the exact model.
-func bareModelID(id string) string {
-	if i := strings.IndexByte(id, '/'); i >= 0 {
-		return id[i+1:]
-	}
-	return id
 }
 
 // generateOptions assembles the Generate options for a chat turn: model,

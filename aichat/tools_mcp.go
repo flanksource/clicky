@@ -49,7 +49,7 @@ func MCPRegisteredTools(ctx context.Context, g *genkit.Genkit, servers []MCPServ
 		catalog := mcpCatalogEntry(t)
 		refs[i] = registeredTool{
 			ref:     t,
-			info:    ToolInfo{Name: t.Name()},
+			info:    ToolInfo{Name: t.Name(), Strict: catalog.Strict},
 			catalog: &catalog,
 		}
 	}

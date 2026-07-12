@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/firebase/genkit/go/ai"
+	clickymcp "github.com/flanksource/clicky/mcp"
 	"github.com/flanksource/clicky/rpc"
 )
 
@@ -61,6 +62,9 @@ type ToolInfo struct {
 	Icon              string
 	DefaultPermission ToolMode
 	Strict            *bool
+	ReadOnlyHint      *bool
+	DestructiveHint   *bool
+	IdempotentHint    *bool
 	Operation         *rpc.RPCOperation
 }
 
@@ -77,6 +81,10 @@ func toolInfo(name string, op *rpc.RPCOperation) ToolInfo {
 	info.Parent = op.ToolHints.Parent
 	info.Icon = op.ToolHints.Icon
 	info.Strict = op.ToolHints.Strict
+	hints := clickymcp.EffectiveToolHints(op)
+	info.ReadOnlyHint = hints.ReadOnlyHint
+	info.DestructiveHint = hints.DestructiveHint
+	info.IdempotentHint = hints.IdempotentHint
 	if op.Clicky != nil {
 		info.ClickyVerb = op.Clicky.Verb
 		info.ClickyScope = op.Clicky.Scope

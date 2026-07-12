@@ -117,6 +117,11 @@ func containsType(parts []map[string]any, typ string) bool {
 // agentServer builds a server whose agent engine uses the supplied fake,
 // recording every Config the factory is asked to build.
 func agentServer(opts Options, fake *fakeStreamProvider, configs *[]capapi.Config) *Server {
+	// Register a stable test agent model so LookupModel routes these requests to
+	// the agent path regardless of the concrete ids captain's catalog ships. The
+	// upsert is idempotent and process-global; a fake provider factory serves the
+	// turn, so no real backend is contacted.
+	_ = RegisterModel(Model{ID: "claude-agent-sonnet", Backend: capapi.BackendClaudeAgent, Label: "Claude Agent · Sonnet (test)", Reasoning: true, ContextWindow: 200000})
 	opts.AgentProviderFactory = func(cfg capapi.Config) (capapi.StreamingProvider, error) {
 		if configs != nil {
 			*configs = append(*configs, cfg)
@@ -367,8 +372,8 @@ func TestAgentRequestEditOptInSkipsReadOnlyDefault(t *testing.T) {
 	if !air.Permissions.HasPreset(capapi.PresetEdit) {
 		t.Errorf("Edit should be true")
 	}
-	if air.Context.Dir != "/repo" {
-		t.Errorf("Cwd = %q, want /repo", air.Context.Dir)
+	if air.Cwd() != "/repo" {
+		t.Errorf("Cwd = %q, want /repo", air.Cwd())
 	}
 	if len(air.Permissions.Tools.Allow) != 0 {
 		t.Errorf("AllowedTools = %v, want empty (edit opt-in lets the backend curate)", air.Permissions.Tools.Allow)
@@ -393,29 +398,30 @@ func TestAgentRequestCarriesBudgetAndTemperature(t *testing.T) {
 	}
 }
 
+// TestAgentModelsInCatalog verifies the captain-owned catalog (consumed via the
+// aichat aliases) carries both agent and Genkit models, that IsAgent() tracks the
+// backend kind, and that every id round-trips through LookupModel with the slug
+// the captain backend receives.
 func TestAgentModelsInCatalog(t *testing.T) {
-	cases := map[string]struct {
-		engine     Engine
-		backend    capapi.Backend
-		agentModel string
-	}{
-		"claude-agent-sonnet":         {EngineAgent, capapi.BackendClaudeAgent, ""},
-		"codex-gpt-5-codex":           {EngineAgent, capapi.BackendCodexCLI, "gpt-5-codex"},
-		"anthropic/claude-sonnet-5": {EngineGenkit, "", ""},
-	}
-	for id, want := range cases {
-		m, err := LookupModel(id)
+	var sawAgent, sawGenkit bool
+	for _, model := range Catalog() {
+		got, err := LookupModel(model.ID)
 		if err != nil {
-			t.Fatalf("LookupModel(%q): %v", id, err)
+			t.Fatalf("LookupModel(%q): %v", model.ID, err)
 		}
-		if m.Engine != want.engine {
-			t.Errorf("%s engine = %q, want %q", id, m.Engine, want.engine)
+		if got.IsAgent() != (model.Backend.Kind() == "cli") {
+			t.Errorf("%s IsAgent = %v, but backend %q kind = %q", model.ID, got.IsAgent(), model.Backend, model.Backend.Kind())
 		}
-		if m.Backend != want.backend {
-			t.Errorf("%s backend = %q, want %q", id, m.Backend, want.backend)
+		if model.IsAgent() {
+			sawAgent = true
+			if want := firstNonEmptyString(model.AgentModel, model.ID); captainModel(model) != want {
+				t.Errorf("%s captainModel = %q, want %q", model.ID, captainModel(model), want)
+			}
+		} else {
+			sawGenkit = true
 		}
-		if captainModel(m) != firstNonEmptyString(want.agentModel, id) {
-			t.Errorf("%s captainModel = %q, want %q", id, captainModel(m), firstNonEmptyString(want.agentModel, id))
-		}
+	}
+	if !sawAgent || !sawGenkit {
+		t.Fatalf("catalog should contain both agent and genkit models: agent=%v genkit=%v", sawAgent, sawGenkit)
 	}
 }
