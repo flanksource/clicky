@@ -36,6 +36,9 @@ type ToolDefinition struct {
 	Icon              string
 	DefaultPermission ToolMode
 	Strict            *bool
+	ReadOnlyHint      *bool
+	DestructiveHint   *bool
+	IdempotentHint    *bool
 	// Group, when set, places this custom tool in a tool-group so the
 	// preferences UI presents it under the group rather than individually.
 	Group   string
@@ -76,6 +79,13 @@ func DefineCustomTools(g *genkit.Genkit, defs []ToolDefinition) ([]registeredToo
 			Icon:              def.Icon,
 			DefaultPermission: defaultPermissionMode(def.DefaultPermission),
 			Strict:            def.Strict,
+			ReadOnlyHint:      def.ReadOnlyHint,
+			DestructiveHint:   def.DestructiveHint,
+			IdempotentHint:    def.IdempotentHint,
+		}
+		toolOpts := []ai.ToolOption{
+			ai.WithInputSchema(schema),
+			ai.WithStrictSchema(def.Strict != nil && *def.Strict),
 		}
 		tool := genkit.DefineTool[any, any](g, name, def.Description,
 			func(tc *ai.ToolContext, input any) (any, error) {
@@ -84,7 +94,7 @@ func DefineCustomTools(g *genkit.Genkit, defs []ToolDefinition) ([]registeredToo
 				}
 				return def.Handler(tc.Context, input)
 			},
-			ai.WithInputSchema(schema),
+			toolOpts...,
 		)
 		catalog := customCatalogEntry(def, name, schema)
 		out = append(out, registeredTool{ref: tool, info: info, catalog: &catalog})
@@ -113,10 +123,14 @@ func toolRefs(tools []registeredTool) []ai.ToolRef {
 }
 
 func toolsForRequest(tools []registeredTool, prefs ToolPreferences) []ai.ToolRef {
+	return toolRefs(registeredToolsForRequest(tools, prefs))
+}
+
+func registeredToolsForRequest(tools []registeredTool, prefs ToolPreferences) []registeredTool {
 	if len(tools) == 0 {
 		return nil
 	}
-	refs := make([]ai.ToolRef, 0, len(tools))
+	selected := make([]registeredTool, 0, len(tools))
 	for _, tool := range tools {
 		mode, ok := effectivePreference(prefs, tool.info)
 		if !ok {
@@ -125,9 +139,9 @@ func toolsForRequest(tools []registeredTool, prefs ToolPreferences) []ai.ToolRef
 		if mode == ToolModeOff {
 			continue
 		}
-		refs = append(refs, tool.ref)
+		selected = append(selected, tool)
 	}
-	return refs
+	return selected
 }
 
 func normalizedPreference(prefs ToolPreferences, name string) (ToolMode, bool) {

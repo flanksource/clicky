@@ -90,6 +90,13 @@ func TestClickyToolCatalogPreservesInputSchema(t *testing.T) {
 	if name["type"] != "string" || name["description"] == "" {
 		t.Fatalf("name schema = %v", name)
 	}
+	withDefinition, ok := tools[0].ref.(toolWithDefinition)
+	if !ok {
+		t.Fatalf("tool ref %T does not expose its Genkit definition", tools[0].ref)
+	}
+	if strict, ok := withDefinition.Definition().Metadata["strict"].(bool); !ok || strict {
+		t.Fatalf("Genkit strict metadata = %v, want default false", withDefinition.Definition().Metadata["strict"])
+	}
 }
 
 func TestJSONSchemaConversion(t *testing.T) {

@@ -3,6 +3,8 @@ package aichat
 import (
 	"context"
 	"testing"
+
+	capai "github.com/flanksource/captain/pkg/ai"
 )
 
 func TestRequireApprovalForEmptyIsNil(t *testing.T) {
@@ -105,9 +107,9 @@ func TestToolsForRequestDropsDefaultOffTools(t *testing.T) {
 }
 
 func TestCatalogInfoMarksConfiguredProviders(t *testing.T) {
-	info := CatalogInfo([]Provider{ProviderAnthropic})
-	if len(info) != len(catalog) {
-		t.Fatalf("CatalogInfo len = %d, want %d", len(info), len(catalog))
+	info := capai.CatalogInfo(providerStrings([]Provider{ProviderAnthropic}))
+	if len(info) != len(Catalog()) {
+		t.Fatalf("CatalogInfo len = %d, want %d", len(info), len(Catalog()))
 	}
 	var sawConfigured, sawUnconfigured bool
 	for _, m := range info {
@@ -116,7 +118,7 @@ func TestCatalogInfoMarksConfiguredProviders(t *testing.T) {
 		}
 		// Agent models are gated on local backend availability, not on the
 		// registered Genkit providers passed here, so skip them for this check.
-		if model, err := LookupModel(m.ID); err == nil && model.Engine == EngineAgent {
+		if model, err := LookupModel(m.ID); err == nil && model.IsAgent() {
 			continue
 		}
 		if m.Provider == string(ProviderAnthropic) {

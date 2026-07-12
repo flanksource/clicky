@@ -3,7 +3,7 @@ module github.com/flanksource/clicky/aichat
 go 1.26.1
 
 require (
-	github.com/firebase/genkit/go v1.8.0
+	github.com/firebase/genkit/go v1.10.0
 	github.com/flanksource/captain v0.0.9
 	github.com/flanksource/clicky v1.21.37
 	github.com/spf13/cobra v1.10.2

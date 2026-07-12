@@ -62,12 +62,17 @@ func (t *ClickyToolset) DefineRegisteredTools(g *genkit.Genkit) []registeredTool
 		}
 		seen[name] = true
 		schema := jsonSchema(op.Schema)
+		info := toolInfo(name, op)
+		toolOpts := []ai.ToolOption{
+			ai.WithInputSchema(schema),
+			ai.WithStrictSchema(info.Strict != nil && *info.Strict),
+		}
 		tool := genkit.DefineTool[any, any](g, name, op.Description,
 			t.handlerFor(op),
-			ai.WithInputSchema(schema),
+			toolOpts...,
 		)
 		catalog := clickyCatalogEntry(name, op, schema)
-		refs = append(refs, registeredTool{ref: tool, info: toolInfo(name, op), catalog: &catalog})
+		refs = append(refs, registeredTool{ref: tool, info: info, catalog: &catalog})
 	}
 	return refs
 }

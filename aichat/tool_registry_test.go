@@ -87,6 +87,48 @@ func TestHandleToolsServesCustomToolCatalog(t *testing.T) {
 	}
 }
 
+func TestDefineCustomToolsPropagatesExplicitStrictness(t *testing.T) {
+	strict := false
+	tools, err := DefineCustomTools(genkit.Init(context.Background()), []ToolDefinition{{
+		Name:   "loose_tool",
+		Strict: &strict,
+		Handler: func(context.Context, any) (any, error) {
+			return map[string]any{"ok": true}, nil
+		},
+	}})
+	if err != nil {
+		t.Fatalf("DefineCustomTools: %v", err)
+	}
+	withDefinition, ok := tools[0].ref.(toolWithDefinition)
+	if !ok {
+		t.Fatalf("tool ref %T does not expose its Genkit definition", tools[0].ref)
+	}
+	definition := withDefinition.Definition()
+	if got, ok := definition.Metadata["strict"].(bool); !ok || got {
+		t.Fatalf("Genkit strict metadata = %v, want false", definition.Metadata["strict"])
+	}
+}
+
+func TestDefineCustomToolsDefaultsToNonStrict(t *testing.T) {
+	tools, err := DefineCustomTools(genkit.Init(context.Background()), []ToolDefinition{{
+		Name: "default_tool",
+		Handler: func(context.Context, any) (any, error) {
+			return map[string]any{"ok": true}, nil
+		},
+	}})
+	if err != nil {
+		t.Fatalf("DefineCustomTools: %v", err)
+	}
+	withDefinition, ok := tools[0].ref.(toolWithDefinition)
+	if !ok {
+		t.Fatalf("tool ref %T does not expose its Genkit definition", tools[0].ref)
+	}
+	definition := withDefinition.Definition()
+	if got, ok := definition.Metadata["strict"].(bool); !ok || got {
+		t.Fatalf("Genkit strict metadata = %v, want default false", definition.Metadata["strict"])
+	}
+}
+
 func TestCustomToolHonorsAskPreference(t *testing.T) {
 	cfg := toolRuntimeConfig{
 		preferences: ToolPreferences{"xero_formula_patch": ToolModeAsk},

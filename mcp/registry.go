@@ -93,24 +93,13 @@ func NewMcpTool(rpcOp *rpc.RPCOperation) *ToolDefinition {
 const clickyToolMetaKey = "com.flanksource.clicky/tool"
 
 func toolAnnotations(rpcOp *rpc.RPCOperation) *ToolAnnotations {
-	hints := operationToolHints(rpcOp)
+	hints := EffectiveToolHints(rpcOp)
 	annotations := &ToolAnnotations{
 		Title:           hints.Title,
 		ReadOnlyHint:    hints.ReadOnlyHint,
 		DestructiveHint: hints.DestructiveHint,
 		IdempotentHint:  hints.IdempotentHint,
 		OpenWorldHint:   hints.OpenWorldHint,
-	}
-
-	readOnly, destructive, idempotent := inferredToolSemantics(rpcOp)
-	if annotations.ReadOnlyHint == nil {
-		annotations.ReadOnlyHint = readOnly
-	}
-	if annotations.DestructiveHint == nil {
-		annotations.DestructiveHint = destructive
-	}
-	if annotations.IdempotentHint == nil {
-		annotations.IdempotentHint = idempotent
 	}
 
 	if annotations.Title == "" &&
@@ -152,7 +141,7 @@ func inferredToolSemantics(rpcOp *rpc.RPCOperation) (readOnly *bool, destructive
 }
 
 func clickyToolMeta(rpcOp *rpc.RPCOperation) map[string]any {
-	hints := operationToolHints(rpcOp)
+	hints := EffectiveToolHints(rpcOp)
 	meta := map[string]any{}
 	if hints.Icon != "" {
 		meta["icon"] = hints.Icon
@@ -175,7 +164,11 @@ func clickyToolMeta(rpcOp *rpc.RPCOperation) map[string]any {
 	return map[string]any{clickyToolMetaKey: meta}
 }
 
-func operationToolHints(rpcOp *rpc.RPCOperation) entity.MCPToolHints {
+// EffectiveToolHints returns the explicit MCP/Clicky hints for an operation,
+// filling in missing safety semantics from its HTTP method and Clicky verb.
+// Keeping this inference shared ensures MCP exposure and in-process AI chat rank
+// tools from the same read-only/destructive/idempotent signals.
+func EffectiveToolHints(rpcOp *rpc.RPCOperation) entity.MCPToolHints {
 	if rpcOp == nil {
 		return entity.MCPToolHints{}
 	}
@@ -218,6 +211,16 @@ func operationToolHints(rpcOp *rpc.RPCOperation) entity.MCPToolHints {
 	}
 	if hints.Group == "" {
 		hints.Group = rpcOp.Group
+	}
+	readOnly, destructive, idempotent := inferredToolSemantics(rpcOp)
+	if hints.ReadOnlyHint == nil {
+		hints.ReadOnlyHint = readOnly
+	}
+	if hints.DestructiveHint == nil {
+		hints.DestructiveHint = destructive
+	}
+	if hints.IdempotentHint == nil {
+		hints.IdempotentHint = idempotent
 	}
 	return hints
 }
