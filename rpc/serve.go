@@ -823,8 +823,12 @@ func sanitizedAttachmentFilename(raw string) string {
 
 func shouldFormatPagedRows(format string) bool {
 	switch format {
-	case "json", "clicky-json", "yaml", "yml":
+	// Data-exchange formats keep the full {data, page} envelope.
+	case "json", "yaml", "yml":
 		return false
+	// Render formats (clicky-json, table, csv, html, pretty, markdown, pdf)
+	// unwrap to the bare rows: the document root is the table and paging travels
+	// via the X-Total-Count / X-Page-* headers set above.
 	default:
 		return true
 	}
@@ -863,6 +867,9 @@ func extractFormatOpts(r *http.Request) formatOptions {
 			switch strings.ToLower(ct) {
 			case "application/json":
 				opts.Format = "json"
+				return opts
+			case "application/x-ndjson", "application/ndjson":
+				opts.Format = "ndjson"
 				return opts
 			case "application/clicky+json", "application/json+clicky":
 				opts.Format = "clicky-json"
@@ -921,6 +928,8 @@ func formatToContentType(format string) string {
 		return "application/json+clicky"
 	case "yaml", "yml":
 		return "application/yaml"
+	case "ndjson":
+		return "application/x-ndjson"
 	case "csv":
 		return "text/csv; charset=utf-8"
 	case "html", "html-react":

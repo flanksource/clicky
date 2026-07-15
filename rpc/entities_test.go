@@ -167,6 +167,62 @@ func TestEntityPagedList_ResponseEnvelopeAndHeaders(t *testing.T) {
 	assert.Equal(t, int64(7), payload.Page.Total)
 }
 
+func TestEntityPagedList_ClickyJSONUnwrapsToTable(t *testing.T) {
+	const name = "rpc-entity-paged-list-clicky-json-test"
+	clicky.NewEntity[testEntity, pagedListOpts, testEntity](name).
+		ListPaged(func(opts pagedListOpts) (clicky.PagedResult[testEntity], error) {
+			return clicky.NewPagedResult(
+				[]testEntity{{ID: "5", Name: "five"}, {ID: "6", Name: "six"}},
+				opts.Limit,
+				opts.Offset,
+				7,
+			), nil
+		}).
+		Register()
+
+	root := &cobra.Command{Use: "testapp"}
+	clicky.GenerateCLI(root)
+	server := NewSwaggerServer(
+		&ServeConfig{
+			Title:      "t",
+			Version:    "v",
+			SkipHealth: true,
+			Executor: &ExecutorConfig{
+				Enabled:    true,
+				PathPrefix: "/api/v1",
+			},
+		},
+		root,
+		&OpenAPIConfig{Title: "t", Version: "v"},
+	)
+	mux := http.NewServeMux()
+	server.RegisterExecutionRoutes(mux)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/"+name+"?limit=2&offset=4", nil)
+	req.Header.Set("Accept", "application/json+clicky")
+	rr := httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+
+	require.Equal(t, http.StatusOK, rr.Code)
+	// Paging still travels via headers, never the clicky body.
+	assert.Equal(t, "7", rr.Header().Get("X-Total-Count"))
+	assert.Equal(t, "2", rr.Header().Get("X-Page-Limit"))
+	assert.Equal(t, "4", rr.Header().Get("X-Page-Offset"))
+
+	// The clicky document root is the table itself — not a {data, page} map —
+	// so the React DataTable/picker renders rows and marks attached ones.
+	var doc struct {
+		Version int `json:"version"`
+		Node    struct {
+			Kind string            `json:"kind"`
+			Rows []json.RawMessage `json:"rows"`
+		} `json:"node"`
+	}
+	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &doc))
+	assert.Equal(t, "table", doc.Node.Kind)
+	assert.Len(t, doc.Node.Rows, 2)
+}
+
 // TestEntityRoot_RunnableListShortcut_OmitsGlobalFlags pins the default
 // behaviour that the bare entity command (`testapp <entity>`) is runnable as
 // its own list, exposed as GET /api/v1/<entity>, and that the promotion copies

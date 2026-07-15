@@ -73,7 +73,18 @@ type ClickyOperationMeta struct {
 	Group              string        `json:"group,omitempty"`
 	ToolHints          MCPToolHints  `json:"-"`
 	OpenAPIToolHints   *MCPToolHints `json:"toolHints,omitempty"`
+	Export             *ExportMeta   `json:"export,omitempty"`
 	Order              int           `json:"-"`
+}
+
+// ExportMeta advertises the representations and scopes an operation can
+// download. UI consumers preserve legacy download behavior when this metadata
+// is absent.
+type ExportMeta struct {
+	Formats       []string       `json:"formats,omitempty"`
+	Scopes        []string       `json:"scopes,omitempty"`
+	AllRowsMode   string         `json:"allRowsMode,omitempty"`
+	FormatMaxRows map[string]int `json:"formatMaxRows,omitempty"`
 }
 
 // RPCParameter represents a parameter in an RPC operation.
