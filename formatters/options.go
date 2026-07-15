@@ -16,6 +16,7 @@ import (
 var knownFormats = map[string]bool{
 	"pretty":      true,
 	"json":        true,
+	"ndjson":      true,
 	"yaml":        true,
 	"yml":         true,
 	"clicky-json": true,
@@ -32,7 +33,7 @@ var knownFormats = map[string]bool{
 	"tree":        true,
 }
 
-const FormatSpecHelp = "Output format. Use one stdout format (pretty|json|yaml|yml|csv|markdown|md|html|html-static|html-react|clicky-json|pdf|slack|excel|xlsx|tree), " +
+const FormatSpecHelp = "Output format. Use one stdout format (pretty|json|ndjson|yaml|yml|csv|markdown|md|html|html-static|html-react|clicky-json|pdf|slack|excel|xlsx|tree), " +
 	"or comma-separated format=file sinks such as 'pretty,json=out.json,markdown=summary.md'."
 
 // canonicalFormat normalises common aliases (e.g. "md" -> "markdown").

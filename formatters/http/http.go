@@ -174,6 +174,8 @@ func acceptToFormat(accept string) string {
 		contentType := trimQuality(part)
 
 		switch contentType {
+		case "application/x-ndjson", "application/ndjson":
+			return "ndjson"
 		case "application/yaml", "text/yaml", "application/x-yaml":
 			return "yaml"
 		case "text/csv", "application/csv":
@@ -242,6 +244,8 @@ func formatToContentType(format string) string {
 		return "application/json"
 	case "clicky-json":
 		return "application/json+clicky"
+	case "ndjson":
+		return "application/x-ndjson"
 	case "yaml", "yml":
 		return "application/yaml"
 	case "csv":

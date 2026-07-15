@@ -172,6 +172,7 @@ type OpenAPISchema struct {
 	Properties           map[string]*OpenAPISchema `json:"properties,omitempty"`
 	Required             []string                  `json:"required,omitempty"`
 	Items                *OpenAPISchema            `json:"items,omitempty"`
+	OneOf                []*OpenAPISchema          `json:"oneOf,omitempty"`
 	AdditionalProperties *OpenAPISchema            `json:"additionalProperties,omitempty"`
 	Nullable             bool                      `json:"nullable,omitempty"`
 	Example              interface{}               `json:"example,omitempty"`
