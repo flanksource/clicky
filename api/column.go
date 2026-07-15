@@ -7,6 +7,7 @@ import "fmt"
 type ColumnDef struct {
 	Name          string
 	Label         string
+	Kind          string
 	Style         string
 	HeaderStyle   string
 	Type          string
@@ -37,6 +38,14 @@ func Column(name string) *ColumnBuilder {
 // Label sets the display label for the column header.
 func (b *ColumnBuilder) Label(label string) *ColumnBuilder {
 	b.col.Label = label
+	return b
+}
+
+// Kind sets the semantic UI column kind (for example timestamp, tags, or
+// status). Unlike Type/Format, Kind controls table interaction and rendering
+// behavior rather than value coercion.
+func (b *ColumnBuilder) Kind(kind string) *ColumnBuilder {
+	b.col.Kind = kind
 	return b
 }
 
@@ -128,6 +137,7 @@ func NewEmptyTable(columns []ColumnDef) TextTable {
 		table.Columns = append(table.Columns, PrettyField{
 			Name:          col.Name,
 			Label:         col.DisplayLabel(),
+			Kind:          col.Kind,
 			Style:         style,
 			LabelStyle:    col.HeaderStyle,
 			Type:          col.Type,
@@ -157,7 +167,7 @@ func NewTableFrom[T TableProvider](items []T) TextTable {
 
 		for _, col := range columns {
 			if val, exists := rowData[col.Name]; exists && col.Hidden {
-				row[col.Name] = TypedValue{Textable: Text{}.Add(convertToTextable(val))}
+				row[col.Name] = TypedValue{Textable: Text{}.Add(ColumnTextable(col, val))}
 				continue
 			}
 			if col.Hidden {
@@ -168,7 +178,7 @@ func NewTableFrom[T TableProvider](items []T) TextTable {
 				if col.MaxWidth > 0 {
 					style = fmt.Sprintf("%s max-w-[%dch] truncate", style, col.MaxWidth)
 				}
-				text := Text{Style: style}.Add(convertToTextable(val))
+				text := Text{Style: style}.Add(ColumnTextable(col, val))
 				row[col.Name] = TypedValue{Textable: text}
 			} else {
 				row[col.Name] = TypedValue{Textable: Text{}}

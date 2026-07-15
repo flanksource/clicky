@@ -52,6 +52,7 @@ type RenderFunc func(value interface{}, field PrettyField, theme Theme) string
 type PrettyField struct {
 	Name          string            `json:"name" yaml:"name"`
 	Aliases       []string          `json:"aliases,omitempty" yaml:"aliases,omitempty"`
+	Kind          string            `json:"kind,omitempty" yaml:"kind,omitempty"`
 	Type          string            `json:"type,omitempty" yaml:"type,omitempty"`
 	Format        string            `json:"format,omitempty" yaml:"format,omitempty"`
 	Label         string            `json:"label,omitempty" yaml:"label,omitempty"`

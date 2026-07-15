@@ -1,9 +1,45 @@
 package api
 
 import (
+	"strings"
+
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
+
+type cappedWidthTableRow struct{}
+
+func (cappedWidthTableRow) Columns() []ColumnDef {
+	return []ColumnDef{
+		Column("agent").Label("Agent").MaxWidth(12).Build(),
+		Column("session").Label("Session").MaxWidth(8).Build(),
+		Column("title").Label("Title").Build(),
+	}
+}
+
+type shrinkingCappedWidthTableRow struct{}
+
+func (shrinkingCappedWidthTableRow) Columns() []ColumnDef {
+	return []ColumnDef{
+		Column("prompt").Label("Prompt").MaxWidth(30).Build(),
+		Column("usage").Label("Usage").Build(),
+	}
+}
+
+func (shrinkingCappedWidthTableRow) Row() map[string]any {
+	return map[string]any{
+		"prompt": "A capped column must yield space when the terminal is narrow",
+		"usage":  "$1.25",
+	}
+}
+
+func (cappedWidthTableRow) Row() map[string]any {
+	return map[string]any{
+		"agent":   "codex-agent",
+		"session": "019f5c3c",
+		"title":   "Title uses all terminal space left after capped columns",
+	}
+}
 
 var _ = Describe("WithoutEmptyColumns", func() {
 	It("removes columns where every row is empty", func() {
@@ -102,5 +138,35 @@ var _ = Describe("TextTable Markdown pipe escaping", func() {
 		}
 		Expect(t.Markdown()).To(ContainSubstring(`x\|y`))
 		Expect(t.Markdown()).NotTo(ContainSubstring(`| x|y |`))
+	})
+})
+
+var _ = Describe("TextTable terminal column widths", func() {
+	It("keeps capped columns compact and gives uncapped columns the remaining width", func() {
+		previousWidth := terminalWidth.Swap(120)
+		DeferCleanup(func() { terminalWidth.Store(previousWidth) })
+
+		rendered := NewTableFrom([]cappedWidthTableRow{{}}).String()
+		var header string
+		for _, line := range strings.Split(rendered, "\n") {
+			if strings.Contains(line, "│Agent") {
+				header = line
+				break
+			}
+		}
+		Expect(header).NotTo(BeEmpty())
+		cells := strings.Split(strings.Trim(header, "│"), "│")
+		Expect(cells).To(HaveLen(3))
+		Expect(len([]rune(cells[0]))).To(BeNumerically("<=", 12))
+		Expect(len([]rune(cells[1]))).To(BeNumerically("<=", 8))
+		Expect(len([]rune(cells[2]))).To(BeNumerically(">", 80))
+	})
+
+	It("allows capped columns to shrink when content exceeds the terminal width", func() {
+		previousWidth := terminalWidth.Swap(30)
+		DeferCleanup(func() { terminalWidth.Store(previousWidth) })
+
+		rendered := NewTableFrom([]shrinkingCappedWidthTableRow{{}}).String()
+		Expect(rendered).To(ContainSubstring("$1.25"))
 	})
 })
