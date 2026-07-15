@@ -182,6 +182,10 @@ func TestHTMLReactConvertTable(t *testing.T) {
 			api.Text{Content: "Name"},
 			api.Text{Content: "Status"},
 		},
+		Columns: []api.PrettyField{
+			{Name: "Name", Label: "Name"},
+			{Name: "Status", Label: "Status", Kind: "status", Type: api.ColumnTypeKeyValue},
+		},
 		Rows: []api.TableRow{
 			{
 				"Name":   api.TypedValue{Textable: api.Text{Content: "svc-a"}},
@@ -204,6 +208,12 @@ func TestHTMLReactConvertTable(t *testing.T) {
 	}
 	if len(node.Columns) != 2 {
 		t.Fatalf("expected 2 columns, got %d", len(node.Columns))
+	}
+	if node.Columns[1].Kind != "status" {
+		t.Fatalf("expected status column kind to survive clicky conversion, got %#v", node.Columns[1])
+	}
+	if node.Columns[1].Type != api.ColumnTypeKeyValue {
+		t.Fatalf("expected column type to survive clicky conversion, got %#v", node.Columns[1])
 	}
 	if len(node.Rows) != 2 {
 		t.Fatalf("expected 2 rows, got %d", len(node.Rows))

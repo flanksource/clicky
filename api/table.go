@@ -576,14 +576,14 @@ func (t *TextTable) renderLipgloss(withColors bool) string {
 
 	// Measure headers
 	for i, header := range t.Headers {
-		columnWidths[i] = len(header.String())
+		columnWidths[i] = lipgloss.Width(header.String())
 	}
 
 	// Measure all row cells to find max width per column
 	for _, row := range t.Rows {
 		for colIdx := range t.Headers {
 			cell := t.getCellValue(row, colIdx)
-			width := len(cell.String())
+			width := lipgloss.Width(cell.String())
 			if width > columnWidths[colIdx] {
 				columnWidths[colIdx] = width
 			}
@@ -617,6 +617,11 @@ func (t *TextTable) renderLipgloss(withColors bool) string {
 
 	// Calculate total width needed for table
 	totalWidth := GetTerminalWidth()
+	naturalWidth := len(columnWidths) + 1
+	for _, width := range columnWidths {
+		naturalWidth += width
+	}
+	fixCappedColumns := naturalWidth <= totalWidth
 
 	// Create lipgloss table with calculated dimensions
 	tbl := table.New().
@@ -624,27 +629,24 @@ func (t *TextTable) renderLipgloss(withColors bool) string {
 		Rows(rows...).
 		Width(totalWidth)
 
-	// Apply styling if colors are enabled
-	if withColors {
-		tbl = tbl.StyleFunc(func(row, col int) lipgloss.Style {
-			// row -1 is the header
+	tbl = tbl.StyleFunc(func(row, col int) lipgloss.Style {
+		style := lipgloss.NewStyle()
+		if withColors {
 			if row == -1 {
-				return lipgloss.NewStyle().Bold(true)
-			}
-
-			// Get the cell value to check for styling
-			if row < len(t.Rows) && col < len(t.Headers) {
+				style = style.Bold(true)
+			} else if row < len(t.Rows) && col < len(t.Headers) {
 				cell := t.getCellValue(t.Rows[row], col)
-
-				// Check if the Textable is a Text type and has a Style
 				if textCell, isText := cell.(*Text); isText && textCell.Style != "" {
-					return parseTailwindToLipgloss(textCell.Style)
+					style = parseTailwindToLipgloss(textCell.Style)
 				}
 			}
-
-			return lipgloss.NewStyle()
-		})
-	}
+		}
+		if fixCappedColumns && col < len(t.Columns) && col < len(columnWidths) &&
+			tailwind.ParseStyle(t.Columns[col].Style).MaxWidth > 0 {
+			style = style.Width(columnWidths[col])
+		}
+		return style
+	})
 
 	return tbl.String()
 }
