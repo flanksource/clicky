@@ -4,8 +4,9 @@ go 1.26.1
 
 require (
 	github.com/firebase/genkit/go v1.10.0
-	github.com/flanksource/captain v0.0.9
+	github.com/flanksource/captain v0.0.12-0.20260715131932-f441c766f3fd
 	github.com/flanksource/clicky v1.21.37
+	github.com/flanksource/commons-db v0.1.14
 	github.com/spf13/cobra v1.10.2
 )
 
@@ -241,6 +242,7 @@ require (
 	github.com/samber/lo v1.53.0 // indirect
 	github.com/samber/oops v1.21.0 // indirect
 	github.com/segmentio/asm v1.2.1 // indirect
+	github.com/segmentio/encoding v0.5.4 // indirect
 	github.com/sergi/go-diff v1.4.0 // indirect
 	github.com/shirou/gopsutil/v3 v3.24.5 // indirect
 	github.com/shoenig/go-m1cpu v0.1.7 // indirect
@@ -294,13 +296,19 @@ require (
 	go.opentelemetry.io/otel/trace v1.44.0 // indirect
 	go.opentelemetry.io/proto/otlp v1.10.0 // indirect
 	go.yaml.in/yaml/v2 v2.4.4 // indirect
-	golang.org/x/crypto v0.52.0 // indirect
-	golang.org/x/exp v0.0.0-20260312153236-7ab1446f8b90 // indirect
-	golang.org/x/net v0.55.0 // indirect
-	golang.org/x/sync v0.20.0 // indirect
-	golang.org/x/sys v0.45.0 // indirect
-	golang.org/x/term v0.43.0 // indirect
-	golang.org/x/text v0.37.0 // indirect
+	go.yaml.in/yaml/v3 v3.0.4 // indirect
+	gocloud.dev v0.43.0 // indirect
+	golang.org/x/crypto v0.53.0 // indirect
+	golang.org/x/exp v0.0.0-20260410095643-746e56fc9e2f // indirect
+	golang.org/x/net v0.56.0 // indirect
+	golang.org/x/oauth2 v0.36.0 // indirect
+	golang.org/x/sync v0.21.0 // indirect
+	golang.org/x/sys v0.46.0 // indirect
+	golang.org/x/term v0.44.0 // indirect
+	golang.org/x/text v0.38.0 // indirect
+	golang.org/x/time v0.15.0 // indirect
+	golang.org/x/xerrors v0.0.0-20240903120638-7835f813f4da // indirect
+	google.golang.org/api v0.286.0 // indirect
 	google.golang.org/genai v1.51.0 // indirect
 	google.golang.org/genproto v0.0.0-20260319201613-d00831a3d3e7 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260526163538-3dc84a4a5aaa // indirect
