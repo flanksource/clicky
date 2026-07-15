@@ -13,6 +13,7 @@ type (
 	ClickySpecMeta      = entity.ClickySpecMeta
 	ClickySurface       = entity.ClickySurface
 	ClickyOperationMeta = entity.ClickyOperationMeta
+	ExportMeta          = entity.ExportMeta
 	RPCParameter        = entity.RPCParameter
 	RPCService          = entity.RPCService
 	Schema              = entity.Schema
