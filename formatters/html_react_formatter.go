@@ -69,6 +69,8 @@ type ClickyField struct {
 type ClickyColumn struct {
 	Name   string      `json:"name"`
 	Label  string      `json:"label,omitempty"`
+	Kind   string      `json:"kind,omitempty"`
+	Type   string      `json:"type,omitempty"`
 	Header *ClickyNode `json:"header,omitempty"`
 	Align  string      `json:"align,omitempty"`
 }
@@ -508,6 +510,8 @@ func convertTable(table *api.TextTable) ClickyNode {
 
 			if i < len(table.Columns) {
 				column.Label = table.Columns[i].Label
+				column.Kind = table.Columns[i].Kind
+				column.Type = table.Columns[i].Type
 				column.Align = alignFromStyle(table.Columns[i].Style)
 			}
 			if column.Label == "" {
@@ -523,6 +527,8 @@ func convertTable(table *api.TextTable) ClickyNode {
 			column := ClickyColumn{
 				Name:  columnDef.Name,
 				Label: columnDef.Label,
+				Kind:  columnDef.Kind,
+				Type:  columnDef.Type,
 				Align: alignFromStyle(columnDef.Style),
 			}
 			if column.Label == "" {
