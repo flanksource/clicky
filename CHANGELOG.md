@@ -5,6 +5,57 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.21.38](https://github.com/flanksource/clicky/compare/v1.21.37...v1.21.38) (2026-07-16)
+
+
+### ⚠ BREAKING CHANGES
+
+* **api:** Paged clicky-json responses no longer wrap rows in the data/page envelope.
+
+### ♻️ Code Refactoring
+
+* **aichat:** centralize model and tool metadata ([333eb42](https://github.com/flanksource/clicky/commit/333eb429f979114e0d03dd65cae1ff3552e2ea1a))
+
+
+### ✨ Features
+
+* add oxlint custom rules linting for clicky-ui webapp ([b4ffa0f](https://github.com/flanksource/clicky/commit/b4ffa0fc130cf23c16ef12773c7454d01d7aab6a))
+* add support for hidden flags in CLI and schema generation ([d0923c6](https://github.com/flanksource/clicky/commit/d0923c6fe2bd93320aa16d047383829ad9ff44ea))
+* preserve schema field order in markdown formatter output ([a2df8bd](https://github.com/flanksource/clicky/commit/a2df8bd7c70f00208e9c5ac5cc080834f92ff387))
+* update model catalog to latest provider tiers ([d91b616](https://github.com/flanksource/clicky/commit/d91b61640a1db04322b676013c624d41cb039b8f))
+* **aichat:** Add default permission and tool metadata support with canonical mode names ([fc0f74b](https://github.com/flanksource/clicky/commit/fc0f74bca5830b0ed5536b472924b913fbc82022))
+* **api:** Add streaming table exports and export metadata ([2a89421](https://github.com/flanksource/clicky/commit/2a894217f6a31ed614a77b31a83d3a38c75c6342))
+* **api:** support semantic columns and structured table values ([42cff19](https://github.com/flanksource/clicky/commit/42cff198fb43e6eb8f19bc56462c154e3bb7aab0))
+* **entity:** add MCPToolHints for tool metadata and annotations ([12df84f](https://github.com/flanksource/clicky/commit/12df84fec4dfca851b518c47bd85b66908ca7a47))
+* **mcp:** add MCP tool annotations and clicky meta support ([6645797](https://github.com/flanksource/clicky/commit/6645797749eaf471b1b4c6a9afa053c28d894cba))
+* **rpc:** expose swagger command executor ([0ffa6cf](https://github.com/flanksource/clicky/commit/0ffa6cf87d36cf900460385a3f748d6e414022cc))
+
+
+### 🐛 Bug Fixes
+
+* Replace fmt.Printf with clicky logger and fix timing middleware edge case ([06f4cf6](https://github.com/flanksource/clicky/commit/06f4cf69ab8a10489709de8d8bb2e15b9f9a680a))
+* **rpc:** Fix route deduplication for wildcard parameter name differences ([6f21fad](https://github.com/flanksource/clicky/commit/6f21fad37fdccc68ed32fe09f34faba92aaf1e48))
+* **task:** fix data races and render lifecycle for task output ([d6b1715](https://github.com/flanksource/clicky/commit/d6b1715ff999c1be4ff0fd3df4309b05192f00ef))
+* **task:** release runFunc when a task reaches a terminal state ([7b82d96](https://github.com/flanksource/clicky/commit/7b82d9692251cd4a228290b46330975dbf486ea2))
+
+
+### 📚 Documentation
+
+* **docs:** delegate agent workflow guidance to shared instructions ([a598fbe](https://github.com/flanksource/clicky/commit/a598fbe773bf4fa79b74386766f2e3ee6622d602))
+* **skills:** add clicky development guides ([f8e7087](https://github.com/flanksource/clicky/commit/f8e708782b911a00ee2c1bf75627028e8afae344))
+
+
+### 📦 Build System
+
+* **aichat:** pin captain to f441c766 for unreleased agent API ([a8c61ab](https://github.com/flanksource/clicky/commit/a8c61aba3885af0a43a4ef8100e39c76d131a442))
+
+
+### 🔧 Maintenance
+
+* add UI and linting dependencies to webapp ([8ce55f7](https://github.com/flanksource/clicky/commit/8ce55f7db4f772497655e1066e181fca9c75adf6))
+* update Go module dependencies to latest versions ([e910a25](https://github.com/flanksource/clicky/commit/e910a257277d1b2d1de06704b67070076dcdfe56))
+* **release:** pin sub-modules to v1.21.37 [skip ci] ([d5f340c](https://github.com/flanksource/clicky/commit/d5f340cc1ae28666c6d84ffe1c3d06285a9d3cfd))
+
 ## [1.21.37](https://github.com/flanksource/clicky/compare/v1.21.36...v1.21.37) (2026-07-13)
 
 
