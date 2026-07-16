@@ -64,6 +64,9 @@ type Options struct {
 	// turn. When nil a default backed by captain's pkg/ai provider registry is
 	// used. Tests inject a fake to avoid spawning real subprocesses.
 	AgentProviderFactory AgentProviderFactory
+	// AttachmentResolver converts untrusted browser file parts into prepared,
+	// durable Captain references before persistence or provider execution.
+	AttachmentResolver AttachmentResolver
 }
 
 const defaultSystem = "You are an operator assistant for this application. " +
@@ -277,6 +280,10 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 	// the Genkit runtime, which the agent path does not use.
 	if id := modelIDForRequest(req, settings); id != "" {
 		if m, lookupErr := LookupModel(id); lookupErr == nil && m.IsAgent() {
+			if err := s.resolveRequestAttachments(ctx, &req, m); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
 			s.serveAgentChat(w, r, m, req)
 			return
 		}
@@ -292,6 +299,10 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := ValidateEffort(req.ReasoningEffort); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err := s.resolveRequestAttachments(ctx, &req, model); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}

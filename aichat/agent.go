@@ -79,6 +79,22 @@ func latestUserText(msgs []UIMessage) string {
 	return ""
 }
 
+func latestUserAttachments(msgs []UIMessage) []capapi.AttachmentRef {
+	for i := len(msgs) - 1; i >= 0; i-- {
+		if msgs[i].Role != "user" {
+			continue
+		}
+		attachments := make([]capapi.AttachmentRef, 0)
+		for _, part := range msgs[i].Parts {
+			if part.Type == "file" && part.resolvedAttachment != nil {
+				attachments = append(attachments, *part.resolvedAttachment)
+			}
+		}
+		return attachments
+	}
+	return nil
+}
+
 // agentSessionInfo resolves how a request maps onto a pooled session.
 type agentSessionInfo struct {
 	key      string // provider pool key
@@ -121,7 +137,7 @@ func (s *Server) agentRequest(req ChatRequest, resumeID string) capapi.Spec {
 		perms.Tools.Allow = defaultAgentReadOnlyTools
 	}
 	return capapi.Spec{
-		Prompt:      capapi.Prompt{User: prompt, System: s.system},
+		Prompt:      capapi.Prompt{User: prompt, System: s.system, Attachments: latestUserAttachments(req.Messages)},
 		Model:       capapi.Model{Effort: capapi.Effort(req.ReasoningEffort), Temperature: req.Temperature},
 		Budget:      capapi.Budget{Cost: req.Budget.Cost, MaxTokens: req.Budget.MaxTokens, MaxTurns: s.opts.Agent.MaxTurns},
 		Permissions: perms,
@@ -183,7 +199,7 @@ func (s *Server) streamAgent(ctx context.Context, sse *sseWriter, model Model, r
 	// Reject a turn that carries only context (no new user message): contextPrompt
 	// would otherwise make air.Prompt non-empty, sending the agent context with no
 	// instruction. The contract is latest-user-message-only.
-	if strings.TrimSpace(latestUserText(req.Messages)) == "" {
+	if strings.TrimSpace(latestUserText(req.Messages)) == "" && len(latestUserAttachments(req.Messages)) == 0 {
 		return fmt.Errorf("no user message to send to the agent")
 	}
 	air := s.agentRequest(req, resumeID)
