@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.21.39](https://github.com/flanksource/clicky/compare/v1.21.38...v1.21.39) (2026-07-16)
+
+
+### 🐛 Bug Fixes
+
+* **deps:** update Excelize to v2.11.0 ([bf03705](https://github.com/flanksource/clicky/commit/bf03705826e0fb303a61e86b27298e9297b9f20f))
+
+
+### 🔧 Maintenance
+
+* **deps:** tidy Go modules ([9021341](https://github.com/flanksource/clicky/commit/902134169a4db3878ddb81d619339b67a7b18c31))
+* **release:** pin sub-modules to v1.21.38 [skip ci] ([456c327](https://github.com/flanksource/clicky/commit/456c327da9a3d0ad9eddb24e5199ae17eb157f32))
+
 ## [1.21.38](https://github.com/flanksource/clicky/compare/v1.21.37...v1.21.38) (2026-07-16)
 
 
