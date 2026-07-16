@@ -1,11 +1,13 @@
 package aichat
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"strings"
 
 	"github.com/firebase/genkit/go/ai"
+	capapi "github.com/flanksource/captain/pkg/api"
 )
 
 // ChatRequest is the body POSTed by the AI SDK DefaultChatTransport. messages is
@@ -65,9 +67,12 @@ type UIPart struct {
 	Text string `json:"text,omitempty"`
 
 	// file parts
-	MediaType string `json:"mediaType,omitempty"`
-	URL       string `json:"url,omitempty"`
-	Filename  string `json:"filename,omitempty"`
+	MediaType    string `json:"mediaType,omitempty"`
+	URL          string `json:"url,omitempty"`
+	Filename     string `json:"filename,omitempty"`
+	AttachmentID string `json:"attachmentId,omitempty"`
+
+	resolvedAttachment *capapi.AttachmentRef
 
 	// tool parts
 	ToolName   string          `json:"toolName,omitempty"`
@@ -224,6 +229,12 @@ func userParts(m UIMessage) []*ai.Part {
 		switch {
 		case p.Type == "text" && p.Text != "":
 			parts = append(parts, ai.NewTextPart(p.Text))
+		case p.Type == "file" && p.resolvedAttachment != nil:
+			content, ok := p.resolvedAttachment.PreparedContent()
+			if ok {
+				uri := "data:" + p.MediaType + ";base64," + base64.StdEncoding.EncodeToString(content.Bytes)
+				parts = append(parts, ai.NewMediaPart(p.MediaType, uri))
+			}
 		case p.Type == "file" && p.URL != "":
 			parts = append(parts, ai.NewMediaPart(p.MediaType, p.URL))
 		}
