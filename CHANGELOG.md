@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.21.40](https://github.com/flanksource/clicky/compare/v1.21.39...v1.21.40) (2026-07-17)
+
+
+### 🐛 Bug Fixes
+
+* **ci:** add least-privilege permissions to the openapi workflow job ([#148](https://github.com/flanksource/clicky/issues/148)) ([a683b5d](https://github.com/flanksource/clicky/commit/a683b5d24ce54b7c34745775185923da5cdd6d83))
+
+
+### 🔧 Maintenance
+
+* **release:** pin sub-modules to v1.21.39 [skip ci] ([51970a4](https://github.com/flanksource/clicky/commit/51970a4d0f8df9c0c46746b1631c12f1c1897906))
+
 ## [1.21.39](https://github.com/flanksource/clicky/compare/v1.21.38...v1.21.39) (2026-07-16)
 
 
