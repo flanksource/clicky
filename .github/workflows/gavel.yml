@@ -82,6 +82,8 @@ jobs:
   openapi:
     name: OpenAPI Integration
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
