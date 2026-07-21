@@ -33,6 +33,28 @@ func (shrinkingCappedWidthTableRow) Row() map[string]any {
 	}
 }
 
+// uncappedProseTableRow is the shape a caller uses to say "let this column run
+// to whatever the terminal allows, then truncate" -- no MaxWidth at all.
+type uncappedProseTableRow struct{}
+
+func (uncappedProseTableRow) Columns() []ColumnDef {
+	return []ColumnDef{
+		Column("prose").Label("Prose").Style("max-lines-[1] truncate-suffix").Build(),
+		Column("usage").Label("Usage").Build(),
+	}
+}
+
+// uncappedProse is deliberately longer than any width a caller would hard-code,
+// so a spec can tell "ran to the terminal edge" apart from "hit a cap".
+const uncappedProse = "An uncapped column runs all the way to the terminal edge and is then truncated there, rather than at some width chosen in advance"
+
+func (uncappedProseTableRow) Row() map[string]any {
+	return map[string]any{
+		"prose": uncappedProse,
+		"usage": "$1.25",
+	}
+}
+
 func (cappedWidthTableRow) Row() map[string]any {
 	return map[string]any{
 		"agent":   "codex-agent",
@@ -141,32 +163,105 @@ var _ = Describe("TextTable Markdown pipe escaping", func() {
 	})
 })
 
+// headerCells returns the rune width of each cell in the rendered header row
+// identified by label, which is how these specs observe the allocated widths.
+func headerCells(rendered, label string) []int {
+	for _, line := range strings.Split(rendered, "\n") {
+		if !strings.Contains(line, "│"+label) {
+			continue
+		}
+		var widths []int
+		for _, cell := range strings.Split(strings.Trim(line, "│"), "│") {
+			widths = append(widths, len([]rune(cell)))
+		}
+		return widths
+	}
+	return nil
+}
+
 var _ = Describe("TextTable terminal column widths", func() {
-	It("keeps capped columns compact and gives uncapped columns the remaining width", func() {
+	It("sizes columns to their content rather than filling the terminal", func() {
 		previousWidth := terminalWidth.Swap(120)
 		DeferCleanup(func() { terminalWidth.Store(previousWidth) })
 
-		rendered := NewTableFrom([]cappedWidthTableRow{{}}).String()
-		var header string
-		for _, line := range strings.Split(rendered, "\n") {
-			if strings.Contains(line, "│Agent") {
-				header = line
-				break
-			}
-		}
-		Expect(header).NotTo(BeEmpty())
-		cells := strings.Split(strings.Trim(header, "│"), "│")
-		Expect(cells).To(HaveLen(3))
-		Expect(len([]rune(cells[0]))).To(BeNumerically("<=", 12))
-		Expect(len([]rune(cells[1]))).To(BeNumerically("<=", 8))
-		Expect(len([]rune(cells[2]))).To(BeNumerically(">", 80))
+		widths := headerCells(NewTableFrom([]cappedWidthTableRow{{}}).String(), "Agent")
+		Expect(widths).To(HaveLen(3))
+		// Widest value per column: "codex-agent", "019f5c3c", and the title.
+		Expect(widths[0]).To(Equal(len("codex-agent")))
+		Expect(widths[1]).To(Equal(len("019f5c3c")))
+		Expect(widths[2]).To(Equal(len("Title uses all terminal space left after capped columns")))
 	})
 
-	It("allows capped columns to shrink when content exceeds the terminal width", func() {
+	It("takes the deficit from the widest column and leaves narrow ones alone", func() {
+		previousWidth := terminalWidth.Swap(30)
+		DeferCleanup(func() { terminalWidth.Store(previousWidth) })
+
+		widths := headerCells(NewTableFrom([]shrinkingCappedWidthTableRow{{}}).String(), "Prompt")
+		Expect(widths).To(HaveLen(2))
+		// 30 columns less 3 borders leaves 27. Usage sits under the ceiling and
+		// keeps its content width, so Prompt gives up the whole deficit.
+		Expect(widths[1]).To(Equal(len("$1.25")))
+		Expect(widths[0] + widths[1]).To(Equal(27))
+	})
+
+	It("lets a column with no declared MaxWidth run to the terminal edge", func() {
+		previousWidth := terminalWidth.Swap(200)
+		DeferCleanup(func() { terminalWidth.Store(previousWidth) })
+
+		widths := headerCells(NewTableFrom([]uncappedProseTableRow{{}}).String(), "Prose")
+		Expect(widths).To(HaveLen(2))
+		Expect(widths[0]).To(Equal(len(uncappedProse)))
+		Expect(len(uncappedProse)).To(BeNumerically(">", 100))
+	})
+
+	It("shrinks a column with no declared MaxWidth just the same", func() {
+		previousWidth := terminalWidth.Swap(30)
+		DeferCleanup(func() { terminalWidth.Store(previousWidth) })
+
+		widths := headerCells(NewTableFrom([]uncappedProseTableRow{{}}).String(), "Prose")
+		Expect(widths).To(HaveLen(2))
+		Expect(widths[1]).To(Equal(len("$1.25")))
+		Expect(widths[0] + widths[1]).To(Equal(27))
+	})
+
+	It("keeps every column readable when they all must shrink", func() {
+		previousWidth := terminalWidth.Swap(16)
+		DeferCleanup(func() { terminalWidth.Store(previousWidth) })
+
+		widths := headerCells(NewTableFrom([]shrinkingCappedWidthTableRow{{}}).String(), "Prompt")
+		Expect(widths).To(HaveLen(2))
+		for _, width := range widths {
+			Expect(width).To(BeNumerically(">=", columnMinWidth))
+		}
+	})
+
+	It("truncates an over-long cell instead of wrapping it onto a second line", func() {
 		previousWidth := terminalWidth.Swap(30)
 		DeferCleanup(func() { terminalWidth.Store(previousWidth) })
 
 		rendered := NewTableFrom([]shrinkingCappedWidthTableRow{{}}).String()
 		Expect(rendered).To(ContainSubstring("$1.25"))
+		// Border top, header, separator, one row, border bottom.
+		Expect(strings.Split(strings.TrimRight(rendered, "\n"), "\n")).To(HaveLen(5))
+	})
+
+	It("preserves explicit lines within a cell while automatic wrapping is disabled", func() {
+		previousWidth := terminalWidth.Swap(30)
+		DeferCleanup(func() { terminalWidth.Store(previousWidth) })
+
+		table := TextTable{
+			Headers:    TextList{Text{Content: "Name"}, Text{Content: "Count"}},
+			FieldNames: []string{"name", "count"},
+			Rows: []TableRow{{
+				"name":  TypedValue{Textable: Text{Content: "Item1\nItem2"}},
+				"count": TypedValue{Textable: Text{Content: "10\n20"}},
+			}},
+		}
+
+		rendered := table.String()
+		Expect(rendered).To(ContainSubstring("Item1"))
+		Expect(rendered).To(ContainSubstring("Item2"))
+		Expect(rendered).To(ContainSubstring("10"))
+		Expect(rendered).To(ContainSubstring("20"))
 	})
 })
