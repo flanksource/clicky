@@ -1,4 +1,4 @@
-package main
+package entitydemo
 
 import (
 	"encoding/json"

@@ -44,7 +44,6 @@ export function ChatWidget({ client }: { client: OperationsApiClient }) {
           api: "/api/chat",
           modelsApi: "/api/chat/models",
           enableAttachments: true,
-          toolApproval: "manual",
           suggestions: [
             "List all stacks",
             "Show clusters in the prod stack",

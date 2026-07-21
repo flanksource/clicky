@@ -14,8 +14,7 @@ GIT_COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
 BUILD_DATE ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 LDFLAGS ?= -X main.commit=$(GIT_COMMIT) -X main.date=$(BUILD_DATE)
 
-.PHONY: test build clean install task-ui
-
+.PHONY: test build clean install task-ui tidy
 
 test:
 	go test -v ./...
