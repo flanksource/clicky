@@ -162,17 +162,22 @@ type TaskResult[T any] struct {
 // Task represents a single task being tracked by the TaskManager
 type Task struct {
 	// Pointers and interfaces (8 bytes each on 64-bit)
-	manager        *Manager
-	cancel         context.CancelFunc
-	ctx            flanksourceContext.Context
-	flanksourceCtx flanksourceContext.Context
-	runFunc        func(flanksourceContext.Context, *Task) error
-	err            error
-	parent         *Group        // Reference to parent group (nil if ungrouped)
-	doneChan       chan struct{} // Channel to signal task completion
-	dependencies   []*Task       // Tasks that must complete before this task can start
-	result         interface{}
-	resultType     reflect.Type
+	manager         *Manager
+	cancel          context.CancelFunc
+	ctx             flanksourceContext.Context
+	flanksourceCtx  flanksourceContext.Context
+	runFunc         func(flanksourceContext.Context, *Task) error
+	err             error
+	parent          *Group        // Reference to parent group (nil if ungrouped)
+	doneChan        chan struct{} // Channel to signal task completion
+	dependencies    []*Task       // Tasks that must complete before this task can start
+	result          interface{}
+	resultType      reflect.Type
+	outputProvider  func() OutputSnapshot
+	detailsProvider func() any
+	controller      TaskController
+	frozenOutput    *OutputSnapshot
+	frozenDetails   any
 
 	// Slices (24 bytes each on 64-bit)
 	// logs removed - now stored only in bufferedLogger
@@ -348,6 +353,74 @@ func (t *Task) Description() string {
 	return t.description
 }
 
+// SetOutputProvider attaches live stdout/stderr to the task snapshot. Providers
+// are evaluated outside the task lock and frozen when a managed task finishes.
+func (t *Task) SetOutputProvider(provider func() OutputSnapshot) {
+	t.mu.Lock()
+	t.outputProvider = provider
+	t.frozenOutput = nil
+	t.mu.Unlock()
+	t.dirty.Store(true)
+}
+
+// SetDetailsProvider attaches structured, JSON-serializable task details.
+func (t *Task) SetDetailsProvider(provider func() any) {
+	t.mu.Lock()
+	t.detailsProvider = provider
+	t.frozenDetails = nil
+	t.mu.Unlock()
+	t.dirty.Store(true)
+}
+
+// SetController replaces the task's live controller.
+func (t *Task) SetController(controller TaskController) {
+	t.mu.Lock()
+	t.controller = controller
+	t.mu.Unlock()
+	t.dirty.Store(true)
+}
+
+func (t *Task) snapshotOutput() OutputSnapshot {
+	t.mu.Lock()
+	if t.frozenOutput != nil {
+		output := *t.frozenOutput
+		t.mu.Unlock()
+		return output
+	}
+	provider := t.outputProvider
+	t.mu.Unlock()
+	if provider == nil {
+		return OutputSnapshot{}
+	}
+	return provider()
+}
+
+func (t *Task) snapshotDetails() any {
+	t.mu.Lock()
+	if t.frozenDetails != nil {
+		details := t.frozenDetails
+		t.mu.Unlock()
+		return details
+	}
+	provider := t.detailsProvider
+	t.mu.Unlock()
+	if provider == nil {
+		return nil
+	}
+	return provider()
+}
+
+func (t *Task) freezeProviders() {
+	output := t.snapshotOutput()
+	details := t.snapshotDetails()
+	t.mu.Lock()
+	t.frozenOutput = &output
+	t.frozenDetails = details
+	t.outputProvider = nil
+	t.detailsProvider = nil
+	t.mu.Unlock()
+}
+
 // SetStatus updates the task's display name/status message
 func (t *Task) SetStatus(status Status) {
 	t.mu.Lock()
@@ -484,12 +557,33 @@ func (t *Task) Name() string {
 	return t.name
 }
 
-// WaitFor waits for this specific task to complete and returns the result
+const (
+	// waitForResultGrace bounds the wait for a task that has already reached a
+	// terminal status but whose worker has not yet stored the result. That gap
+	// is microseconds wide; the grace only exists so a wedged worker surfaces
+	// as a returned zero value instead of an unbounded wait.
+	waitForResultGrace = 5 * time.Second
+	// waitForWarnAfter is how long WaitFor stays quiet before reporting that it
+	// is still waiting. It doubles after each report, matching WaitForAllTasks.
+	waitForWarnAfter = 30 * time.Second
+)
+
+// WaitFor waits for this specific task to complete and returns the result.
+//
+// The wait is bounded by the task's own deadline (WithTimeout / WithTaskTimeout)
+// and by nothing else. WaitFor used to impose a hardcoded 300s deadline and,
+// when it fired, rewrite the still-running task as Failed — which raced the
+// task's real timeout (a 5m linter ties it exactly) and, worse, deadlocked:
+// the error it built re-received from the already-drained one-shot timeout
+// channel while holding t.mu, so the task never completed and its worker never
+// got the lock back. A task that overruns is now reported, not rewritten.
 func (t *Task) WaitFor() *WaitResult {
 	// Poll for task completion using atomic flag
-	timeout := time.After(300 * time.Second)
 	ticker := time.NewTicker(10 * time.Millisecond)
 	defer ticker.Stop()
+
+	start := time.Now()
+	warnAfter := waitForWarnAfter
 
 	for !t.completed.Load() {
 		t.mu.Lock()
@@ -519,26 +613,18 @@ func (t *Task) WaitFor() *WaitResult {
 			// Self-cancel during terminal SetStatus: ctx is now permanently
 			// ready, so re-selecting on it would busy-spin. Wait on doneChan
 			// (closed by the worker immediately after it stores the result and
-			// flips completed) so we wake the instant the result lands, with the
-			// overall timeout as a backstop.
+			// flips completed) so we wake the instant the result lands, with a
+			// fresh grace timer as a backstop.
 			select {
 			case <-t.doneChan:
-			case <-timeout:
+			case <-time.After(waitForResultGrace):
 			}
-			goto done
-		case <-timeout:
-			// Timeout fallback to prevent infinite waiting
-			t.mu.Lock()
-			if t.status == StatusRunning || t.status == StatusPending {
-				t.status = StatusFailed
-				t.err = fmt.Errorf("task wait timeout after %s", <-timeout)
-				t.endTime = time.Now()
-				t.completed.Store(true)
-			}
-			t.mu.Unlock()
 			goto done
 		case <-ticker.C:
-			// Continue polling
+			if waited := time.Since(start); waited >= warnAfter {
+				logger.Warnf("Still waiting for task %q (%s) after %s", t.Name(), t.Status(), waited.Round(time.Second))
+				warnAfter *= 2
+			}
 		}
 	}
 

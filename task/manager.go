@@ -472,17 +472,28 @@ func (tm *Manager) Start(name string, opts ...Option) *Task {
 }
 
 func StartTask[T any](name string, taskFunc func(flanksourceContext.Context, *Task) (T, error), opts ...Option) TypedTask[T] {
-	wrappedFunc := func(ctx flanksourceContext.Context, t *Task) (interface{}, error) {
-		result, err := taskFunc(ctx, t)
-		return result, err
+	t := global.newTask(name, opts...)
+	typed := TypedTask[T]{t}
+	attachTaskableToGroup(t, typed)
+	t.runFunc = func(ctx flanksourceContext.Context, task *Task) error {
+		result, err := taskFunc(ctx, task)
+		task.mu.Lock()
+		task.result = result
+		if any(result) != nil {
+			task.resultType = reflect.TypeOf(result)
+		}
+		task.err = err
+		task.mu.Unlock()
+		return err
 	}
-	t := global.StartWithResult(name, wrappedFunc, opts...)
-	return TypedTask[T]{t}
+	global.enqueue(t)
+	return typed
 }
 
 // StartWithResult creates and starts tracking a new task with typed result handling
 func (tm *Manager) StartWithResult(name string, taskFunc func(flanksourceContext.Context, *Task) (interface{}, error), opts ...Option) *Task {
 	task := tm.newTask(name, opts...)
+	attachTaskableToGroup(task, task)
 
 	task.runFunc = func(ctx flanksourceContext.Context, t *Task) error {
 		result, err := taskFunc(ctx, t)
@@ -502,6 +513,23 @@ func (tm *Manager) StartWithResult(name string, taskFunc func(flanksourceContext
 	}
 
 	return tm.enqueue(task)
+}
+
+func attachTaskableToGroup(t *Task, item Taskable) {
+	if t.parent == nil {
+		return
+	}
+	t.parent.mu.Lock()
+	defer t.parent.mu.Unlock()
+	for _, item := range t.parent.Items {
+		if item.GetTask() == t {
+			return
+		}
+	}
+	t.parent.Items = append(t.parent.Items, item)
+	if t.parent.startTime.IsZero() || t.startTime.Before(t.parent.startTime) {
+		t.parent.startTime = t.startTime
+	}
 }
 
 // StartGroup creates and starts tracking a new task group

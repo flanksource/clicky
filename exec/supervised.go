@@ -1,9 +1,11 @@
 package exec
 
 import (
+	"strings"
 	"sync"
 	"time"
 
+	"github.com/flanksource/clicky/task"
 	gops "github.com/shirou/gopsutil/v3/process"
 )
 
@@ -18,6 +20,7 @@ const (
 type ResourceSnapshot struct {
 	CPUPercent float64   `json:"cpuPercent"`
 	RSSBytes   uint64    `json:"rssBytes"`
+	VMSBytes   uint64    `json:"vmsBytes"`
 	OpenFiles  int       `json:"openFiles"`
 	SampledAt  time.Time `json:"sampledAt"`
 }
@@ -29,8 +32,11 @@ type ProcessSample struct {
 	PID        int32   `json:"pid"`
 	PPID       int32   `json:"ppid"`
 	Command    string  `json:"command"`
+	Status     string  `json:"status,omitempty"`
+	IsRoot     bool    `json:"isRoot,omitempty"`
 	CPUPercent float64 `json:"cpuPercent"`
 	RSSBytes   uint64  `json:"rssBytes"`
+	VMSBytes   uint64  `json:"vmsBytes"`
 	OpenFiles  int     `json:"openFiles"`
 }
 
@@ -101,6 +107,9 @@ type SuperviseOptions struct {
 	// OnExit, if set, is called once when the supervise loop ends permanently
 	// (the process exited and will not be restarted, or it was stopped).
 	OnExit func()
+	// Task customizes the automatic task run created for every process
+	// generation. Zero values use the supervised-process defaults.
+	Task SupervisedTaskOptions
 }
 
 // SupervisedProcess supervises a single process: it (re)runs a template command
@@ -135,6 +144,7 @@ type SupervisedProcess struct {
 	// handles caches one gopsutil Process per pid so Percent(0) yields the CPU
 	// delta since the previous sample rather than the lifetime average.
 	handles map[int32]*gops.Process
+	taskRun *task.ManagedRun
 }
 
 // Supervise turns a configured Process into a SupervisedProcess using it as the
@@ -242,6 +252,16 @@ func (s *SupervisedProcess) Pid() int {
 	return c.Pid()
 }
 
+// TaskRunID returns the latest generation's immutable task run id.
+func (s *SupervisedProcess) TaskRunID() string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.taskRun == nil {
+		return ""
+	}
+	return s.taskRun.ID()
+}
+
 // IsRunning reports whether a run is currently executing.
 func (s *SupervisedProcess) IsRunning() bool {
 	s.mu.RLock()
@@ -286,7 +306,7 @@ func (s *SupervisedProcess) sample() {
 	fds := openFilesByPid(pids) // nil when the platform can't report fds
 
 	var cpu float64
-	var rss uint64
+	var rss, vms uint64
 	openTotal := 0
 	tree := make([]ProcessSample, 0, len(pids))
 	for _, p := range pids {
@@ -294,12 +314,17 @@ func (s *SupervisedProcess) sample() {
 		if h == nil {
 			continue
 		}
-		node := ProcessSample{PID: p, OpenFiles: -1}
+		node := ProcessSample{PID: p, OpenFiles: -1, IsRoot: p == int32(pid)}
 		if ppid, err := h.Ppid(); err == nil {
 			node.PPID = ppid
 		}
-		if name, err := h.Name(); err == nil {
+		if command, err := h.Cmdline(); err == nil && command != "" {
+			node.Command = command
+		} else if name, err := h.Name(); err == nil {
 			node.Command = name
+		}
+		if statuses, err := h.Status(); err == nil {
+			node.Status = strings.Join(statuses, ",")
 		}
 		if pct, err := h.Percent(0); err == nil {
 			node.CPUPercent = pct
@@ -307,7 +332,9 @@ func (s *SupervisedProcess) sample() {
 		}
 		if mi, err := h.MemoryInfo(); err == nil && mi != nil {
 			node.RSSBytes = mi.RSS
+			node.VMSBytes = mi.VMS
 			rss += mi.RSS
+			vms += mi.VMS
 		}
 		if fds != nil {
 			node.OpenFiles = fds[p]
@@ -324,10 +351,12 @@ func (s *SupervisedProcess) sample() {
 	snap := ResourceSnapshot{
 		CPUPercent: cpu,
 		RSSBytes:   rss,
+		VMSBytes:   vms,
 		OpenFiles:  openAgg,
 		SampledAt:  time.Now(),
 	}
 	s.store(snap, tree)
+	s.recordTaskMetrics(snap)
 	s.enforce(snap)
 }
 
@@ -410,6 +439,9 @@ func (s *SupervisedProcess) store(snap ResourceSnapshot, tree []ProcessSample) {
 	}
 	if snap.RSSBytes > s.peak.RSSBytes {
 		s.peak.RSSBytes = snap.RSSBytes
+	}
+	if snap.VMSBytes > s.peak.VMSBytes {
+		s.peak.VMSBytes = snap.VMSBytes
 	}
 	if s.peak.SampledAt.IsZero() || snap.OpenFiles > s.peak.OpenFiles {
 		s.peak.OpenFiles = snap.OpenFiles

@@ -33,6 +33,8 @@ type RunMeta struct {
 	Completed  int               `json:"completed"`
 	Failed     int               `json:"failed"`
 	Running    int               `json:"running"`
+	Href       string            `json:"href,omitempty"`
+	Controls   []ControlAction   `json:"controls,omitempty"`
 }
 
 // RunFilter narrows the runs returned by Runs. Empty fields match everything.
@@ -73,6 +75,8 @@ func RunMetaFromSnapshot(snap TaskSnapshot) RunMeta {
 		Completed:  snap.Completed,
 		Failed:     snap.Failed,
 		Running:    snap.Running,
+		Href:       snap.Href,
+		Controls:   snap.Controls,
 	}
 }
 

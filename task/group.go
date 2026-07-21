@@ -17,22 +17,26 @@ type GroupMetadata struct {
 	Kind   string            `json:"kind,omitempty"`
 	Labels map[string]string `json:"labels,omitempty"`
 	Owner  string            `json:"owner,omitempty"`
+	Href   string            `json:"href,omitempty"`
 }
 
 // Group represents a group of tasks that can be managed collectively
 type Group struct {
-	name        string
-	id          string     // stable unique id; distinct from name for registry drill-down
-	Items       []Taskable // Can contain Tasks or nested Groups
-	startTime   time.Time
-	finishedAt  time.Time // set lazily the first time the group is observed terminal
-	metadata    GroupMetadata
-	manager     *Manager
-	ctx         context.Context
-	cancel      context.CancelFunc
-	mu          sync.RWMutex
-	concurrency int
-	sem         *semaphore.Weighted // Semaphore for concurrency control
+	name            string
+	id              string     // stable unique id; distinct from name for registry drill-down
+	Items           []Taskable // Can contain Tasks or nested Groups
+	startTime       time.Time
+	finishedAt      time.Time // set lazily the first time the group is observed terminal
+	metadata        GroupMetadata
+	manager         *Manager
+	ctx             context.Context
+	cancel          context.CancelFunc
+	mu              sync.RWMutex
+	concurrency     int
+	sem             *semaphore.Weighted // Semaphore for concurrency control
+	controller      TaskController
+	detailsProvider func() any
+	frozenDetails   any
 }
 
 type TaskGroupOption func(group *Group)
@@ -72,6 +76,27 @@ func WithOwner(owner string) TaskGroupOption {
 	}
 }
 
+// WithHref sets the route a task manager should follow when the run is opened.
+func WithHref(href string) TaskGroupOption {
+	return func(group *Group) {
+		group.metadata.Href = href
+	}
+}
+
+// WithController exposes lifecycle controls for the run.
+func WithController(controller TaskController) TaskGroupOption {
+	return func(group *Group) {
+		group.controller = controller
+	}
+}
+
+// WithDetailsProvider attaches structured live details to the group snapshot.
+func WithDetailsProvider(provider func() any) TaskGroupOption {
+	return func(group *Group) {
+		group.detailsProvider = provider
+	}
+}
+
 // ID returns the group's stable unique id.
 func (g *Group) ID() string {
 	g.mu.RLock()
@@ -79,11 +104,16 @@ func (g *Group) ID() string {
 	return g.id
 }
 
+// Context returns the context canceled when the group is stopped.
+func (g *Group) Context() context.Context {
+	return g.ctx
+}
+
 // Metadata returns a copy of the group's metadata.
 func (g *Group) Metadata() GroupMetadata {
 	g.mu.RLock()
 	defer g.mu.RUnlock()
-	md := GroupMetadata{Kind: g.metadata.Kind, Owner: g.metadata.Owner}
+	md := GroupMetadata{Kind: g.metadata.Kind, Owner: g.metadata.Owner, Href: g.metadata.Href}
 	if g.metadata.Labels != nil {
 		md.Labels = make(map[string]string, len(g.metadata.Labels))
 		for k, v := range g.metadata.Labels {
@@ -131,15 +161,35 @@ func (g *Group) GetTasks() []Taskable {
 	return items
 }
 
+func (g *Group) snapshotDetails() any {
+	g.mu.RLock()
+	if g.frozenDetails != nil {
+		details := g.frozenDetails
+		g.mu.RUnlock()
+		return details
+	}
+	provider := g.detailsProvider
+	g.mu.RUnlock()
+	if provider == nil {
+		return nil
+	}
+	return provider()
+}
+
+func (g *Group) freezeDetails() {
+	details := g.snapshotDetails()
+	g.mu.Lock()
+	g.frozenDetails = details
+	g.detailsProvider = nil
+	g.mu.Unlock()
+}
+
 type TypedGroup[T any] struct {
 	*Group
 }
 
 // Add adds a Waitable item (Task or Group) to this group
 func (g TypedGroup[T]) Add(name string, taskFunc func(flanksourceContext.Context, *Task) (T, error), opts ...Option) TypedTask[T] {
-	g.mu.Lock()
-	defer g.mu.Unlock()
-
 	// Concurrency is enforced by the worker at dequeue time via the group's
 	// semaphore (see worker.run / Task.groupSem); wrapping the task function to
 	// acquire here would double-acquire the same permit (deadlock at N=1).
@@ -148,20 +198,7 @@ func (g TypedGroup[T]) Add(name string, taskFunc func(flanksourceContext.Context
 	// worker could dequeue and run it ungated while parent is still nil. The
 	// withParent option is applied inside newTask, before enqueue; it is
 	// prepended so a caller-supplied option cannot override it.
-	task := StartTask(name, taskFunc, append([]Option{withParent(g.Group)}, opts...)...)
-
-	// Add to the group's items
-	g.Items = append(g.Items, task)
-
-	// Update start time if this is the first item or it started earlier
-	task.mu.Lock()
-	taskStartTime := task.startTime
-	task.mu.Unlock()
-
-	if g.startTime.IsZero() || taskStartTime.Before(g.startTime) {
-		g.startTime = taskStartTime
-	}
-	return task
+	return StartTask(name, taskFunc, append([]Option{WithGroup(g.Group)}, opts...)...)
 }
 
 // GetResults waits for all tasks in the group and returns typed results
@@ -196,6 +233,7 @@ func (g *Group) Status() Status {
 	hasRunning := false
 	hasWarning := false
 	hasFailed := false
+	hasCancelled := false
 	allCompleted := true
 
 	for _, item := range items {
@@ -206,12 +244,14 @@ func (g *Group) Status() Status {
 			allCompleted = false
 		case StatusPending:
 			allCompleted = false
-		case StatusFailed:
+		case StatusFailed, StatusFAIL, StatusERR:
 			hasFailed = true
 		case StatusWarning:
 			hasWarning = true
 		case StatusCancelled:
-			hasFailed = true
+			hasCancelled = true
+		case StatusSuccess, StatusPASS, StatusSKIP:
+			// terminal success
 		}
 	}
 
@@ -223,6 +263,9 @@ func (g *Group) Status() Status {
 	}
 	if hasFailed {
 		return StatusFailed
+	}
+	if hasCancelled {
+		return StatusCancelled
 	}
 	if hasWarning {
 		return StatusWarning

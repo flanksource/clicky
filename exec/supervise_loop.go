@@ -3,6 +3,8 @@ package exec
 import (
 	"slices"
 	"time"
+
+	"github.com/flanksource/clicky/task"
 )
 
 // Lifecycle defaults / cadences. Vars (not consts) so tests can shrink the
@@ -171,6 +173,7 @@ func (s *SupervisedProcess) runLoop() {
 		s.mu.Unlock()
 
 		proc := s.template.clone()
+		taskRun := s.beginTaskGeneration(proc)
 
 		if s.opts.OnStart != nil {
 			s.opts.OnStart()
@@ -221,26 +224,57 @@ func (s *SupervisedProcess) runLoop() {
 		s.mu.Lock()
 		code := res.ExitCode
 		s.exitCode = &code
-		s.current = nil
-		s.started = nil
-		s.ports = nil
 		genChanged := s.gen != myGen
 		desired := s.desired
 		restarts := s.restarts
+		stopping := s.stopping
 		s.mu.Unlock()
 
 		ok := res.IsOk()
+		willRestart := shouldRestart(s.opts.RestartPolicy, ok) &&
+			(s.opts.MaxRestarts <= 0 || restarts < s.opts.MaxRestarts)
+		var taskStatus task.Status
+		var lifecycle Status
 		switch {
-		case s.isStopping() || !desired:
-			s.setStatus(StatusStopped)
+		case stopping || !desired:
+			taskStatus = task.StatusCancelled
+			lifecycle = StatusStopped
+		case genChanged:
+			taskStatus = task.StatusCancelled
+			lifecycle = StatusRestarting
+		case ok:
+			taskStatus = task.StatusSuccess
+			if willRestart {
+				lifecycle = StatusRestarting
+			} else {
+				lifecycle = StatusExited
+			}
+		default:
+			taskStatus = task.StatusFailed
+			if willRestart {
+				lifecycle = StatusRestarting
+			} else {
+				lifecycle = StatusCrashed
+			}
+		}
+		s.setStatus(lifecycle)
+		s.finishTaskGeneration(taskRun, taskStatus, res.Error)
+
+		s.mu.Lock()
+		s.current = nil
+		s.started = nil
+		s.ports = nil
+		s.mu.Unlock()
+
+		switch {
+		case stopping || !desired:
 			return
 		case genChanged:
 			s.mu.Lock()
 			s.restarts = 0
 			s.mu.Unlock()
 			continue
-		case !shouldRestart(s.opts.RestartPolicy, ok) || (s.opts.MaxRestarts > 0 && restarts >= s.opts.MaxRestarts):
-			s.setStatus(exitStatus(ok))
+		case !willRestart:
 			return
 		}
 
@@ -409,13 +443,6 @@ func shouldRestart(policy RestartPolicy, ok bool) bool {
 	default:
 		return false
 	}
-}
-
-func exitStatus(ok bool) Status {
-	if ok {
-		return StatusExited
-	}
-	return StatusCrashed
 }
 
 // backoff returns the delay before the nth restart: 500ms doubling up to 30s.

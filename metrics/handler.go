@@ -24,7 +24,7 @@ type queryResponse struct {
 // rest of the API (e.g. "/api/v1"); it is used verbatim, so pass it without a
 // trailing slash.
 func RegisterRoutes(mux *http.ServeMux, ts Timeseries, prefix string) {
-	mux.Handle(prefix+"/metrics/", Handler(ts, prefix))
+	mux.Handle("GET "+prefix+"/metrics/{id}", Handler(ts, prefix))
 }
 
 // Handler returns the metrics endpoint as a standalone http.Handler for

@@ -1,6 +1,7 @@
 package task
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -10,9 +11,16 @@ import (
 
 // SSEHandler returns an http.Handler that streams task events via Server-Sent Events.
 // If taskIDs are provided, only groups matching those IDs are streamed.
-// The handler polls for dirty tasks every 200ms and emits JSON snapshots.
+// The handler polls every 200ms, emits changed JSON snapshots, and sends stdout
+// and stderr as append-only output deltas (or a reset when the bounded tail
+// rolls over).
 // It sends an "event: done" when all tracked groups have completed.
 func SSEHandler(taskIDs ...string) http.Handler {
+	return SSEHandlerWithSource(nil, taskIDs...)
+}
+
+// SSEHandlerWithSource also streams task runs owned by another process or store.
+func SSEHandlerWithSource(source RunSource, taskIDs ...string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Merge query param IDs with function-level IDs. A ?kind= filter is
 		// resolved to the matching runs' ids so the stream can follow a whole
@@ -24,6 +32,16 @@ func SSEHandler(taskIDs ...string) http.Handler {
 		if kind := r.URL.Query().Get("kind"); kind != "" {
 			for _, run := range Runs(RunFilter{Kind: kind}) {
 				ids = append(ids, run.ID)
+			}
+			if source != nil {
+				runs, err := source.Runs(r.Context(), RunFilter{Kind: kind})
+				if err != nil {
+					http.Error(w, "list external task runs: "+err.Error(), http.StatusInternalServerError)
+					return
+				}
+				for _, run := range runs {
+					ids = append(ids, run.ID)
+				}
 			}
 		}
 
@@ -41,13 +59,15 @@ func SSEHandler(taskIDs ...string) http.Handler {
 
 		ticker := time.NewTicker(200 * time.Millisecond)
 		defer ticker.Stop()
+		lastSnapshots := map[string]string{}
+		lastOutput := map[string]string{}
 
 		for {
 			select {
 			case <-r.Context().Done():
 				return
 			case <-ticker.C:
-				snapshots := SnapshotAll(ids...)
+				snapshots := snapshotsWithSource(r.Context(), source, ids...)
 				allDone := true
 				anyEmitted := false
 
@@ -57,12 +77,26 @@ func SSEHandler(taskIDs ...string) http.Handler {
 							allDone = false
 						}
 					}
+					if snap.Type == "task" {
+						if emitOutputDelta(w, snap, "stdout", snap.Stdout, snap.StdoutTruncated, lastOutput) {
+							anyEmitted = true
+						}
+						if emitOutputDelta(w, snap, "stderr", snap.Stderr, snap.StderrTruncated, lastOutput) {
+							anyEmitted = true
+						}
+						snap.Stdout = ""
+						snap.Stderr = ""
+					}
 					data, err := json.Marshal(snap)
 					if err != nil {
 						continue
 					}
-					_, _ = fmt.Fprintf(w, "event: task\ndata: %s\n\n", data)
-					anyEmitted = true
+					key := snap.Type + ":" + snap.ID + ":" + snap.GroupID
+					if lastSnapshots[key] != string(data) {
+						lastSnapshots[key] = string(data)
+						_, _ = fmt.Fprintf(w, "event: task\ndata: %s\n\n", data)
+						anyEmitted = true
+					}
 				}
 
 				if anyEmitted {
@@ -84,6 +118,47 @@ func SSEHandler(taskIDs ...string) http.Handler {
 	})
 }
 
+type outputDelta struct {
+	ID        string `json:"id"`
+	GroupID   string `json:"groupId,omitempty"`
+	Stream    string `json:"stream"`
+	Data      string `json:"data"`
+	Offset    int    `json:"offset"`
+	Reset     bool   `json:"reset,omitempty"`
+	Truncated bool   `json:"truncated,omitempty"`
+}
+
+func emitOutputDelta(
+	w http.ResponseWriter,
+	snapshot TaskSnapshot,
+	stream string,
+	current string,
+	truncated bool,
+	last map[string]string,
+) bool {
+	key := snapshot.GroupID + ":" + snapshot.ID + ":" + stream
+	previous := last[key]
+	if current == previous {
+		return false
+	}
+	delta := outputDelta{
+		ID: snapshot.ID, GroupID: snapshot.GroupID, Stream: stream,
+		Data: current, Reset: true, Truncated: truncated,
+	}
+	if strings.HasPrefix(current, previous) {
+		delta.Data = current[len(previous):]
+		delta.Offset = len(previous)
+		delta.Reset = false
+	}
+	last[key] = current
+	data, err := json.Marshal(delta)
+	if err != nil {
+		return false
+	}
+	_, _ = fmt.Fprintf(w, "event: output\ndata: %s\n\n", data)
+	return true
+}
+
 // RunsSSEHandler streams the run listing (RunMeta) as SSE. Unlike SSEHandler it
 // never sends a terminal event: a manager view stays subscribed to observe new
 // and changing runs. supplement (may be nil) merges extra runs — e.g. archived
@@ -91,6 +166,25 @@ func SSEHandler(taskIDs ...string) http.Handler {
 // It emits a single "event: runs" frame carrying the full listing, and only
 // re-emits when the listing changes.
 func RunsSSEHandler(supplement func(RunFilter) []RunMeta) http.Handler {
+	return runsSSEHandler(func(_ context.Context, filter RunFilter) ([]RunMeta, error) {
+		if supplement == nil {
+			return nil, nil
+		}
+		return supplement(filter), nil
+	})
+}
+
+// RunsSSEHandlerWithSource streams both in-memory and externally-owned runs.
+func RunsSSEHandlerWithSource(source RunSource) http.Handler {
+	return runsSSEHandler(func(ctx context.Context, filter RunFilter) ([]RunMeta, error) {
+		if source == nil {
+			return nil, nil
+		}
+		return source.Runs(ctx, filter)
+	})
+}
+
+func runsSSEHandler(loadExternal func(context.Context, RunFilter) ([]RunMeta, error)) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		filter := runFilterFromQuery(r)
 
@@ -114,7 +208,11 @@ func RunsSSEHandler(supplement func(RunFilter) []RunMeta) http.Handler {
 		var lastSent string
 		emit := func() {
 			GCRuns()
-			runs := mergeRuns(RunsRaw(filter), supplement, filter)
+			external, err := loadExternal(r.Context(), filter)
+			if err != nil {
+				return
+			}
+			runs := mergeRunMetas(RunsRaw(filter), external)
 			data, err := json.Marshal(runs)
 			if err != nil {
 				return
@@ -137,29 +235,6 @@ func RunsSSEHandler(supplement func(RunFilter) []RunMeta) http.Handler {
 			}
 		}
 	})
-}
-
-// mergeRuns unions live runs with supplement(filter), deduped by id. Live runs
-// win on collision (a supplement source may hold a stale terminal snapshot of a
-// run that is still live in memory).
-func mergeRuns(live []RunMeta, supplement func(RunFilter) []RunMeta, filter RunFilter) []RunMeta {
-	if supplement == nil {
-		if live == nil {
-			return []RunMeta{}
-		}
-		return live
-	}
-	seen := make(map[string]bool, len(live))
-	for _, m := range live {
-		seen[m.ID] = true
-	}
-	out := append([]RunMeta{}, live...)
-	for _, m := range supplement(filter) {
-		if !seen[m.ID] {
-			out = append(out, m)
-		}
-	}
-	return out
 }
 
 // runFilterFromQuery builds a RunFilter from the standard task listing query
