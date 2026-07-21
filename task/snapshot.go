@@ -6,6 +6,17 @@ import (
 	"github.com/flanksource/commons/text"
 )
 
+// SnapshotStreamLimit bounds each stdout/stderr tail exposed through task
+// snapshots. ExecResult remains complete; this limit applies only to task views
+// and persisted snapshots.
+const SnapshotStreamLimit = 1 << 20
+
+// OutputSnapshot is the live output projected by an executing task.
+type OutputSnapshot struct {
+	Stdout string `json:"stdout,omitempty"`
+	Stderr string `json:"stderr,omitempty"`
+}
+
 type LogEntry struct {
 	Level   string `json:"level"`
 	Message string `json:"message"`
@@ -38,12 +49,19 @@ type TaskSnapshot struct {
 	// Registry metadata (additive). For a group these describe the run itself;
 	// for a task GroupID links it to its parent run so the SSE/JSON clients can
 	// key on a stable id rather than the human-facing name.
-	GroupID    string            `json:"groupId,omitempty"`
-	Kind       string            `json:"kind,omitempty"`
-	Labels     map[string]string `json:"labels,omitempty"`
-	Owner      string            `json:"owner,omitempty"`
-	StartedAt  string            `json:"startedAt,omitempty"`  // RFC3339
-	FinishedAt string            `json:"finishedAt,omitempty"` // RFC3339
+	GroupID         string            `json:"groupId,omitempty"`
+	Kind            string            `json:"kind,omitempty"`
+	Labels          map[string]string `json:"labels,omitempty"`
+	Owner           string            `json:"owner,omitempty"`
+	StartedAt       string            `json:"startedAt,omitempty"`  // RFC3339
+	FinishedAt      string            `json:"finishedAt,omitempty"` // RFC3339
+	Href            string            `json:"href,omitempty"`
+	Controls        []ControlAction   `json:"controls,omitempty"`
+	Stdout          string            `json:"stdout,omitempty"`
+	Stderr          string            `json:"stderr,omitempty"`
+	StdoutTruncated bool              `json:"stdoutTruncated,omitempty"`
+	StderrTruncated bool              `json:"stderrTruncated,omitempty"`
+	Details         any               `json:"details,omitempty"`
 }
 
 // SnapshotTask creates a TaskSnapshot from a Task. group is the parent group, or
@@ -81,7 +99,22 @@ func SnapshotTask(t *Task, group *Group) TaskSnapshot {
 			}
 		}
 	}
+	output := t.snapshotOutput()
+	snap.Stdout, snap.StdoutTruncated = streamTail(output.Stdout)
+	snap.Stderr, snap.StderrTruncated = streamTail(output.Stderr)
+	snap.Details = t.snapshotDetails()
+	t.mu.Lock()
+	controller := t.controller
+	t.mu.Unlock()
+	snap.Controls = controllerActions(controller)
 	return snap
+}
+
+func streamTail(value string) (string, bool) {
+	if len(value) <= SnapshotStreamLimit {
+		return value, false
+	}
+	return value[len(value)-SnapshotStreamLimit:], true
 }
 
 // SnapshotGroup creates a TaskSnapshot from a Group with aggregate child stats.
@@ -101,12 +134,18 @@ func SnapshotGroup(g *Group) TaskSnapshot {
 		Kind:    md.Kind,
 		Labels:  md.Labels,
 		Owner:   md.Owner,
+		Href:    md.Href,
 	}
+	g.mu.RLock()
+	controller := g.controller
+	g.mu.RUnlock()
+	snap.Controls = controllerActions(controller)
+	snap.Details = g.snapshotDetails()
 	if started := g.StartedAt(); !started.IsZero() {
-		snap.StartedAt = started.UTC().Format(time.RFC3339)
+		snap.StartedAt = started.UTC().Format(time.RFC3339Nano)
 	}
 	if finished := g.FinishedAt(); !finished.IsZero() {
-		snap.FinishedAt = finished.UTC().Format(time.RFC3339)
+		snap.FinishedAt = finished.UTC().Format(time.RFC3339Nano)
 	}
 	g.mu.RLock()
 	items := g.Items

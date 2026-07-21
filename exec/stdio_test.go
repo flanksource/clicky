@@ -30,7 +30,8 @@ var _ = Describe("WithStdioPipe", func() {
 		_, err := io.WriteString(proc.Stdin(), "ping\n")
 		Expect(err).ToNot(HaveOccurred())
 
-		// cat echoes stdin to the piped stdout, which bypasses captureOutput.
+		// cat echoes stdin to the piped stdout and the task/output snapshot keeps
+		// the same bytes without consuming the protocol reader.
 		lineCh := make(chan string, 1)
 		go func() {
 			scanner := bufio.NewScanner(proc.StdoutReader())
@@ -39,6 +40,7 @@ var _ = Describe("WithStdioPipe", func() {
 			}
 		}()
 		Eventually(lineCh, 5*time.Second).Should(Receive(Equal("ping")))
+		Eventually(proc.GetStdout, 5*time.Second).Should(Equal("ping\n"))
 	})
 
 	It("makes Stdin/StdoutReader available only after the child starts", func() {

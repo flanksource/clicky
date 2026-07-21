@@ -297,12 +297,16 @@ func (p *Process) StdoutReader() io.Reader {
 }
 
 func (p *Process) clone() *Process {
+	var capture *ExecLogger
+	if p.captureOutput != nil {
+		capture = NewExecLogger().Tee(p.captureOutput.Stdout, p.captureOutput.Stderr)
+	}
 	cloned := &Process{
 		Cwd:              p.Cwd,
 		Cmd:              p.Cmd,
 		Args:             make([]string, len(p.Args)),
 		Timeout:          p.Timeout,
-		captureOutput:    p.captureOutput,
+		captureOutput:    capture,
 		SucceedOnNonZero: p.SucceedOnNonZero,
 		log:              p.log,
 		Shell:            p.Shell,
@@ -750,7 +754,10 @@ func (p *Process) Run() *Process {
 		cmd.Stdout = childStdoutW
 		p.mu.Lock()
 		p.stdin = stdinW
-		p.stdoutR = stdoutR
+		p.stdoutR = capturingReadCloser{
+			Reader: io.TeeReader(stdoutR, p.captureOutput.GetStdoutWriter()),
+			Closer: stdoutR,
+		}
 		p.mu.Unlock()
 	} else {
 		cmd.Stdout = p.captureOutput.GetStdoutWriter()
@@ -1020,7 +1027,8 @@ func (p *Process) GetTask() *task.Task {
 // StartAsTask creates and starts a Task for this Process with typed result handling
 func (p *Process) RunAsTask(name string, opts ...task.Option) task.TypedTask[ExecResult] {
 	taskFunc := func(ctx cctx.Context, t *task.Task) (ExecResult, error) {
-		p.task = t
+		done := bindProcessTask(ctx, t, p)
+		defer done()
 		out := p.Run()
 		p = out
 
@@ -1036,7 +1044,8 @@ func (p *Process) RunAsTask(name string, opts ...task.Option) task.TypedTask[Exe
 // StartAsTask creates and starts a Task for this Process with typed result handling
 func (p *Process) StartAsTask(name string, opts ...task.Option) task.TypedTask[*Process] {
 	taskFunc := func(ctx cctx.Context, t *task.Task) (*Process, error) {
-		p.task = t
+		done := bindProcessTask(ctx, t, p)
+		defer done()
 		// Run the process
 		p = p.Run()
 

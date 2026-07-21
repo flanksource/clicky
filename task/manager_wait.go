@@ -2,6 +2,7 @@ package task
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/flanksource/commons/logger"
@@ -95,32 +96,69 @@ func ClearTasks() {
 	global.groups = activeGroups
 }
 
-// WaitSilent waits for all tasks to complete without displaying results.
-// It stops the renderer and stops output capture (flushing any output
-// buffered by StartCapturingOutput to the restored streams).
-func WaitSilent() int {
+// awaitAllTasks blocks until the queue is drained, no worker is active, and
+// every registered task has flipped completed.
+//
+// A task that never completes is named on a doubling interval instead of being
+// waited on in silence: a mute poll here is what let a single wedged task leave
+// gavel processes ticking at 10ms for days with nothing in the logs and no open
+// file descriptors to point at the cause.
+func awaitAllTasks() {
 	ticker := time.NewTicker(10 * time.Millisecond)
 	defer ticker.Stop()
 
-	for {
-		if global.taskQueue.Empty() && global.workersActive.Load() == 0 {
-			allComplete := true
-			global.mu.RLock()
-			for _, task := range global.tasks {
-				if !task.completed.Load() {
-					allComplete = false
-					break
-				}
-			}
-			global.mu.RUnlock()
+	start := time.Now()
+	warnAfter := waitForWarnAfter
 
-			if allComplete {
-				break
-			}
+	for {
+		if global.taskQueue.Empty() && global.workersActive.Load() == 0 && allTasksCompleted() {
+			return
+		}
+
+		if waited := time.Since(start); waited >= warnAfter {
+			logger.Warnf("Still waiting after %s for: %s",
+				waited.Round(time.Second), strings.Join(incompleteTaskNames(), ", "))
+			warnAfter *= 2
 		}
 
 		<-ticker.C
 	}
+}
+
+func allTasksCompleted() bool {
+	global.mu.RLock()
+	defer global.mu.RUnlock()
+
+	for _, task := range global.tasks {
+		if !task.completed.Load() {
+			return false
+		}
+	}
+	return true
+}
+
+// incompleteTaskNames names the tasks still blocking a wait, for diagnostics.
+func incompleteTaskNames() []string {
+	global.mu.RLock()
+	tasks := make([]*Task, len(global.tasks))
+	copy(tasks, global.tasks)
+	global.mu.RUnlock()
+
+	var names []string
+	for _, task := range tasks {
+		if task.completed.Load() {
+			continue
+		}
+		names = append(names, fmt.Sprintf("%s (%s)", task.Name(), task.Status()))
+	}
+	return names
+}
+
+// WaitSilent waits for all tasks to complete without displaying results.
+// It stops the renderer and stops output capture (flushing any output
+// buffered by StartCapturingOutput to the restored streams).
+func WaitSilent() int {
+	awaitAllTasks()
 
 	global.stopRender()
 	global.StopCapturingOutput()
@@ -147,28 +185,7 @@ func WaitSilent() int {
 // It stops the renderer and stops output capture (flushing any output
 // buffered by StartCapturingOutput to the restored streams).
 func Wait() int {
-	ticker := time.NewTicker(10 * time.Millisecond)
-	defer ticker.Stop()
-
-	for {
-		if global.taskQueue.Empty() && global.workersActive.Load() == 0 {
-			allComplete := true
-			global.mu.RLock()
-			for _, task := range global.tasks {
-				if !task.completed.Load() {
-					allComplete = false
-					break
-				}
-			}
-			global.mu.RUnlock()
-
-			if allComplete {
-				break
-			}
-		}
-
-		<-ticker.C
-	}
+	awaitAllTasks()
 
 	global.stopRender()
 	global.StopCapturingOutput()
@@ -218,34 +235,7 @@ func Debug() string {
 
 // WaitForAllTasks waits for all global tasks to complete and forces a final render
 func WaitForAllTasks() {
-	timeout := time.Second * 10
-	start := time.Now()
-	ticker := time.NewTicker(10 * time.Millisecond)
-	defer ticker.Stop()
-
-	for {
-		if time.Since(start) > timeout {
-			logger.Warnf("Still waiting for all tasks to complete after %v", time.Since(start))
-			timeout *= 2 // Exponential backoff for next warning
-		}
-		if global.taskQueue.Empty() && global.workersActive.Load() == 0 {
-			allComplete := true
-			global.mu.RLock()
-			for _, task := range global.tasks {
-				if !task.completed.Load() {
-					allComplete = false
-					break
-				}
-			}
-			global.mu.RUnlock()
-
-			if allComplete {
-				break
-			}
-		}
-
-		<-ticker.C
-	}
+	awaitAllTasks()
 
 	// For plain render mode, force a final render
 	if global.noProgress.Load() && !global.noRender.Load() {

@@ -75,6 +75,19 @@ func withParent(g *Group) Option {
 	}
 }
 
+// WithGroup attaches a directly-started task (including exec.RunAsTask and
+// exec.StartAsTask) to an existing run group before it is enqueued.
+func WithGroup(g *Group) Option {
+	return withParent(g)
+}
+
+// WithTaskController exposes task-scoped controls such as stop and stdin.
+func WithTaskController(controller TaskController) Option {
+	return func(t *Task) {
+		t.controller = controller
+	}
+}
+
 // WithModel sets the model name for the task
 func WithModel(modelName string) Option {
 	return func(t *Task) {
