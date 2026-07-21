@@ -196,7 +196,7 @@ func formatTextable(data api.Textable, opts FormatOptions) (string, error) {
 		return string(d), nil
 
 	case "markdown", "md":
-		return data.Markdown(), nil
+		return api.RenderMarkdown(data, api.MarkdownOptions{NoColor: opts.NoColor}), nil
 	case "pretty":
 		return data.ANSI(), nil
 	case "html", "email":
@@ -211,18 +211,6 @@ func formatTextable(data api.Textable, opts FormatOptions) (string, error) {
 
 func (f *FormatManager) FormatWithOptions(options FormatOptions, data ...any) (string, error) {
 	return f.FormatWithContext(nil, options, data...)
-}
-
-// FormatWithContext formats data with an optional caller context that is
-// forwarded to registered format callbacks.
-func (f *FormatManager) FormatWithContext(ctx any, options FormatOptions, data ...any) (string, error) {
-	before := collapseFormatInput(data...)
-	before = f.applyBeforeFormatCallbacks(ctx, options, before)
-	output, err := f.formatWithOptions(options, expandFormatInput(before)...)
-	if err != nil {
-		return "", err
-	}
-	return f.applyAfterFormatCallbacks(ctx, options, before, output), nil
 }
 
 func (f *FormatManager) formatWithOptions(options FormatOptions, data ...any) (string, error) {
@@ -304,12 +292,11 @@ func (f *FormatManager) formatWithOptions(options FormatOptions, data ...any) (s
 		if f.markdownFormatter == nil {
 			f.markdownFormatter = NewMarkdownFormatter()
 		}
-		f.markdownFormatter.NoColor = options.NoColor
 		// Convert to PrettyData first to handle pretty tags like tree
 		prettyData, err := f.ToPrettyDataWithOptions(d, options)
 		if err != nil {
 			// Fallback to direct formatting if PrettyData conversion fails
-			return f.markdownFormatter.Format(d)
+			return f.markdownFormatter.FormatWithOptions(d, options)
 		}
 		return f.markdownFormatter.FormatPrettyData(prettyData, options)
 
@@ -473,7 +460,6 @@ func (f *FormatManager) FormatWithSchemaContext(ctx any, prettyData *api.PrettyD
 		if f.markdownFormatter == nil {
 			f.markdownFormatter = NewMarkdownFormatter()
 		}
-		f.markdownFormatter.NoColor = options.NoColor
 		output, err = f.markdownFormatter.FormatPrettyData(prettyData, options)
 	case "slack":
 		if f.slackFormatter == nil {
