@@ -12,8 +12,6 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
-
-	"github.com/flanksource/clicky/entity"
 )
 
 // CommandExecutor handles dynamic execution of Cobra commands via HTTP requests
@@ -192,127 +190,6 @@ func extractPathParams(template, path string) map[string]string {
 		}
 	}
 	return result
-}
-
-// ExecuteCommand executes a Cobra command with the given parameters
-// Returns: (parsedData, metadata, error)
-// - parsedData: The actual command output (parsed if possible, or ExecutionResponse wrapper)
-// - metadata: Execution metadata for HTTP headers (CLI command, exit code, success)
-// - error: Execution error if any
-func (e *CommandExecutor) ExecuteCommand(op *RPCOperation, req *ExecutionRequest) (any, *ExecutionResponse, error) {
-	if !e.config.Enabled {
-		resp := &ExecutionResponse{
-			Success: false,
-			Error:   "Command execution is disabled",
-			Input:   req,
-			CLI:     buildCLICommand(op, req),
-		}
-		return resp, resp, fmt.Errorf("command execution is disabled")
-	}
-
-	// If the operation has a (Context)DataFunc (registered via AddCommand), call
-	// it directly to get structured data without stdout capture. The
-	// context-aware variant is preferred so handlers can resolve request-scoped
-	// state from req.Context().
-	if op.ContextDataFunc != nil || op.DataFunc != nil {
-		var (
-			data any
-			err  error
-		)
-		if op.ContextDataFunc != nil {
-			data, err = op.ContextDataFunc(req.ctx(), req.Flags, req.Args)
-		} else {
-			data, err = op.DataFunc(req.Flags, req.Args)
-		}
-		response := &ExecutionResponse{
-			Success:  err == nil,
-			ExitCode: 0,
-			CLI:      buildCLICommand(op, req),
-			// The payload is op.DataFunc's structured return value, not captured
-			// stdout. The HTTP layer must serialize `data` directly even for
-			// structured wire formats (json/yaml) — the envelope's Output is empty
-			// here, so substituting it would drop the entire result.
-			DataIsStructured: err == nil,
-		}
-		if err != nil {
-			response.Error = err.Error()
-			response.ExitCode = 1
-			return response, response, err
-		}
-		return data, response, nil
-	}
-
-	cmd := op.Command
-	if cmd == nil {
-		resp := &ExecutionResponse{
-			Success: false,
-			Error:   "No command associated with operation",
-			Input:   req,
-			CLI:     buildCLICommand(op, req),
-		}
-		return resp, resp, fmt.Errorf("no command found for operation %s", op.Name)
-	}
-
-	// Run the command through the transport-neutral handle, which resets state,
-	// applies the request's flags/args, and captures stdout/stderr.
-	stdoutStr, stderrStr, err := cmd.Execute(req.ctx(), entity.ExecuteOptions{
-		Args:  req.Args,
-		Flags: req.Flags,
-	})
-
-	// Extract exit code
-	exitCode := extractExitCode(err)
-
-	// Parse the output to return actual data instead of wrapper
-	parsedData, parseErr := parseCommandOutput(stdoutStr, stderrStr, req)
-
-	// Build response with metadata for headers
-	response := &ExecutionResponse{
-		Success:  err == nil,
-		Stdout:   stdoutStr,
-		Stderr:   stderrStr,
-		Output:   stdoutStr + stderrStr,
-		ExitCode: exitCode,
-		CLI:      buildCLICommand(op, req),
-	}
-
-	if err != nil {
-		response.Error = err.Error()
-		response.Message = "Command execution failed"
-		response.Input = req
-		// Return error response for failed commands
-		return response, response, err
-	}
-
-	// If parse succeeded, return the parsed data directly with metadata
-	if parseErr == nil && parsedData != nil {
-		return parsedData, response, nil
-	}
-
-	// Parsing failed — return raw stdout as data, metadata in response
-	return stdoutStr, response, nil
-}
-
-// parseCommandOutput attempts to parse command output into structured data
-func parseCommandOutput(stdout, stderr string, req *ExecutionRequest) (any, error) {
-	// If there's no stdout, nothing to parse
-	if stdout == "" {
-		return nil, fmt.Errorf("no output to parse")
-	}
-
-	// Try to detect format from output content
-	trimmed := strings.TrimSpace(stdout)
-
-	// Try JSON first (most common for CLI tools)
-	if strings.HasPrefix(trimmed, "{") || strings.HasPrefix(trimmed, "[") {
-		var data any
-		if err := json.Unmarshal([]byte(trimmed), &data); err == nil {
-			return data, nil
-		}
-	}
-
-	// If parsing fails, return nil to fallback to wrapper
-	return nil, fmt.Errorf("unable to parse output")
 }
 
 // ExtractRequestFromHTTP extracts execution parameters from HTTP request
