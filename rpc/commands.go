@@ -21,6 +21,16 @@ func NewOpenAPICommandWithConfig(config *OpenAPIConfig) *cobra.Command {
 	return newOpenAPICommand(config)
 }
 
+// NewServeCommand creates a top-level OpenAPI server command.
+func NewServeCommand() *cobra.Command {
+	return newOpenAPIServeCommand(nil)
+}
+
+// NewServeCommandWithConfig creates a top-level OpenAPI server command with custom configuration.
+func NewServeCommandWithConfig(config *OpenAPIConfig) *cobra.Command {
+	return newOpenAPIServeCommand(config)
+}
+
 // newOpenAPICommand creates the OpenAPI command group
 func newOpenAPICommand(defaultConfig *OpenAPIConfig) *cobra.Command {
 	cmd := &cobra.Command{

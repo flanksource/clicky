@@ -65,13 +65,13 @@ func (c *CobraExtension) All() *CobraExtension {
 // ServeCommand adds OpenAPI serve functionality for Swagger UI documentation
 // Usage: extensions.CobraExtensions(rootCmd).ServeCommand()
 func (c *CobraExtension) ServeCommand() *CobraExtension {
-	c.rootCmd.AddCommand(rpc.NewOpenAPICommand())
+	c.rootCmd.AddCommand(rpc.NewServeCommand())
 	return c
 }
 
 // ServeCommandWithConfig adds OpenAPI serve functionality with custom configuration
 func (c *CobraExtension) ServeCommandWithConfig(config *rpc.OpenAPIConfig) *CobraExtension {
-	c.rootCmd.AddCommand(rpc.NewOpenAPICommandWithConfig(config))
+	c.rootCmd.AddCommand(rpc.NewServeCommandWithConfig(config))
 	return c
 }
 
