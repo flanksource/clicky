@@ -1,7 +1,6 @@
 package api
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
 	"html"
@@ -10,10 +9,6 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/lipgloss/table"
-	"github.com/olekukonko/tablewriter"
-	"github.com/olekukonko/tablewriter/renderer"
-	"github.com/olekukonko/tablewriter/tw"
-	"github.com/samber/lo"
 
 	"github.com/flanksource/clicky/api/tailwind"
 )
@@ -468,58 +463,7 @@ func (t TextTable) ANSI() string {
 }
 
 func (t TextTable) Markdown() string {
-	if len(t.Headers) == 0 {
-		return ""
-	}
-
-	// Create buffer to capture table output
-	var buf bytes.Buffer
-
-	width := GetTerminalWidth()
-
-	// Create tablewriter instance with word wrapping enabled
-	// Set reasonable table max width to enable wrapping (this is distributed across columns)
-	table := tablewriter.NewTable(&buf,
-		tablewriter.WithRowAutoWrap(tw.WrapBreak),
-		tablewriter.WithHeaderAutoFormat(tw.On),
-		tablewriter.WithMaxWidth(width),
-		tablewriter.WithBehavior(tw.Behavior{AutoHide: tw.On}),
-		tablewriter.WithRenderer(renderer.NewMarkdown()),
-	)
-
-	table.Header(lo.ToAnySlice(t.Headers.AsString())...)
-
-	for _, row := range t.Rows {
-		values := []any{}
-
-		for i, header := range t.Headers {
-			// Use field name from FieldNames if available, otherwise fall back to header
-			var fieldName string
-			if i < len(t.FieldNames) && t.FieldNames[i] != "" {
-				fieldName = t.FieldNames[i]
-			} else {
-				fieldName = header.String()
-			}
-
-			cell, ok := row[fieldName]
-			if !ok {
-				values = append(values, "")
-				continue
-			}
-			values = append(values, escapeMarkdownPipes(TransformerMarkdown(cell)))
-		}
-
-		if err := table.Append(values...); err != nil {
-			return err.Error()
-		}
-	}
-
-	// Render the table
-	if err := table.Render(); err != nil {
-		return err.Error()
-	}
-
-	return "\n" + buf.String()
+	return t.MarkdownWithOptions(MarkdownOptions{})
 }
 
 // escapeMarkdownPipes escapes a literal pipe so a cell value does not break the
@@ -615,19 +559,36 @@ func (t *TextTable) renderLipgloss(withColors bool) string {
 		rows[rowIdx] = rowData
 	}
 
-	// Calculate total width needed for table
-	totalWidth := GetTerminalWidth()
-	naturalWidth := len(columnWidths) + 1
-	for _, width := range columnWidths {
-		naturalWidth += width
-	}
-	fixCappedColumns := naturalWidth <= totalWidth
+	// Size the columns here rather than letting lipgloss do it. Lipgloss shrinks
+	// whichever column is currently widest, one character at a time, with no
+	// floor -- so a narrow column keeps its width only by accident, and a table
+	// that fits gets padded out to fill the terminal.
+	borderWidth := len(columnWidths) + 1
+	widths := allocateColumnWidths(columnWidths, GetTerminalWidth()-borderWidth)
 
-	// Create lipgloss table with calculated dimensions
+	tableWidth := borderWidth
+	for _, width := range widths {
+		tableWidth += width
+	}
+
+	rowHeights := make([]int, len(rows))
+	for row, cells := range rows {
+		for _, cell := range cells {
+			rowHeights[row] = max(rowHeights[row], strings.Count(strings.ReplaceAll(cell, "\r\n", "\n"), "\n")+1)
+		}
+	}
+
+	// Every column is pinned below, so lipgloss's own resizing is inert as long
+	// as the table width matches what we allocated -- both maxColumnWidths and
+	// maxTotal honour a pinned width. Wrap(false) makes it truncate a cell that
+	// still overflows instead of wrapping it onto a second line; the cell text
+	// was already capped at the column's MaxWidth upstream, but the allocated
+	// width can be narrower still, and only lipgloss knows the value is ANSI.
 	tbl := table.New().
 		Headers(headers...).
 		Rows(rows...).
-		Width(totalWidth)
+		Wrap(false).
+		Width(tableWidth)
 
 	tbl = tbl.StyleFunc(func(row, col int) lipgloss.Style {
 		style := lipgloss.NewStyle()
@@ -641,14 +602,64 @@ func (t *TextTable) renderLipgloss(withColors bool) string {
 				}
 			}
 		}
-		if fixCappedColumns && col < len(t.Columns) && col < len(columnWidths) &&
-			tailwind.ParseStyle(t.Columns[col].Style).MaxWidth > 0 {
-			style = style.Width(columnWidths[col])
+		if col < len(widths) {
+			style = style.Width(widths[col])
+		}
+		if row >= 0 && row < len(rowHeights) {
+			style = style.Height(rowHeights[row])
 		}
 		return style
 	})
 
 	return tbl.String()
+}
+
+// columnMinWidth is the narrowest a column may be shrunk to, leaving room for a
+// character and the ellipsis truncation appends.
+const columnMinWidth = 2
+
+// allocateColumnWidths sizes each column to its content, then, if that overruns
+// the available width, lowers every column to a common ceiling chosen as high as
+// the budget allows.
+//
+// Capping the widest columns is what keeps a narrow one intact: a project name
+// or a token count sits well under the ceiling and is never touched, while the
+// prose column beside it gives up everything the terminal demands. Taking a
+// proportional cut from every column instead would clip a 7-character project
+// name to free space its neighbour has in abundance.
+func allocateColumnWidths(natural []int, available int) []int {
+	widths := append([]int(nil), natural...)
+
+	total, widest := 0, 0
+	for _, width := range widths {
+		total += width
+		widest = max(widest, width)
+	}
+	if total <= available {
+		return widths
+	}
+
+	// Highest ceiling whose capped total still fits. Below columnMinWidth there
+	// is nothing left to give, so a table with more columns than the terminal
+	// can hold overflows rather than collapsing to slivers.
+	low, high := columnMinWidth, widest
+	for low < high {
+		ceiling := (low + high + 1) / 2
+		capped := 0
+		for _, width := range widths {
+			capped += min(width, ceiling)
+		}
+		if capped <= available {
+			low = ceiling
+		} else {
+			high = ceiling - 1
+		}
+	}
+
+	for i, width := range widths {
+		widths[i] = min(width, low)
+	}
+	return widths
 }
 
 // parseTailwindToLipgloss converts a Tailwind style string to a lipgloss.Style

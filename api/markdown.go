@@ -6,6 +6,10 @@ import (
 )
 
 func markdownTextable(t Textable, slack bool) string {
+	return markdownTextableWithOptions(t, slack, MarkdownOptions{})
+}
+
+func markdownTextableWithOptions(t Textable, slack bool, options MarkdownOptions) string {
 	if t == nil {
 		return ""
 	}
@@ -14,15 +18,19 @@ func markdownTextable(t Textable, slack bool) string {
 			return v.MarkdownSlack()
 		}
 	}
-	return t.Markdown()
+	return RenderMarkdown(t, options)
 }
 
 func (t Text) Markdown() string {
-	return t.markdown(false)
+	return t.MarkdownWithOptions(MarkdownOptions{})
+}
+
+func (t Text) MarkdownWithOptions(options MarkdownOptions) string {
+	return t.markdown(false, options)
 }
 
 func (t Text) MarkdownSlack() string {
-	return t.markdown(true)
+	return t.markdown(true, MarkdownOptions{})
 }
 
 func (t Text) boldMD(text string, slack bool) string {
@@ -32,36 +40,42 @@ func (t Text) boldMD(text string, slack bool) string {
 	return "**" + text + "**"
 }
 
-func (t Text) markdown(slack bool) string {
-	content := t.Content
+func (t Text) markdown(slack bool, options MarkdownOptions) string {
+	renderedContent := t.Content
+	plainContent := t.Content
 	for _, child := range t.Children {
-		content += markdownTextable(child, slack)
+		renderedContent += markdownTextableWithOptions(child, slack, options)
+		plainContent += child.String()
 	}
 
-	// Get the effective style (Class takes precedence over Style string)
 	var style TailwindStyle
-	var transformedText string
+	content := renderedContent
 
 	if t.Class != (Class{}) {
-		// Use Class if available
-		transformedText = content
 		style = classToTailwindStyle(t.Class)
 	} else if t.Style != "" {
-		// Fall back to Style string
-		transformedText, style = ApplyTailwindStyle(content, t.Style)
+		transformedText, parsedStyle := ApplyTailwindStyle(plainContent, t.Style)
+		style = parsedStyle
+		if transformedText != plainContent {
+			content = transformedText
+		}
 	} else {
-		// No style
-		return content
+		return renderedContent
 	}
 
-	// Convert tailwind styles to markdown with HTML fallback for colors
-	result := transformedText
-	hasColors := style.Foreground != "" || style.Background != ""
+	result := content
+	if style.Bold {
+		result = t.boldMD(result, slack)
+	}
+	if style.Italic {
+		result = "*" + result + "*"
+	}
+	if style.Strikethrough {
+		result = "~~" + result + "~~"
+	}
 
-	// If we have colors, use HTML span with inline CSS for better markdown renderer support
-	if hasColors {
+	if !options.NoColor && (style.Foreground != "" || style.Background != "") {
 		var styles []string
-
 		if style.Foreground != "" {
 			styles = append(styles, fmt.Sprintf("color: %s", style.Foreground))
 		}
@@ -71,50 +85,8 @@ func (t Text) markdown(slack bool) string {
 		if style.Faint {
 			styles = append(styles, "opacity: 0.6")
 		}
-
-		styleAttr := fmt.Sprintf("style=\"%s\"", strings.Join(styles, "; "))
-		result = fmt.Sprintf("<span %s>%s</span>", styleAttr, result)
+		return fmt.Sprintf(`<span style="%s">%s</span>`, strings.Join(styles, "; "), result)
 	}
-
-	// Apply markdown formatting for text decorations
-	if style.Bold {
-		if hasColors {
-			// Bold inside the span
-			result = strings.Replace(result, transformedText, t.boldMD(transformedText, slack), 1)
-		} else {
-			result = t.boldMD(result, slack)
-		}
-	}
-	if style.Italic {
-		if hasColors {
-			// Italic inside the span
-			contentToReplace := transformedText
-			if style.Bold {
-				contentToReplace = t.boldMD(transformedText, slack)
-			}
-			result = strings.Replace(result, contentToReplace, "*"+contentToReplace+"*", 1)
-		} else {
-			result = "*" + result + "*"
-		}
-	}
-	if style.Strikethrough {
-		if hasColors {
-			// Find the text to strikethrough (may be wrapped in bold/italic)
-			contentToReplace := transformedText
-			if style.Bold && style.Italic {
-				contentToReplace = "*" + t.boldMD(transformedText, slack) + "*"
-			} else if style.Bold {
-				contentToReplace = t.boldMD(transformedText, slack)
-			} else if style.Italic {
-				contentToReplace = "*" + transformedText + "*"
-			}
-			result = strings.Replace(result, contentToReplace, "~~"+contentToReplace+"~~", 1)
-		} else {
-			result = "~~" + result + "~~"
-		}
-	}
-
-	// Note: Underline isn't supported in standard markdown, but will be handled by HTML span
 
 	return result
 }
