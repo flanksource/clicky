@@ -1,4 +1,4 @@
-package aichat
+package aichat_test
 
 import (
 	"testing"
@@ -7,7 +7,7 @@ import (
 	. "github.com/onsi/gomega"
 )
 
-func TestAttachments(t *testing.T) {
+func TestAichatAdapter(t *testing.T) {
 	RegisterFailHandler(Fail)
-	RunSpecs(t, "AI Chat Attachments Suite")
+	RunSpecs(t, "Clicky Captain Tool Adapter Suite")
 }

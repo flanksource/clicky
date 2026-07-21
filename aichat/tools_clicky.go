@@ -1,273 +1,297 @@
 package aichat
 
 import (
+	"context"
 	"fmt"
 	"sort"
 	"strings"
 
-	"github.com/firebase/genkit/go/ai"
-	"github.com/firebase/genkit/go/genkit"
+	captools "github.com/flanksource/captain/pkg/ai/tools"
+	capchat "github.com/flanksource/captain/pkg/aichat"
+	"github.com/flanksource/captain/pkg/api"
+	"github.com/flanksource/clicky/entity"
+	clickymcp "github.com/flanksource/clicky/mcp"
 	"github.com/flanksource/clicky/rpc"
 	"github.com/spf13/cobra"
 )
 
-// ClickyToolset adapts a Cobra command tree into Genkit tools backed by clicky's
-// in-process RPC executor. Operations are discovered once via the converter; each
-// becomes a dynamic Genkit tool whose input schema is the operation's JSON schema.
-type ClickyToolset struct {
-	service  *rpc.RPCService
-	executor *rpc.CommandExecutor
-	// requireApproval, when non-nil, gates a tool behind user approval before it
-	// executes (human-in-the-loop). nil means every tool runs automatically.
-	requireApproval approvalPredicate
+type CobraToolFilter func(captools.ToolInfo) bool
+type CobraToolPermission func(captools.ToolInfo) api.ToolMode
+
+type CobraToolProviderOptions struct {
+	Root       *cobra.Command
+	Filter     CobraToolFilter
+	Permission CobraToolPermission
 }
 
-// NewClickyToolset converts rootCmd into an RPC service and wires an enabled
-// in-process executor. SkipPreRun avoids re-running cobra root hooks per call.
-func NewClickyToolset(rootCmd *cobra.Command) (*ClickyToolset, error) {
-	service, err := rpc.NewConverter(rpc.DefaultConfig()).ConvertCommandTree(rootCmd)
+// CobraToolProvider projects Clicky RPC operations into Captain's provider-
+// neutral tool contract. Provider execution and transport remain in Captain.
+type CobraToolProvider struct {
+	service    *rpc.RPCService
+	executor   *rpc.CommandExecutor
+	filter     CobraToolFilter
+	permission CobraToolPermission
+}
+
+func NewCobraToolProvider(options CobraToolProviderOptions) (*CobraToolProvider, error) {
+	if options.Root == nil {
+		return nil, fmt.Errorf("Cobra tool provider root command is required")
+	}
+	config := rpc.DefaultConfig()
+	service, err := rpc.NewConverter(config).ConvertCommandTree(options.Root)
 	if err != nil {
 		return nil, fmt.Errorf("convert command tree: %w", err)
 	}
-	executor := rpc.NewCommandExecutor(service, &rpc.ExecutorConfig{
-		Enabled:    true,
-		SkipPreRun: true,
-		PathPrefix: rpc.DefaultConfig().PathPrefix,
-	})
-	return &ClickyToolset{service: service, executor: executor}, nil
+	return &CobraToolProvider{
+		service: service,
+		executor: rpc.NewCommandExecutor(service, &rpc.ExecutorConfig{
+			Enabled: true, SkipPreRun: true, PathPrefix: config.PathPrefix,
+		}),
+		filter:     options.Filter,
+		permission: options.Permission,
+	}, nil
 }
 
-// DefineTools registers each runnable operation as a Genkit tool on g and
-// returns them as ToolRefs ready for ai.WithTools. Non-runnable group commands
-// and cobra built-ins (completion/help) are skipped; operation names are
-// sanitized into the provider-safe identifier charset.
-func (t *ClickyToolset) DefineTools(g *genkit.Genkit) []ai.ToolRef {
-	return toolRefs(t.DefineRegisteredTools(g))
-}
-
-// DefineRegisteredTools registers each runnable operation and returns the tool
-// refs together with clicky operation metadata used for per-request filtering
-// and approval decisions.
-func (t *ClickyToolset) DefineRegisteredTools(g *genkit.Genkit) []registeredTool {
-	refs := make([]registeredTool, 0, len(t.service.Operations))
+func (p *CobraToolProvider) ToolSet(context.Context) (capchat.ToolSet, error) {
+	if p == nil || p.service == nil || p.executor == nil {
+		return capchat.ToolSet{}, fmt.Errorf("Cobra tool provider is not initialized")
+	}
+	set := capchat.ToolSet{}
 	seen := map[string]bool{}
-	for i := range t.service.Operations {
-		op := &t.service.Operations[i]
+	for i := range p.service.Operations {
+		op := &p.service.Operations[i]
 		if !toolableOperation(op) {
 			continue
 		}
 		name := toolName(op.Name)
-		if name == "" || seen[name] {
-			continue
+		if name == "" {
+			return capchat.ToolSet{}, fmt.Errorf("operation %q has no provider-safe tool name", op.Name)
+		}
+		if seen[name] {
+			return capchat.ToolSet{}, fmt.Errorf("operations resolve to duplicate tool name %q", name)
 		}
 		seen[name] = true
+		info, err := toolInfo(name, op)
+		if err != nil {
+			return capchat.ToolSet{}, err
+		}
+		if p.filter != nil && !p.filter(info) {
+			continue
+		}
+		if p.permission != nil {
+			mode := p.permission(info)
+			normalized, ok := api.NormalizeToolMode(mode)
+			if !ok {
+				return capchat.ToolSet{}, fmt.Errorf("operation %q resolved invalid tool permission %q", op.Name, mode)
+			}
+			info.DefaultPermission = normalized
+		}
 		schema := jsonSchema(op.Schema)
-		info := toolInfo(name, op)
-		toolOpts := []ai.ToolOption{
-			ai.WithInputSchema(schema),
-			ai.WithStrictSchema(info.Strict != nil && *info.Strict),
+		definition := api.ToolDefinition{
+			Name: name, Description: op.Description, InputSchema: schema,
+			Group: info.Group, Parent: info.Parent, Icon: info.Icon,
+			DefaultPermission: info.DefaultPermission, Strict: info.Strict,
+			ReadOnlyHint: info.ReadOnlyHint, DestructiveHint: info.DestructiveHint,
+			IdempotentHint: info.IdempotentHint, Annotations: info.Annotations,
+			Handler: p.handlerFor(op),
 		}
-		tool := genkit.DefineTool[any, any](g, name, op.Description,
-			t.handlerFor(op),
-			toolOpts...,
-		)
-		catalog := clickyCatalogEntry(name, op, schema)
-		refs = append(refs, registeredTool{ref: tool, info: info, catalog: &catalog})
+		set.Definitions = append(set.Definitions, definition)
+		set.Catalog = append(set.Catalog, catalogEntry(definition))
 	}
-	return refs
+	return set, nil
 }
 
-// toolableOperation reports whether an operation should be exposed to the model.
-// Pure grouping commands (no Run), hidden commands, and cobra's auto-generated
-// completion/help trees are not useful tools.
-func toolableOperation(op *rpc.RPCOperation) bool {
+func toolInfo(name string, op *rpc.RPCOperation) (captools.ToolInfo, error) {
+	info := captools.ToolInfo{Name: name}
 	if op == nil {
-		return false
+		return info, nil
 	}
-	cmd := op.Command
-	if cmd == nil || !cmd.Runnable() || cmd.Hidden() {
-		return false
+	hints := clickymcp.EffectiveToolHints(op)
+	permission, err := defaultToolPermission(op, hints)
+	if err != nil {
+		return captools.ToolInfo{}, err
 	}
-	if isCobraHelpOrCompletionTool(op) {
-		return false
+	info.Group = hints.Group
+	info.Parent = hints.Parent
+	info.Icon = hints.Icon
+	info.DefaultPermission = permission
+	info.Strict = hints.Strict
+	info.ReadOnlyHint = hints.ReadOnlyHint
+	info.DestructiveHint = hints.DestructiveHint
+	info.IdempotentHint = hints.IdempotentHint
+	info.Annotations = map[string]string{
+		"clicky/method":    strings.ToUpper(op.Method),
+		"clicky/path":      op.Path,
+		"clicky/operation": op.Name,
 	}
-	return true
-}
-
-func isCobraHelpOrCompletionTool(op *rpc.RPCOperation) bool {
-	candidates := []string{op.Name}
 	if op.Clicky != nil {
-		candidates = append(candidates, op.Clicky.Command)
+		info.Annotations["clicky/verb"] = op.Clicky.Verb
+		info.Annotations["clicky/scope"] = op.Clicky.Scope
 	}
-	if cmd := op.Command; cmd != nil {
-		candidates = append(candidates, cmd.Path(), cmd.Name())
-	}
-	for _, candidate := range candidates {
-		if commandStartsWithCobraBuiltin(candidate) {
-			return true
+	return info, nil
+}
+
+func defaultToolPermission(op *rpc.RPCOperation, hints entity.MCPToolHints) (api.ToolMode, error) {
+	if hints.DefaultPermission != "" {
+		mode, ok := api.NormalizeToolMode(api.ToolMode(hints.DefaultPermission))
+		if !ok {
+			return "", fmt.Errorf("operation %q has invalid default tool permission %q", op.Name, hints.DefaultPermission)
 		}
+		return mode, nil
 	}
-	return false
+	if hints.ReadOnlyHint != nil && *hints.ReadOnlyHint {
+		return api.ToolModeOn, nil
+	}
+	switch strings.ToUpper(op.Method) {
+	case "GET", "HEAD", "OPTIONS":
+		return api.ToolModeOn, nil
+	case "POST", "PUT", "PATCH", "DELETE":
+		return api.ToolModeAsk, nil
+	default:
+		return api.ToolModeAuto, nil
+	}
 }
 
-func commandStartsWithCobraBuiltin(raw string) bool {
-	// Split only on path separators ('/' and whitespace). Cobra command names
-	// may legitimately contain '-' and '_' (e.g. "help-desk", "completion_report"),
-	// so those must stay intact to avoid misclassifying them as the built-in
-	// `help`/`completion` commands.
-	replacer := strings.NewReplacer("/", " ")
-	fields := strings.Fields(strings.ToLower(replacer.Replace(raw)))
-	if len(fields) == 0 {
-		return false
-	}
-	return fields[0] == "completion" || fields[0] == "help"
+func catalogEntry(definition api.ToolDefinition) captools.ToolCatalogEntry {
+	entry := captools.CustomCatalogEntry(captools.ToolDefinition{
+		Name: definition.Name, Description: definition.Description,
+		InputSchema: definition.InputSchema, Group: definition.Group,
+		Parent: definition.Parent, Icon: definition.Icon,
+		DefaultPermission: definition.DefaultPermission, Strict: definition.Strict,
+		ReadOnlyHint: definition.ReadOnlyHint, DestructiveHint: definition.DestructiveHint,
+		IdempotentHint: definition.IdempotentHint, Annotations: definition.Annotations,
+	}, definition.Name, definition.InputSchema)
+	entry.Source = "clicky"
+	return entry
 }
 
-// toolName converts a clicky operation name ("stack get") into a provider-safe
-// tool name: letters, digits, '_', '.', '-', starting with a letter or
-// underscore, capped at 64 chars. AI providers reject spaces and other
-// characters, so the raw space-joined command path cannot be used directly.
-func toolName(raw string) string {
-	var b strings.Builder
-	for _, r := range raw {
-		switch {
-		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9',
-			r == '_', r == '.', r == '-':
-			b.WriteRune(r)
-		default:
-			b.WriteByte('_')
-		}
-	}
-	name := b.String()
-	if name == "" {
-		return ""
-	}
-	if c := name[0]; c != '_' && !(c >= 'a' && c <= 'z') && !(c >= 'A' && c <= 'Z') {
-		name = "_" + name
-	}
-	if len(name) > 64 {
-		name = name[:64]
-	}
-	return name
-}
-
-// handlerFor returns the execute function for one operation. Model input arrives
-// as map[string]any (per the schema); we split it into clicky positional args
-// and string flags, then execute in-process.
-func (t *ClickyToolset) handlerFor(op *rpc.RPCOperation) ai.ToolFunc[any, any] {
+func (p *CobraToolProvider) handlerFor(op *rpc.RPCOperation) api.ToolHandler {
 	positional := positionalParams(op)
-	name := toolName(op.Name)
-	info := toolInfo(name, op)
-	return func(tc *ai.ToolContext, input any) (any, error) {
-		// First pass for a gated tool: pause for user approval. On resume
-		// (tc.IsResumed) we fall through and execute the approved call.
-		if !tc.IsResumed() && shouldRequireApproval(tc.Context, t.requireApproval, info, input) {
-			return nil, interruptForApproval(tc, name)
-		}
-		req := toExecutionRequest(input, positional)
-		data, resp, err := t.executor.ExecuteCommand(op, req)
+	return func(ctx context.Context, input map[string]any) (any, error) {
+		request := toExecutionRequest(input, positional)
+		request.Context = ctx
+		data, response, err := p.executor.ExecuteCommand(op, request)
 		if err != nil {
 			return nil, fmt.Errorf("execute %s: %w", op.Name, err)
 		}
-		if resp != nil && !resp.Success {
-			return nil, fmt.Errorf("operation %s failed (exit %d): %s", op.Name, resp.ExitCode, resp.Error)
+		if response != nil && !response.Success {
+			return nil, fmt.Errorf("operation %s failed (exit %d): %s", op.Name, response.ExitCode, response.Error)
 		}
 		return data, nil
 	}
 }
 
-// positionalParams returns the parameter names declared "in: path" — these map
-// to clicky positional Args rather than Flags.
+func toolableOperation(op *rpc.RPCOperation) bool {
+	if op == nil || op.Command == nil || !op.Command.Runnable() || op.Command.Hidden() {
+		return false
+	}
+	for _, candidate := range operationCommandNames(op) {
+		fields := strings.Fields(strings.ToLower(strings.ReplaceAll(candidate, "/", " ")))
+		if len(fields) > 0 && (fields[0] == "completion" || fields[0] == "help") {
+			return false
+		}
+	}
+	return true
+}
+
+func operationCommandNames(op *rpc.RPCOperation) []string {
+	names := []string{op.Name}
+	if op.Clicky != nil {
+		names = append(names, op.Clicky.Command)
+	}
+	if op.Command != nil {
+		names = append(names, op.Command.Path(), op.Command.Name())
+	}
+	return names
+}
+
+func toolName(raw string) string {
+	var name strings.Builder
+	for _, char := range raw {
+		switch {
+		case char >= 'a' && char <= 'z', char >= 'A' && char <= 'Z',
+			char >= '0' && char <= '9', char == '_', char == '-':
+			name.WriteRune(char)
+		default:
+			name.WriteByte('_')
+		}
+	}
+	value := name.String()
+	if value == "" {
+		return ""
+	}
+	if first := value[0]; first != '_' && !(first >= 'a' && first <= 'z') && !(first >= 'A' && first <= 'Z') {
+		value = "_" + value
+	}
+	if len(value) > 64 {
+		value = value[:64]
+	}
+	return value
+}
+
 func positionalParams(op *rpc.RPCOperation) []string {
 	var names []string
-	for _, p := range op.Parameters {
-		if p.In == "path" {
-			names = append(names, p.Name)
+	for _, parameter := range op.Parameters {
+		if parameter.In == "path" {
+			names = append(names, parameter.Name)
 		}
 	}
 	return names
 }
 
-// toExecutionRequest splits a model-provided input map into positional Args
-// (in declared order) and the remaining keys as string Flags.
-func toExecutionRequest(input any, positional []string) *rpc.ExecutionRequest {
-	m, _ := input.(map[string]any)
-	req := &rpc.ExecutionRequest{Flags: map[string]string{}}
-	if m == nil {
-		return req
-	}
-	isPositional := make(map[string]bool, len(positional))
+func toExecutionRequest(input map[string]any, positional []string) *rpc.ExecutionRequest {
+	request := &rpc.ExecutionRequest{Flags: map[string]string{}}
+	positionalSet := make(map[string]bool, len(positional))
 	for _, name := range positional {
-		isPositional[name] = true
-	}
-	for _, name := range positional {
-		if v, ok := m[name]; ok {
-			req.Args = append(req.Args, stringify(v))
+		positionalSet[name] = true
+		if value, ok := input[name]; ok {
+			request.Args = append(request.Args, stringify(value))
 		}
 	}
-	keys := make([]string, 0, len(m))
-	for k := range m {
-		keys = append(keys, k)
+	keys := make([]string, 0, len(input))
+	for key := range input {
+		keys = append(keys, key)
 	}
 	sort.Strings(keys)
-	for _, k := range keys {
-		if isPositional[k] {
-			continue
+	for _, key := range keys {
+		if !positionalSet[key] {
+			request.Flags[key] = stringify(input[key])
 		}
-		req.Flags[k] = stringify(m[k])
 	}
-	return req
+	return request
 }
 
-func stringify(v any) string {
-	switch x := v.(type) {
-	case string:
-		return x
-	case nil:
+func stringify(value any) string {
+	if value == nil {
 		return ""
-	default:
-		return fmt.Sprintf("%v", x)
 	}
+	if text, ok := value.(string); ok {
+		return text
+	}
+	return fmt.Sprintf("%v", value)
 }
 
-// jsonSchema converts clicky's rpc.Schema into the generic JSON-Schema map that
-// ai.WithInputSchema expects.
-func jsonSchema(s rpc.Schema) map[string]any {
-	props := map[string]any{}
-	for name, p := range s.Properties {
-		entry := map[string]any{"type": p.Type}
-		// JSON-Schema requires `items` for arrays, and providers (e.g. Gemini)
-		// reject array properties without it. clicky's Property has no item
-		// type; its array params are variadic positional args, which are
-		// strings, so default to a string element schema.
-		if p.Type == "array" {
+func jsonSchema(schema rpc.Schema) map[string]any {
+	properties := map[string]any{}
+	for name, property := range schema.Properties {
+		entry := map[string]any{"type": property.Type}
+		if property.Type == "array" {
 			entry["items"] = map[string]any{"type": "string"}
 		}
-		if p.Description != "" {
-			entry["description"] = p.Description
+		if property.Description != "" {
+			entry["description"] = property.Description
 		}
-		if len(p.Enum) > 0 {
-			enum := make([]any, len(p.Enum))
-			for i, e := range p.Enum {
-				enum[i] = e
-			}
-			entry["enum"] = enum
+		if len(property.Enum) > 0 {
+			entry["enum"] = append([]string(nil), property.Enum...)
 		}
-		if p.Default != nil {
-			entry["default"] = p.Default
+		if property.Default != nil {
+			entry["default"] = property.Default
 		}
-		props[name] = entry
+		properties[name] = entry
 	}
-	schema := map[string]any{
-		"type":       "object",
-		"properties": props,
+	result := map[string]any{"type": "object", "properties": properties}
+	if len(schema.Required) > 0 {
+		result["required"] = append([]string(nil), schema.Required...)
 	}
-	if len(s.Required) > 0 {
-		req := make([]any, len(s.Required))
-		for i, r := range s.Required {
-			req[i] = r
-		}
-		schema["required"] = req
-	}
-	return schema
+	return result
 }
