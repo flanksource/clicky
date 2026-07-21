@@ -19,10 +19,16 @@ func NewMarkdownFormatter() *MarkdownFormatter {
 
 // Format formats data as Markdown
 func (f *MarkdownFormatter) Format(data interface{}) (string, error) {
+	return f.FormatWithOptions(data, FormatOptions{})
+}
+
+func (f *MarkdownFormatter) FormatWithOptions(data interface{}, opts FormatOptions) (string, error) {
+	options := api.MarkdownOptions{NoColor: f.NoColor || opts.NoColor}
+
 	// Check if data implements Pretty interface first
 	if pretty, ok := data.(api.Pretty); ok {
 		text := pretty.Pretty()
-		return text.Markdown(), nil
+		return api.RenderMarkdown(text, options), nil
 	}
 
 	// Convert to PrettyData
@@ -35,7 +41,7 @@ func (f *MarkdownFormatter) Format(data interface{}) (string, error) {
 		return "", nil
 	}
 
-	return f.FormatPrettyData(prettyData, FormatOptions{})
+	return f.FormatPrettyData(prettyData, opts)
 }
 
 // FormatPrettyData formats PrettyData as Markdown
@@ -43,11 +49,12 @@ func (f *MarkdownFormatter) FormatPrettyData(data *api.PrettyData, opts FormatOp
 	if data == nil {
 		return "", nil
 	}
+	options := api.MarkdownOptions{NoColor: f.NoColor || opts.NoColor}
 	if ordered, ok := schemaOrderedMarkdown(data); ok {
-		return ordered.Markdown(), nil
+		return api.RenderMarkdown(ordered, options), nil
 	}
 
-	return data.Markdown(), nil
+	return api.RenderMarkdown(data, options), nil
 }
 
 func schemaOrderedMarkdown(data *api.PrettyData) (api.TextList, bool) {
