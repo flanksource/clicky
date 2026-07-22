@@ -77,13 +77,8 @@ func SSEHandlerWithSource(source RunSource, taskIDs ...string) http.Handler {
 							allDone = false
 						}
 					}
+					stdout, stderr := snap.Stdout, snap.Stderr
 					if snap.Type == "task" {
-						if emitOutputDelta(w, snap, "stdout", snap.Stdout, snap.StdoutTruncated, lastOutput) {
-							anyEmitted = true
-						}
-						if emitOutputDelta(w, snap, "stderr", snap.Stderr, snap.StderrTruncated, lastOutput) {
-							anyEmitted = true
-						}
 						snap.Stdout = ""
 						snap.Stderr = ""
 					}
@@ -96,6 +91,14 @@ func SSEHandlerWithSource(source RunSource, taskIDs ...string) http.Handler {
 						lastSnapshots[key] = string(data)
 						_, _ = fmt.Fprintf(w, "event: task\ndata: %s\n\n", data)
 						anyEmitted = true
+					}
+					if snap.Type == "task" {
+						if emitOutputDelta(w, snap, "stdout", stdout, snap.StdoutTruncated, lastOutput) {
+							anyEmitted = true
+						}
+						if emitOutputDelta(w, snap, "stderr", stderr, snap.StderrTruncated, lastOutput) {
+							anyEmitted = true
+						}
 					}
 				}
 

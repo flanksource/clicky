@@ -208,4 +208,31 @@ var _ = Describe("Managed task runs", func() {
 		cancel()
 		Eventually(done).Should(BeClosed())
 	})
+
+	It("emits terminal task metadata before captured output deltas", func() {
+		source := &recordingRunSource{
+			snapshots: map[string][]task.TaskSnapshot{
+				"terminal-1": {
+					{ID: "terminal", GroupID: "terminal-1", Name: "Terminal run", Type: "group", Status: "success", Total: 1, Completed: 1},
+					{ID: "command", GroupID: "terminal-1", Name: "Run command", Type: "task", Status: "success", Stdout: "finished\n", Stderr: "warning\n"},
+				},
+			},
+		}
+		response := httptest.NewRecorder()
+		task.SSEHandlerWithSource(source).ServeHTTP(
+			response,
+			httptest.NewRequest(http.MethodGet, "/tasks/stream?tasks=terminal-1", nil),
+		)
+
+		body := response.Body.String()
+		metadataIndex := strings.Index(body, "event: task\ndata: {\"id\":\"command\"")
+		stdoutIndex := strings.Index(body, `"stream":"stdout","data":"finished\n"`)
+		stderrIndex := strings.Index(body, `"stream":"stderr","data":"warning\n"`)
+		doneIndex := strings.Index(body, "event: done")
+		Expect(metadataIndex).To(BeNumerically(">=", 0), body)
+		Expect(stdoutIndex).To(BeNumerically(">", metadataIndex), body)
+		Expect(stderrIndex).To(BeNumerically(">", metadataIndex), body)
+		Expect(doneIndex).To(BeNumerically(">", stdoutIndex), body)
+		Expect(doneIndex).To(BeNumerically(">", stderrIndex), body)
+	})
 })

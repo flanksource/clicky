@@ -50,7 +50,10 @@ func WithTaskTimeout(d time.Duration) Option {
 	}
 }
 
-// WithDependencies sets tasks that must complete before this task can start
+// WithDependencies sets tasks that must complete before this task can start. A
+// dependency that failed cancels this task with "dependency failed"; a
+// dependency that was cancelled does not — this task waits for it to unwind and
+// then runs, since cancelling a task is a decision about that task alone.
 func WithDependencies(deps ...*Task) Option {
 	return func(t *Task) {
 		if t != nil {
