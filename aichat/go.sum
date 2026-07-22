@@ -250,6 +250,8 @@ github.com/firebase/genkit/go v1.10.0 h1:kOu3MKfgqRPk9yYHg2HFoCg8VWzcHJtfRyQw7Ou
 github.com/firebase/genkit/go v1.10.0/go.mod h1:AzmlJrm+2PjSrLnBHwY0uTbRC/GsazMa0JYpBrVf18E=
 github.com/flanksource/captain v0.0.12-0.20260715131932-f441c766f3fd h1:DjZG09UoHofy6ONCzZgwv8ioG59sXJKXmFAyIAnfCLw=
 github.com/flanksource/captain v0.0.12-0.20260715131932-f441c766f3fd/go.mod h1:qkRahQpHRwYgx5N2zykc5en+C06RiJPUNw6BPZy0kUk=
+github.com/flanksource/captain v0.0.13 h1:LSXKzRZDT71Z4219XpffLy6t1LQCYFo7s8V7glh+UP8=
+github.com/flanksource/captain v0.0.13/go.mod h1:T2Gl/Kl4jkN8/Pw75c3hF8ipShjK3f8kIk6pKN4mKl0=
 github.com/flanksource/commons v1.53.1 h1:WiMvY9XGG//L4ndYKTcmp0NjWXg4B7Wbn4hYWkITUmY=
 github.com/flanksource/commons v1.53.1/go.mod h1:ZII22jIDJ3fd/Mz7l0SzLFEv8aoSUg+xwfJAAVf8up4=
 github.com/flanksource/commons-db v0.1.14 h1:XXTRrFmHEQQKlUVjUx1rq9lAE3CGhoVEQhevd6lfN3A=
