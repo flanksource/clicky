@@ -60,7 +60,7 @@ func parseToolSchema(raw json.RawMessage) (*toolSchema, error) {
 
 // bindToolFlags translates one cached JSON Schema into typed Cobra flags and
 // returns the bindings used to assemble a protocol argument object.
-func bindToolFlags(cmd *cobra.Command, raw json.RawMessage) ([]*boundToolFlag, error) {
+func bindToolFlags(cmd *cobra.Command, raw json.RawMessage, fallbackDescriptions ...map[string]string) ([]*boundToolFlag, error) {
 	schema, err := parseToolSchema(raw)
 	if err != nil {
 		return nil, err
@@ -90,6 +90,14 @@ func bindToolFlags(cmd *cobra.Command, raw json.RawMessage) ([]*boundToolFlag, e
 		var property schemaProperty
 		if err := json.Unmarshal(schema.Properties[propertyName], &property); err != nil {
 			return nil, fmt.Errorf("parse schema property %q: %w", propertyName, err)
+		}
+		if property.Description == "" {
+			for _, descriptions := range fallbackDescriptions {
+				if description := descriptions[propertyName]; description != "" {
+					property.Description = description
+					break
+				}
+			}
 		}
 		binding, err := bindToolFlag(cmd, propertyName, flagName, property)
 		if err != nil {

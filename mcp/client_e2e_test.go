@@ -36,12 +36,23 @@ func TestClientCommandsStdioAndOfflineHelp(t *testing.T) {
 	if err := registry.Add("demo", ServerConfig{Type: "stdio", Command: "/server/is/offline"}); err != nil {
 		t.Fatal(err)
 	}
+	out, err = executeMCPCommand("run", "demo", "--help")
+	if err != nil || !strings.Contains(out, "Usage:\n  testapp mcp run demo [command]") || !strings.Contains(out, "Available Commands:") {
+		t.Fatalf("server help: %v\n%s", err, out)
+	}
+	if strings.Contains(out, "Tools cached for") || strings.Contains(out, "completion") {
+		t.Fatalf("server help did not use the MCP tool command tree:\n%s", out)
+	}
 	out, err = executeMCPCommand("run", "demo", "echo", "--help")
-	if err != nil || !strings.Contains(out, "--message") {
+	if err != nil || !strings.Contains(out, "Usage:\n  testapp mcp run demo echo [flags]") || !strings.Contains(out, "--message") {
 		t.Fatalf("offline help: %v\n%s", err, out)
 	}
+	out, err = executeMCPCommand("run", "demo", "help", "echo")
+	if err != nil || !strings.Contains(out, "Usage:\n  testapp mcp run demo echo [flags]") {
+		t.Fatalf("Cobra help command: %v\n%s", err, out)
+	}
 	out, err = executeMCPCommand("run", "demo", "--allow-tool", "mcp__demo__echo", "--", "--help")
-	if err != nil || !strings.Contains(out, "echo") || strings.Contains(out, "  add") {
+	if err != nil || !strings.Contains(out, "Available Commands:") || !strings.Contains(out, "echo") || strings.Contains(out, "  add") {
 		t.Fatalf("restricted offline help: %v\n%s", err, out)
 	}
 

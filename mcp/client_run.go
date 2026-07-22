@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path"
+	"strings"
 	"time"
 
 	"github.com/flanksource/clicky"
@@ -53,18 +54,7 @@ func newRunCommand() *cobra.Command {
 				return err
 			}
 			tools := permittedTools(serverName, catalog.Tools, policy)
-			if len(toolArgs) == 0 || (len(toolArgs) == 1 && toolArgs[0] == "--help") {
-				return renderRunTools(cmd, serverName, tools)
-			}
-			toolName := toolArgs[0]
-			tool, ok := findCachedTool(tools, toolName)
-			if !ok {
-				if _, exists := findCachedTool(catalog.Tools, toolName); exists {
-					return fmt.Errorf("tool %q is not permitted by this shortcut", toolName)
-				}
-				return fmt.Errorf("MCP server %q has no cached tool %q", serverName, toolName)
-			}
-			return executeEphemeralTool(cmd, registry, serverName, cfg, catalog, tool, toolArgs[1:])
+			return executeRunServerCommand(cmd, registry, serverName, cfg, catalog, tools, toolArgs)
 		},
 		ValidArgsFunction: completeRunArguments,
 	}
@@ -117,22 +107,68 @@ func loadRunCatalog(ctx context.Context, registry *ServerRegistry, name string, 
 	return RefreshCatalog(ctx, registry, name, cfg, preferred)
 }
 
-func executeEphemeralTool(parent *cobra.Command, registry *ServerRegistry, serverName string, cfg ServerConfig, catalog *CatalogCache, tool CachedTool, args []string) error {
-	var jsonOutput, refresh bool
+// executeRunServerCommand builds the cached server subtree after the outer run
+// command resolves its application-scoped registry.
+func executeRunServerCommand(parent *cobra.Command, registry *ServerRegistry, serverName string, cfg ServerConfig, catalog *CatalogCache, tools []CachedTool, args []string) error {
+	if len(args) > 0 {
+		if _, ok := findCachedTool(tools, args[0]); !ok {
+			if _, exists := findCachedTool(catalog.Tools, args[0]); exists {
+				return fmt.Errorf("tool %q is not permitted by this shortcut", args[0])
+			}
+		}
+	}
+
+	serverCmd := &cobra.Command{
+		Use:           serverName,
+		Short:         fmt.Sprintf("Invoke tools exposed by the %s MCP server", serverName),
+		SilenceErrors: true,
+		SilenceUsage:  true,
+		CompletionOptions: cobra.CompletionOptions{
+			DisableDefaultCmd: true,
+		},
+		Annotations: map[string]string{
+			cobra.CommandDisplayNameAnnotation: parent.CommandPath() + " " + serverName,
+		},
+	}
+	serverCmd.SetIn(parent.InOrStdin())
+	serverCmd.SetOut(parent.OutOrStdout())
+	serverCmd.SetErr(parent.ErrOrStderr())
+	for _, tool := range tools {
+		toolCmd, err := newRunToolCommand(registry, serverName, cfg, catalog, tool)
+		if err != nil {
+			return err
+		}
+		serverCmd.AddCommand(toolCmd)
+	}
+	serverCmd.SetArgs(args)
+	return serverCmd.ExecuteContext(parent.Context())
+}
+
+// newRunToolCommand translates one cached MCP schema into a Cobra command.
+func newRunToolCommand(registry *ServerRegistry, serverName string, cfg ServerConfig, catalog *CatalogCache, tool CachedTool) (*cobra.Command, error) {
+	var jsonOutput bool
 	var timeout time.Duration
+	short := strings.TrimSpace(tool.Description)
+	if firstLine, _, found := strings.Cut(short, "\n"); found {
+		short = strings.TrimSpace(firstLine)
+	}
+	if short == "" {
+		short = "Invoke the " + tool.Name + " MCP tool"
+	}
 	toolCmd := &cobra.Command{
 		Use:           tool.Name,
-		Short:         tool.Description,
+		Short:         short,
+		Long:          short,
 		Args:          cobra.NoArgs,
 		SilenceErrors: true,
 		SilenceUsage:  true,
 	}
-	bindings, err := bindToolFlags(toolCmd, tool.InputSchema)
+	bindings, err := bindToolFlags(toolCmd, tool.InputSchema, parseMCPArgumentDescriptions(tool.Description))
 	if err != nil {
-		return fmt.Errorf("build flags for tool %q: %w", tool.Name, err)
+		return nil, fmt.Errorf("build flags for tool %q: %w", tool.Name, err)
 	}
 	toolCmd.Flags().BoolVar(&jsonOutput, "json", false, "Print the complete MCP result as JSON")
-	toolCmd.Flags().BoolVar(&refresh, "refresh", false, "Refresh the tool catalog before invocation")
+	toolCmd.Flags().Bool("refresh", false, "Refresh the tool catalog before invocation")
 	toolCmd.Flags().DurationVar(&timeout, "timeout", cfg.timeout(), "Invocation timeout")
 	toolCmd.RunE = func(cmd *cobra.Command, positional []string) error {
 		arguments, err := assembleArguments(cmd, bindings)
@@ -147,11 +183,70 @@ func executeEphemeralTool(parent *cobra.Command, registry *ServerRegistry, serve
 		}
 		return renderCallToolResult(cmd.OutOrStdout(), cmd.ErrOrStderr(), tool.Name, result, jsonOutput)
 	}
-	toolCmd.SetIn(parent.InOrStdin())
-	toolCmd.SetOut(parent.OutOrStdout())
-	toolCmd.SetErr(parent.ErrOrStderr())
-	toolCmd.SetArgs(args)
-	return toolCmd.ExecuteContext(parent.Context())
+	return toolCmd, nil
+}
+
+// parseMCPArgumentDescriptions recovers flag documentation from the common
+// Args-style block used by servers that omit JSON Schema descriptions.
+func parseMCPArgumentDescriptions(description string) map[string]string {
+	lines := strings.Split(description, "\n")
+	header := -1
+	headerIndent := 0
+	for i, line := range lines {
+		switch strings.TrimSpace(line) {
+		case "Args:", "Arguments:", "Parameters:":
+			header = i
+			headerIndent = leadingWhitespace(line)
+		}
+		if header >= 0 {
+			break
+		}
+	}
+	if header < 0 {
+		return nil
+	}
+
+	descriptions := map[string]string{}
+	entryIndent := -1
+	current := ""
+	for _, line := range lines[header+1:] {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			continue
+		}
+		indent := leadingWhitespace(line)
+		if indent <= headerIndent {
+			break
+		}
+		if entryIndent < 0 {
+			entryIndent = indent
+		}
+		if indent == entryIndent {
+			name, text, found := strings.Cut(trimmed, ":")
+			if !found {
+				current = ""
+				continue
+			}
+			name = strings.TrimSpace(name)
+			if typeStart := strings.IndexAny(name, " ("); typeStart >= 0 {
+				name = name[:typeStart]
+			}
+			current = name
+			descriptions[current] = strings.TrimSpace(text)
+			continue
+		}
+		if current != "" && indent > entryIndent {
+			descriptions[current] = strings.TrimSpace(descriptions[current] + " " + trimmed)
+		}
+	}
+	if len(descriptions) == 0 {
+		return nil
+	}
+	return descriptions
+}
+
+func leadingWhitespace(value string) int {
+	return len(value) - len(strings.TrimLeft(value, " \t"))
 }
 
 func invokeMCPTool(ctx context.Context, registry *ServerRegistry, serverName string, cfg ServerConfig, catalog *CatalogCache, toolName string, arguments map[string]any) (*mcpsdk.CallToolResult, error) {
@@ -311,14 +406,6 @@ func renderRunServers(cmd *cobra.Command) error {
 	fmt.Fprintln(cmd.OutOrStdout(), "Registered MCP servers:")
 	for _, name := range names {
 		fmt.Fprintln(cmd.OutOrStdout(), "  "+name)
-	}
-	return nil
-}
-
-func renderRunTools(cmd *cobra.Command, serverName string, tools []CachedTool) error {
-	fmt.Fprintf(cmd.OutOrStdout(), "Tools cached for %s:\n", serverName)
-	for _, tool := range tools {
-		fmt.Fprintf(cmd.OutOrStdout(), "  %-24s %s\n", tool.Name, tool.Description)
 	}
 	return nil
 }
