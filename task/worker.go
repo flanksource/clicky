@@ -69,6 +69,11 @@ func (w *worker) run() {
 				if sem != nil {
 					defer sem.Release(1)
 				}
+				// Flip completed before the permit is released: the permit is
+				// what admits the next task, and a dependent that dequeues while
+				// this one is terminal but not yet completed is cancelled as
+				// "dependency failed".
+				defer task.completed.Store(true)
 				defer func() {
 					if r := recover(); r != nil {
 						task.mu.Lock()
@@ -82,7 +87,6 @@ func (w *worker) run() {
 			}()
 
 			w.manager.workersActive.Add(-1)
-			task.completed.Store(true)
 
 			// Clean up identity tracking
 			if task.identity != "" {
@@ -95,29 +99,38 @@ func (w *worker) run() {
 	}
 }
 
-// checkDependencies verifies all task dependencies are completed
+// checkDependencies reports whether a task may start: every dependency has to
+// have finished, and none of them may have failed.
+//
+// A failed dependency cancels its dependents on the strength of its status
+// alone, not on whether the worker has finished its bookkeeping. Deciding it
+// the other way round — only while the dependency is terminal but not yet
+// marked complete — makes propagation a race between the failing worker and
+// whichever worker dequeues the dependent, so downstream work runs or is
+// cancelled depending on which one gets there first.
+//
+// A cancelled dependency is different: cancelling a task is a decision about
+// that task, so its dependents wait for it to finish and then run. Callers that
+// want a cancellation to take the rest of a chain with it cancel the chain.
 func (w *worker) checkDependencies(task *Task) bool {
 	for _, dep := range task.dependencies {
 		if dep == nil {
 			continue
 		}
-		if !dep.completed.Load() {
-			// Check if dependency failed
-			dep.mu.Lock()
-			depStatus := dep.status
-			dep.mu.Unlock()
+		dep.mu.Lock()
+		depStatus := dep.status
+		dep.mu.Unlock()
 
-			if depStatus == StatusFailed || depStatus == StatusCancelled {
-				// Dependency failed, mark this task as canceled
-				task.mu.Lock()
-				task.status = StatusCancelled
-				task.endTime = time.Now()
-				task.err = fmt.Errorf("dependency failed")
-				task.completed.Store(true)
-				task.mu.Unlock()
-				return false
-			}
-			// Dependency not yet complete
+		if depStatus == StatusFailed {
+			task.mu.Lock()
+			task.status = StatusCancelled
+			task.endTime = time.Now()
+			task.err = fmt.Errorf("dependency failed")
+			task.completed.Store(true)
+			task.mu.Unlock()
+			return false
+		}
+		if !dep.completed.Load() {
 			return false
 		}
 	}

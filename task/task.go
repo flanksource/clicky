@@ -282,10 +282,18 @@ func (t *Task) FlanksourceContext() flanksourceContext.Context {
 func (t *Task) Cancel() {
 	t.mu.Lock()
 	if t.status == StatusPending || t.status == StatusRunning {
+		// A task cancelled before it ever started will never run — the worker
+		// skips it at dequeue. Record that here so a dependent dequeued in the
+		// meantime sees a finished dependency rather than an unfinished
+		// cancelled one, which checkDependencies would cancel along with it.
+		neverStarted := t.status == StatusPending
 		t.status = StatusCancelled
 		t.endTime = time.Now()
 		if t.cancel != nil {
 			t.cancel()
+		}
+		if neverStarted {
+			t.completed.Store(true)
 		}
 		t.dirty.Store(true)
 		t.signalDone() // Signal task completion
