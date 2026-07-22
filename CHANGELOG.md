@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.21.41](https://github.com/flanksource/clicky/compare/v1.21.40...v1.21.41) (2026-07-22)
+
+
+### 🔧 Maintenance
+
+* go mod tidy on examples/entity ([8429206](https://github.com/flanksource/clicky/commit/8429206a24305b3cef0c4c23c845fcbb12cc7c91))
+* **release:** pin sub-modules to v1.21.40 [skip ci] ([e98d7ab](https://github.com/flanksource/clicky/commit/e98d7abe88c0807f3c22f6d482dfe1113e2c86da))
+
 ## [1.21.40](https://github.com/flanksource/clicky/compare/v1.21.39...v1.21.40) (2026-07-17)
 
 
