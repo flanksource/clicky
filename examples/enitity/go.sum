@@ -254,6 +254,8 @@ github.com/flanksource/commons v1.53.1 h1:WiMvY9XGG//L4ndYKTcmp0NjWXg4B7Wbn4hYWk
 github.com/flanksource/commons v1.53.1/go.mod h1:ZII22jIDJ3fd/Mz7l0SzLFEv8aoSUg+xwfJAAVf8up4=
 github.com/flanksource/commons-db v0.1.14 h1:XXTRrFmHEQQKlUVjUx1rq9lAE3CGhoVEQhevd6lfN3A=
 github.com/flanksource/commons-db v0.1.14/go.mod h1:EGQjugWW+QYvZcBhleb9QzDs1xhNrezf9V1NKsofQ6g=
+github.com/flanksource/commons-db v0.1.19 h1:54TYRZ8r262lHW/2AGmIFzmPaRKaubk1mUyk54CDgds=
+github.com/flanksource/commons-db v0.1.19/go.mod h1:Td/fCQmw3S0hBVBHI/6pjE/xk4KB91/FI/V1QMcHV8U=
 github.com/flanksource/gomplate/v3 v3.24.82 h1:22HOZYeNRMX40G8OF3qRAqRoR5Lkf8Vm4x3WDqugZkE=
 github.com/flanksource/gomplate/v3 v3.24.82/go.mod h1:NMMZkFsjbLy/8iY8Fip5N86Y0PP6lZeq+kmPwpVVIL0=
 github.com/flanksource/is-healthy v1.0.88 h1:ATQuKoNdp8Qfzf41/eMFajmT0qzOmZlZNG5eLK41RFo=
@@ -698,6 +700,8 @@ github.com/yuin/goldmark v1.3.5/go.mod h1:mwnBkeHKe2W/ZEtQ+71ViKU8L12m81fl3OWwC1
 github.com/yuin/goldmark v1.4.13/go.mod h1:6yULJ656Px+3vBD8DxQVa3kxgyrAnzto9xy5taEt/CY=
 github.com/yuin/goldmark v1.7.16 h1:n+CJdUxaFMiDUNnWC3dMWCIQJSkxH4uz3ZwQBkAlVNE=
 github.com/yuin/goldmark v1.7.16/go.mod h1:ip/1k0VRfGynBgxOz0yCqHrbZXhcjxyuS66Brc7iBKg=
+github.com/yuin/goldmark v1.7.17 h1:p36OVWwRb246iHxA/U4p8OPEpOTESm4n+g+8t0EE5uA=
+github.com/yuin/goldmark v1.7.17/go.mod h1:ip/1k0VRfGynBgxOz0yCqHrbZXhcjxyuS66Brc7iBKg=
 github.com/yuin/gopher-lua v1.1.1 h1:kYKnWBjvbNP4XLT3+bPEwAXJx262OhaHDWDVOPjL46M=
 github.com/yuin/gopher-lua v1.1.1/go.mod h1:GBR0iDaNXjAgGg9zfCvksxSRnQx76gclCIb7kdAd1Pw=
 github.com/yusufpapurcu/wmi v1.2.4 h1:zFUKzehAFReQwLys1b/iSMl+JQGSCSjtVqQn9bBrPo0=
