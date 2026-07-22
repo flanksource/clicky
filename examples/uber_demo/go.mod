@@ -4,7 +4,7 @@ go 1.26.1
 
 require (
 	github.com/flanksource/clicky v1.21.1
-	github.com/flanksource/commons v1.51.3
+	github.com/flanksource/commons v1.53.1
 	github.com/google/uuid v1.6.0
 	github.com/spf13/cobra v1.10.2
 	golang.org/x/term v0.44.0
