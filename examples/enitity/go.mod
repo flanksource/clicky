@@ -3,8 +3,8 @@ module github.com/flanksource/clicky/examples/enitity
 go 1.26.1
 
 require (
-	github.com/flanksource/clicky v1.21.41
-	github.com/flanksource/clicky/aichat v1.21.40
+	github.com/flanksource/clicky v1.21.42
+	github.com/flanksource/clicky/aichat v1.21.42
 	github.com/spf13/cobra v1.10.2
 )
 
@@ -106,7 +106,7 @@ require (
 	github.com/fatih/color v1.18.0 // indirect
 	github.com/felixge/httpsnoop v1.1.0 // indirect
 	github.com/firebase/genkit/go v1.10.0 // indirect
-	github.com/flanksource/captain v0.0.13 // indirect
+	github.com/flanksource/captain v0.0.14 // indirect
 	github.com/flanksource/commons v1.53.1 // indirect
 	github.com/flanksource/commons-db v0.1.20 // indirect
 	github.com/flanksource/gomplate/v3 v3.24.84 // indirect
