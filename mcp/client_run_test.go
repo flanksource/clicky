@@ -46,6 +46,33 @@ Args:
 	}
 }
 
+func TestRunPolicyRejectsInvalidGlobs(t *testing.T) {
+	for _, flag := range []string{"--allow-tool", "--deny-tool"} {
+		t.Run(flag, func(t *testing.T) {
+			_, _, err := parseRunPolicyArgs([]string{flag, "[", "--", "--help"})
+			if err == nil || !strings.Contains(err.Error(), `invalid tool policy glob "["`) {
+				t.Fatalf("error = %v", err)
+			}
+		})
+	}
+}
+
+func TestDecodedSizeDoesNotRequireDecodedPayload(t *testing.T) {
+	tests := map[string]int{
+		"":             0,
+		"AQID":         3,
+		"AQIDBA==":     4,
+		"AQID\r\nBA==": 4,
+		"!!!!":         0,
+		"A===":         0,
+	}
+	for encoded, want := range tests {
+		if got := decodedSize(encoded); got != want {
+			t.Errorf("decodedSize(%q) = %d, want %d", encoded, got, want)
+		}
+	}
+}
+
 func TestRenderJSONErrorUsesStderr(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	result := mcpsdk.NewToolResultError("failed")

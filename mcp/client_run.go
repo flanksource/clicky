@@ -79,10 +79,14 @@ func parseRunPolicyArgs(args []string) (runPolicy, []string, error) {
 			if i+1 >= separator {
 				return runPolicy{}, nil, fmt.Errorf("%s requires a pattern", args[i])
 			}
+			pattern := args[i+1]
+			if _, err := path.Match(pattern, "mcp__server__tool"); err != nil {
+				return runPolicy{}, nil, fmt.Errorf("invalid tool policy glob %q: %w", pattern, err)
+			}
 			if args[i] == "--allow-tool" {
-				policy.allow = append(policy.allow, args[i+1])
+				policy.allow = append(policy.allow, pattern)
 			} else {
-				policy.deny = append(policy.deny, args[i+1])
+				policy.deny = append(policy.deny, pattern)
 			}
 			i++
 		default:
@@ -484,9 +488,33 @@ func notificationText(value any) string {
 }
 
 func decodedSize(value string) int {
-	data, err := base64.StdEncoding.DecodeString(value)
-	if err != nil {
+	encodedLen := 0
+	padding := 0
+	seenPadding := false
+	for i := 0; i < len(value); i++ {
+		char := value[i]
+		if char == '\r' || char == '\n' {
+			continue
+		}
+		encodedLen++
+		if char == '=' {
+			seenPadding = true
+			padding++
+			continue
+		}
+		if seenPadding || !isStdBase64Byte(char) {
+			return 0
+		}
+	}
+	if encodedLen%4 != 0 || padding > 2 {
 		return 0
 	}
-	return len(data)
+	return base64.StdEncoding.DecodedLen(encodedLen) - padding
+}
+
+func isStdBase64Byte(value byte) bool {
+	return value >= 'A' && value <= 'Z' ||
+		value >= 'a' && value <= 'z' ||
+		value >= '0' && value <= '9' ||
+		value == '+' || value == '/'
 }

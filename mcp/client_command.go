@@ -212,10 +212,12 @@ func renderClientList(out io.Writer, records []clientListRecord, format string, 
 		fmt.Fprintln(out, "| Name | Transport | Endpoint | Tools | Cache |")
 		fmt.Fprintln(out, "| --- | --- | --- | ---: | --- |")
 		for _, record := range records {
-			fmt.Fprintf(out, "| %s | %s | %s | %d | %s |\n", record.Name, record.Transport, record.Endpoint, record.ToolCount, record.Cache)
+			fmt.Fprintf(out, "| %s | %s | %s | %d | %s |\n",
+				markdownTableCell(record.Name), markdownTableCell(record.Transport), markdownTableCell(record.Endpoint),
+				record.ToolCount, markdownTableCell(record.Cache))
 			if showTools {
 				for _, tool := range record.Tools {
-					fmt.Fprintf(out, "| ↳ %s | | %s | | |\n", tool.Name, strings.ReplaceAll(tool.Description, "|", "\\|"))
+					fmt.Fprintf(out, "| ↳ %s | | %s | | |\n", markdownTableCell(tool.Name), markdownTableCell(tool.Description))
 				}
 			}
 		}
@@ -239,6 +241,14 @@ func renderClientList(out io.Writer, records []clientListRecord, format string, 
 	default:
 		return fmt.Errorf("unsupported format %q (want pretty, json, or markdown)", format)
 	}
+}
+
+func markdownTableCell(value string) string {
+	value = strings.ReplaceAll(value, "\r\n", "\n")
+	value = strings.ReplaceAll(value, "\r", "\n")
+	value = strings.ReplaceAll(value, "\\", "\\\\")
+	value = strings.ReplaceAll(value, "|", "\\|")
+	return strings.ReplaceAll(value, "\n", "<br>")
 }
 
 func completeRegisteredServers(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
