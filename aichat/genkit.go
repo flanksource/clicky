@@ -127,22 +127,77 @@ func firstNonEmptyString(vals ...string) string {
 	return ""
 }
 
-// effortConfig delegates the effort/temperature translation to captain's shared
-// EffortConfig — the single source of truth for the adaptive-vs-enabled thinking
-// schema and per-model capability gating (reasoning, temperature) — then adds
-// the Genkit non-Anthropic maxOutputTokens cap.
+const defaultMaxOutputTokens = 4096
+
+// effortConfig translates captain's model metadata into Genkit controls. The
+// translation remains local because captain does not expose its config builder.
 func effortConfig(m Model, e Effort, budget ChatBudget, temperature *float64) map[string]any {
-	cfg := capai.EffortConfig(m.Backend, m.BareID(), capapi.Effort(e), budget.MaxTokens, temperature)
-	if m.Backend != capapi.BackendAnthropic && budget.MaxTokens > 0 {
-		if cfg == nil {
-			cfg = map[string]any{}
+	if m.ID != "" {
+		if catalogModel, err := capai.LookupModel(m.ID); err == nil {
+			m = catalogModel
 		}
+	}
+
+	cfg := map[string]any{}
+	if temperature != nil && supportsTemperature(m) {
+		cfg["temperature"] = *temperature
+	}
+
+	effort := capapi.Effort(e)
+	switch m.Backend {
+	case capapi.BackendOpenAI:
+		if m.Reasoning && effort != capapi.EffortNone {
+			cfg["reasoning_effort"] = string(effort)
+		}
+	case capapi.BackendGemini:
+		if m.Reasoning && effort != capapi.EffortNone {
+			cfg["thinkingConfig"] = map[string]any{"thinkingBudget": thinkingBudget(effort)}
+		}
+	case capapi.BackendAnthropic:
+		base := budget.MaxTokens
+		if base <= 0 {
+			base = defaultMaxOutputTokens
+		}
+		cfg["max_tokens"] = base
+		if m.Reasoning && effort != capapi.EffortNone {
+			thinking := thinkingBudget(effort)
+			cfg["max_tokens"] = base + thinking
+			cfg["thinking"] = map[string]any{"type": "enabled", "budget_tokens": thinking}
+		}
+	}
+
+	if m.Backend != capapi.BackendAnthropic && budget.MaxTokens > 0 {
 		cfg["maxOutputTokens"] = budget.MaxTokens
 	}
 	if len(cfg) == 0 {
 		return nil
 	}
 	return cfg
+}
+
+// thinkingBudget mirrors captain's Genkit provider token tiers.
+func thinkingBudget(e capapi.Effort) int {
+	switch e {
+	case capapi.EffortLow:
+		return 2048
+	case capapi.EffortMedium:
+		return 8192
+	case capapi.EffortHigh:
+		return 24576
+	case capapi.EffortXHigh:
+		return 32768
+	default:
+		return 0
+	}
+}
+
+// supportsTemperature rejects sampling controls that conflict with reasoning.
+func supportsTemperature(m Model) bool {
+	if m.Reasoning && (m.Backend == capapi.BackendAnthropic || m.Backend == capapi.BackendOpenAI) {
+		return false
+	}
+	return m.Backend == capapi.BackendAnthropic || m.Backend == capapi.BackendOpenAI ||
+		m.Backend == capapi.BackendGemini || m.Backend == capapi.BackendDeepSeek
 }
 
 // generateOptions assembles the Generate options for a chat turn: model,

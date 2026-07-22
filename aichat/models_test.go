@@ -137,7 +137,7 @@ func TestEffortConfigPerProvider(t *testing.T) {
 }
 
 func TestAnthropicEffortConfigSetsMaxTokens(t *testing.T) {
-	cfg := effortConfig(Model{ID: "anthropic/claude-sonnet-4-6", Backend: capapi.BackendAnthropic}, EffortHigh, ChatBudget{MaxTokens: 1000}, nil)
+	cfg := effortConfig(Model{ID: "anthropic/claude-sonnet-5", Backend: capapi.BackendAnthropic}, EffortHigh, ChatBudget{MaxTokens: 1000}, nil)
 	if got := cfg["max_tokens"]; got != 24576+1000 {
 		t.Errorf("max_tokens = %v, want thinking budget plus visible output budget", got)
 	}
@@ -145,8 +145,7 @@ func TestAnthropicEffortConfigSetsMaxTokens(t *testing.T) {
 
 func TestEffortConfigAppliesTemperatureAndMaxTokens(t *testing.T) {
 	temp := 0.4
-	// gemini-3.5-flash supports temperature; the openai/anthropic adaptive models
-	// do not, so temperature would be gated out for them.
+	// Gemini supports sampling temperature alongside its thinking config.
 	cfg := effortConfig(Model{ID: "googleai/gemini-3.5-flash", Backend: capapi.BackendGemini}, EffortNone, ChatBudget{MaxTokens: 1200}, &temp)
 	if got := cfg["temperature"]; got != temp {
 		t.Errorf("temperature = %v, want %v", got, temp)
@@ -158,7 +157,7 @@ func TestEffortConfigAppliesTemperatureAndMaxTokens(t *testing.T) {
 
 func TestEffortConfigGatesTemperatureForIncapableModel(t *testing.T) {
 	temp := 0.4
-	// claude-sonnet-5 uses adaptive thinking and does not accept temperature.
+	// Reasoning-capable Anthropic models do not accept temperature.
 	cfg := effortConfig(Model{ID: "anthropic/claude-sonnet-5", Backend: capapi.BackendAnthropic}, EffortNone, ChatBudget{}, &temp)
 	if _, ok := cfg["temperature"]; ok {
 		t.Errorf("temperature should be gated out for claude-sonnet-5, got %v", cfg)
