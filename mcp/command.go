@@ -32,6 +32,12 @@ func NewCommand() *cobra.Command {
 
 // NewCommandWithConfig creates the MCP command group with custom configuration
 func NewCommandWithConfig(config *Config) *cobra.Command {
+	return NewCommandWithClientOptions(config, ClientOptions{})
+}
+
+// NewCommandWithClientOptions creates the MCP group with optional host hooks
+// for client-side behavior that is not portable across clicky applications.
+func NewCommandWithClientOptions(config *Config, clientOptions ClientOptions) *cobra.Command {
 	opts := &CommandOptions{}
 
 	// Store initial config for merging in serve command
@@ -50,15 +56,20 @@ func NewCommandWithConfig(config *Config) *cobra.Command {
 
 The MCP command group provides functionality to:
 - Run the CLI as an MCP server
+- Register and invoke external MCP servers
 - Configure tool exposure settings`,
 	}
 
 	// Add subcommands
 	mcpCmd.AddCommand(newServeCommand(opts))
-	mcpCmd.AddCommand(newInstallCommand(opts))
+	mcpCmd.AddCommand(newInstallCommandWithOptions(opts, clientOptions))
 	mcpCmd.AddCommand(newConfigCommand(opts))
 	mcpCmd.AddCommand(newPromptCommand(opts))
 	mcpCmd.AddCommand(newToolsCommand(opts))
+	mcpCmd.AddCommand(newClientAddCommand())
+	mcpCmd.AddCommand(newClientListCommand())
+	mcpCmd.AddCommand(newClientRemoveCommand())
+	mcpCmd.AddCommand(newRunCommand())
 
 	// Global MCP flags. Verbose output is controlled by clicky's existing
 	// --loglevel/-v flag and the VERBOSE/DEBUG env vars honored by the server,
