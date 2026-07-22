@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/url"
 	"os"
 	"path"
@@ -13,6 +14,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/mark3labs/mcp-go/client"
 )
 
 const (
@@ -25,16 +28,36 @@ var serverNamePattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._-]*$`)
 // ServerConfig is the durable client-side description of one MCP server. Its
 // transport fields follow the common mcpServers shape for interoperability.
 type ServerConfig struct {
-	Type         string            `json:"type,omitempty"`
-	Command      string            `json:"command,omitempty"`
-	Args         []string          `json:"args,omitempty"`
-	Env          map[string]string `json:"env,omitempty"`
-	URL          string            `json:"url,omitempty"`
-	Headers      map[string]string `json:"headers,omitempty"`
-	Timeout      string            `json:"timeout,omitempty"`
-	IncludeTools []string          `json:"includeTools,omitempty"`
-	ExcludeTools []string          `json:"excludeTools,omitempty"`
-	CacheTTL     string            `json:"cacheTTL,omitempty"`
+	Type         string             `json:"type,omitempty"`
+	Command      string             `json:"command,omitempty"`
+	Args         []string           `json:"args,omitempty"`
+	Env          map[string]string  `json:"env,omitempty"`
+	URL          string             `json:"url,omitempty"`
+	Headers      map[string]string  `json:"headers,omitempty"`
+	OAuth        *OAuthClientConfig `json:"oauth,omitempty"`
+	Timeout      string             `json:"timeout,omitempty"`
+	IncludeTools []string           `json:"includeTools,omitempty"`
+	ExcludeTools []string           `json:"excludeTools,omitempty"`
+	CacheTTL     string             `json:"cacheTTL,omitempty"`
+}
+
+// OAuthClientConfig is the durable, non-token portion of a remote server's
+// OAuth setup. ClientSecret accepts only env:NAME and file:PATH references so
+// pre-registered secrets stay out of arguments and registry files.
+type OAuthClientConfig struct {
+	ClientID                     string   `json:"clientId,omitempty"`
+	ClientSecret                 string   `json:"clientSecret,omitempty"`
+	ClientName                   string   `json:"clientName,omitempty"`
+	Scopes                       []string `json:"scopes,omitempty"`
+	RedirectURI                  string   `json:"redirectUri,omitempty"`
+	AuthServerMetadataURL        string   `json:"authServerMetadataUrl,omitempty"`
+	ProtectedResourceMetadataURL string   `json:"protectedResourceMetadataUrl,omitempty"`
+	Issuer                       string   `json:"issuer,omitempty"`
+	DynamicallyRegistered        bool     `json:"dynamicallyRegistered,omitempty"`
+
+	// TokenStore is required when an OAuth configuration is passed directly to
+	// Dial. Registry-loaded configurations receive a private file-backed store.
+	TokenStore client.TokenStore `json:"-"`
 }
 
 // Validate rejects ambiguous transport configurations before a process or
@@ -62,10 +85,56 @@ func (c ServerConfig) Validate() error {
 	if len(c.Headers) > 0 && !hasURL {
 		return fmt.Errorf("headers are only valid for remote servers")
 	}
+	if c.OAuth != nil && !hasURL {
+		return fmt.Errorf("OAuth is only valid for remote servers")
+	}
+	if c.OAuth != nil {
+		if err := validateSecureHTTPURL(c.URL, "OAuth MCP server URL"); err != nil {
+			return err
+		}
+		if c.OAuth.ClientSecret != "" && c.OAuth.ClientID == "" {
+			return fmt.Errorf("OAuth client secret requires a client ID")
+		}
+		if err := validateOAuthSecretReference(c.OAuth.ClientSecret); err != nil {
+			return err
+		}
+		for name := range c.Headers {
+			if strings.EqualFold(name, "Authorization") {
+				return fmt.Errorf("OAuth cannot be combined with an Authorization header")
+			}
+		}
+		for _, scope := range c.OAuth.Scopes {
+			if strings.TrimSpace(scope) == "" {
+				return fmt.Errorf("OAuth scopes cannot be empty")
+			}
+		}
+		if c.OAuth.RedirectURI != "" {
+			if err := validateOAuthRedirectURI(c.OAuth.RedirectURI); err != nil {
+				return err
+			}
+		}
+		if c.OAuth.AuthServerMetadataURL != "" {
+			if err := validateSecureHTTPURL(c.OAuth.AuthServerMetadataURL, "OAuth authorization server metadata URL"); err != nil {
+				return err
+			}
+		}
+		if c.OAuth.ProtectedResourceMetadataURL != "" {
+			if err := validateSecureHTTPURL(c.OAuth.ProtectedResourceMetadataURL, "OAuth protected resource metadata URL"); err != nil {
+				return err
+			}
+			if err := validateResourceMetadataOrigin(c.URL, c.OAuth.ProtectedResourceMetadataURL); err != nil {
+				return err
+			}
+		}
+		if c.OAuth.Issuer != "" {
+			if err := validateSecureHTTPURL(c.OAuth.Issuer, "OAuth issuer URL"); err != nil {
+				return err
+			}
+		}
+	}
 	if hasURL {
-		parsed, err := url.ParseRequestURI(c.URL)
-		if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" {
-			return fmt.Errorf("invalid MCP server URL %q", c.URL)
+		if err := validateHTTPURL(c.URL, "MCP server URL"); err != nil {
+			return err
 		}
 	}
 	if c.Timeout != "" {
@@ -90,15 +159,16 @@ func (c ServerConfig) Validate() error {
 // Runtime timeout and cache lifetime choices deliberately do not invalidate it.
 func (c ServerConfig) Fingerprint() string {
 	payload := struct {
-		Type         string            `json:"type"`
-		Command      string            `json:"command"`
-		Args         []string          `json:"args"`
-		Env          map[string]string `json:"env"`
-		URL          string            `json:"url"`
-		Headers      map[string]string `json:"headers"`
-		IncludeTools []string          `json:"includeTools"`
-		ExcludeTools []string          `json:"excludeTools"`
-	}{c.effectiveTransport(), c.Command, c.Args, c.Env, c.URL, c.Headers, c.IncludeTools, c.ExcludeTools}
+		Type         string             `json:"type"`
+		Command      string             `json:"command"`
+		Args         []string           `json:"args"`
+		Env          map[string]string  `json:"env"`
+		URL          string             `json:"url"`
+		Headers      map[string]string  `json:"headers"`
+		OAuth        *OAuthClientConfig `json:"oauth"`
+		IncludeTools []string           `json:"includeTools"`
+		ExcludeTools []string           `json:"excludeTools"`
+	}{c.effectiveTransport(), c.Command, c.Args, c.Env, c.URL, c.Headers, c.OAuth, c.IncludeTools, c.ExcludeTools}
 	data, _ := json.Marshal(payload)
 	sum := sha256.Sum256(data)
 	return hex.EncodeToString(sum[:])
@@ -135,6 +205,40 @@ func (c ServerConfig) endpoint() string {
 	return c.URL
 }
 
+func validateHTTPURL(value, label string) error {
+	parsed, err := url.ParseRequestURI(value)
+	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" {
+		return fmt.Errorf("invalid %s %q", label, value)
+	}
+	return nil
+}
+
+func validateSecureHTTPURL(value, label string) error {
+	if err := validateHTTPURL(value, label); err != nil {
+		return err
+	}
+	parsed, _ := url.Parse(value)
+	if parsed.Scheme == "https" || (parsed.Scheme == "http" && isLoopbackHost(parsed.Hostname())) {
+		return nil
+	}
+	return fmt.Errorf("invalid %s %q: use https except for loopback addresses", label, value)
+}
+
+func isLoopbackHost(host string) bool {
+	if strings.EqualFold(host, "localhost") {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
+
+func validateServerName(name string) error {
+	if !serverNamePattern.MatchString(name) {
+		return fmt.Errorf("invalid server name %q", name)
+	}
+	return nil
+}
+
 // ServerRegistry owns the mcpServers key in one application's client config.
 // Unknown top-level keys survive every mutation without being decoded.
 type ServerRegistry struct {
@@ -157,15 +261,35 @@ func newServerRegistryAt(appName, dir string) *ServerRegistry {
 
 func (r *ServerRegistry) configPath() string { return filepath.Join(r.dir, "config.json") }
 func (r *ServerRegistry) cacheDir() string   { return filepath.Join(r.dir, "cache") }
+func (r *ServerRegistry) oauthDir() string   { return filepath.Join(r.dir, "oauth") }
+
+func (r *ServerRegistry) bind(name string, cfg ServerConfig) (ServerConfig, error) {
+	if err := validateServerName(name); err != nil {
+		return ServerConfig{}, err
+	}
+	if cfg.OAuth != nil {
+		oauth := *cfg.OAuth
+		oauth.TokenStore = &fileOAuthTokenStore{path: filepath.Join(r.oauthDir(), name+".json")}
+		cfg.OAuth = &oauth
+	}
+	return cfg, nil
+}
 
 // Get returns a named server and reports whether it is registered.
 func (r *ServerRegistry) Get(name string) (ServerConfig, bool, error) {
+	if err := validateServerName(name); err != nil {
+		return ServerConfig{}, false, err
+	}
 	servers, _, err := r.load()
 	if err != nil {
 		return ServerConfig{}, false, err
 	}
 	cfg, ok := servers[name]
-	return cfg, ok, nil
+	if !ok {
+		return ServerConfig{}, false, nil
+	}
+	cfg, err = r.bind(name, cfg)
+	return cfg, true, err
 }
 
 // List returns a name-sorted snapshot of the registered servers.
@@ -177,6 +301,10 @@ func (r *ServerRegistry) List() ([]string, map[string]ServerConfig, error) {
 	names := make([]string, 0, len(servers))
 	for name := range servers {
 		names = append(names, name)
+		servers[name], err = r.bind(name, servers[name])
+		if err != nil {
+			return nil, nil, err
+		}
 	}
 	sort.Strings(names)
 	return names, servers, nil
@@ -185,8 +313,8 @@ func (r *ServerRegistry) List() ([]string, map[string]ServerConfig, error) {
 // Add validates and atomically stores a server without disturbing foreign
 // configuration keys.
 func (r *ServerRegistry) Add(name string, cfg ServerConfig) error {
-	if !serverNamePattern.MatchString(name) {
-		return fmt.Errorf("invalid server name %q", name)
+	if err := validateServerName(name); err != nil {
+		return err
 	}
 	if err := cfg.Validate(); err != nil {
 		return err
@@ -206,6 +334,9 @@ func (r *ServerRegistry) Add(name string, cfg ServerConfig) error {
 
 // Remove deletes a server and its cached catalog.
 func (r *ServerRegistry) Remove(name string) error {
+	if err := validateServerName(name); err != nil {
+		return err
+	}
 	servers, root, err := r.load()
 	if err != nil {
 		return err
@@ -224,6 +355,12 @@ func (r *ServerRegistry) Remove(name string) error {
 	}
 	if err := os.Remove(catalogPath(r, name)); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("remove catalog cache: %w", err)
+	}
+	credentialPath := filepath.Join(r.oauthDir(), name+".json")
+	for _, path := range []string{credentialPath, credentialPath + ".client-secret"} {
+		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("remove OAuth credentials: %w", err)
+		}
 	}
 	return nil
 }
@@ -261,7 +398,8 @@ func (r *ServerRegistry) load() (map[string]ServerConfig, map[string]json.RawMes
 }
 
 func writeJSONAtomic(path string, value any) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return err
 	}
 	data, err := json.MarshalIndent(value, "", "  ")
@@ -269,13 +407,33 @@ func writeJSONAtomic(path string, value any) error {
 		return err
 	}
 	data = append(data, '\n')
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o600); err != nil {
+	tmp, err := os.CreateTemp(dir, "."+filepath.Base(path)+".tmp-*")
+	if err != nil {
 		return err
 	}
-	if err := os.Rename(tmp, path); err != nil {
-		_ = os.Remove(tmp)
+	tmpPath := tmp.Name()
+	removeTemp := true
+	defer func() {
+		_ = tmp.Close()
+		if removeTemp {
+			_ = os.Remove(tmpPath)
+		}
+	}()
+	if err := tmp.Chmod(0o600); err != nil {
 		return err
 	}
+	if _, err := tmp.Write(data); err != nil {
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	if err := os.Rename(tmpPath, path); err != nil {
+		return err
+	}
+	removeTemp = false
 	return nil
 }

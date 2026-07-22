@@ -90,8 +90,12 @@ func executeMCPCommand(args ...string) (string, error) {
 }
 
 func executeMCPCommandContext(ctx context.Context, args ...string) (string, error) {
+	return executeMCPCommandWithClientOptions(ctx, ClientOptions{}, args...)
+}
+
+func executeMCPCommandWithClientOptions(ctx context.Context, options ClientOptions, args ...string) (string, error) {
 	root := &cobra.Command{Use: "testapp", SilenceUsage: true, SilenceErrors: true}
-	root.AddCommand(NewCommand())
+	root.AddCommand(NewCommandWithClientOptions(nil, options))
 	var output bytes.Buffer
 	root.SetOut(&output)
 	root.SetErr(&output)

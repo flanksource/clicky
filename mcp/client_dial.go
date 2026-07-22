@@ -66,6 +66,9 @@ func Dial(ctx context.Context, name string, cfg ServerConfig, preferred ...strin
 		if err == nil {
 			return session, nil
 		}
+		if cfg.OAuth != nil && client.IsOAuthAuthorizationRequiredError(err) {
+			return nil, fmt.Errorf("MCP server %q requires OAuth login; run `mcp login %s`: %w", name, name, err)
+		}
 		failures = append(failures, transportName+": "+err.Error())
 	}
 	return nil, fmt.Errorf("connect to MCP server %q: %s", name, strings.Join(failures, "; "))
@@ -75,6 +78,14 @@ func dialTransport(ctx context.Context, cfg ServerConfig, transportName string) 
 	lifetime, cancel := context.WithTimeout(ctx, cfg.timeout())
 	var c *client.Client
 	var err error
+	var oauthConfig client.OAuthConfig
+	if cfg.OAuth != nil {
+		oauthConfig, err = oauthTransportConfig(ctx, cfg)
+		if err != nil {
+			cancel()
+			return nil, err
+		}
+	}
 	switch transportName {
 	case "stdio":
 		env := make([]string, 0, len(cfg.Env))
@@ -84,11 +95,22 @@ func dialTransport(ctx context.Context, cfg ServerConfig, transportName string) 
 		sort.Strings(env)
 		c = client.NewClient(transport.NewStdio(cfg.Command, env, cfg.Args...))
 	case "http":
-		c, err = client.NewStreamableHttpClient(cfg.URL,
+		options := []transport.StreamableHTTPCOption{
 			transport.WithHTTPHeaders(cfg.Headers),
-			transport.WithHTTPTimeout(cfg.timeout()))
+			transport.WithHTTPTimeout(cfg.timeout()),
+		}
+		if cfg.OAuth != nil {
+			c, err = client.NewOAuthStreamableHttpClient(cfg.URL, oauthConfig, options...)
+		} else {
+			c, err = client.NewStreamableHttpClient(cfg.URL, options...)
+		}
 	case "sse":
-		c, err = client.NewSSEMCPClient(cfg.URL, client.WithHeaders(cfg.Headers))
+		options := []transport.ClientOption{client.WithHeaders(cfg.Headers)}
+		if cfg.OAuth != nil {
+			c, err = client.NewOAuthSSEClient(cfg.URL, oauthConfig, options...)
+		} else {
+			c, err = client.NewSSEMCPClient(cfg.URL, options...)
+		}
 	default:
 		err = fmt.Errorf("unsupported transport %q", transportName)
 	}
@@ -98,6 +120,7 @@ func dialTransport(ctx context.Context, cfg ServerConfig, transportName string) 
 	}
 	if err := c.Start(lifetime); err != nil {
 		cancel()
+		_ = c.Close()
 		return nil, err
 	}
 	if stderr, ok := client.GetStderr(c); ok {

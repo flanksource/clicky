@@ -23,6 +23,16 @@ func TestServerConfigValidate(t *testing.T) {
 		{"both endpoints", ServerConfig{Type: "stdio", Command: "node", URL: "https://example.com"}, false},
 		{"env on remote", ServerConfig{Type: "http", URL: "https://example.com", Env: map[string]string{"A": "b"}}, false},
 		{"headers on stdio", ServerConfig{Type: "stdio", Command: "node", Headers: map[string]string{"X": "y"}}, false},
+		{"OAuth remote", ServerConfig{Type: "http", URL: "https://example.com/mcp", OAuth: &OAuthClientConfig{}}, true},
+		{"OAuth loopback HTTP", ServerConfig{Type: "http", URL: "http://127.0.0.1:8080/mcp", OAuth: &OAuthClientConfig{}}, true},
+		{"OAuth remote HTTP", ServerConfig{Type: "http", URL: "http://example.com/mcp", OAuth: &OAuthClientConfig{}}, false},
+		{"OAuth on stdio", ServerConfig{Type: "stdio", Command: "node", OAuth: &OAuthClientConfig{}}, false},
+		{"OAuth with authorization header", ServerConfig{Type: "http", URL: "https://example.com/mcp", Headers: map[string]string{"authorization": "Bearer static"}, OAuth: &OAuthClientConfig{}}, false},
+		{"OAuth client secret without ID", ServerConfig{Type: "http", URL: "https://example.com/mcp", OAuth: &OAuthClientConfig{ClientSecret: "secret"}}, false},
+		{"OAuth literal client secret", ServerConfig{Type: "http", URL: "https://example.com/mcp", OAuth: &OAuthClientConfig{ClientID: "client", ClientSecret: "secret"}}, false},
+		{"OAuth referenced client secret", ServerConfig{Type: "http", URL: "https://example.com/mcp", OAuth: &OAuthClientConfig{ClientID: "client", ClientSecret: "env:MCP_SECRET"}}, true},
+		{"OAuth redirect not loopback", ServerConfig{Type: "http", URL: "https://example.com/mcp", OAuth: &OAuthClientConfig{RedirectURI: "https://example.com/callback"}}, false},
+		{"OAuth metadata different origin", ServerConfig{Type: "http", URL: "https://example.com/mcp", OAuth: &OAuthClientConfig{ProtectedResourceMetadataURL: "https://auth.example.com/resource"}}, false},
 		{"bad URL", ServerConfig{Type: "http", URL: "file:///tmp/socket"}, false},
 		{"bad timeout", ServerConfig{Type: "stdio", Command: "node", Timeout: "soon"}, false},
 	}
@@ -68,9 +78,13 @@ func TestServerRegistryRoundTripAndPreservesForeignKeys(t *testing.T) {
 	if err := r.Add("demo", cfg); err != nil {
 		t.Fatal(err)
 	}
-	got, ok, err := r.Get("demo")
-	if err != nil || !ok || !reflect.DeepEqual(got, cfg) {
-		t.Fatalf("Get() = %#v, %v, %v", got, ok, err)
+	got, ok, getErr := r.Get("demo")
+	cfg, err := r.bind("demo", cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if getErr != nil || !ok || !reflect.DeepEqual(got, cfg) {
+		t.Fatalf("Get() = %#v, %v, %v", got, ok, getErr)
 	}
 	names, _, err := r.List()
 	if err != nil || !reflect.DeepEqual(names, []string{"demo"}) {
@@ -88,9 +102,19 @@ func TestServerRegistryRoundTripAndPreservesForeignKeys(t *testing.T) {
 	if !strings.Contains(string(root["theme"]), "dark") {
 		t.Fatalf("foreign key was not preserved: %s", data)
 	}
+	if err := os.MkdirAll(r.oauthDir(), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	tokenPath := filepath.Join(r.oauthDir(), "demo.json")
+	if err := os.WriteFile(tokenPath, []byte(`{"access_token":"secret"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
 
 	if err := r.Remove("demo"); err != nil {
 		t.Fatal(err)
+	}
+	if _, err := os.Stat(tokenPath); !os.IsNotExist(err) {
+		t.Fatalf("OAuth token was not removed: %v", err)
 	}
 	if err := r.Remove("demo"); err == nil {
 		t.Fatal("removing an unknown server should fail")

@@ -66,9 +66,11 @@ The MCP command group provides functionality to:
 	mcpCmd.AddCommand(newConfigCommand(opts))
 	mcpCmd.AddCommand(newPromptCommand(opts))
 	mcpCmd.AddCommand(newToolsCommand(opts))
-	mcpCmd.AddCommand(newClientAddCommand())
+	mcpCmd.AddCommand(newClientAddCommand(clientOptions))
 	mcpCmd.AddCommand(newClientListCommand())
 	mcpCmd.AddCommand(newClientRemoveCommand())
+	mcpCmd.AddCommand(newClientLoginCommand(clientOptions))
+	mcpCmd.AddCommand(newClientLogoutCommand())
 	mcpCmd.AddCommand(newRunCommand())
 
 	// Global MCP flags. Verbose output is controlled by clicky's existing

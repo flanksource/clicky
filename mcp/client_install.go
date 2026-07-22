@@ -16,6 +16,7 @@ import (
 // transport, persistence, and shim generation reusable by every clicky CLI.
 type ClientOptions struct {
 	ResolvePrompt PromptResolver
+	OpenBrowser   func(string) error
 }
 
 // PromptResolver maps an application prompt definition into portable server

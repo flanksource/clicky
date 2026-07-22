@@ -12,25 +12,37 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func newClientAddCommand() *cobra.Command {
+func newClientAddCommand(clientOptions ClientOptions) *cobra.Command {
 	var (
-		transportName string
-		environment   []string
-		headers       []string
-		includeTools  []string
-		excludeTools  []string
-		timeout       time.Duration
-		cacheTTL      time.Duration
-		noVerify      bool
+		transportName     string
+		environment       []string
+		headers           []string
+		includeTools      []string
+		excludeTools      []string
+		oauthScopes       []string
+		oauthClientID     string
+		oauthClientSecret string
+		oauthClientName   string
+		oauthRedirectURI  string
+		oauthMetadataURL  string
+		timeout           time.Duration
+		cacheTTL          time.Duration
+		oauth             bool
+		noBrowser         bool
+		noVerify          bool
 	)
 	cmd := &cobra.Command{
 		Use:   "add <name> [--] <command> [args...] | add <name> <url>",
 		Short: "Register an external MCP server",
 		Args:  cobra.MinimumNArgs(2),
 		Example: `  app mcp add local -- npx -y @modelcontextprotocol/server-everything
-  app mcp add remote https://example.com/mcp --header 'Authorization: Bearer ...'`,
+	  app mcp add remote https://example.com/mcp --header 'Authorization: Bearer ...'
+	  app mcp add private https://example.com/mcp --oauth --oauth-scope mcp.read`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
+			if err := validateServerName(name); err != nil {
+				return err
+			}
 			cfg := ServerConfig{
 				Type: transportName, Timeout: timeout.String(), CacheTTL: cacheTTL.String(),
 				IncludeTools: includeTools, ExcludeTools: excludeTools,
@@ -54,6 +66,18 @@ func newClientAddCommand() *cobra.Command {
 			if cfg.Headers, err = parseAssignments(headers, "header", ':'); err != nil {
 				return err
 			}
+			oauthRequested := oauth || oauthClientID != "" || oauthClientSecret != "" || oauthClientName != "" ||
+				len(oauthScopes) > 0 || oauthRedirectURI != "" || oauthMetadataURL != ""
+			if noBrowser && !oauthRequested {
+				return fmt.Errorf("--no-browser requires --oauth or another OAuth option")
+			}
+			if oauthRequested {
+				cfg.OAuth = &OAuthClientConfig{
+					ClientID: oauthClientID, ClientSecret: oauthClientSecret, ClientName: oauthClientName,
+					Scopes: normalizeOAuthScopes(oauthScopes), RedirectURI: oauthRedirectURI,
+					AuthServerMetadataURL: oauthMetadataURL,
+				}
+			}
 			if err := cfg.Validate(); err != nil {
 				return err
 			}
@@ -64,10 +88,23 @@ func newClientAddCommand() *cobra.Command {
 			} else if exists {
 				return fmt.Errorf("MCP server %q is already registered; remove it before replacing it", name)
 			}
+			cfg, err = registry.bind(name, cfg)
+			if err != nil {
+				return err
+			}
 			var catalog *CatalogCache
 			if !noVerify {
+				if cfg.OAuth != nil {
+					cfg, err = loginOAuth(cmd.Context(), registry, name, cfg, OAuthLoginOptions{
+						OpenBrowser: clientOptions.OpenBrowser, Out: cmd.ErrOrStderr(), NoBrowser: noBrowser,
+					})
+					if err != nil {
+						return err
+					}
+				}
 				session, err := Dial(cmd.Context(), name, cfg)
 				if err != nil {
+					_ = removeOAuthCredentials(cmd.Context(), cfg)
 					return err
 				}
 				tools, fetchErr := FetchCatalog(cmd.Context(), cfg, session)
@@ -76,10 +113,12 @@ func newClientAddCommand() *cobra.Command {
 				}
 				_ = session.Close()
 				if fetchErr != nil {
+					_ = removeOAuthCredentials(cmd.Context(), cfg)
 					return fetchErr
 				}
 			}
 			if err := registry.Add(name, cfg); err != nil {
+				_ = removeOAuthCredentials(cmd.Context(), cfg)
 				return err
 			}
 			if catalog != nil {
@@ -95,6 +134,14 @@ func newClientAddCommand() *cobra.Command {
 	cmd.Flags().StringVar(&transportName, "transport", "auto", "Transport: stdio, sse, http, or auto")
 	cmd.Flags().StringArrayVar(&environment, "env", nil, "Stdio environment variable KEY=VALUE (repeatable)")
 	cmd.Flags().StringArrayVar(&headers, "header", nil, "Remote HTTP header 'Name: Value' (repeatable)")
+	cmd.Flags().BoolVar(&oauth, "oauth", false, "Authenticate with OAuth/OIDC authorization code and PKCE")
+	cmd.Flags().StringVar(&oauthClientID, "oauth-client-id", "", "Pre-registered OAuth client ID (otherwise use dynamic registration)")
+	cmd.Flags().StringVar(&oauthClientSecret, "oauth-client-secret", "", "OAuth client secret env:NAME or file:PATH reference")
+	cmd.Flags().StringVar(&oauthClientName, "oauth-client-name", "", "Client name used for dynamic OAuth registration")
+	cmd.Flags().StringArrayVar(&oauthScopes, "oauth-scope", nil, "OAuth scope to request (repeatable or space-separated)")
+	cmd.Flags().StringVar(&oauthRedirectURI, "oauth-redirect-uri", "", "Loopback OAuth callback URI with an explicit port")
+	cmd.Flags().StringVar(&oauthMetadataURL, "oauth-metadata-url", "", "Override OAuth/OIDC authorization server metadata URL")
+	cmd.Flags().BoolVar(&noBrowser, "no-browser", false, "Print the OAuth URL without opening a browser")
 	cmd.Flags().StringSliceVar(&includeTools, "include-tool", nil, "Only cache tools matching these globs")
 	cmd.Flags().StringSliceVar(&excludeTools, "exclude-tool", nil, "Exclude tools matching these globs")
 	cmd.Flags().DurationVar(&timeout, "timeout", defaultClientTimeout, "Connection and invocation timeout")
@@ -179,6 +226,73 @@ func newClientRemoveCommand() *cobra.Command {
 	}
 }
 
+func newClientLoginCommand(clientOptions ClientOptions) *cobra.Command {
+	var noBrowser bool
+	cmd := &cobra.Command{
+		Use:   "login <name>",
+		Short: "Authenticate to a registered OAuth/OIDC MCP server",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			registry := NewServerRegistry(rootAppName(cmd))
+			cfg, ok, err := registry.Get(args[0])
+			if err != nil {
+				return err
+			}
+			if !ok {
+				return fmt.Errorf("MCP server %q is not registered", args[0])
+			}
+			cfg, err = loginOAuth(cmd.Context(), registry, args[0], cfg, OAuthLoginOptions{
+				OpenBrowser: clientOptions.OpenBrowser, Out: cmd.ErrOrStderr(), NoBrowser: noBrowser,
+			})
+			if err != nil {
+				return err
+			}
+			if err := registry.Add(args[0], cfg); err != nil {
+				return err
+			}
+			preferred := ""
+			if catalog, loadErr := LoadCatalog(registry, args[0]); loadErr == nil && catalog != nil {
+				preferred = catalog.Transport
+			}
+			if _, err := RefreshCatalog(cmd.Context(), registry, args[0], cfg, preferred); err != nil {
+				return fmt.Errorf("OAuth login succeeded, but catalog refresh failed: %w", err)
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "Logged in to MCP server %q\n", args[0])
+			return nil
+		},
+		ValidArgsFunction: completeRegisteredServers,
+	}
+	cmd.Flags().BoolVar(&noBrowser, "no-browser", false, "Print the OAuth URL without opening a browser")
+	return cmd
+}
+
+func newClientLogoutCommand() *cobra.Command {
+	return &cobra.Command{
+		Use:   "logout <name>",
+		Short: "Remove cached OAuth credentials for an MCP server",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			registry := NewServerRegistry(rootAppName(cmd))
+			cfg, ok, err := registry.Get(args[0])
+			if err != nil {
+				return err
+			}
+			if !ok {
+				return fmt.Errorf("MCP server %q is not registered", args[0])
+			}
+			if cfg.OAuth == nil {
+				return fmt.Errorf("MCP server %q is not configured for OAuth", args[0])
+			}
+			if err := clearOAuthToken(cmd.Context(), cfg); err != nil {
+				return err
+			}
+			fmt.Fprintf(cmd.OutOrStdout(), "Logged out of MCP server %q\n", args[0])
+			return nil
+		},
+		ValidArgsFunction: completeRegisteredServers,
+	}
+}
+
 func makeListRecord(name string, cfg ServerConfig, catalog *CatalogCache, tools bool) clientListRecord {
 	record := clientListRecord{Name: name, Transport: cfg.effectiveTransport(), Endpoint: cfg.endpoint(), Cache: "missing"}
 	if catalog == nil {
@@ -241,6 +355,14 @@ func renderClientList(out io.Writer, records []clientListRecord, format string, 
 	default:
 		return fmt.Errorf("unsupported format %q (want pretty, json, or markdown)", format)
 	}
+}
+
+func normalizeOAuthScopes(values []string) []string {
+	var scopes []string
+	for _, value := range values {
+		scopes = append(scopes, strings.Fields(value)...)
+	}
+	return scopes
 }
 
 func markdownTableCell(value string) string {

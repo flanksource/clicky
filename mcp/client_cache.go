@@ -48,6 +48,9 @@ func catalogPath(registry *ServerRegistry, name string) string {
 // LoadCatalog reads a cached catalog. Corruption is self-healed as a miss so a
 // broken cache cannot permanently disable CLI help.
 func LoadCatalog(registry *ServerRegistry, name string) (*CatalogCache, error) {
+	if err := validateServerName(name); err != nil {
+		return nil, err
+	}
 	path := catalogPath(registry, name)
 	data, err := os.ReadFile(path)
 	if os.IsNotExist(err) {
@@ -68,6 +71,9 @@ func LoadCatalog(registry *ServerRegistry, name string) (*CatalogCache, error) {
 
 // SaveCatalog atomically stores a catalog with private permissions.
 func SaveCatalog(registry *ServerRegistry, name string, catalog *CatalogCache) error {
+	if err := validateServerName(name); err != nil {
+		return err
+	}
 	if catalog == nil {
 		return fmt.Errorf("cannot save a nil catalog")
 	}
