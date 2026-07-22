@@ -47,17 +47,14 @@ const DefaultModelID = capai.DefaultModelID
 func Catalog() []Model { return capai.Catalog() }
 
 // LookupModel resolves an id against captain's catalog for the generation path.
-// It uses the static catalog (not the live probe) so resolution is deterministic
-// and hermetic; the served menu (handleModels) uses the live catalog for display,
-// which is a superset on any host whose probe only adds live provider models.
 func LookupModel(id string) (Model, error) { return capai.LookupModel(id) }
 
 // RegisterModel / RegisterModels / SetModelCatalog / ResetModelCatalog delegate
 // to captain's catalog for embedders that extend or replace the menu.
-func RegisterModel(model Model) error        { return capai.RegisterModel(model) }
-func RegisterModels(models ...Model) error   { return capai.RegisterModels(models...) }
-func SetModelCatalog(models []Model) error   { return capai.SetModelCatalog(models) }
-func ResetModelCatalog()                     { capai.ResetModelCatalog() }
+func RegisterModel(model Model) error      { return capai.RegisterModel(model) }
+func RegisterModels(models ...Model) error { return capai.RegisterModels(models...) }
+func SetModelCatalog(models []Model) error { return capai.SetModelCatalog(models) }
+func ResetModelCatalog()                   { capai.ResetModelCatalog() }
 
 // modelProvider is the Genkit provider (plugin key) for a catalog model.
 func modelProvider(m Model) Provider { return Provider(capai.BackendToProvider(m.Backend)) }

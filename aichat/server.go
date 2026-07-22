@@ -142,19 +142,14 @@ func (s *Server) handleModels(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusServiceUnavailable)
 		return
 	}
-	infos, err := capai.LiveCatalogInfo(providerStrings(providers))
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusServiceUnavailable)
-		return
-	}
+	infos := capai.CatalogInfo(providerStrings(providers))
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(infos); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }
 
-// providerStrings projects the configured Genkit providers to the string form
-// captain's LiveCatalogInfo consumes for its per-request "configured" overlay.
+// providerStrings projects configured Genkit providers into captain's catalog overlay.
 func providerStrings(providers []Provider) []string {
 	out := make([]string, len(providers))
 	for i, p := range providers {
