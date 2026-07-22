@@ -3,8 +3,8 @@ module github.com/flanksource/clicky/examples/uber_demo
 go 1.26.1
 
 require (
-	github.com/flanksource/clicky v1.21.1
-	github.com/flanksource/commons v1.51.3
+	github.com/flanksource/clicky v1.21.40
+	github.com/flanksource/commons v1.53.1
 	github.com/google/uuid v1.6.0
 	github.com/spf13/cobra v1.10.2
 	golang.org/x/term v0.44.0
@@ -43,7 +43,7 @@ require (
 	github.com/emirpasic/gods/v2 v2.0.0-alpha // indirect
 	github.com/erikgeiser/coninput v0.0.0-20211004153227-1c3628e74d0f // indirect
 	github.com/fatih/color v1.18.0 // indirect
-	github.com/flanksource/gomplate/v3 v3.24.82 // indirect
+	github.com/flanksource/gomplate/v3 v3.24.84 // indirect
 	github.com/flanksource/is-healthy v1.0.88 // indirect
 	github.com/flanksource/kubectl-neat v1.0.4 // indirect
 	github.com/fsnotify/fsnotify v1.9.0 // indirect
