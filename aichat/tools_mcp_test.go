@@ -72,10 +72,19 @@ func TestMCPRegisteredToolsUsesClickyClient(t *testing.T) {
 	}
 }
 
+func TestMCPServerNameTrimsWhitespace(t *testing.T) {
+	if got := mcpServerName("  demo  "); got != "demo" {
+		t.Fatalf("mcpServerName() = %q, want demo", got)
+	}
+	if got := mcpServerName(" \t "); got != "unnamed" {
+		t.Fatalf("mcpServerName() = %q, want unnamed", got)
+	}
+}
+
 func TestMCPClientConfig(t *testing.T) {
 	cfg, err := mcpClientConfig(MCPServer{
 		Name: "local", Command: "server", Args: []string{"--stdio"},
-		Env: []string{"TOKEN=secret", "VALUE=contains=equals"},
+		Env: []string{"TOKEN =secret", "VALUE=contains=equals"},
 	})
 	if err != nil {
 		t.Fatal(err)

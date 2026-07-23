@@ -447,6 +447,40 @@ func TestDialMissingOAuthTokenRequestsLogin(t *testing.T) {
 	}
 }
 
+func TestFileOAuthTokenStoreMigratesLegacyClientSecret(t *testing.T) {
+	store := &fileOAuthTokenStore{path: t.TempDir() + "/oauth.json"}
+	legacy := oauthCredentialFile{
+		Token: &mcpclient.Token{
+			AccessToken: "old-token", TokenType: "Bearer", RefreshToken: "refresh-token",
+		},
+		ClientSecret: "dynamic-secret",
+	}
+	if err := writeJSONAtomic(store.path, legacy); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SaveToken(context.Background(), &mcpclient.Token{
+		AccessToken: "new-token", TokenType: "Bearer", RefreshToken: "refresh-token",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	secret, err := store.GetClientSecret(context.Background())
+	if err != nil || secret != "dynamic-secret" {
+		t.Fatalf("client secret = %q, %v", secret, err)
+	}
+	token, err := store.GetToken(context.Background())
+	if err != nil || token.AccessToken != "new-token" {
+		t.Fatalf("token = %#v, %v", token, err)
+	}
+	data, err := os.ReadFile(store.path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), "client_secret") {
+		t.Fatalf("legacy token file was not migrated: %s", data)
+	}
+}
+
 func TestFileOAuthTokenStoreConcurrentWrites(t *testing.T) {
 	store := &fileOAuthTokenStore{path: t.TempDir() + "/oauth.json"}
 	errors := make(chan error, 32)

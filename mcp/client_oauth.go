@@ -124,9 +124,23 @@ func (s *fileOAuthTokenStore) SaveToken(ctx context.Context, token *client.Token
 	if token == nil {
 		return fmt.Errorf("cannot save a nil OAuth token")
 	}
+	secretPath := s.clientSecretPath()
+	secretLock := oauthCredentialLock(secretPath)
+	secretLock.Lock()
+	defer secretLock.Unlock()
 	lock := oauthCredentialLock(s.path)
 	lock.Lock()
 	defer lock.Unlock()
+	credentials, readErr := s.readCredentials()
+	if readErr == nil && credentials.ClientSecret != "" {
+		if _, err := os.Stat(secretPath); errors.Is(err, os.ErrNotExist) {
+			if err := writeJSONAtomic(secretPath, oauthClientSecretFile{ClientSecret: credentials.ClientSecret}); err != nil {
+				return fmt.Errorf("migrate legacy OAuth client secret: %w", err)
+			}
+		} else if err != nil {
+			return fmt.Errorf("check OAuth client secret: %w", err)
+		}
+	}
 	copy := *token
 	if err := writeJSONAtomic(s.path, &copy); err != nil {
 		return fmt.Errorf("save OAuth token: %w", err)

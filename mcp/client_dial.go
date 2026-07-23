@@ -8,6 +8,7 @@ import (
 	"path"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/mark3labs/mcp-go/client"
@@ -32,6 +33,8 @@ type ClientSession struct {
 	ServerName    string
 	ServerVersion string
 	close         func() error
+	closeOnce     sync.Once
+	closeErr      error
 }
 
 // Close terminates the client transport and its lifetime context.
@@ -39,7 +42,10 @@ func (s *ClientSession) Close() error {
 	if s == nil || s.close == nil {
 		return nil
 	}
-	return s.close()
+	s.closeOnce.Do(func() {
+		s.closeErr = s.close()
+	})
+	return s.closeErr
 }
 
 // Dial connects and initializes a server. For auto transport, preferred is
@@ -75,14 +81,14 @@ func Dial(ctx context.Context, name string, cfg ServerConfig, preferred ...strin
 }
 
 func dialTransport(ctx context.Context, cfg ServerConfig, transportName string) (*ClientSession, error) {
-	lifetime, cancel := context.WithTimeout(ctx, cfg.timeout())
+	lifetime, cancel := context.WithCancelCause(ctx)
 	var c *client.Client
 	var err error
 	var oauthConfig client.OAuthConfig
 	if cfg.OAuth != nil {
 		oauthConfig, err = oauthTransportConfig(ctx, cfg)
 		if err != nil {
-			cancel()
+			cancel(err)
 			return nil, err
 		}
 	}
@@ -115,11 +121,24 @@ func dialTransport(ctx context.Context, cfg ServerConfig, transportName string) 
 		err = fmt.Errorf("unsupported transport %q", transportName)
 	}
 	if err != nil {
-		cancel()
+		cancel(err)
 		return nil, err
 	}
-	if err := c.Start(lifetime); err != nil {
-		cancel()
+	startupExpired := make(chan struct{})
+	startupTimer := time.AfterFunc(cfg.timeout(), func() {
+		cancel(context.DeadlineExceeded)
+		close(startupExpired)
+	})
+	startErr := c.Start(lifetime)
+	if !startupTimer.Stop() {
+		<-startupExpired
+	}
+	if startErr != nil {
+		cancel(startErr)
+		_ = c.Close()
+		return nil, context.Cause(lifetime)
+	}
+	if err := context.Cause(lifetime); err != nil {
 		_ = c.Close()
 		return nil, err
 	}
@@ -136,22 +155,17 @@ func dialTransport(ctx context.Context, cfg ServerConfig, transportName string) 
 	result, err := c.Initialize(initCtx, request)
 	initCancel()
 	if err != nil {
-		cancel()
+		cancel(err)
 		_ = c.Close()
 		return nil, err
 	}
 
-	closed := false
 	return &ClientSession{
 		Caller: c, Transport: transportName,
 		ServerName: result.ServerInfo.Name, ServerVersion: result.ServerInfo.Version,
 		close: func() error {
-			if closed {
-				return nil
-			}
-			closed = true
 			err := c.Close()
-			cancel()
+			cancel(context.Canceled)
 			return err
 		},
 	}, nil

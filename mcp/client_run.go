@@ -25,7 +25,7 @@ func newRunCommand() *cobra.Command {
 		DisableFlagParsing: true,
 		Args:               cobra.ArbitraryArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if len(args) == 0 || (len(args) == 1 && args[0] == "--help") {
+			if len(args) == 0 || (len(args) == 1 && (args[0] == "--help" || args[0] == "-h")) {
 				return renderRunServers(cmd)
 			}
 			serverName := args[0]

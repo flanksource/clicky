@@ -9,6 +9,21 @@ import (
 	mcpsdk "github.com/mark3labs/mcp-go/mcp"
 )
 
+func TestRunShortHelpListsServers(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	registry := NewServerRegistry("testapp")
+	if err := registry.Add("demo", ServerConfig{Type: "stdio", Command: "server"}); err != nil {
+		t.Fatal(err)
+	}
+	output, err := executeMCPCommand("run", "-h")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(output, "Registered MCP servers:") || !strings.Contains(output, "  demo") {
+		t.Fatalf("short help output:\n%s", output)
+	}
+}
+
 func TestRunToolCommandUsesCLIOnlyHelp(t *testing.T) {
 	tool := CachedTool{
 		Name: "ask_question",

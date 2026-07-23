@@ -78,7 +78,8 @@ func MCPTools(ctx context.Context, g *genkit.Genkit, servers []MCPServer) ([]ai.
 }
 
 func mcpServerName(name string) string {
-	if strings.TrimSpace(name) == "" {
+	name = strings.TrimSpace(name)
+	if name == "" {
 		return "unnamed"
 	}
 	return name
@@ -124,7 +125,8 @@ func mcpEnvironment(serverName string, entries []string) (map[string]string, err
 	environment := make(map[string]string, len(entries))
 	for _, entry := range entries {
 		key, value, ok := strings.Cut(entry, "=")
-		if !ok || strings.TrimSpace(key) == "" {
+		key = strings.TrimSpace(key)
+		if !ok || key == "" {
 			return nil, fmt.Errorf("MCP server %q has invalid environment entry %q (want KEY=VALUE)", mcpServerName(serverName), entry)
 		}
 		environment[key] = value
