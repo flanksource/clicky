@@ -46,17 +46,6 @@ Args:
 	}
 }
 
-func TestRunPolicyRejectsInvalidGlobs(t *testing.T) {
-	for _, flag := range []string{"--allow-tool", "--deny-tool"} {
-		t.Run(flag, func(t *testing.T) {
-			_, _, err := parseRunPolicyArgs([]string{flag, "[", "--", "--help"})
-			if err == nil || !strings.Contains(err.Error(), `invalid tool policy glob "["`) {
-				t.Fatalf("error = %v", err)
-			}
-		})
-	}
-}
-
 func TestDecodedSizeDoesNotRequireDecodedPayload(t *testing.T) {
 	tests := map[string]int{
 		"":             0,

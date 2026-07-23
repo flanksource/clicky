@@ -21,20 +21,17 @@ var supportedClients = []string{"claude", "codex", "gemini", "copilot", "cursor"
 // (handled by Server.Start).
 var supportedTransports = []string{"stdio", "sse"}
 
-func newInstallCommandWithOptions(opts *CommandOptions, clientOptions ClientOptions) *cobra.Command {
+func newInstallCommand(opts *CommandOptions) *cobra.Command {
 	var (
 		client    string
 		global    bool
 		transport string
 		url       string
 		port      int
-		prompt    string
-		binDir    string
-		force     bool
 	)
 
 	cmd := &cobra.Command{
-		Use:   "install [registered-server]",
+		Use:   "install",
 		Short: "Install as MCP server in an MCP client's configuration",
 		Long: `Register this CLI as an MCP server in the chosen client's config.
 
@@ -53,35 +50,8 @@ Examples:
   app mcp install --client codex --global      # codex, ~/.codex/config.toml
   app mcp install --client gemini              # gemini, project .gemini/settings.json
   app mcp install --transport sse --port 9000  # claude, sse on :9000
-  app mcp install --client copilot --global    # VS Code Copilot user-level mcp.json
-  app mcp install filesystem                   # ~/.local/bin/filesystem shortcut
-  app mcp install --prompt review.prompt       # prompt-scoped shortcuts`,
-		Args: cobra.MaximumNArgs(1),
+  app mcp install --client copilot --global    # VS Code Copilot user-level mcp.json`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			rootCmd := cmd.Root()
-			if prompt != "" {
-				if len(args) != 0 {
-					return fmt.Errorf("--prompt cannot be combined with a server argument")
-				}
-				if err := rejectInstallFlags(cmd, "prompt shortcuts", "client", "global", "transport", "url", "port"); err != nil {
-					return err
-				}
-				return installPromptShims(cmd, rootCmd.Name(), prompt, binDir, force, clientOptions)
-			}
-			if len(args) == 1 {
-				if err := rejectInstallFlags(cmd, "server shortcuts", "client", "global", "transport", "url", "port"); err != nil {
-					return err
-				}
-				path, err := InstallShim(rootCmd.Name(), args[0], ShimOptions{BinDir: binDir, Force: force})
-				if err != nil {
-					return err
-				}
-				fmt.Fprintf(cmd.OutOrStdout(), "Installed MCP shortcut %s\n", path)
-				return nil
-			}
-			if err := rejectInstallFlags(cmd, "client registration", "bin-dir", "force"); err != nil {
-				return err
-			}
 			if !contains(supportedClients, client) {
 				return fmt.Errorf("unsupported --client %q (want one of: %s)", client, strings.Join(supportedClients, ", "))
 			}
@@ -89,9 +59,13 @@ Examples:
 				return fmt.Errorf("unsupported --transport %q (want one of: %s)", transport, strings.Join(supportedTransports, ", "))
 			}
 
-			serverName := rootCmd.Name()
+			rootCmd := cmd
+			for rootCmd.Parent() != nil {
+				rootCmd = rootCmd.Parent()
+			}
+			serverName := rootCmd.Use
 
-			binPath, err := resolveBinaryPath(rootCmd.Name())
+			binPath, err := resolveBinaryPath(rootCmd.Use)
 			if err != nil {
 				return err
 			}
@@ -149,21 +123,9 @@ Examples:
 		"SSE endpoint URL (default http://127.0.0.1:<port>/sse)")
 	cmd.Flags().IntVar(&port, "port", 0,
 		"Port for SSE transport when --url is not set (default 8080)")
-	cmd.Flags().StringVar(&prompt, "prompt", "", "Create prompt-scoped server shortcuts from a .prompt file")
-	cmd.Flags().StringVar(&binDir, "bin-dir", "", "Shortcut directory (default ~/.local/bin)")
-	cmd.Flags().BoolVar(&force, "force", false, "Replace an existing shortcut")
 
 	_ = opts // reserved for future use (e.g. multi-app namespacing)
 	return cmd
-}
-
-func rejectInstallFlags(cmd *cobra.Command, mode string, flags ...string) error {
-	for _, flag := range flags {
-		if cmd.Flags().Changed(flag) {
-			return fmt.Errorf("--%s does not apply to %s", flag, mode)
-		}
-	}
-	return nil
 }
 
 // serverEntry is the resolved view of one install request, used by every

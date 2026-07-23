@@ -13,8 +13,7 @@ import (
 )
 
 var reservedToolFlags = map[string]bool{
-	"allow-tool": true, "deny-tool": true, "help": true,
-	"json": true, "refresh": true, "timeout": true,
+	"help": true, "json": true, "refresh": true, "timeout": true,
 }
 
 type toolSchema struct {

@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path"
 	"strings"
 	"time"
 
@@ -18,11 +17,6 @@ import (
 	"github.com/spf13/cobra"
 	"golang.org/x/term"
 )
-
-type runPolicy struct {
-	allow []string
-	deny  []string
-}
 
 func newRunCommand() *cobra.Command {
 	cmd := &cobra.Command{
@@ -35,10 +29,7 @@ func newRunCommand() *cobra.Command {
 				return renderRunServers(cmd)
 			}
 			serverName := args[0]
-			policy, toolArgs, err := parseRunPolicyArgs(args[1:])
-			if err != nil {
-				return err
-			}
+			toolArgs := args[1:]
 
 			registry := NewServerRegistry(rootAppName(cmd))
 			cfg, ok, err := registry.Get(serverName)
@@ -53,47 +44,11 @@ func newRunCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			tools := permittedTools(serverName, catalog.Tools, policy)
-			return executeRunServerCommand(cmd, registry, serverName, cfg, catalog, tools, toolArgs)
+			return executeRunServerCommand(cmd, registry, serverName, cfg, catalog, toolArgs)
 		},
 		ValidArgsFunction: completeRunArguments,
 	}
 	return cmd
-}
-
-func parseRunPolicyArgs(args []string) (runPolicy, []string, error) {
-	policy := runPolicy{}
-	separator := -1
-	for i, arg := range args {
-		if arg == "--" {
-			separator = i
-			break
-		}
-	}
-	if separator < 0 {
-		return policy, args, nil
-	}
-	for i := 0; i < separator; i++ {
-		switch args[i] {
-		case "--allow-tool", "--deny-tool":
-			if i+1 >= separator {
-				return runPolicy{}, nil, fmt.Errorf("%s requires a pattern", args[i])
-			}
-			pattern := args[i+1]
-			if _, err := path.Match(pattern, "mcp__server__tool"); err != nil {
-				return runPolicy{}, nil, fmt.Errorf("invalid tool policy glob %q: %w", pattern, err)
-			}
-			if args[i] == "--allow-tool" {
-				policy.allow = append(policy.allow, pattern)
-			} else {
-				policy.deny = append(policy.deny, pattern)
-			}
-			i++
-		default:
-			return runPolicy{}, nil, fmt.Errorf("unknown shortcut policy option %q", args[i])
-		}
-	}
-	return policy, args[separator+1:], nil
 }
 
 func loadRunCatalog(ctx context.Context, registry *ServerRegistry, name string, cfg ServerConfig, refresh bool) (*CatalogCache, error) {
@@ -113,15 +68,7 @@ func loadRunCatalog(ctx context.Context, registry *ServerRegistry, name string, 
 
 // executeRunServerCommand builds the cached server subtree after the outer run
 // command resolves its application-scoped registry.
-func executeRunServerCommand(parent *cobra.Command, registry *ServerRegistry, serverName string, cfg ServerConfig, catalog *CatalogCache, tools []CachedTool, args []string) error {
-	if len(args) > 0 {
-		if _, ok := findCachedTool(tools, args[0]); !ok {
-			if _, exists := findCachedTool(catalog.Tools, args[0]); exists {
-				return fmt.Errorf("tool %q is not permitted by this shortcut", args[0])
-			}
-		}
-	}
-
+func executeRunServerCommand(parent *cobra.Command, registry *ServerRegistry, serverName string, cfg ServerConfig, catalog *CatalogCache, args []string) error {
 	serverCmd := &cobra.Command{
 		Use:           serverName,
 		Short:         fmt.Sprintf("Invoke tools exposed by the %s MCP server", serverName),
@@ -137,7 +84,7 @@ func executeRunServerCommand(parent *cobra.Command, registry *ServerRegistry, se
 	serverCmd.SetIn(parent.InOrStdin())
 	serverCmd.SetOut(parent.OutOrStdout())
 	serverCmd.SetErr(parent.ErrOrStderr())
-	for _, tool := range tools {
+	for _, tool := range catalog.Tools {
 		toolCmd, err := newRunToolCommand(registry, serverName, cfg, catalog, tool)
 		if err != nil {
 			return err
@@ -435,36 +382,6 @@ func completeRunArguments(cmd *cobra.Command, args []string, toComplete string) 
 		return names, cobra.ShellCompDirectiveNoFileComp
 	}
 	return nil, cobra.ShellCompDirectiveNoFileComp
-}
-
-func permittedTools(server string, tools []CachedTool, policy runPolicy) []CachedTool {
-	result := make([]CachedTool, 0, len(tools))
-	for _, tool := range tools {
-		fullName := "mcp__" + server + "__" + tool.Name
-		allowed := len(policy.allow) == 0 || matchesAnyGlob(fullName, policy.allow)
-		if allowed && !matchesAnyGlob(fullName, policy.deny) {
-			result = append(result, tool)
-		}
-	}
-	return result
-}
-
-func matchesAnyGlob(value string, patterns []string) bool {
-	for _, pattern := range patterns {
-		if matched, _ := path.Match(pattern, value); matched {
-			return true
-		}
-	}
-	return false
-}
-
-func findCachedTool(tools []CachedTool, name string) (CachedTool, bool) {
-	for _, tool := range tools {
-		if tool.Name == name {
-			return tool, true
-		}
-	}
-	return CachedTool{}, false
 }
 
 func containsRawFlag(args []string, name string) bool {

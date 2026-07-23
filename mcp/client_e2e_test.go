@@ -51,11 +51,6 @@ func TestClientCommandsStdioAndOfflineHelp(t *testing.T) {
 	if err != nil || !strings.Contains(out, "Usage:\n  testapp mcp run demo echo [flags]") {
 		t.Fatalf("Cobra help command: %v\n%s", err, out)
 	}
-	out, err = executeMCPCommand("run", "demo", "--allow-tool", "mcp__demo__echo", "--", "--help")
-	if err != nil || !strings.Contains(out, "Available Commands:") || !strings.Contains(out, "echo") || strings.Contains(out, "  add") {
-		t.Fatalf("restricted offline help: %v\n%s", err, out)
-	}
-
 	if err := registry.Add("demo", ServerConfig{Type: "stdio", Command: "go", Args: []string{"run", serverDir}}); err != nil {
 		t.Fatal(err)
 	}

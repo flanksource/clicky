@@ -25,6 +25,12 @@ type CommandOptions struct {
 	InitialConfig *Config
 }
 
+// ClientOptions supplies host integrations for MCP client authentication.
+type ClientOptions struct {
+	// OpenBrowser overrides the platform browser opener used during OAuth login.
+	OpenBrowser func(string) error
+}
+
 // NewCommand creates the MCP command group that can be added to any cobra CLI
 func NewCommand() *cobra.Command {
 	return NewCommandWithConfig(nil)
@@ -62,7 +68,7 @@ The MCP command group provides functionality to:
 
 	// Add subcommands
 	mcpCmd.AddCommand(newServeCommand(opts))
-	mcpCmd.AddCommand(newInstallCommandWithOptions(opts, clientOptions))
+	mcpCmd.AddCommand(newInstallCommand(opts))
 	mcpCmd.AddCommand(newConfigCommand(opts))
 	mcpCmd.AddCommand(newPromptCommand(opts))
 	mcpCmd.AddCommand(newToolsCommand(opts))
