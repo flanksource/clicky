@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.21.45](https://github.com/flanksource/clicky/compare/v1.21.44...v1.21.45) (2026-07-23)
+
+
+### ✨ Features
+
+* **mcp:** Cobra commands for MCP server ([#149](https://github.com/flanksource/clicky/issues/149)) ([785d4ab](https://github.com/flanksource/clicky/commit/785d4ab8ae4fb8b3dd5cd3975610b50b79647d74))
+
+
+### 🔧 Maintenance
+
+* **release:** pin sub-modules to v1.21.44 [skip ci] ([b2caeee](https://github.com/flanksource/clicky/commit/b2caeee45dddc9303c21e6217a2556bbea834d21))
+
 ## [1.21.44](https://github.com/flanksource/clicky/compare/v1.21.43...v1.21.44) (2026-07-23)
 
 
