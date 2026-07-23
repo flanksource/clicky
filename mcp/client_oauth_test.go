@@ -20,18 +20,24 @@ import (
 )
 
 func TestOAuthLoginUsesOIDCDiscoveryAndRefreshes(t *testing.T) {
-	for _, metadataOverride := range []bool{false, true} {
-		name := "discovered"
-		if metadataOverride {
-			name = "explicit-metadata"
-		}
-		t.Run(name, func(t *testing.T) {
-			testOAuthLoginUsesOIDCDiscoveryAndRefreshes(t, metadataOverride)
+	tests := []struct {
+		name             string
+		metadataOverride bool
+		scopes           []string
+		wantScope        string
+	}{
+		{name: "discovered", scopes: []string{"mcp.read"}, wantScope: "mcp.read"},
+		{name: "explicit-metadata", metadataOverride: true, scopes: []string{"mcp.read"}, wantScope: "mcp.read"},
+		{name: "protected-resource-scopes", wantScope: "openid profile email"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			testOAuthLoginUsesOIDCDiscoveryAndRefreshes(t, test.metadataOverride, test.scopes, test.wantScope)
 		})
 	}
 }
 
-func testOAuthLoginUsesOIDCDiscoveryAndRefreshes(t *testing.T, metadataOverride bool) {
+func testOAuthLoginUsesOIDCDiscoveryAndRefreshes(t *testing.T, metadataOverride bool, scopes []string, wantScope string) {
 	var baseURL string
 	var oidcDiscovered, registered, authorizationExchanged, refreshed atomic.Bool
 
@@ -62,6 +68,7 @@ func testOAuthLoginUsesOIDCDiscoveryAndRefreshes(t *testing.T, metadataOverride 
 		writeTestJSON(w, map[string]any{
 			"resource":              baseURL + "/mcp",
 			"authorization_servers": []string{baseURL + "/tenant"},
+			"scopes_supported":      []string{"openid", "profile", "email"},
 		})
 	})
 	mux.HandleFunc("/.well-known/openid-configuration/tenant", func(w http.ResponseWriter, r *http.Request) {
@@ -133,7 +140,7 @@ func testOAuthLoginUsesOIDCDiscoveryAndRefreshes(t *testing.T, metadataOverride 
 
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	registry := NewServerRegistry("testapp")
-	oauthConfig := &OAuthClientConfig{Scopes: []string{"mcp.read"}}
+	oauthConfig := &OAuthClientConfig{Scopes: append([]string(nil), scopes...)}
 	if metadataOverride {
 		oauthConfig.AuthServerMetadataURL = baseURL + "/.well-known/openid-configuration/tenant"
 	}
@@ -176,8 +183,11 @@ func testOAuthLoginUsesOIDCDiscoveryAndRefreshes(t *testing.T, metadataOverride 
 	if authorizationQuery.Get("code_challenge_method") != "S256" || authorizationQuery.Get("code_challenge") == "" {
 		t.Fatalf("authorization query did not use PKCE: %v", authorizationQuery)
 	}
-	if authorizationQuery.Get("resource") != baseURL+"/mcp" || authorizationQuery.Get("scope") != "mcp.read" {
+	if authorizationQuery.Get("resource") != baseURL+"/mcp" || authorizationQuery.Get("scope") != wantScope {
 		t.Fatalf("authorization query = %v", authorizationQuery)
+	}
+	if strings.Join(loggedIn.OAuth.Scopes, " ") != wantScope {
+		t.Fatalf("stored OAuth scopes = %v, want %q", loggedIn.OAuth.Scopes, wantScope)
 	}
 	if loggedIn.OAuth.ClientID != "clicky-test" || !loggedIn.OAuth.DynamicallyRegistered || loggedIn.OAuth.RedirectURI != "" {
 		t.Fatalf("login did not retain client registration: %#v", loggedIn.OAuth)

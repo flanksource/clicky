@@ -621,37 +621,43 @@ func validateResourceMetadataOrigin(serverURL, metadataURL string) error {
 	return nil
 }
 
-func fetchProtectedResourceIssuer(ctx context.Context, httpClient *http.Client, metadataURL, resource string) (string, error) {
+// oauthProtectedResourceMetadata is the RFC 9728 subset used to select the
+// authorization server and default scopes for an MCP resource.
+type oauthProtectedResourceMetadata struct {
+	Resource             string   `json:"resource"`
+	AuthorizationServers []string `json:"authorization_servers"`
+	ScopesSupported      []string `json:"scopes_supported"`
+}
+
+func fetchProtectedResourceMetadata(ctx context.Context, httpClient *http.Client, metadataURL, resource string) (oauthProtectedResourceMetadata, error) {
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, metadataURL, nil)
 	if err != nil {
-		return "", err
+		return oauthProtectedResourceMetadata{}, err
 	}
 	request.Header.Set("Accept", "application/json")
 	request.Header.Set("MCP-Protocol-Version", mcpsdk.LATEST_PROTOCOL_VERSION)
 	response, err := httpClient.Do(request)
 	if err != nil {
-		return "", fmt.Errorf("fetch OAuth protected resource metadata: %w", err)
+		return oauthProtectedResourceMetadata{}, fmt.Errorf("fetch OAuth protected resource metadata: %w", err)
 	}
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("fetch OAuth protected resource metadata: status %s", response.Status)
+		return oauthProtectedResourceMetadata{}, fmt.Errorf("fetch OAuth protected resource metadata: status %s", response.Status)
 	}
-	var metadata transport.OAuthProtectedResource
+	var metadata oauthProtectedResourceMetadata
 	decoder := json.NewDecoder(io.LimitReader(response.Body, (1<<20)+1))
 	if err := decoder.Decode(&metadata); err != nil {
-		return "", fmt.Errorf("decode OAuth protected resource metadata: %w", err)
+		return oauthProtectedResourceMetadata{}, fmt.Errorf("decode OAuth protected resource metadata: %w", err)
 	}
 	if metadata.Resource == "" || !oauthResourceEqual(metadata.Resource, resource) {
-		return "", fmt.Errorf("OAuth protected resource %q does not match MCP server %q", metadata.Resource, resource)
+		return oauthProtectedResourceMetadata{}, fmt.Errorf("OAuth protected resource %q does not match MCP server %q", metadata.Resource, resource)
 	}
-	if len(metadata.AuthorizationServers) == 0 {
-		return "", nil
+	for _, issuer := range metadata.AuthorizationServers {
+		if err := validateSecureHTTPURL(issuer, "OAuth issuer URL"); err != nil {
+			return oauthProtectedResourceMetadata{}, err
+		}
 	}
-	issuer := metadata.AuthorizationServers[0]
-	if err := validateSecureHTTPURL(issuer, "OAuth issuer URL"); err != nil {
-		return "", err
-	}
-	return issuer, nil
+	return metadata, nil
 }
 
 func oauthResourceEqual(first, second string) bool {
@@ -717,17 +723,24 @@ func loginOAuth(ctx context.Context, registry *ServerRegistry, name string, cfg 
 		}
 	}
 	if cfg.OAuth.ProtectedResourceMetadataURL != "" {
-		discoveredIssuer, err := fetchProtectedResourceIssuer(
+		resourceMetadata, err := fetchProtectedResourceMetadata(
 			ctx, newOAuthHTTPClient(cfg.URL, cfg.OAuth.Issuer), cfg.OAuth.ProtectedResourceMetadataURL, cfg.URL,
 		)
 		if err != nil {
 			return cfg, err
+		}
+		discoveredIssuer := ""
+		if len(resourceMetadata.AuthorizationServers) > 0 {
+			discoveredIssuer = resourceMetadata.AuthorizationServers[0]
 		}
 		if cfg.OAuth.Issuer != "" && discoveredIssuer != "" && cfg.OAuth.Issuer != discoveredIssuer {
 			return cfg, fmt.Errorf("OAuth protected resource issuer %q does not match configured issuer %q", discoveredIssuer, cfg.OAuth.Issuer)
 		}
 		if discoveredIssuer != "" {
 			cfg.OAuth.Issuer = discoveredIssuer
+		}
+		if len(cfg.OAuth.Scopes) == 0 {
+			cfg.OAuth.Scopes = normalizeOAuthScopes(resourceMetadata.ScopesSupported)
 		}
 	}
 
