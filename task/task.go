@@ -492,8 +492,11 @@ func (t *Task) WaitFor() *WaitResult {
 	defer ticker.Stop()
 
 	for !t.completed.Load() {
+		t.mu.Lock()
+		taskCtx := t.ctx
+		t.mu.Unlock()
 		select {
-		case <-t.ctx.Done():
+		case <-taskCtx.Done():
 			// ctx.Done fires for two distinct reasons: a genuine external
 			// cancellation while the task is still pending/running, OR the task
 			// itself reaching a terminal status — SetStatus cancels t.ctx on
