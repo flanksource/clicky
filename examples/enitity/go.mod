@@ -3,9 +3,9 @@ module github.com/flanksource/clicky/examples/enitity
 go 1.26.1
 
 require (
-	github.com/flanksource/captain v0.0.12-0.20260721124549-623f3f07d521
-	github.com/flanksource/clicky v1.21.47
-	github.com/flanksource/clicky/aichat v1.21.45
+	github.com/flanksource/captain v0.0.19-0.20260726155618-5e0b2b4151aa
+	github.com/flanksource/clicky v1.21.48-0.20260726111738-ffedf8b3ee52
+	github.com/flanksource/clicky/aichat v1.21.48-0.20260726111738-ffedf8b3ee52
 	github.com/onsi/ginkgo/v2 v2.28.1
 	github.com/onsi/gomega v1.39.1
 	github.com/spf13/cobra v1.10.2
@@ -110,7 +110,7 @@ require (
 	github.com/felixge/httpsnoop v1.1.0 // indirect
 	github.com/firebase/genkit/go v1.10.0 // indirect
 	github.com/flanksource/commons v1.53.1 // indirect
-	github.com/flanksource/commons-db v0.1.15-0.20260715195303-531f49aa08bb // indirect
+	github.com/flanksource/commons-db v0.1.21 // indirect
 	github.com/flanksource/gomplate/v3 v3.24.84 // indirect
 	github.com/flanksource/is-healthy v1.0.88 // indirect
 	github.com/flanksource/kubectl-neat v1.0.4 // indirect
@@ -286,7 +286,7 @@ require (
 	github.com/xuri/excelize/v2 v2.11.0 // indirect
 	github.com/xuri/nfp v0.0.2-0.20250530014748-2ddeb826f9a9 // indirect
 	github.com/yosida95/uritemplate/v3 v3.0.2 // indirect
-	github.com/yuin/goldmark v1.7.16 // indirect
+	github.com/yuin/goldmark v1.7.17 // indirect
 	github.com/yuin/gopher-lua v1.1.1 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
 	go.opentelemetry.io/auto/sdk v1.2.1 // indirect

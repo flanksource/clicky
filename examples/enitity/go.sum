@@ -248,12 +248,12 @@ github.com/felixge/httpsnoop v1.1.0 h1:3YtUj32ZZkqZtt3sZZsClsymw/QDuVfpNhoA31zeO
 github.com/felixge/httpsnoop v1.1.0/go.mod h1:Zqxgdd+1Rkcz8euOqdr7lqgCRJztwr5hp9vDSi5UZCE=
 github.com/firebase/genkit/go v1.10.0 h1:kOu3MKfgqRPk9yYHg2HFoCg8VWzcHJtfRyQw7OuYqMs=
 github.com/firebase/genkit/go v1.10.0/go.mod h1:AzmlJrm+2PjSrLnBHwY0uTbRC/GsazMa0JYpBrVf18E=
-github.com/flanksource/captain v0.0.12-0.20260721124549-623f3f07d521 h1:MkakQe7S1uCzpWRPeRVvP8+m+w/miaOG/m3XDbo4mQk=
-github.com/flanksource/captain v0.0.12-0.20260721124549-623f3f07d521/go.mod h1:X0tn6nhatBVYUF6t4CT0wGMGGJjwHlJMSTqM0T9Whtg=
+github.com/flanksource/captain v0.0.19-0.20260726155618-5e0b2b4151aa h1:1+BDR/b2o3CVYtp1EPWBiD1SoeshdVYqVhnop8jZxQc=
+github.com/flanksource/captain v0.0.19-0.20260726155618-5e0b2b4151aa/go.mod h1:Mj9pFPO+H8ATwC67/VJc9THNMekOXt1IriKZhXhAGWY=
 github.com/flanksource/commons v1.53.1 h1:WiMvY9XGG//L4ndYKTcmp0NjWXg4B7Wbn4hYWkITUmY=
 github.com/flanksource/commons v1.53.1/go.mod h1:ZII22jIDJ3fd/Mz7l0SzLFEv8aoSUg+xwfJAAVf8up4=
-github.com/flanksource/commons-db v0.1.15-0.20260715195303-531f49aa08bb h1:Az9Q8io3hhmiqVNBQwZ0aHyYMkRk/90OVTMEWPSPvu0=
-github.com/flanksource/commons-db v0.1.15-0.20260715195303-531f49aa08bb/go.mod h1:r0svzMQcBsGx/KjMyj5bdccUR8+M2zB7iJCIeZnI34w=
+github.com/flanksource/commons-db v0.1.21 h1:CC9Qxsg/jI6vnK5u61G/nuYkfbBwr3718eJqpgHfS88=
+github.com/flanksource/commons-db v0.1.21/go.mod h1:Td/fCQmw3S0hBVBHI/6pjE/xk4KB91/FI/V1QMcHV8U=
 github.com/flanksource/gomplate/v3 v3.24.84 h1:UOE0yCJsczTIKRaHUvhD6tjCYrbNvOugAizuy0FVlhE=
 github.com/flanksource/gomplate/v3 v3.24.84/go.mod h1:NMMZkFsjbLy/8iY8Fip5N86Y0PP6lZeq+kmPwpVVIL0=
 github.com/flanksource/is-healthy v1.0.88 h1:ATQuKoNdp8Qfzf41/eMFajmT0qzOmZlZNG5eLK41RFo=
@@ -720,8 +720,8 @@ github.com/yuin/goldmark v1.1.27/go.mod h1:3hX8gzYuyVAZsxl0MRgGTJEmQBFcNTphYh9de
 github.com/yuin/goldmark v1.2.1/go.mod h1:3hX8gzYuyVAZsxl0MRgGTJEmQBFcNTphYh9decYSb74=
 github.com/yuin/goldmark v1.3.5/go.mod h1:mwnBkeHKe2W/ZEtQ+71ViKU8L12m81fl3OWwC1Zlc8k=
 github.com/yuin/goldmark v1.4.13/go.mod h1:6yULJ656Px+3vBD8DxQVa3kxgyrAnzto9xy5taEt/CY=
-github.com/yuin/goldmark v1.7.16 h1:n+CJdUxaFMiDUNnWC3dMWCIQJSkxH4uz3ZwQBkAlVNE=
-github.com/yuin/goldmark v1.7.16/go.mod h1:ip/1k0VRfGynBgxOz0yCqHrbZXhcjxyuS66Brc7iBKg=
+github.com/yuin/goldmark v1.7.17 h1:p36OVWwRb246iHxA/U4p8OPEpOTESm4n+g+8t0EE5uA=
+github.com/yuin/goldmark v1.7.17/go.mod h1:ip/1k0VRfGynBgxOz0yCqHrbZXhcjxyuS66Brc7iBKg=
 github.com/yuin/gopher-lua v1.1.1 h1:kYKnWBjvbNP4XLT3+bPEwAXJx262OhaHDWDVOPjL46M=
 github.com/yuin/gopher-lua v1.1.1/go.mod h1:GBR0iDaNXjAgGg9zfCvksxSRnQx76gclCIb7kdAd1Pw=
 github.com/yusufpapurcu/wmi v1.2.4 h1:zFUKzehAFReQwLys1b/iSMl+JQGSCSjtVqQn9bBrPo0=
