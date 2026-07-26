@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.21.46](https://github.com/flanksource/clicky/compare/v1.21.45...v1.21.46) (2026-07-26)
+
+
+### 🔧 Maintenance
+
+* **deps:** update flanksource go dependencies ([7dfd69d](https://github.com/flanksource/clicky/commit/7dfd69d91b24adbcc0080a198dc077cc9972eaa9))
+* **release:** pin sub-modules to v1.21.45 [skip ci] ([dc4ab68](https://github.com/flanksource/clicky/commit/dc4ab688c67321362960ad8919b66aa178699e3e))
+
 ## [1.21.45](https://github.com/flanksource/clicky/compare/v1.21.44...v1.21.45) (2026-07-23)
 
 
