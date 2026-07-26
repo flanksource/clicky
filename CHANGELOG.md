@@ -5,6 +5,14 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.21.47](https://github.com/flanksource/clicky/compare/v1.21.46...v1.21.47) (2026-07-26)
+
+
+### 🔧 Maintenance
+
+* **deps:** update dependency @flanksource/clicky-ui to v0.3.15 ([b82b735](https://github.com/flanksource/clicky/commit/b82b73533124e6a3dd9a1e1acb5ccd163b4f6a3a))
+* **release:** pin sub-modules to v1.21.46 [skip ci] ([268eb74](https://github.com/flanksource/clicky/commit/268eb7428617f88e74f78583ab7dccac7624f4f3))
+
 ## [1.21.46](https://github.com/flanksource/clicky/compare/v1.21.45...v1.21.46) (2026-07-26)
 
 
