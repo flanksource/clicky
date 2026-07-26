@@ -12,6 +12,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/flanksource/clicky"
@@ -51,6 +52,30 @@ type SwaggerServer struct {
 	converterCfg *Config // Converter config used to build executor routes; reused when (re)generating the spec.
 	server       *http.Server
 	executor     *CommandExecutor // Optional command executor
+
+	// The spec is a pure function of rootCmd and converterCfg, both fixed at
+	// construction, so each rendering is generated at most once and reused. A
+	// large command tree renders into megabytes; doing that per request cost
+	// seconds of server time and re-shipped an unchanged document every time.
+	// Commands added to rootCmd after the first request are therefore not
+	// reflected — register the whole tree before serving.
+	specMu   sync.Mutex
+	specDocs map[specFormat]*specDocument
+}
+
+// specFormat identifies a rendering of the OpenAPI document. Each rendering is
+// a distinct entity with its own bytes and its own ETag.
+type specFormat string
+
+const (
+	specFormatJSON specFormat = "json"
+	specFormatYAML specFormat = "yaml"
+)
+
+// specDocument is a rendered OpenAPI document and its content validator.
+type specDocument struct {
+	body []byte
+	etag string
 }
 
 // TemplateData holds data for rendering the HTML template
@@ -262,15 +287,44 @@ func (s *SwaggerServer) handleSwaggerUI(w http.ResponseWriter, r *http.Request) 
 	}
 }
 
-// handleOpenAPIJSON serves the OpenAPI specification in JSON format
-func (s *SwaggerServer) handleOpenAPIJSON(w http.ResponseWriter, r *http.Request) {
-	spec, err := s.generator.GenerateFromCobraWithConfig(s.rootCmd, s.converterCfg)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to generate OpenAPI spec: %v", err), http.StatusInternalServerError)
-		return
+// renderSpec returns the requested rendering of the OpenAPI document,
+// generating and encoding it on first use. Only successful renderings are
+// memoized, so a failure is retried rather than served forever.
+func (s *SwaggerServer) renderSpec(format specFormat) (*specDocument, error) {
+	s.specMu.Lock()
+	defer s.specMu.Unlock()
+
+	if doc := s.specDocs[format]; doc != nil {
+		return doc, nil
 	}
 
-	w.Header().Set("Content-Type", "application/json")
+	spec, err := s.generator.GenerateFromCobraWithConfig(s.rootCmd, s.converterCfg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate OpenAPI spec: %w", err)
+	}
+
+	var body []byte
+	if format == specFormatYAML {
+		body, err = yaml.Marshal(spec)
+	} else {
+		body, err = json.Marshal(spec)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to encode OpenAPI spec as %s: %w", format, err)
+	}
+
+	doc := &specDocument{body: body, etag: contentETag(body)}
+	if s.specDocs == nil {
+		s.specDocs = make(map[specFormat]*specDocument, 2)
+	}
+	s.specDocs[format] = doc
+	return doc, nil
+}
+
+// serveSpec writes a rendered OpenAPI document, answering a matching
+// If-None-Match with a 304 instead of re-shipping the whole spec.
+func (s *SwaggerServer) serveSpec(w http.ResponseWriter, r *http.Request, format specFormat, contentType string) {
+	w.Header().Set("Content-Type", contentType)
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
 	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
@@ -279,41 +333,36 @@ func (s *SwaggerServer) handleOpenAPIJSON(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	encoder := json.NewEncoder(w)
-	encoder.SetIndent("", "  ")
-	if err := encoder.Encode(spec); err != nil {
-		http.Error(w, fmt.Sprintf("Failed to encode JSON: %v", err), http.StatusInternalServerError)
+	doc, err := s.renderSpec(format)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+
+	// no-cache, not no-store: the client keeps the body but must revalidate,
+	// and the ETag lets that revalidation cost a 304 rather than a re-download.
+	w.Header().Set("ETag", doc.etag)
+	w.Header().Set("Cache-Control", "no-cache")
+
+	if etagMatches(r.Header.Get("If-None-Match"), doc.etag) {
+		w.WriteHeader(http.StatusNotModified)
+		return
+	}
+
+	if _, err := w.Write(doc.body); err != nil {
+		// Log error but response already started
+		fmt.Printf("Warning: failed to write OpenAPI %s response: %v\n", format, err)
+	}
+}
+
+// handleOpenAPIJSON serves the OpenAPI specification in JSON format
+func (s *SwaggerServer) handleOpenAPIJSON(w http.ResponseWriter, r *http.Request) {
+	s.serveSpec(w, r, specFormatJSON, "application/json")
 }
 
 // handleOpenAPIYAML serves the OpenAPI specification in YAML format
 func (s *SwaggerServer) handleOpenAPIYAML(w http.ResponseWriter, r *http.Request) {
-	spec, err := s.generator.GenerateFromCobraWithConfig(s.rootCmd, s.converterCfg)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to generate OpenAPI spec: %v", err), http.StatusInternalServerError)
-		return
-	}
-
-	yamlData, err := yaml.Marshal(spec)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to marshal YAML: %v", err), http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "text/yaml")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-	w.Header().Set("Access-Control-Allow-Methods", "GET, OPTIONS")
-	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-
-	if r.Method == "OPTIONS" {
-		return
-	}
-
-	if _, err := w.Write(yamlData); err != nil {
-		// Log error but response already started
-		fmt.Printf("Warning: failed to write YAML response: %v\n", err)
-	}
+	s.serveSpec(w, r, specFormatYAML, "text/yaml")
 }
 
 // HealthResponse represents the health check response

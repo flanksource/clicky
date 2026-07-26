@@ -161,6 +161,90 @@ func TestSwaggerServer_handleOpenAPIYAML(t *testing.T) {
 	assert.Equal(t, "Test API", spec.Info.Title)
 }
 
+func TestSwaggerServer_handleOpenAPIJSON_RendersOnceAndRevalidates(t *testing.T) {
+	rootCmd := createTestRootCommand()
+	server := NewSwaggerServer(DefaultServeConfig(), rootCmd, &OpenAPIConfig{Title: "Test API"})
+
+	first := httptest.NewRecorder()
+	server.handleOpenAPIJSON(first, httptest.NewRequest("GET", "/api/openapi.json", nil))
+	require.Equal(t, http.StatusOK, first.Code)
+
+	etag := first.Header().Get("ETag")
+	require.NotEmpty(t, etag, "spec must carry a content ETag so clients can revalidate")
+	assert.Equal(t, "no-cache", first.Header().Get("Cache-Control"))
+
+	// The spec is rendered once from a command tree that is fixed at
+	// construction. Mutating the tree afterwards must not change the response:
+	// that is the observable proof the document is a snapshot rather than
+	// regenerated (and re-encoded) per request.
+	rootCmd.AddCommand(&cobra.Command{Use: "added-after-first-request", Short: "Added late"})
+
+	second := httptest.NewRecorder()
+	server.handleOpenAPIJSON(second, httptest.NewRequest("GET", "/api/openapi.json", nil))
+	require.Equal(t, http.StatusOK, second.Code)
+	assert.Equal(t, first.Body.Bytes(), second.Body.Bytes())
+	assert.Equal(t, etag, second.Header().Get("ETag"))
+
+	conditional := httptest.NewRequest("GET", "/api/openapi.json", nil)
+	conditional.Header.Set("If-None-Match", etag)
+	notModified := httptest.NewRecorder()
+	server.handleOpenAPIJSON(notModified, conditional)
+
+	assert.Equal(t, http.StatusNotModified, notModified.Code)
+	assert.Empty(t, notModified.Body.String())
+	assert.Equal(t, etag, notModified.Header().Get("ETag"))
+}
+
+func TestSwaggerServer_handleOpenAPIJSON_IsCompact(t *testing.T) {
+	server := NewSwaggerServer(DefaultServeConfig(), createTestRootCommand(), &OpenAPIConfig{})
+
+	w := httptest.NewRecorder()
+	server.handleOpenAPIJSON(w, httptest.NewRequest("GET", "/api/openapi.json", nil))
+
+	require.Equal(t, http.StatusOK, w.Code)
+	// Pretty-printing a spec this size costs megabytes of whitespace for a
+	// document no human reads unformatted.
+	assert.NotContains(t, w.Body.String(), "\n  ", "spec must be encoded compactly")
+
+	var spec OpenAPISpec
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &spec))
+	assert.NotEmpty(t, spec.Paths)
+}
+
+func TestSwaggerServer_handleOpenAPIYAML_RendersOnceAndRevalidates(t *testing.T) {
+	rootCmd := createTestRootCommand()
+	server := NewSwaggerServer(DefaultServeConfig(), rootCmd, &OpenAPIConfig{Title: "Test API"})
+
+	jsonResp := httptest.NewRecorder()
+	server.handleOpenAPIJSON(jsonResp, httptest.NewRequest("GET", "/api/openapi.json", nil))
+	require.Equal(t, http.StatusOK, jsonResp.Code)
+
+	first := httptest.NewRecorder()
+	server.handleOpenAPIYAML(first, httptest.NewRequest("GET", "/api/openapi.yaml", nil))
+	require.Equal(t, http.StatusOK, first.Code)
+
+	etag := first.Header().Get("ETag")
+	require.NotEmpty(t, etag)
+	assert.NotEqual(t, jsonResp.Header().Get("ETag"), etag,
+		"each rendering is a distinct entity and needs its own validator")
+
+	rootCmd.AddCommand(&cobra.Command{Use: "added-after-first-request", Short: "Added late"})
+
+	second := httptest.NewRecorder()
+	server.handleOpenAPIYAML(second, httptest.NewRequest("GET", "/api/openapi.yaml", nil))
+	require.Equal(t, http.StatusOK, second.Code)
+	assert.Equal(t, first.Body.Bytes(), second.Body.Bytes())
+	assert.Equal(t, etag, second.Header().Get("ETag"))
+
+	conditional := httptest.NewRequest("GET", "/api/openapi.yaml", nil)
+	conditional.Header.Set("If-None-Match", etag)
+	notModified := httptest.NewRecorder()
+	server.handleOpenAPIYAML(notModified, conditional)
+
+	assert.Equal(t, http.StatusNotModified, notModified.Code)
+	assert.Empty(t, notModified.Body.String())
+}
+
 func TestSwaggerServer_handleSwaggerUI(t *testing.T) {
 	config := DefaultServeConfig()
 	config.Title = "Test UI"
@@ -360,9 +444,10 @@ func TestSwaggerServer_Integration(t *testing.T) {
 			path:   "/api/openapi.json",
 			method: "GET",
 			contains: []string{
-				`"openapi": "3.0.3"`,
-				`"title": "Integration Test API"`,
-				`"version": "1.5.0"`,
+				// Compact — the spec is encoded without indentation.
+				`"openapi":"3.0.3"`,
+				`"title":"Integration Test API"`,
+				`"version":"1.5.0"`,
 			},
 		},
 		{
