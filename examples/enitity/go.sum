@@ -250,10 +250,14 @@ github.com/firebase/genkit/go v1.10.0 h1:kOu3MKfgqRPk9yYHg2HFoCg8VWzcHJtfRyQw7Ou
 github.com/firebase/genkit/go v1.10.0/go.mod h1:AzmlJrm+2PjSrLnBHwY0uTbRC/GsazMa0JYpBrVf18E=
 github.com/flanksource/captain v0.0.19-0.20260726155618-5e0b2b4151aa h1:1+BDR/b2o3CVYtp1EPWBiD1SoeshdVYqVhnop8jZxQc=
 github.com/flanksource/captain v0.0.19-0.20260726155618-5e0b2b4151aa/go.mod h1:Mj9pFPO+H8ATwC67/VJc9THNMekOXt1IriKZhXhAGWY=
+github.com/flanksource/captain v0.0.19 h1:mqYhd09a6uw84Pxt6JMxYFyPXtXkyDKth+77M5+bo2I=
+github.com/flanksource/captain v0.0.19/go.mod h1:K83P8NEYY0AMTeqD9cN3c6/I7yfKRw/nMbZN9EBk2xw=
 github.com/flanksource/commons v1.53.1 h1:WiMvY9XGG//L4ndYKTcmp0NjWXg4B7Wbn4hYWkITUmY=
 github.com/flanksource/commons v1.53.1/go.mod h1:ZII22jIDJ3fd/Mz7l0SzLFEv8aoSUg+xwfJAAVf8up4=
 github.com/flanksource/commons-db v0.1.21 h1:CC9Qxsg/jI6vnK5u61G/nuYkfbBwr3718eJqpgHfS88=
 github.com/flanksource/commons-db v0.1.21/go.mod h1:Td/fCQmw3S0hBVBHI/6pjE/xk4KB91/FI/V1QMcHV8U=
+github.com/flanksource/commons-db v0.1.22 h1:VF1oAVwMtTbK4Le8vxza/ICC5efRWWpi6BqKJvGrM58=
+github.com/flanksource/commons-db v0.1.22/go.mod h1:pdeJF+cRK2rehJcDJBnth8VNG+0BFQb8jBbXxsDL+EI=
 github.com/flanksource/gomplate/v3 v3.24.84 h1:UOE0yCJsczTIKRaHUvhD6tjCYrbNvOugAizuy0FVlhE=
 github.com/flanksource/gomplate/v3 v3.24.84/go.mod h1:NMMZkFsjbLy/8iY8Fip5N86Y0PP6lZeq+kmPwpVVIL0=
 github.com/flanksource/is-healthy v1.0.88 h1:ATQuKoNdp8Qfzf41/eMFajmT0qzOmZlZNG5eLK41RFo=
