@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.21.51](https://github.com/flanksource/clicky/compare/v1.21.50...v1.21.51) (2026-07-27)
+
+
+### 📦 Build System
+
+* **deps:** bump the go_modules group across 2 directories with 1 update ([34a8e24](https://github.com/flanksource/clicky/commit/34a8e24bca5ef8df095a06530157ade4bebe71cd))
+
+
+### 🔧 Maintenance
+
+* **release:** pin sub-modules to v1.21.50 [skip ci] ([6773025](https://github.com/flanksource/clicky/commit/6773025894d96ced2d85f0780476940a0a05f46a))
+
 ## [1.21.50](https://github.com/flanksource/clicky/compare/v1.21.49...v1.21.50) (2026-07-27)
 
 
