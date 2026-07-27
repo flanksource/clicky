@@ -252,6 +252,8 @@ github.com/flanksource/captain v0.0.19-0.20260726155618-5e0b2b4151aa h1:1+BDR/b2
 github.com/flanksource/captain v0.0.19-0.20260726155618-5e0b2b4151aa/go.mod h1:Mj9pFPO+H8ATwC67/VJc9THNMekOXt1IriKZhXhAGWY=
 github.com/flanksource/captain v0.0.19 h1:mqYhd09a6uw84Pxt6JMxYFyPXtXkyDKth+77M5+bo2I=
 github.com/flanksource/captain v0.0.19/go.mod h1:K83P8NEYY0AMTeqD9cN3c6/I7yfKRw/nMbZN9EBk2xw=
+github.com/flanksource/captain v0.0.20 h1:9XhwrSEd7BpeWrlIRy/gDkleZ6d2unKj5tFrs1ZbylM=
+github.com/flanksource/captain v0.0.20/go.mod h1:uRWby9fA1dpPysmAqQn1POSoAKP8tO/AwtWQiKUfwjY=
 github.com/flanksource/commons v1.53.1 h1:WiMvY9XGG//L4ndYKTcmp0NjWXg4B7Wbn4hYWkITUmY=
 github.com/flanksource/commons v1.53.1/go.mod h1:ZII22jIDJ3fd/Mz7l0SzLFEv8aoSUg+xwfJAAVf8up4=
 github.com/flanksource/commons-db v0.1.21 h1:CC9Qxsg/jI6vnK5u61G/nuYkfbBwr3718eJqpgHfS88=
@@ -531,6 +533,10 @@ github.com/mwitkow/go-conntrack v0.0.0-20190716064945-2f068394615f h1:KUppIJq7/+
 github.com/mwitkow/go-conntrack v0.0.0-20190716064945-2f068394615f/go.mod h1:qRWi+5nqEBWmkhHvq77mSJWrCKwh8bxhgT7d/eI7P4U=
 github.com/ncruces/go-strftime v1.0.0 h1:HMFp8mLCTPp341M/ZnA4qaf7ZlsbTc+miZjCLOFAw7w=
 github.com/ncruces/go-strftime v1.0.0/go.mod h1:Fwc5htZGVVkseilnfgOVb9mKy6w1naJmn9CehxcKcls=
+github.com/nukilabs/ftoa v1.0.0 h1:AiCb9begI2rwjDQm7/H+ce1ctdkixnOOw/bpurZTySc=
+github.com/nukilabs/ftoa v1.0.0/go.mod h1:ZJE2wT+SozGrxoj3oRB6Q6Kl3IMpCzdNOhymdmLGrHU=
+github.com/nukilabs/unicodeid v0.1.0 h1:+CtAaV9CkgVA3Jy9V29yb57DPCLsnWUJrP9LxhkD89w=
+github.com/nukilabs/unicodeid v0.1.0/go.mod h1:3qxjfcmcgVYBg9dMRNSniAVfqxwOed7JU7P2rPkJrRg=
 github.com/ohler55/ojg v1.28.1 h1:Xy93DelhLSZNeWv8GPKtP6qMqkUlZlAxBP/AQcC5RfY=
 github.com/ohler55/ojg v1.28.1/go.mod h1:/Y5dGWkekv9ocnUixuETqiL58f+5pAsUfg5P8e7Pa2o=
 github.com/oklog/ulid/v2 v2.1.1 h1:suPZ4ARWLOJLegGFiZZ1dFAkqzhMjL3J1TzI+5wHz8s=
@@ -652,6 +658,8 @@ github.com/stretchr/testify v1.7.1/go.mod h1:6Fq8oRcR53rry900zMqJjRRixrwX3KX962/
 github.com/stretchr/testify v1.8.0/go.mod h1:yNjHg4UonilssWZ8iaSj1OCr/vHnekPRkoO+kdMU+MU=
 github.com/stretchr/testify v1.11.1 h1:7s2iGBzp5EwR7/aIZr8ao5+dra3wiQyKjjFuvgVKu7U=
 github.com/stretchr/testify v1.11.1/go.mod h1:wZwfW3scLgRK+23gO65QZefKpKQRnfz6sD981Nm4B6U=
+github.com/t14raptor/go-fast v0.1.0 h1:KqwQE+MNvC1NKhoAacqP87NrNOFavvWSP2m6BtCXxsk=
+github.com/t14raptor/go-fast v0.1.0/go.mod h1:IyzuItbJu1DY1z+xBRE9Bk/jCvaJEFG/yeSupi/2HDU=
 github.com/tidwall/gjson v1.14.2/go.mod h1:/wbyibRr2FHMks5tjHJ5F8dMZh3AcwJEMf5vlfC0lxk=
 github.com/tidwall/gjson v1.18.0 h1:FIDeeyB800efLX89e5a8Y0BNH+LOngJyGrIWxG2FKQY=
 github.com/tidwall/gjson v1.18.0/go.mod h1:/wbyibRr2FHMks5tjHJ5F8dMZh3AcwJEMf5vlfC0lxk=
