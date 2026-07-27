@@ -5,6 +5,50 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.21.48](https://github.com/flanksource/clicky/compare/v1.21.47...v1.21.48) (2026-07-27)
+
+
+### ⚠ BREAKING CHANGES
+
+* **examples:** Chat no longer forces manual tool approval; execution now follows Captain chat service behavior.
+* **aichat:** Remove the aichat server, Genkit, agent, attachment, thread, approval, streaming, and MCP APIs.
+
+### ♻️ Code Refactoring
+
+* **aichat:** Delegate Cobra tool adaptation to Captain ([8c44f09](https://github.com/flanksource/clicky/commit/8c44f094dcf3e3118b68987341678558b854daba))
+
+
+### ⚡ Performance Improvements
+
+* **rpc:** Cache OpenAPI documents with ETag revalidation ([3cc7d7f](https://github.com/flanksource/clicky/commit/3cc7d7fa5b35ebbea4356d566c96ef90bb5772ca))
+
+
+### ✨ Features
+
+* **aichat:** add attachment resolution for multimodal chat inputs ([0e6edf4](https://github.com/flanksource/clicky/commit/0e6edf4ea5c04aa3bddce937e5ff19a3e355d404))
+* **examples:** Add Captain-backed entity demo serving and tests ([90fe144](https://github.com/flanksource/clicky/commit/90fe144e3e7545703059f95f614ddfa12fb6ef4e))
+* **rpc:** expose top-level serve command and track RPC timing ([cb94c78](https://github.com/flanksource/clicky/commit/cb94c78898c120fecb673cfb33059d933e0e8186))
+* **task:** Expose supervised process generations through task APIs ([eb3bb98](https://github.com/flanksource/clicky/commit/eb3bb981292ab486f07bde86fc852c8685e4abb7))
+
+
+### 🐛 Bug Fixes
+
+* **api:** Stabilize Markdown and terminal table rendering ([fbcaade](https://github.com/flanksource/clicky/commit/fbcaade4d64fd95e95cd2184547748796de6e6cb))
+* **formatters:** preserve no-color settings in Markdown rendering ([9f8bfe1](https://github.com/flanksource/clicky/commit/9f8bfe1f6d47b0dc876dd729e48fb575de613046))
+* **task:** Preserve dependency semantics and order terminal task output ([2840c30](https://github.com/flanksource/clicky/commit/2840c30d49b803415236194ac06ab6a9992052b1))
+
+
+### 📦 Build System
+
+* **deps:** align Captain and Clicky release candidates ([0115ea5](https://github.com/flanksource/clicky/commit/0115ea54c16985b25e72615b7a706f214624874a))
+* **deps:** Update Go module dependencies ([4791a27](https://github.com/flanksource/clicky/commit/4791a27082e6e0ed2609685612ea55839b7f3fee))
+
+
+### 🔧 Maintenance
+
+* update generated and lock files ([dede45b](https://github.com/flanksource/clicky/commit/dede45bc7db491a6edc708b996b22246a587244b))
+* **release:** pin sub-modules to v1.21.47 [skip ci] ([dd5a604](https://github.com/flanksource/clicky/commit/dd5a6041af0204dea87c6fba6277262817fb6a51))
+
 ## [1.21.47](https://github.com/flanksource/clicky/compare/v1.21.46...v1.21.47) (2026-07-26)
 
 
