@@ -3,9 +3,9 @@ module github.com/flanksource/clicky/examples/enitity
 go 1.26.1
 
 require (
-	github.com/flanksource/captain v0.0.19
-	github.com/flanksource/clicky v1.21.48
-	github.com/flanksource/clicky/aichat v1.21.48
+	github.com/flanksource/captain v0.0.20
+	github.com/flanksource/clicky v1.21.49
+	github.com/flanksource/clicky/aichat v1.21.49
 	github.com/onsi/ginkgo/v2 v2.28.1
 	github.com/onsi/gomega v1.39.1
 	github.com/spf13/cobra v1.10.2
@@ -214,6 +214,8 @@ require (
 	github.com/muesli/cancelreader v0.2.2 // indirect
 	github.com/muesli/termenv v0.16.0 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
+	github.com/nukilabs/ftoa v1.0.0 // indirect
+	github.com/nukilabs/unicodeid v0.1.0 // indirect
 	github.com/ohler55/ojg v1.28.1 // indirect
 	github.com/oklog/ulid/v2 v2.1.1 // indirect
 	github.com/olekukonko/cat v0.0.0-20250911104152-50322a0618f6 // indirect
@@ -259,6 +261,7 @@ require (
 	github.com/spf13/cast v1.7.1 // indirect
 	github.com/spf13/pflag v1.0.10 // indirect
 	github.com/spiffe/go-spiffe/v2 v2.6.0 // indirect
+	github.com/t14raptor/go-fast v0.1.0 // indirect
 	github.com/tidwall/gjson v1.18.0 // indirect
 	github.com/tidwall/match v1.2.0 // indirect
 	github.com/tidwall/pretty v1.2.1 // indirect
