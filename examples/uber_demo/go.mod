@@ -3,8 +3,8 @@ module github.com/flanksource/clicky/examples/uber_demo
 go 1.26.1
 
 require (
-	github.com/flanksource/clicky v1.21.49
-	github.com/flanksource/commons v1.53.1
+	github.com/flanksource/clicky v1.21.51
+	github.com/flanksource/commons v1.54.0
 	github.com/google/uuid v1.6.0
 	github.com/spf13/cobra v1.10.2
 	golang.org/x/term v0.44.0
@@ -133,8 +133,8 @@ require (
 	github.com/yuin/goldmark v1.7.16 // indirect
 	github.com/yuin/gopher-lua v1.1.1 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
-	go.opentelemetry.io/otel v1.43.0 // indirect
-	go.opentelemetry.io/otel/trace v1.43.0 // indirect
+	go.opentelemetry.io/otel v1.44.0 // indirect
+	go.opentelemetry.io/otel/trace v1.44.0 // indirect
 	go.yaml.in/yaml/v2 v2.4.4 // indirect
 	golang.org/x/crypto v0.53.0 // indirect
 	golang.org/x/exp v0.0.0-20260312153236-7ab1446f8b90 // indirect
