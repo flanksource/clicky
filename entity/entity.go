@@ -1045,6 +1045,10 @@ func generateEntityCLI(parent *cobra.Command, entity EntityInfo) {
 	promoteListToEntityRoot(entityCmd)
 
 	for _, action := range entity.Actions {
+		scope := "entity"
+		if action.OptionalID {
+			scope = "collection"
+		}
 		generateIDCommand(entityCmd, action.Name, action.Short, EntityOperation{
 			Verb:            action.Name,
 			Method:          action.Method,
@@ -1052,7 +1056,7 @@ func generateEntityCLI(parent *cobra.Command, entity EntityInfo) {
 			ContextDataFunc: action.ContextDataFunc,
 			FlagsType:       action.FlagsType,
 			ResponseType:    action.ResponseType,
-		}, entity.ValidArgs, "action", "", "entity", action.Name, "id", false, false, action.OptionalID, action.ToolHints)
+		}, entity.ValidArgs, "action", "", scope, action.Name, "id", false, false, action.OptionalID, action.ToolHints)
 	}
 
 	for _, ba := range entity.BulkActions {

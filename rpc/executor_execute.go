@@ -26,10 +26,13 @@ func (e *CommandExecutor) ExecuteCommand(op *RPCOperation, req *ExecutionRequest
 			data, err = op.DataFunc(req.Flags, req.Args)
 		}
 		response := &ExecutionResponse{
-			Success: err == nil, ExitCode: 0, CLI: buildCLICommand(op, req), DataIsStructured: err == nil,
+			Success: err == nil, ExitCode: 0, CLI: buildCLICommand(op, req), DataIsStructured: err == nil || data != nil,
 		}
 		if err != nil {
 			response.Error, response.ExitCode = err.Error(), 1
+			if data != nil {
+				return data, response, err
+			}
 			return response, response, err
 		}
 		return data, response, nil

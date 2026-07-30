@@ -655,6 +655,10 @@ func TestOpenAPIGenerator_OptionalIDActionPath(t *testing.T) {
 		"optional-id action must NOT register an {id}-scoped path")
 	assert.Contains(t, spec.Paths[flatPath], "get",
 		"overview WithMethod(GET) must register under the GET verb")
+	overview := spec.Paths[flatPath]["get"]
+	require.NotNil(t, overview.Clicky)
+	assert.Equal(t, "collection", overview.Clicky.Scope,
+		"an action invocable without an entity id must be discoverable as a collection action")
 
 	assert.Contains(t, spec.Paths, "/api/v1/"+entityName+"/{id}/restart",
 		"a regular action without WithOptionalID keeps its {id} segment")

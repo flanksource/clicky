@@ -90,6 +90,12 @@ func (b *EntityBuilder[T, ListOpts, R]) GetWithFlags(flags ActionFlags, fn func(
 	return b
 }
 
+func (b *EntityBuilder[T, ListOpts, R]) GetWithFlagsAndContext(flags ActionFlags, fn func(context.Context, string, map[string]string) (R, error)) *EntityBuilder[T, ListOpts, R] {
+	b.entity.GetFlags = flags
+	b.entity.GetWithFlagsAndContext = fn
+	return b
+}
+
 func (b *EntityBuilder[T, ListOpts, R]) GetWithContext(fn func(context.Context, string) (R, error)) *EntityBuilder[T, ListOpts, R] {
 	b.entity.GetWithContext = fn
 	return b
