@@ -12,7 +12,7 @@ require (
 	github.com/charmbracelet/x/ansi v0.11.6
 	github.com/creack/pty v1.1.24
 	github.com/fatih/color v1.18.0
-	github.com/flanksource/commons v1.53.1
+	github.com/flanksource/commons v1.54.0
 	github.com/flanksource/gomplate/v3 v3.24.84
 	github.com/go-xmlfmt/xmlfmt v1.1.3
 	github.com/goccy/go-yaml v1.19.2

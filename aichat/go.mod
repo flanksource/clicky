@@ -108,8 +108,8 @@ require (
 	github.com/fatih/color v1.18.0 // indirect
 	github.com/felixge/httpsnoop v1.1.0 // indirect
 	github.com/firebase/genkit/go v1.10.0 // indirect
-	github.com/flanksource/commons v1.53.1 // indirect
-	github.com/flanksource/commons-db v0.1.22 // indirect
+	github.com/flanksource/commons v1.54.0 // indirect
+	github.com/flanksource/commons-db v0.1.24 // indirect
 	github.com/flanksource/gomplate/v3 v3.24.84 // indirect
 	github.com/flanksource/is-healthy v1.0.88 // indirect
 	github.com/flanksource/kubectl-neat v1.0.4 // indirect
