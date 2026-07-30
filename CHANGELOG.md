@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.21.52](https://github.com/flanksource/clicky/compare/v1.21.51...v1.21.52) (2026-07-30)
+
+
+### ✨ Features
+
+* **api:** Support contextual entity actions and structured error responses ([6fb040f](https://github.com/flanksource/clicky/commit/6fb040f47dc21ee6fcd0f639653e9e02dc5ba52c))
+
+
+### 🔧 Maintenance
+
+* **deps:** Update entity example to clicky v1.21.51 ([9aede06](https://github.com/flanksource/clicky/commit/9aede0680f2013a3f32301ea85861450899b3938))
+* **deps:** update Go module dependencies ([f78abda](https://github.com/flanksource/clicky/commit/f78abda2aa15c63421a5eb8005a57d846d7c00a0))
+* **release:** pin sub-modules to v1.21.51 [skip ci] ([b4553fe](https://github.com/flanksource/clicky/commit/b4553fe28e2548fc39d0ea71de3391bae2d884f8))
+
 ## [1.21.51](https://github.com/flanksource/clicky/compare/v1.21.50...v1.21.51) (2026-07-27)
 
 
