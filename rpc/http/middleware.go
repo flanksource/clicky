@@ -36,7 +36,7 @@ func (rec *timingRecorder) stamp() {
 		return
 	}
 	rec.stamped = true
-	value := formatMetric("total", time.Since(rec.start))
+	value := formatMetric("total", time.Since(rec.start), "")
 	if phases := rec.timings.Header(); phases != "" {
 		value += ", " + phases
 	}
