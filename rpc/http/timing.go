@@ -10,6 +10,7 @@ package rpchttp
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -18,19 +19,36 @@ import (
 // timingsKey keys the request-scoped *Timings accumulator into a context.
 type timingsKey struct{}
 
-// Timings is a request-scoped, insertion-ordered accumulator of named phase
-// durations. Durations for the same name sum, so AddTiming may be called once
-// per file in a loop and still report a single total for that phase.
+// TimingCounter is a named integer aggregated into a metric's description.
+type TimingCounter struct {
+	Name  string
+	Value int64
+}
+
+// TimingMetric is one contribution to a request-scoped server timing metric.
+type TimingMetric struct {
+	Name     string
+	Duration time.Duration
+	Counters []TimingCounter
+}
+
+type timingTotal struct {
+	duration     time.Duration
+	counterOrder []string
+	counters     map[string]int64
+}
+
+// Timings is a request-scoped, insertion-ordered accumulator of named metrics.
 type Timings struct {
-	mu     sync.Mutex
-	order  []string
-	totals map[string]time.Duration
+	mu      sync.Mutex
+	order   []string
+	metrics map[string]*timingTotal
 }
 
 // WithTimings returns a context carrying a fresh accumulator and the accumulator
 // itself, so a middleware can read it back after the handler returns.
 func WithTimings(ctx context.Context) (context.Context, *Timings) {
-	t := &Timings{totals: make(map[string]time.Duration)}
+	t := &Timings{metrics: make(map[string]*timingTotal)}
 	return context.WithValue(ctx, timingsKey{}, t), t
 }
 
@@ -40,12 +58,11 @@ func TimingsFromContext(ctx context.Context) (*Timings, bool) {
 	return t, ok
 }
 
-// AddTiming adds d to the named phase of the current request's accumulator. It
-// is a no-op when no accumulator is present (the CLI path has no HTTP response
-// to attach a header to).
-func AddTiming(ctx context.Context, name string, d time.Duration) {
+// AddTiming aggregates a metric into the current request. It is a no-op when no
+// accumulator is present, such as on the CLI path.
+func AddTiming(ctx context.Context, metric TimingMetric) {
 	if t, ok := TimingsFromContext(ctx); ok {
-		t.add(name, d)
+		t.add(metric)
 	}
 }
 
@@ -55,17 +72,26 @@ func AddTiming(ctx context.Context, name string, d time.Duration) {
 func Track(ctx context.Context, name string) func() {
 	start := time.Now()
 	return func() {
-		AddTiming(ctx, name, time.Since(start))
+		AddTiming(ctx, TimingMetric{Name: name, Duration: time.Since(start)})
 	}
 }
 
-func (t *Timings) add(name string, d time.Duration) {
+func (t *Timings) add(metric TimingMetric) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	if _, seen := t.totals[name]; !seen {
-		t.order = append(t.order, name)
+	total, seen := t.metrics[metric.Name]
+	if !seen {
+		total = &timingTotal{counters: make(map[string]int64)}
+		t.metrics[metric.Name] = total
+		t.order = append(t.order, metric.Name)
 	}
-	t.totals[name] += d
+	total.duration += metric.Duration
+	for _, counter := range metric.Counters {
+		if _, seen := total.counters[counter.Name]; !seen {
+			total.counterOrder = append(total.counterOrder, counter.Name)
+		}
+		total.counters[counter.Name] += counter.Value
+	}
 }
 
 // Header renders the accumulated phases as a Server-Timing value fragment
@@ -76,11 +102,28 @@ func (t *Timings) Header() string {
 	defer t.mu.Unlock()
 	parts := make([]string, 0, len(t.order))
 	for _, name := range t.order {
-		parts = append(parts, formatMetric(name, t.totals[name]))
+		total := t.metrics[name]
+		parts = append(parts, formatMetric(name, total.duration, total.counterDescription()))
 	}
 	return strings.Join(parts, ", ")
 }
 
-func formatMetric(name string, d time.Duration) string {
-	return fmt.Sprintf("%s;dur=%.1f", name, float64(d)/float64(time.Millisecond))
+func (t *timingTotal) counterDescription() string {
+	if len(t.counterOrder) == 0 {
+		return ""
+	}
+	parts := make([]string, 0, len(t.counterOrder))
+	for _, name := range t.counterOrder {
+		parts = append(parts, name+"="+strconv.FormatInt(t.counters[name], 10))
+	}
+	return strings.Join(parts, " ")
+}
+
+func formatMetric(name string, d time.Duration, description string) string {
+	metric := fmt.Sprintf("%s;dur=%.1f", name, float64(d)/float64(time.Millisecond))
+	if description == "" {
+		return metric
+	}
+	description = strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(description)
+	return metric + `;desc="` + description + `"`
 }
