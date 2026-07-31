@@ -5,6 +5,24 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.21.53](https://github.com/flanksource/clicky/compare/v1.21.52...v1.21.53) (2026-07-31)
+
+
+### ⚠ BREAKING CHANGES
+
+* **api:** Change AddTiming to accept TimingMetric instead of separate name and duration arguments
+
+* build(examples): Update Clicky dependency to v1.21.52
+
+### ✨ Features
+
+* **api:** support timing counters ([#172](https://github.com/flanksource/clicky/issues/172)) ([1d67dc6](https://github.com/flanksource/clicky/commit/1d67dc64632981aa1ae7f9b02eb76b427c93ff8c))
+
+
+### 🔧 Maintenance
+
+* **release:** pin sub-modules to v1.21.52 [skip ci] ([43a37b8](https://github.com/flanksource/clicky/commit/43a37b8cf2bd44542282a398e20f9b872a60ecd2))
+
 ## [1.21.52](https://github.com/flanksource/clicky/compare/v1.21.51...v1.21.52) (2026-07-30)
 
 
