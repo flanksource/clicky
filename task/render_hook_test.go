@@ -184,23 +184,32 @@ func TestSetLiveRenderer_RoundTrip(t *testing.T) {
 	}
 }
 
-// With a custom renderer active, a logger line emitted between ticks is still
-// accounted for by the serializer, so the next ClearLines widens to cover it.
-// This is the property that fixes the original corruption: the hook must not
-// bypass the line-accounting that keeps the redraw in sync.
-func TestLiveRenderer_LoggerLinesStillAccounted(t *testing.T) {
+// With a custom renderer active the serializer contract still holds: in
+// interactive mode a logger line emitted between ticks is buffered and
+// emitted above the next frame (FlushPending) rather than written mid-frame
+// or erased by the next ClearLines.
+func TestLiveRenderer_LoggerLinesBufferedForNextTick(t *testing.T) {
 	tm := &Manager{}
+	tm.isInteractive.Store(true)
+
+	var next bytes.Buffer
+	origLog := logger.GetOutput()
+	logger.SetOutput(&next)
+	t.Cleanup(func() { logger.SetOutput(origLog) })
 	tm.installLogSerializer()
 	t.Cleanup(tm.uninstallLogSerializer)
 
 	tm.setLiveRenderer(&fakeLiveRenderer{live: "block"})
 
 	logger.Infof("between-ticks log line")
+	if next.Len() != 0 {
+		t.Fatalf("interactive log write must be buffered until the next tick, got %q", next.String())
+	}
 
-	// The serializer counted the newline the logger emitted; a tick reads it
-	// via TakeLinesWritten to widen ClearLines. Without accounting this is 0
-	// and the next frame would stack.
-	if got := tm.logSerializer.TakeLinesWritten(); got < 1 {
-		t.Errorf("expected logger line to be counted for ClearLines widening, got %d", got)
+	tm.bufferMutex.Lock()
+	tm.logSerializer.FlushPending()
+	tm.bufferMutex.Unlock()
+	if !strings.Contains(next.String(), "between-ticks log line") {
+		t.Errorf("FlushPending must emit the buffered logger line, got %q", next.String())
 	}
 }

@@ -72,25 +72,48 @@ func ControlRun(ctx context.Context, id string, action ControlAction) error {
 	return controller.Control(ctx, action)
 }
 
-// WriteTaskStdin writes bytes to a live task that advertises stdin support.
-func WriteTaskStdin(runID, taskID string, data []byte) error {
+// ControlTask performs one advertised lifecycle action for a child task in a
+// live run.
+func ControlTask(ctx context.Context, runID, taskID string, action ControlAction) error {
+	t, err := taskByID(runID, taskID)
+	if err != nil {
+		return err
+	}
+	t.mu.Lock()
+	controller := t.controller
+	t.mu.Unlock()
+	if controller == nil || !actionAllowed(controller.Actions(), action) {
+		return fmt.Errorf("task %q does not support %q", taskID, action)
+	}
+	return controller.Control(ctx, action)
+}
+
+func taskByID(runID, taskID string) (*Task, error) {
 	group := groupByID(runID)
 	if group == nil {
-		return fmt.Errorf("run %q not found", runID)
+		return nil, fmt.Errorf("run %q not found", runID)
 	}
 	for _, item := range group.GetTasks() {
 		t := item.GetTask()
-		if t.ID() != taskID {
-			continue
+		if t.ID() == taskID {
+			return t, nil
 		}
-		t.mu.Lock()
-		controller := t.controller
-		t.mu.Unlock()
-		stdin, ok := controller.(StdinController)
-		if !ok {
-			return fmt.Errorf("task %q does not support stdin", taskID)
-		}
-		return stdin.WriteStdin(data)
 	}
-	return fmt.Errorf("task %q not found in run %q", taskID, runID)
+	return nil, fmt.Errorf("task %q not found in run %q", taskID, runID)
+}
+
+// WriteTaskStdin writes bytes to a live task that advertises stdin support.
+func WriteTaskStdin(runID, taskID string, data []byte) error {
+	t, err := taskByID(runID, taskID)
+	if err != nil {
+		return err
+	}
+	t.mu.Lock()
+	controller := t.controller
+	t.mu.Unlock()
+	stdin, ok := controller.(StdinController)
+	if !ok {
+		return fmt.Errorf("task %q does not support stdin", taskID)
+	}
+	return stdin.WriteStdin(data)
 }

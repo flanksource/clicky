@@ -95,8 +95,12 @@ func (p *CobraToolProvider) ToolSet(context.Context) (capchat.ToolSet, error) {
 			IdempotentHint: info.IdempotentHint, Annotations: info.Annotations,
 			Handler: p.handlerFor(op),
 		}
+		outputSchema, err := rpc.ResponseSchema(*op)
+		if err != nil {
+			return capchat.ToolSet{}, fmt.Errorf("operation %q response schema: %w", op.Name, err)
+		}
 		set.Definitions = append(set.Definitions, definition)
-		set.Catalog = append(set.Catalog, catalogEntry(definition))
+		set.Catalog = append(set.Catalog, catalogEntry(definition, outputSchema))
 	}
 	return set, nil
 }
@@ -152,7 +156,11 @@ func defaultToolPermission(op *rpc.RPCOperation, hints entity.MCPToolHints) (api
 	}
 }
 
-func catalogEntry(definition api.ToolDefinition) captools.ToolCatalogEntry {
+// catalogEntry builds the frontend-facing DTO. outputSchema is applied raw
+// rather than through captools.ObjectSchema: an operation returning an array
+// publishes a top-level array, which coercing to an object would corrupt. A nil
+// schema leaves the field unset so it drops out of the payload entirely.
+func catalogEntry(definition api.ToolDefinition, outputSchema map[string]any) captools.ToolCatalogEntry {
 	entry := captools.CustomCatalogEntry(captools.ToolDefinition{
 		Name: definition.Name, Description: definition.Description,
 		InputSchema: definition.InputSchema, Group: definition.Group,
@@ -162,6 +170,9 @@ func catalogEntry(definition api.ToolDefinition) captools.ToolCatalogEntry {
 		IdempotentHint: definition.IdempotentHint, Annotations: definition.Annotations,
 	}, definition.Name, definition.InputSchema)
 	entry.Source = "clicky"
+	if outputSchema != nil {
+		entry.OutputSchema = outputSchema
+	}
 	return entry
 }
 

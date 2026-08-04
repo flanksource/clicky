@@ -49,8 +49,9 @@ type Manager struct {
 	savedLogOutput io.Writer
 
 	// logSerializer is the writer installed while the renderer owns the
-	// terminal. Tick renders read TakeLinesWritten from it to widen the
-	// next ClearLines to cover any log lines that landed between ticks.
+	// terminal. In interactive mode it buffers log lines between ticks;
+	// each tick clears the old frame, flushes the pending lines above it,
+	// then repaints, so log output persists in scrollback.
 	logSerializer *logSerializingWriter
 
 	// liveRenderer, when set, replaces the default task-tree content for live
@@ -84,8 +85,13 @@ type Manager struct {
 	// Terminal state
 	originalTermState *term.State
 
-	// Output buffering
+	// Output buffering. outputBuffer is bounded: once it reaches
+	// captureLimit (default defaultCaptureBufferLimit) the oldest entries
+	// are dropped and outputDropped counts them so the stop flush can
+	// report the truncation explicitly. Both guarded by bufferMutex.
 	outputBuffer    []OutputEntry
+	outputDropped   int
+	captureLimit    int
 	bufferMutex     sync.Mutex
 	originalStdout  *os.File
 	originalStderr  *os.File
@@ -394,7 +400,6 @@ func (tm *Manager) newTask(name string, opts ...Option) *Task {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	flanksourceCtx := flanksourceContext.NewContext(ctx)
-	flanksourceCtx.Logger = logger.GetSlogLogger().Named(fmt.Sprintf("task.%s", name))
 
 	task := &Task{
 		name:           name,
@@ -416,8 +421,16 @@ func (tm *Manager) newTask(name string, opts ...Option) *Task {
 		opt(task)
 	}
 
+	// Route ctx.Logger into the task's buffered logger so context-logged
+	// lines render under the task's line (and stream in plain mode) instead
+	// of interleaving with global logger output. Set on both context copies;
+	// the timeout clone below inherits it via WithTimeout.
+	taskLog := task.contextLogger()
+	task.ctx.Logger = taskLog
+	task.flanksourceCtx.Logger = taskLog
+
 	if task.timeout > 0 {
-		timeoutCtx, timeoutCancel := flanksourceCtx.WithTimeout(task.timeout)
+		timeoutCtx, timeoutCancel := task.flanksourceCtx.WithTimeout(task.timeout)
 		task.ctx = timeoutCtx
 		task.flanksourceCtx = timeoutCtx
 

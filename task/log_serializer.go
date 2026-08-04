@@ -12,55 +12,70 @@ import (
 //  1. Interleaving — every Write holds the manager's output mutex so log
 //     lines cannot land mid-frame between a ClearLines and the fresh
 //     content that follows.
-//  2. Line accounting — the renderer's ClearLines(lastLines) clears the
-//     region occupied by the previous tick's content. When a log line
-//     lands between ticks, the cursor advances past the tracked region
-//     and the next tick's ClearLines undercounts, leaving the top of the
-//     previous frame stacked above the new one. We count newlines we
-//     write so the next tick can add them to lastLines.
+//  2. Persistence — in interactive mode (buffered), log lines written
+//     between ticks are held in pending and emitted by the next tick after
+//     it clears the old frame and before it paints the new one, so they
+//     persist in scrollback above the live frame (the bubbletea
+//     tea.Println pattern) instead of being erased with the frame.
 //
 // The writer delegates to `next` — whatever writer the logger was targeting
 // before the renderer took over (normally os.Stderr, but a caller-installed
 // wrapper is equally fine). Delegating preserves the caller's logging
-// pipeline; we only add ordering and accounting, never change destination.
+// pipeline; we only add ordering and positioning, never change destination.
 type logSerializingWriter struct {
 	mu   *sync.Mutex
 	next io.Writer
 
-	// linesWritten counts newlines emitted through this writer since the
-	// last TakeLinesWritten call. The next interactiveRender adds this to
-	// its lastLines input so ClearLines covers the log lines too. Access
-	// only while holding mu.
-	linesWritten int
+	// buffered is true in interactive render mode: writes accumulate in
+	// pending until the next tick's FlushPending emits them above the
+	// repainted frame. In plain mode writes pass straight through to next.
+	buffered bool
+
+	// pending holds log bytes awaiting the next tick's FlushPending.
+	// Access only while holding mu.
+	pending bytes.Buffer
 }
 
-func newLogSerializingWriter(mu *sync.Mutex, next io.Writer) *logSerializingWriter {
+func newLogSerializingWriter(mu *sync.Mutex, next io.Writer, buffered bool) *logSerializingWriter {
 	if mu == nil {
 		mu = &sync.Mutex{}
 	}
-	return &logSerializingWriter{mu: mu, next: next}
+	return &logSerializingWriter{mu: mu, next: next, buffered: buffered}
 }
 
 // Write serializes one log message against concurrent tick renders on the
-// same underlying mutex. Short holds: a single Write of the fully-formatted
-// log line. No re-entry into the renderer.
+// same underlying mutex. Interactive mode buffers the bytes for the next
+// tick; plain mode delegates immediately. Short holds, no re-entry into
+// the renderer.
 func (l *logSerializingWriter) Write(p []byte) (int, error) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
+	if l.buffered {
+		l.pending.Write(p)
+		return len(p), nil
+	}
 	if l.next == nil {
 		return len(p), nil
 	}
-	n, err := l.next.Write(p)
-	l.linesWritten += bytes.Count(p[:n], []byte{'\n'})
-	return n, err
+	return l.next.Write(p)
 }
 
-// TakeLinesWritten returns the accumulated newline count and resets it to
-// zero. The renderer calls this under mu immediately before ClearLines so
-// the cleared region covers log lines emitted since the last tick. Caller
-// must hold mu (interactiveRender does).
-func (l *logSerializingWriter) TakeLinesWritten() int {
-	n := l.linesWritten
-	l.linesWritten = 0
-	return n
+// FlushPending writes buffered log bytes to the underlying writer, ensuring
+// they end on a fresh line so the frame repainted after them starts at
+// column 0. The renderer calls this between clearing the old frame and
+// painting the new one; uninstallLogSerializer calls it so a line that
+// landed after the final tick is emitted rather than dropped. Caller must
+// hold mu (interactiveRender does).
+func (l *logSerializingWriter) FlushPending() {
+	if l.pending.Len() == 0 {
+		return
+	}
+	if l.next != nil {
+		b := l.pending.Bytes()
+		_, _ = l.next.Write(b)
+		if b[len(b)-1] != '\n' {
+			_, _ = io.WriteString(l.next, "\n")
+		}
+	}
+	l.pending.Reset()
 }

@@ -15,6 +15,12 @@ type RunSource interface {
 	Control(context.Context, string, ControlAction) error
 }
 
+// TaskControlSource is implemented by run sources that can route lifecycle
+// controls to child tasks owned outside this process.
+type TaskControlSource interface {
+	ControlTask(context.Context, string, string, ControlAction) error
+}
+
 // MetricSource is optionally implemented by a RunSource that owns live metrics.
 type MetricSource interface {
 	QueryMetric(context.Context, metrics.QueryRequest) ([]metrics.Point, error)

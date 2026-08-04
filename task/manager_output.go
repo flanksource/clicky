@@ -14,6 +14,40 @@ type OutputEntry struct {
 	Line      string
 }
 
+const (
+	// defaultCaptureBufferLimit bounds the captured-output line buffer so a
+	// chatty long-running capture cannot grow memory without limit. Oldest
+	// lines are dropped first; the drop count is reported at flush time.
+	defaultCaptureBufferLimit = 10_000
+
+	// captureTailLines is how many of the newest captured lines the live
+	// interactive frame shows while tasks are running.
+	captureTailLines = 5
+)
+
+// captureBufferLimit returns the effective buffer bound. Caller must hold
+// bufferMutex (it reads captureLimit, which tests override).
+func (tm *Manager) captureBufferLimit() int {
+	if tm.captureLimit > 0 {
+		return tm.captureLimit
+	}
+	return defaultCaptureBufferLimit
+}
+
+// appendOutputLocked appends one captured line, evicting the oldest entries
+// once the buffer hits its bound. Eviction happens in batches (a tenth of
+// the limit) so the memmove cost is amortized; outputDropped stays exact.
+// Caller must hold bufferMutex.
+func (tm *Manager) appendOutputLocked(entry OutputEntry) {
+	limit := tm.captureBufferLimit()
+	if len(tm.outputBuffer) >= limit {
+		drop := max(1, limit/10)
+		tm.outputBuffer = tm.outputBuffer[:copy(tm.outputBuffer, tm.outputBuffer[drop:])]
+		tm.outputDropped += drop
+	}
+	tm.outputBuffer = append(tm.outputBuffer, entry)
+}
+
 // bufferingWriter captures writes to a buffer with timestamps.
 // It accumulates partial lines between Write calls so that a logical
 // line split across multiple reads is emitted as a single OutputEntry.
@@ -39,7 +73,7 @@ func (w *bufferingWriter) Write(p []byte) (n int, err error) {
 			w.remainder = line
 			break
 		}
-		w.manager.outputBuffer = append(w.manager.outputBuffer, OutputEntry{
+		w.manager.appendOutputLocked(OutputEntry{
 			Timestamp: time.Now(),
 			Stream:    w.stream,
 			Line:      line,
@@ -55,7 +89,7 @@ func (w *bufferingWriter) Flush() {
 	defer w.manager.bufferMutex.Unlock()
 
 	if w.remainder != "" {
-		w.manager.outputBuffer = append(w.manager.outputBuffer, OutputEntry{
+		w.manager.appendOutputLocked(OutputEntry{
 			Timestamp: time.Now(),
 			Stream:    w.stream,
 			Line:      w.remainder,
@@ -76,6 +110,7 @@ func (tm *Manager) StartCapturingOutput() {
 	tm.originalStdout = os.Stdout
 	tm.originalStderr = os.Stderr
 	tm.outputBuffer = []OutputEntry{}
+	tm.outputDropped = 0
 
 	// Create pipes for stdout and stderr
 	var err error
@@ -189,8 +224,13 @@ func (tm *Manager) StopCapturingOutput() {
 	tm.bufferMutex.Lock()
 	buffer := make([]OutputEntry, len(tm.outputBuffer))
 	copy(buffer, tm.outputBuffer)
+	dropped := tm.outputDropped
+	limit := tm.captureBufferLimit()
 	tm.bufferMutex.Unlock()
 
+	if dropped > 0 {
+		_, _ = fmt.Fprintf(os.Stderr, "[task] captured output truncated: %d oldest lines dropped (buffer limit %d)\n", dropped, limit)
+	}
 	for _, entry := range buffer {
 		if entry.Stream == "stdout" {
 			_, _ = fmt.Fprintln(os.Stdout, entry.Line)

@@ -3,6 +3,7 @@ package rpc
 import (
 	"bytes"
 	"context"
+	"encoding/csv"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -390,9 +391,32 @@ func convertValueToString(value interface{}) string {
 		return fmt.Sprintf("%g", v)
 	case nil:
 		return ""
+	case []interface{}:
+		return csvRecord(v)
 	default:
 		return fmt.Sprintf("%v", v)
 	}
+}
+
+// csvRecord encodes a JSON array the way the CLI encodes a repeatable flag, so
+// a slice-typed flag decodes identically over HTTP and on the command line.
+// Without this a JSON body's ["a=1","b=2"] reaches the handler as Go's bracket
+// form `[a=1 b=2]` — one unparseable string instead of two values.
+func csvRecord(values []interface{}) string {
+	if len(values) == 0 {
+		return ""
+	}
+	items := make([]string, len(values))
+	for i, value := range values {
+		items[i] = convertValueToString(value)
+	}
+	var encoded strings.Builder
+	writer := csv.NewWriter(&encoded)
+	if err := writer.Write(items); err != nil {
+		return fmt.Sprintf("%v", values)
+	}
+	writer.Flush()
+	return strings.TrimSuffix(encoded.String(), "\n")
 }
 
 // extractExitCode extracts the exit code from a command execution error

@@ -772,6 +772,17 @@ func (s *SwaggerServer) handleLookupCommand(w http.ResponseWriter, r *http.Reque
 	if v := r.URL.Query().Get("__lookup_q"); v != "" {
 		req.Flags["__lookup_q"] = v
 	}
+	// Live operation metadata can add cascading filter parameters after the
+	// Cobra operation was generated. Preserve those raw sibling values for the
+	// FilterContext without changing normal command execution extraction.
+	for key, values := range r.URL.Query() {
+		if strings.HasPrefix(key, "__") || len(values) == 0 {
+			continue
+		}
+		if _, declared := req.Flags[key]; !declared {
+			req.Flags[key] = values[0]
+		}
+	}
 
 	var data any
 	if op.ContextLookupFunc != nil {

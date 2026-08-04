@@ -94,6 +94,49 @@ func (t *Timings) add(metric TimingMetric) {
 	}
 }
 
+// Metrics returns a snapshot of the accumulated metrics in insertion order, so
+// callers outside the HTTP path (benchmarks, CLI profiling) can read durations
+// and counters without parsing the header string back apart.
+func (t *Timings) Metrics() []TimingMetric {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	metrics := make([]TimingMetric, 0, len(t.order))
+	for _, name := range t.order {
+		total := t.metrics[name]
+		metric := TimingMetric{Name: name, Duration: total.duration}
+		for _, counter := range total.counterOrder {
+			metric.Counters = append(metric.Counters, TimingCounter{Name: counter, Value: total.counters[counter]})
+		}
+		metrics = append(metrics, metric)
+	}
+	return metrics
+}
+
+// Counter returns the accumulated value of a named counter on a named metric,
+// and whether that counter was recorded at all.
+func (t *Timings) Counter(metric, counter string) (int64, bool) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	total, ok := t.metrics[metric]
+	if !ok {
+		return 0, false
+	}
+	value, ok := total.counters[counter]
+	return value, ok
+}
+
+// Duration returns the accumulated wall time of a named metric, and whether the
+// metric was recorded at all.
+func (t *Timings) Duration(metric string) (time.Duration, bool) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	total, ok := t.metrics[metric]
+	if !ok {
+		return 0, false
+	}
+	return total.duration, true
+}
+
 // Header renders the accumulated phases as a Server-Timing value fragment
 // (`find;dur=4.1, parse;dur=6.8`), durations in milliseconds to one decimal. It
 // returns an empty string when no phases were recorded.

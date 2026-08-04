@@ -121,7 +121,12 @@ func (c *Converter) ConvertCommand(cmd *cobra.Command) (*RPCOperation, error) {
 		default:
 			prop.Type = "string"
 			param.Type = "string"
-			if flag.DefValue != "" {
+			// pflag renders an empty slice default as the literal "[]". Emitting
+			// that as a schema default puts the two characters "[]" in every
+			// generated form field, and a client that posts the pre-filled value
+			// back sends a one-element slice containing "[]". A repeatable flag
+			// with no default simply has none.
+			if flag.DefValue != "" && !(isSliceFlag(flag) && flag.DefValue == "[]") {
 				prop.Default = flag.DefValue
 				param.Default = flag.DefValue
 			}
@@ -542,6 +547,13 @@ func (c *Converter) getParentCommandName(cmd *cobra.Command) string {
 		return cmd.Parent().Name()
 	}
 	return ""
+}
+
+// isSliceFlag reports whether a flag holds multiple values, i.e. whether pflag
+// would render its zero value as "[]".
+func isSliceFlag(flag *pflag.Flag) bool {
+	_, ok := flag.Value.(pflag.SliceValue)
+	return ok
 }
 
 // isFlagRequired checks if a flag is marked as required using reflection
