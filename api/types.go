@@ -55,6 +55,8 @@ type PrettyField struct {
 	Kind          string            `json:"kind,omitempty" yaml:"kind,omitempty"`
 	Type          string            `json:"type,omitempty" yaml:"type,omitempty"`
 	Format        string            `json:"format,omitempty" yaml:"format,omitempty"`
+	Unit          string            `json:"unit,omitempty" yaml:"unit,omitempty"`
+	FilterKey     string            `json:"filterKey,omitempty" yaml:"filterKey,omitempty"`
 	Label         string            `json:"label,omitempty" yaml:"label,omitempty"`
 	Default       string            `json:"default,omitempty" yaml:"default,omitempty"`
 	Style         string            `json:"style,omitempty" yaml:"style,omitempty"`

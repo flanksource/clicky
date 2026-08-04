@@ -92,6 +92,11 @@ var _ = Describe("Column", func() {
 		})
 	})
 
+	It("binds a server filter key through the column builder", func() {
+		column := Column("status").FilterKey("filter.status").Build()
+		Expect(column.FilterKey).To(Equal("filter.status"))
+	})
+
 	Describe("NewTableFrom", func() {
 		It("emits header-only table (schema, no rows) from empty slice", func() {
 			table := NewTableFrom([]mockEmployee{})

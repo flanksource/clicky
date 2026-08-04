@@ -341,7 +341,7 @@ func writePDFStream(ctx context.Context, w io.Writer, rows RowIterator, columns 
 	for _, column := range columns {
 		table.Headers = append(table.Headers, api.Text{Content: column.DisplayLabel()})
 		table.FieldNames = append(table.FieldNames, column.Name)
-		table.Columns = append(table.Columns, api.PrettyField{Name: column.Name, Label: column.DisplayLabel(), Type: column.Type, Format: column.Format})
+		table.Columns = append(table.Columns, api.PrettyField{Name: column.Name, Label: column.DisplayLabel(), Type: column.Type, Format: column.Format, Unit: column.Unit})
 	}
 	count, err := streamRows(ctx, rows, first, ok, maxRows, func(row map[string]any) error {
 		out := api.TableRow{}

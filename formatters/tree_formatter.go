@@ -4,10 +4,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/lipgloss/tree"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/flanksource/clicky/api"
-	"github.com/flanksource/clicky/api/tailwind"
 )
 
 type TextTree struct {
@@ -142,15 +141,18 @@ func buildNoTreeDataMessage(data *api.PrettyData) string {
 // node label is a single tree row's content, not a paragraph — blank-line
 // spacing that reads well in flat output is noise inside the tree.
 func normalizeTreeLabel(s string) string {
-	if !strings.ContainsAny(s, "\n \t") {
-		return s
-	}
+	return normalizeTreeLabelWidth(s, api.GetTerminalWidth())
+}
+
+func normalizeTreeLabelWidth(s string, maxWidth int) string {
 	lines := strings.Split(s, "\n")
 	out := make([]string, 0, len(lines))
 	for _, line := range lines {
-		if line = strings.TrimRight(line, " \t"); line != "" {
-			out = append(out, line)
+		line = strings.TrimRight(line, " \t")
+		if strings.TrimSpace(ansi.Strip(line)) == "" {
+			continue
 		}
+		out = append(out, ansi.Truncate(line, maxWidth, "…"))
 	}
 	return strings.Join(out, "\n")
 }
@@ -164,20 +166,17 @@ func (f *TreeFormatter) buildLipglossTree(node api.TreeNode, depth int) *tree.Tr
 	// All TreeNodes implement Pretty(), so use it for formatting
 	prettyText := node.Pretty()
 
-	// Build the node label with styling. Normalize the plain text before any
-	// lipgloss styling so trimming isn't fighting ANSI reset sequences and
-	// multi-line labels don't render stray "│"-gutter blank lines.
+	// Render the complete Text value so Textable children remain visible in
+	// tree labels, then bound each physical line to the terminal width left at
+	// this depth. ANSI-aware truncation preserves SGR state and prevents one
+	// long captured-output line from forcing lipgloss to pad every sibling.
 	var nodeLabel string
 	if f.NoColor {
-		nodeLabel = normalizeTreeLabel(prettyText.String())
+		nodeLabel = prettyText.String()
 	} else {
-		content := normalizeTreeLabel(prettyText.Content)
-		if prettyText.Style != "" {
-			nodeLabel = parseTailwindToLipgloss(prettyText.Style).Render(content)
-		} else {
-			nodeLabel = content
-		}
+		nodeLabel = prettyText.ANSI()
 	}
+	nodeLabel = normalizeTreeLabelWidth(nodeLabel, max(1, api.GetTerminalWidth()-depth*4-2))
 
 	// Handle compact list node specially
 	if compactNode, ok := node.(*api.CompactListNode); ok && f.Options.Compact {
@@ -223,41 +222,6 @@ func (f *TreeFormatter) FormatCompactList(items []string, separator string) stri
 	return strings.Join(items, separator)
 }
 
-// parseTailwindToLipgloss converts a Tailwind style string to a lipgloss.Style
-func parseTailwindToLipgloss(tailwindStyle string) lipgloss.Style {
-	style := lipgloss.NewStyle()
-
-	// Parse the Tailwind style string
-	classes := strings.Fields(tailwindStyle)
-	for _, class := range classes {
-		// Handle text colors
-		if strings.HasPrefix(class, "text-") {
-			if color, err := tailwind.ParseTailwindColor(class); err == nil && color != "" {
-				style = style.Foreground(lipgloss.Color(color))
-			}
-		}
-		// Handle background colors
-		if strings.HasPrefix(class, "bg-") {
-			if color, err := tailwind.ParseTailwindColor(class); err == nil && color != "" {
-				style = style.Background(lipgloss.Color(color))
-			}
-		}
-		// Handle font weights
-		switch class {
-		case "bold", "font-bold", "font-semibold":
-			style = style.Bold(true)
-		case "italic", "font-italic":
-			style = style.Italic(true)
-		case "underline":
-			style = style.Underline(true)
-		case "strikethrough", "line-through":
-			style = style.Strikethrough(true)
-		}
-	}
-
-	return style
-}
-
 // FormatTreeFromRoot formats a tree starting from the root node using lipgloss
 func (f *TreeFormatter) FormatTreeFromRoot(root api.TreeNode) string {
 	if root == nil {
@@ -288,7 +252,15 @@ func (f *TreeFormatter) FormatTreeFromRoot(root api.TreeNode) string {
 		})
 	}
 
-	return t.String()
+	return trimTreePadding(t.String())
+}
+
+func trimTreePadding(rendered string) string {
+	lines := strings.Split(rendered, "\n")
+	for i := range lines {
+		lines[i] = strings.TrimRight(lines[i], " \t")
+	}
+	return strings.Join(lines, "\n")
 }
 
 // FormatInlineTree formats a tree structure for inline display

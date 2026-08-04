@@ -12,6 +12,8 @@ type ColumnDef struct {
 	HeaderStyle   string
 	Type          string
 	Format        string
+	Unit          string
+	FilterKey     string
 	FormatOptions map[string]string
 	MaxWidth      int
 	Hidden        bool
@@ -70,6 +72,19 @@ func (b *ColumnBuilder) Type(typ string) *ColumnBuilder {
 // Format sets the format type (currency, date, bytes, etc.).
 func (b *ColumnBuilder) Format(format string) *ColumnBuilder {
 	b.col.Format = format
+	return b
+}
+
+// Unit sets the numeric display unit (for example percentunit, bytes, or ms).
+// Unit formatting takes precedence over Format when both are present.
+func (b *ColumnBuilder) Unit(unit string) *ColumnBuilder {
+	b.col.Unit = unit
+	return b
+}
+
+// FilterKey binds this output column to a server-side filter parameter.
+func (b *ColumnBuilder) FilterKey(key string) *ColumnBuilder {
+	b.col.FilterKey = key
 	return b
 }
 
@@ -142,6 +157,8 @@ func NewEmptyTable(columns []ColumnDef) TextTable {
 			LabelStyle:    col.HeaderStyle,
 			Type:          col.Type,
 			Format:        col.Format,
+			Unit:          col.Unit,
+			FilterKey:     col.FilterKey,
 			FormatOptions: col.FormatOptions,
 		})
 	}
@@ -179,7 +196,11 @@ func NewTableFrom[T TableProvider](items []T) TextTable {
 					style = fmt.Sprintf("%s max-w-[%dch] truncate", style, col.MaxWidth)
 				}
 				text := Text{Style: style}.Add(ColumnTextable(col, val))
-				row[col.Name] = TypedValue{Textable: text}
+				cell := TypedValue{Textable: text}
+				if col.FilterKey != "" {
+					cell.FilterValue = val
+				}
+				row[col.Name] = cell
 			} else {
 				row[col.Name] = TypedValue{Textable: Text{}}
 			}

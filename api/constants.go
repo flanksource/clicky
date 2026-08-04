@@ -32,6 +32,20 @@ const (
 	FormatPretty   = "pretty"
 )
 
+// Grafana-compatible column display units.
+const (
+	ColumnUnitNone                 = "none"
+	ColumnUnitShort                = "short"
+	ColumnUnitPercent              = "percent"
+	ColumnUnitPercentUnit          = "percentunit"
+	ColumnUnitBytes                = "bytes"
+	ColumnUnitDecimalBytes         = "decbytes"
+	ColumnUnitBytesPerSecond       = "Bps"
+	ColumnUnitBinaryBytesPerSecond = "binBps"
+	ColumnUnitMilliseconds         = "ms"
+	ColumnUnitSeconds              = "s"
+)
+
 // Common strings
 const (
 	EmptyValue     = "(empty)"

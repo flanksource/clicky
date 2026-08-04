@@ -24,18 +24,27 @@ import (
 // already-rendered text (ANSI or plain): a line counts as blank when its
 // ANSI-stripped, space-trimmed form is empty.
 func normalizeTreeLabel(s string) string {
-	if !strings.Contains(s, "\n") {
-		return s
-	}
+	return normalizeTreeLabelWidth(s, GetTerminalWidth())
+}
+
+func normalizeTreeLabelWidth(s string, width int) string {
 	lines := strings.Split(s, "\n")
 	out := make([]string, 0, len(lines))
 	for _, line := range lines {
 		if strings.TrimSpace(ansi.Strip(line)) == "" {
 			continue
 		}
-		out = append(out, strings.TrimRight(line, " \t"))
+		out = append(out, ansi.Truncate(strings.TrimRight(line, " \t"), width, "…"))
 	}
 	return strings.Join(out, "\n")
+}
+
+func trimTreePadding(s string) string {
+	lines := strings.Split(s, "\n")
+	for i := range lines {
+		lines[i] = strings.TrimRight(lines[i], " \t")
+	}
+	return strings.Join(lines, "\n")
 }
 
 // Interface types for reflection-based slice checking
@@ -293,7 +302,7 @@ func (tt TextTree) Visit(visitor VisitorFunc) bool {
 }
 
 // buildLipglossTree converts a TextTree to a lipgloss tree
-func (tt TextTree) buildLipglossTree(withColors bool) *lipglosstree.Tree {
+func (tt TextTree) buildLipglossTree(withColors bool, depth int) *lipglosstree.Tree {
 	// Build the node label
 	var nodeLabel string
 	if tt.Node != nil {
@@ -302,12 +311,13 @@ func (tt TextTree) buildLipglossTree(withColors bool) *lipglosstree.Tree {
 		} else {
 			nodeLabel = tt.Node.String()
 		}
-		nodeLabel = normalizeTreeLabel(nodeLabel)
+		width := max(1, GetTerminalWidth()-depth*4-2)
+		nodeLabel = normalizeTreeLabelWidth(nodeLabel, width)
 	}
 
 	// If we have no node and only one child, return the child tree directly
 	if nodeLabel == "" && len(tt.Children) == 1 {
-		return tt.Children[0].buildLipglossTree(withColors)
+		return tt.Children[0].buildLipglossTree(withColors, depth)
 	}
 
 	// If we have no node and multiple children, we need to create a wrapper
@@ -316,7 +326,7 @@ func (tt TextTree) buildLipglossTree(withColors bool) *lipglosstree.Tree {
 
 	// Add children
 	for _, child := range tt.Children {
-		childTree := child.buildLipglossTree(withColors)
+		childTree := child.buildLipglossTree(withColors, depth+1)
 		if childTree != nil {
 			t = t.Child(childTree)
 		}
@@ -330,7 +340,7 @@ func (tt TextTree) String() string {
 		return ""
 	}
 
-	t := tt.buildLipglossTree(false)
+	t := tt.buildLipglossTree(false, 0)
 	if t == nil {
 		return ""
 	}
@@ -338,7 +348,7 @@ func (tt TextTree) String() string {
 	// Use rounded enumerator
 	t = t.Enumerator(lipglosstree.RoundedEnumerator)
 
-	return t.String()
+	return trimTreePadding(t.String())
 }
 
 func (tt TextTree) HTML() string {
@@ -357,7 +367,7 @@ func (tt TextTree) ANSI() string {
 		return ""
 	}
 
-	t := tt.buildLipglossTree(true)
+	t := tt.buildLipglossTree(true, 0)
 	if t == nil {
 		return ""
 	}
@@ -365,7 +375,7 @@ func (tt TextTree) ANSI() string {
 	// Use rounded enumerator
 	t = t.Enumerator(lipglosstree.RoundedEnumerator)
 
-	return t.String()
+	return trimTreePadding(t.String())
 }
 
 func (tt TextTree) Markdown() string {
@@ -409,15 +419,18 @@ type FieldMeta struct {
 }
 
 type TypedValue struct {
-	Textable   Textable
-	Slice      *TextList
-	Map        *TextMap
-	TypedMap   *TypedMap
-	TypedList  *TypedList
-	Table      *TextTable
-	Tree       *TextTree
-	IsCircular bool
-	FieldMeta  *FieldMeta // Metadata for rendering hints
+	Textable    Textable
+	// FilterValue preserves a filterable table cell's raw scalar independently
+	// from its formatted Textable representation.
+	FilterValue any
+	Slice       *TextList
+	Map         *TextMap
+	TypedMap    *TypedMap
+	TypedList   *TypedList
+	Table       *TextTable
+	Tree        *TextTree
+	IsCircular  bool
+	FieldMeta   *FieldMeta // Metadata for rendering hints
 }
 
 type VisitorFunc func(TypedValue) bool
