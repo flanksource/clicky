@@ -67,12 +67,15 @@ type ClickyField struct {
 }
 
 type ClickyColumn struct {
-	Name   string      `json:"name"`
-	Label  string      `json:"label,omitempty"`
-	Kind   string      `json:"kind,omitempty"`
-	Type   string      `json:"type,omitempty"`
-	Header *ClickyNode `json:"header,omitempty"`
-	Align  string      `json:"align,omitempty"`
+	Name      string      `json:"name"`
+	Label     string      `json:"label,omitempty"`
+	Kind      string      `json:"kind,omitempty"`
+	Type      string      `json:"type,omitempty"`
+	Format    string      `json:"format,omitempty"`
+	Unit      string      `json:"unit,omitempty"`
+	FilterKey string      `json:"filterKey,omitempty"`
+	Header    *ClickyNode `json:"header,omitempty"`
+	Align     string      `json:"align,omitempty"`
 }
 
 type ClickyRow struct {
@@ -106,6 +109,7 @@ type ClickyStackFrame struct {
 
 type ClickyNode struct {
 	Kind            string             `json:"kind"`
+	FilterValue     any                `json:"filterValue,omitempty"`
 	Plain           string             `json:"plain,omitempty"`
 	Style           *ClickyStyle       `json:"style,omitempty"`
 	Text            string             `json:"text,omitempty"`
@@ -512,6 +516,9 @@ func convertTable(table *api.TextTable) ClickyNode {
 				column.Label = table.Columns[i].Label
 				column.Kind = table.Columns[i].Kind
 				column.Type = table.Columns[i].Type
+				column.Format = table.Columns[i].Format
+				column.Unit = table.Columns[i].Unit
+				column.FilterKey = table.Columns[i].FilterKey
 				column.Align = alignFromStyle(table.Columns[i].Style)
 			}
 			if column.Label == "" {
@@ -525,11 +532,14 @@ func convertTable(table *api.TextTable) ClickyNode {
 	} else {
 		for _, columnDef := range table.Columns {
 			column := ClickyColumn{
-				Name:  columnDef.Name,
-				Label: columnDef.Label,
-				Kind:  columnDef.Kind,
-				Type:  columnDef.Type,
-				Align: alignFromStyle(columnDef.Style),
+				Name:      columnDef.Name,
+				Label:     columnDef.Label,
+				Kind:      columnDef.Kind,
+				Type:      columnDef.Type,
+				Format:    columnDef.Format,
+				Unit:      columnDef.Unit,
+				FilterKey: columnDef.FilterKey,
+				Align:     alignFromStyle(columnDef.Style),
 			}
 			if column.Label == "" {
 				column.Label = columnDef.Name
@@ -542,11 +552,15 @@ func convertTable(table *api.TextTable) ClickyNode {
 		rowNode := ClickyRow{Cells: map[string]ClickyNode{}}
 		for _, column := range node.Columns {
 			if cell, ok := row[column.Name]; ok {
-				rowNode.Cells[column.Name] = convertTypedValue(&cell, nil)
+				cellNode := convertTypedValue(&cell, nil)
+				cellNode.FilterValue = cell.FilterValue
+				rowNode.Cells[column.Name] = cellNode
 				continue
 			}
 			if cell, ok := row[column.Label]; ok {
-				rowNode.Cells[column.Name] = convertTypedValue(&cell, nil)
+				cellNode := convertTypedValue(&cell, nil)
+				cellNode.FilterValue = cell.FilterValue
+				rowNode.Cells[column.Name] = cellNode
 				continue
 			}
 			rowNode.Cells[column.Name] = clickyTextNode("")

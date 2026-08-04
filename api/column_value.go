@@ -40,12 +40,15 @@ func ColumnTextable(column ColumnDef, value any) Textable {
 			}
 		}
 	}
+	if formatted, ok := formatColumnScalar(column, value); ok {
+		return formatted
+	}
 	return convertToTextable(value)
 }
 
-// ColumnString returns the deterministic scalar representation used by CSV,
-// Markdown, and spreadsheet exports. Structured JSON/YAML exporters should
-// continue to encode the original raw value.
+// ColumnString returns the deterministic presentation value used by text
+// exports such as CSV and Markdown. Structured JSON/YAML and numeric spreadsheet
+// exporters should continue to encode the original raw value.
 func ColumnString(column ColumnDef, value any) string {
 	switch column.Type {
 	case ColumnTypeKeyValue, ColumnTypeKeyValues:
@@ -63,7 +66,7 @@ func ColumnString(column ColumnDef, value any) string {
 			}
 		}
 	}
-	return convertToTextable(value).String()
+	return ColumnTextable(column, value).String()
 }
 
 func normalizeKeyValuePairs(value any) ([]KeyValuePair, bool) {
