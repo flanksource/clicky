@@ -19,10 +19,18 @@ type DynamicGetFunc func(ctx context.Context, id string) (map[string]any, error)
 // RegisterDynamicEntity. Filters referenced by x-clicky-filter must be
 // registered (RegisterFilter / RegisterFilterSpec) before Register is called.
 type DynamicEntityBuilder struct {
-	name   string
-	schema []byte
-	listFn DynamicListFunc
-	getFn  DynamicGetFunc
+	name    string
+	schema  []byte
+	listFn  DynamicListFunc
+	getFn   DynamicGetFunc
+	filters []builderFilter
+}
+
+// builderFilter binds a named filter to a request key that no schema property
+// declares.
+type builderFilter struct {
+	key  string
+	name string
 }
 
 // NewDynamicEntity starts building a dynamic entity from a JSON schema.
@@ -37,6 +45,18 @@ func (b *DynamicEntityBuilder) List(fn DynamicListFunc) *DynamicEntityBuilder {
 
 func (b *DynamicEntityBuilder) Get(fn DynamicGetFunc) *DynamicEntityBuilder {
 	b.getFn = fn
+	return b
+}
+
+// Filter offers the registered filter filterName under key, for an input the
+// rows do not carry — a query parameter, say — and so has no schema property to
+// hang x-clicky-filter on. Schema-declared filters need no such call.
+//
+// The key is what the request sends and what the lookup response is keyed by.
+// A value supplied for it reaches the filter's source as sibling context even
+// though it is not a declared operation parameter.
+func (b *DynamicEntityBuilder) Filter(key, filterName string) *DynamicEntityBuilder {
+	b.filters = append(b.filters, builderFilter{key: key, name: filterName})
 	return b
 }
 
@@ -77,14 +97,15 @@ func (b *DynamicEntityBuilder) Register() {
 func (b *DynamicEntityBuilder) buildFilters(ps *parsedSchema) ([]DynamicFilter, map[string]string) {
 	var filters []DynamicFilter
 	refs := map[string]string{}
-	for _, f := range ps.Fields {
-		if f.Filter == "" {
-			continue
+	bind := func(key, filterName, label string, multi bool) {
+		if key == "" {
+			panic(fmt.Sprintf("entity.NewDynamicEntity(%q): filter %q has no key", b.name, filterName))
 		}
-		nf := MustGetFilter(f.Filter)
-		key := f.Name
+		if _, taken := refs[key]; taken {
+			panic(fmt.Sprintf("entity.NewDynamicEntity(%q): filter key %q is declared twice", b.name, key))
+		}
+		nf := MustGetFilter(filterName)
 		source := nf.Source
-		label := f.Label
 		if label == "" {
 			label = nf.label()
 		}
@@ -92,33 +113,45 @@ func (b *DynamicEntityBuilder) buildFilters(ps *parsedSchema) ([]DynamicFilter, 
 			Key:        key,
 			Label:      label,
 			Type:       nf.Type,
-			Multi:      nf.Multi || f.isArray(),
+			Multi:      nf.Multi || multi,
 			Searchable: true,
-			Options: func(ctx context.Context, flags map[string]string, query string, limit int) (map[string]api.Textable, int) {
-				options, total, err := source.Options(FilterContext{Context: ctx, Key: key, Params: flags}, query, limit)
-				if err != nil {
-					return nil, 0
-				}
-				return options, total
+			Options: func(ctx context.Context, flags map[string]string, query string, limit int) (map[string]api.Textable, int, error) {
+				return source.Options(FilterContext{Context: ctx, Key: key, Params: flags}, query, limit)
 			},
-			Selected: func(ctx context.Context, flags map[string]string) map[string]api.Textable {
-				values := splitValues(flags[key])
+			Selected: func(ctx context.Context, flags map[string]string) (map[string]api.Textable, error) {
+				values := filterValuesWithoutModes(splitValues(flags[key]))
 				if len(values) == 0 {
-					return nil
+					return nil, nil
 				}
-				selected, err := source.Resolve(FilterContext{Context: ctx, Key: key, Params: flags}, values)
-				if err != nil {
-					return nil
-				}
-				return selected
+				return source.Resolve(FilterContext{Context: ctx, Key: key, Params: flags}, values)
 			},
 		})
-		refs[key] = f.Filter
+		refs[key] = filterName
 	}
+
+	for _, f := range ps.Fields {
+		if f.Filter == "" {
+			continue
+		}
+		bind(f.FilterKey, f.Filter, f.Label, f.isArray())
+	}
+	// Explicit filters come last so a schema property always wins the key, and
+	// the clash panics rather than silently replacing the declared filter.
+	for _, f := range b.filters {
+		bind(f.key, f.name, "", false)
+	}
+
 	if len(refs) == 0 {
 		refs = nil
 	}
 	return filters, refs
+}
+
+func filterValuesWithoutModes(values []string) []string {
+	for i := range values {
+		values[i] = strings.TrimPrefix(values[i], "!")
+	}
+	return values
 }
 
 func (b *DynamicEntityBuilder) listDataFunc(ps *parsedSchema) ContextDataFunc {
