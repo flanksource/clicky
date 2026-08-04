@@ -43,6 +43,9 @@ func (tm *Manager) PlainRender() {
 	for _, task := range taskSnapshot {
 		if task.PopDirty() {
 			rendered := task.prettyPlainDelta()
+			if rendered.IsEmpty() {
+				continue
+			}
 			tm.bufferMutex.Lock()
 			if tm.noColor.Load() {
 				fmt.Fprintf(output, "%s\n", rendered.String())
@@ -59,6 +62,9 @@ func (tm *Manager) PlainRender() {
 // the block.
 func (tm *Manager) plainRenderLive(r LiveRenderer) {
 	rendered := r.RenderLive(tm.snapshotTasks())
+	if rendered.IsEmpty() {
+		return
+	}
 	output := tm.renderer.Output()
 	tm.bufferMutex.Lock()
 	defer tm.bufferMutex.Unlock()
@@ -78,11 +84,62 @@ func (tm *Manager) Pretty() api.Text {
 
 // renderLiveText produces the content for one live tick: the installed
 // LiveRenderer's output when set, otherwise the default task-tree formatting.
+// While output capture is active and work is still running, a tail of the
+// newest captured lines is appended below either block so a long-running
+// capture isn't a black hole until the stop flush.
 func (tm *Manager) renderLiveText() api.Text {
+	tasks := tm.snapshotTasks()
+	var text api.Text
 	if r := tm.getLiveRenderer(); r != nil {
-		return r.RenderLive(tm.snapshotTasks())
+		text = r.RenderLive(tasks)
+	} else {
+		text = tm.prettyFromTasks(tasks)
 	}
-	return tm.Pretty()
+	if tail := tm.captureTailText(tasks); tail.Content != "" {
+		text.Children = append(text.Children, tail)
+	}
+	return text
+}
+
+// captureTailText renders the last captureTailLines captured stdout/stderr
+// lines as a dim block for the live frame. Empty unless capture is active
+// and at least one task is running — the running gate keeps the final frame
+// free of lines StopCapturingOutput is about to replay in full, and the
+// header's "last N of M" total includes lines already dropped by the
+// bounded buffer.
+func (tm *Manager) captureTailText(tasks []*Task) api.Text {
+	running := false
+	for _, t := range tasks {
+		if t.Status() == StatusRunning {
+			running = true
+			break
+		}
+	}
+	if !running {
+		return api.Text{}
+	}
+
+	tm.bufferMutex.Lock()
+	capturing := tm.capturingOutput
+	total := tm.outputDropped + len(tm.outputBuffer)
+	n := min(captureTailLines, len(tm.outputBuffer))
+	entries := make([]OutputEntry, n)
+	copy(entries, tm.outputBuffer[len(tm.outputBuffer)-n:])
+	tm.bufferMutex.Unlock()
+
+	if !capturing || n == 0 {
+		return api.Text{}
+	}
+
+	header := "captured output"
+	if total > n {
+		header = fmt.Sprintf("captured output (last %d of %d lines)", n, total)
+	}
+	text := api.Text{Content: header + "\n", Style: "text-gray-400"}.Indent(2)
+	for _, e := range entries {
+		text.Children = append(text.Children, api.Text{Content: e.Line + "\n", Style: "text-gray-500"}.Indent(4))
+	}
+	return text
 }
 
 // prettyFromTasks formats a snapshot of tasks without needing locks.
@@ -107,17 +164,21 @@ func (tm *Manager) prettyFromTasks(tasks []*Task) api.Text {
 		return api.Text{}
 	}
 
-	var problemTasks, runningTasks, successTasks, pendingTasks []*Task
+	var problemTasks, runningTasks, successTasks, pendingTasks []api.Text
 	for _, task := range tasks {
+		rendered := task.Pretty()
+		if rendered.IsEmpty() {
+			continue
+		}
 		switch task.Status() {
 		case StatusPending:
-			pendingTasks = append(pendingTasks, task)
+			pendingTasks = append(pendingTasks, rendered)
 		case StatusRunning:
-			runningTasks = append(runningTasks, task)
+			runningTasks = append(runningTasks, rendered)
 		case StatusFailed, StatusWarning, StatusCancelled, StatusFAIL, StatusERR:
-			problemTasks = append(problemTasks, task)
+			problemTasks = append(problemTasks, rendered)
 		default:
-			successTasks = append(successTasks, task)
+			successTasks = append(successTasks, rendered)
 		}
 	}
 
@@ -136,8 +197,8 @@ func (tm *Manager) prettyFromTasks(tasks []*Task) api.Text {
 	successBudget := termHeight - len(problemTasks) - len(runningTasks) - pendingLines
 	successBudget = max(successBudget, 3)
 
-	appendTask := func(t *Task) {
-		text.Children = append(text.Children, t.Pretty().Append("\n", "").Indent(2))
+	appendTask := func(rendered api.Text) {
+		text.Children = append(text.Children, rendered.Append("\n", "").Indent(2))
 	}
 	appendSummary := func(content string) {
 		text.Children = append(text.Children, api.Text{
@@ -222,9 +283,20 @@ func plainSummaryText(tasks []*Task) api.Text {
 }
 
 // interactiveRender renders tasks in-place using ANSI clear lines.
-// Returns the number of lines rendered for the next cycle's ClearLines call.
-func (tm *Manager) interactiveRender(lastLines int) int {
+// Returns the ClearLines argument for the next cycle, or -1 when no frame was
+// rendered. ClearLines(0) clears one terminal row, so zero cannot represent an
+// absent frame.
+// Live ticks are capped to the terminal height so the in-place redraw fits
+// the screen; the final frame (final=true) is uncapped — rendering has
+// stopped, scrollback can hold everything, and clipping failed tasks at
+// exit hides exactly what the user needs most.
+func (tm *Manager) interactiveRender(lastLines int, final bool) int {
 	rendered := tm.renderLiveText()
+	if final {
+		if renderer := tm.getLiveRenderer(); renderer != nil {
+			rendered = renderer.RenderFinal(tm.snapshotTasks())
+		}
+	}
 	var out string
 	if tm.noColor.Load() {
 		out = rendered.String()
@@ -232,7 +304,9 @@ func (tm *Manager) interactiveRender(lastLines int) int {
 		out = rendered.ANSI()
 	}
 
-	out = lipgloss.NewStyle().MaxHeight(api.GetTerminalLines()).Render(out)
+	if !final {
+		out = lipgloss.NewStyle().MaxHeight(api.GetTerminalLines()).Render(out)
+	}
 
 	// Strip trailing whitespace that lipgloss adds for line normalization.
 	// This prevents bloated output in .cast recordings and piped output.
@@ -249,24 +323,31 @@ func (tm *Manager) interactiveRender(lastLines int) int {
 	// the same mutex; the render side holds it for the brief duration of
 	// the clear + Fprint, well under a 250ms tick.
 	tm.bufferMutex.Lock()
-	// Widen the clear to cover any log lines the serializer emitted since
-	// the last tick. Without this, a logger.Infof between ticks advances
-	// the cursor past the tracked region; the next ClearLines(lastLines)
-	// undercounts and leaves the top of the previous frame stacked above
-	// the new one.
-	extra := 0
-	if tm.logSerializer != nil {
-		extra = tm.logSerializer.TakeLinesWritten()
+	// Clear only the previous frame, then emit log lines the serializer
+	// buffered since the last tick before painting the new frame below
+	// them. The log lines land above the frame and stay in scrollback
+	// (bubbletea's tea.Println pattern) instead of being erased by the
+	// next tick's clear.
+	if lastLines >= 0 {
+		output.ClearLines(lastLines)
+		fmt.Fprint(output, "\r")
 	}
-	output.ClearLines(lastLines + extra)
+	if tm.logSerializer != nil {
+		tm.logSerializer.FlushPending()
+	}
 	// Write content through the renderer's Output, which holds the original
 	// stderr captured at manager init. Routing through bare os.Stderr here
 	// would split writes across two sinks — the ClearLines bytes go direct
 	// to the terminal while the content goes into StartCapturingOutput's
 	// buffer and gets flushed at shutdown, stripping the clears from the
 	// content and leaving every rendered frame stacked in the final output.
-	fmt.Fprint(output, out)
+	if out != "" {
+		fmt.Fprint(output, out)
+	}
 	tm.bufferMutex.Unlock()
+	if out == "" {
+		return -1
+	}
 
 	// Return PHYSICAL rows, not logical lines. A line wider than the terminal
 	// soft-wraps onto multiple rows; counting newlines (strings.Count) would

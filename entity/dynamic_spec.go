@@ -19,10 +19,10 @@ type DynamicFilter struct {
 	Searchable bool
 	// Options returns the head set (query == "") or search matches, plus the true
 	// total behind the head. Required.
-	Options func(ctx context.Context, flags map[string]string, query string, limit int) (map[string]api.Textable, int)
+	Options func(ctx context.Context, flags map[string]string, query string, limit int) (map[string]api.Textable, int, error)
 	// Selected labels the currently-selected value(s) of this filter's key.
 	// Optional; nil means "no selection rendering".
-	Selected func(ctx context.Context, flags map[string]string) map[string]api.Textable
+	Selected func(ctx context.Context, flags map[string]string) (map[string]api.Textable, error)
 }
 
 // DynamicEntitySpec is the type-erased description of a schema-driven entity,
@@ -30,9 +30,9 @@ type DynamicFilter struct {
 // existing pipeline: ListType drives CLI flag binding and OpenAPI parameters,
 // ItemType drives the response schema, and Filters feed the shared lookup engine.
 type DynamicEntitySpec struct {
-	Name     string
-	Parent   string
-	Aliases  []string
+	Name    string
+	Parent  string
+	Aliases []string
 	// Icon is an opaque UI icon name emitted on the surface (x-clicky.surfaces[].icon).
 	Icon string
 	// Title overrides the auto-generated surface title when non-empty.
@@ -111,17 +111,17 @@ func RegisterDynamicEntity(spec DynamicEntitySpec) {
 
 func buildDynamicContextLookup(filters []DynamicFilter) ContextLookupFunc {
 	return func(ctx context.Context, flagMap map[string]string, _ []string) (any, error) {
-		return resolveDynamicLookup(ctx, filters, flagMap), nil
+		return resolveDynamicLookup(ctx, filters, flagMap)
 	}
 }
 
 func buildDynamicLookup(filters []DynamicFilter) func(map[string]string, []string) (any, error) {
 	return func(flagMap map[string]string, _ []string) (any, error) {
-		return resolveDynamicLookup(context.Background(), filters, flagMap), nil
+		return resolveDynamicLookup(context.Background(), filters, flagMap)
 	}
 }
 
-func resolveDynamicLookup(ctx context.Context, filters []DynamicFilter, flagMap map[string]string) entityLookupResponse {
+func resolveDynamicLookup(ctx context.Context, filters []DynamicFilter, flagMap map[string]string) (entityLookupResponse, error) {
 	searchKey := flagMap[lookupFilterKeyParam]
 	searchQuery := flagMap[lookupQueryParam]
 	delete(flagMap, lookupFilterKeyParam)
@@ -132,7 +132,11 @@ func resolveDynamicLookup(ctx context.Context, filters []DynamicFilter, flagMap 
 		df := df
 		var selected map[string]api.Textable
 		if df.Selected != nil {
-			selected = df.Selected(ctx, flagMap)
+			var err error
+			selected, err = df.Selected(ctx, flagMap)
+			if err != nil {
+				return entityLookupResponse{}, err
+			}
 		}
 		bound = append(bound, boundFilter{
 			Key:        df.Key,
@@ -141,7 +145,7 @@ func resolveDynamicLookup(ctx context.Context, filters []DynamicFilter, flagMap 
 			Multi:      df.Multi,
 			Searchable: df.Searchable,
 			Selected:   selected,
-			Options: func(query string, limit int) (map[string]api.Textable, int) {
+			Options: func(query string, limit int) (map[string]api.Textable, int, error) {
 				return df.Options(ctx, flagMap, query, limit)
 			},
 		})

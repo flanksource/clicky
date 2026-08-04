@@ -2,6 +2,7 @@ package aichat_test
 
 import (
 	"context"
+	"encoding/json"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -90,5 +91,42 @@ var _ = Describe("Cobra tool provider", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(set.Definitions).To(HaveLen(1))
 		Expect(set.Definitions[0].Name).To(Equal("unsafe_name"))
+	})
+
+	It("publishes an output schema for operations with a declared response type", func(ctx SpecContext) {
+		root := &cobra.Command{Use: "example"}
+		clicky.AddCommand(root, greetOptions{}, func(options greetOptions) (greetResult, error) {
+			return greetResult{Message: "hello " + options.Name}, nil
+		})
+
+		provider, err := clickyaichat.NewCobraToolProvider(clickyaichat.CobraToolProviderOptions{Root: root})
+		Expect(err).NotTo(HaveOccurred())
+		set, err := provider.ToolSet(ctx)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(set.Catalog).To(HaveLen(1))
+
+		outputSchema := set.Catalog[0].OutputSchema
+		Expect(outputSchema).To(HaveKeyWithValue("type", "object"))
+		Expect(outputSchema).To(HaveKeyWithValue("properties",
+			HaveKeyWithValue("message", HaveKeyWithValue("type", "string"))),
+			"the schema describes the greetResult return type")
+	})
+
+	It("omits outputSchema for operations without a declared response type", func(ctx SpecContext) {
+		root := &cobra.Command{Use: "example"}
+		root.AddCommand(&cobra.Command{Use: "visible", Run: func(*cobra.Command, []string) {}})
+
+		provider, err := clickyaichat.NewCobraToolProvider(clickyaichat.CobraToolProviderOptions{Root: root})
+		Expect(err).NotTo(HaveOccurred())
+		set, err := provider.ToolSet(ctx)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(set.Catalog).To(HaveLen(1))
+		Expect(set.Catalog[0].OutputSchema).To(BeNil())
+
+		// The frontend degrades to value heuristics on a missing key, so the
+		// absence has to survive marshalling — not just be an empty map.
+		encoded, err := json.Marshal(set.Catalog[0])
+		Expect(err).NotTo(HaveOccurred())
+		Expect(string(encoded)).NotTo(ContainSubstring("outputSchema"))
 	})
 })

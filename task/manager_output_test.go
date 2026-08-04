@@ -172,6 +172,64 @@ func TestWaitFlushesAndStopsCapture(t *testing.T) {
 	}
 }
 
+// F6: the capture buffer is bounded — once the limit is reached the oldest
+// lines are dropped (and counted) while the newest are retained.
+func TestCaptureBufferBounded(t *testing.T) {
+	tm := newTestManager(1)
+	t.Cleanup(func() { close(tm.shutdown) })
+	tm.captureLimit = 10
+
+	w := &bufferingWriter{stream: "stdout", manager: tm}
+	for i := 0; i < 25; i++ {
+		_, _ = fmt.Fprintf(w, "line-%d\n", i)
+	}
+
+	tm.bufferMutex.Lock()
+	defer tm.bufferMutex.Unlock()
+	if len(tm.outputBuffer) > 10 {
+		t.Fatalf("buffer must stay within the limit, got %d entries", len(tm.outputBuffer))
+	}
+	if got := tm.outputDropped + len(tm.outputBuffer); got != 25 {
+		t.Errorf("dropped+retained must account for every line: got %d want 25", got)
+	}
+	if last := tm.outputBuffer[len(tm.outputBuffer)-1].Line; last != "line-24" {
+		t.Errorf("newest line must be retained, got %q", last)
+	}
+	if first := tm.outputBuffer[0].Line; first != fmt.Sprintf("line-%d", tm.outputDropped) {
+		t.Errorf("retained lines must be the contiguous newest ones: first=%q dropped=%d", first, tm.outputDropped)
+	}
+}
+
+// F6: truncation is reported explicitly — the stop flush announces how many
+// lines were dropped instead of silently emitting a hole.
+func TestStopReportsTruncation(t *testing.T) {
+	outR, errR, closeWriters := swapTestPipes(t)
+
+	tm := newTestManager(1)
+	t.Cleanup(func() { close(tm.shutdown) })
+	tm.captureLimit = 5
+
+	tm.StartCapturingOutput()
+	for i := 0; i < 12; i++ {
+		fmt.Fprintf(os.Stdout, "cap-%d\n", i)
+	}
+	tm.StopCapturingOutput()
+	closeWriters()
+
+	stdoutBytes, _ := io.ReadAll(outR)
+	stderrBytes, _ := io.ReadAll(errR)
+
+	if !bytes.Contains(stderrBytes, []byte("7 oldest lines dropped")) {
+		t.Errorf("stop must report the exact drop count, got %q", stderrBytes)
+	}
+	if !bytes.Contains(stdoutBytes, []byte("cap-11")) {
+		t.Errorf("newest captured lines must be flushed, got %q", stdoutBytes)
+	}
+	if bytes.Contains(stdoutBytes, []byte("cap-6\n")) {
+		t.Errorf("dropped lines must not reappear in the flush, got %q", stdoutBytes)
+	}
+}
+
 // TestStopWithoutStartIsSafe ensures StopCapturingOutput is a no-op when
 // StartCapturingOutput was never called — gavel relies on this to use
 // defer StopCapturingOutput() across code paths that may not have

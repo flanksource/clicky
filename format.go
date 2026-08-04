@@ -33,9 +33,9 @@ var (
 // }
 
 // logWriter is the destination for clicky.Infof / Errorf / Warnf / SQL etc.
-// task.GatedStderr drops writes while the interactive renderer owns the
-// TTY so log lines cannot land mid-frame and break ClearLines accounting.
-// Off-renderer it forwards straight to os.Stderr.
+// task.GatedStderr buffers writes while the interactive renderer owns the
+// TTY (so log lines cannot land mid-frame) and flushes them right after
+// the renderer lets go. Off-renderer it forwards straight to os.Stderr.
 var logWriter = text.LineFilter(task.GatedStderr(), text.RedactSecrets()).(io.StringWriter)
 
 func RedactSecretValues(val ...string) {

@@ -67,7 +67,7 @@ func (tm *Manager) startRenderLoop() {
 func (tm *Manager) installLogSerializer() {
 	prev := logger.GetOutput()
 	tm.savedLogOutput = prev
-	ser := newLogSerializingWriter(&tm.bufferMutex, prev)
+	ser := newLogSerializingWriter(&tm.bufferMutex, prev, tm.isInteractive.Load())
 	tm.logSerializer = ser
 	logger.SetOutput(ser)
 }
@@ -78,6 +78,11 @@ func (tm *Manager) uninstallLogSerializer() {
 	if tm.savedLogOutput == nil {
 		return
 	}
+	// A log line can land after the loop's final tick; emit it below the
+	// final frame rather than dropping it.
+	tm.bufferMutex.Lock()
+	tm.logSerializer.FlushPending()
+	tm.bufferMutex.Unlock()
 	logger.SetOutput(tm.savedLogOutput)
 	tm.savedLogOutput = nil
 	tm.logSerializer = nil
@@ -103,7 +108,7 @@ func (tm *Manager) renderLoop() {
 		tm.bufferMutex.Unlock()
 	}
 
-	var lastLines int
+	lastLines := -1
 	ticker := time.NewTicker(250 * time.Millisecond)
 	defer ticker.Stop()
 
@@ -116,15 +121,17 @@ func (tm *Manager) renderLoop() {
 				// interactiveRender atomically ClearLines(lastLines) then
 				// writes the fresh content, avoiding the double-emit that
 				// would occur if we cleared here and also called
-				// renderFinal below in stopRender.
-				tm.interactiveRender(lastLines)
+				// renderFinal below in stopRender. final=true lifts the
+				// terminal-height cap so problem tasks are never clipped
+				// in the frame that persists in scrollback.
+				tm.interactiveRender(lastLines, true)
 			} else {
 				tm.PlainRender()
 			}
 			return
 		case <-ticker.C:
 			if tm.isInteractive.Load() {
-				lastLines = tm.interactiveRender(lastLines)
+				lastLines = tm.interactiveRender(lastLines, false)
 			} else {
 				tm.PlainRender()
 			}
@@ -198,6 +205,11 @@ func (tm *Manager) finishRenderTeardown(loopWasRunning bool) {
 	tm.mu.Unlock()
 	if teardown {
 		tm.releaseRenderTerminal()
+		// The renderer no longer owns the TTY: emit stderr writes that
+		// GatedStderr buffered during the render window (F4). They appear
+		// below the final frame, still in arrival order and already
+		// secret-redacted by the upstream log writer.
+		flushGatedStderr()
 	}
 }
 
@@ -245,6 +257,9 @@ func (tm *Manager) renderFinal(loopRan bool) {
 		rendered = plainSummaryText(taskSnapshot)
 	} else {
 		rendered = tm.prettyFromTasks(taskSnapshot)
+	}
+	if rendered.IsEmpty() {
+		return
 	}
 	// Write through renderer.Output (original stderr captured at init) so
 	// the final summary joins the live render stream and doesn't land in

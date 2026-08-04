@@ -63,3 +63,38 @@ func TestConvertCommand_OmitsInheritedAndHiddenFlags(t *testing.T) {
 	assert.NotContains(t, op.Schema.Properties, "db-url",
 		"hidden flag db-url must NOT appear in schema properties")
 }
+
+// pflag stringifies an empty slice default as "[]". Publishing that as a schema
+// default pre-fills generated forms with the literal characters "[]", which a
+// client then posts back as a one-element slice — turning "no values" into one
+// bogus value. A repeatable flag with no default must advertise none.
+func TestConvertCommand_OmitsEmptySliceDefaults(t *testing.T) {
+	root := &cobra.Command{Use: "app"}
+	child := &cobra.Command{
+		Use:   "act",
+		Short: "Act",
+		RunE:  func(*cobra.Command, []string) error { return nil },
+	}
+	child.Flags().StringSlice("param", nil, "Repeatable key=value")
+	child.Flags().StringArray("header", nil, "Repeatable header")
+	child.Flags().StringSlice("tag", []string{"a", "b"}, "Repeatable tag with defaults")
+	child.Flags().String("name", "fallback", "Scalar with a default")
+	root.AddCommand(child)
+
+	op, err := NewConverter(DefaultConfig()).ConvertCommand(child)
+	require.NoError(t, err)
+
+	defaults := map[string]any{}
+	for _, p := range op.Parameters {
+		defaults[p.Name] = p.Default
+	}
+
+	assert.Nil(t, defaults["param"], "an empty slice flag must advertise no default")
+	assert.Nil(t, defaults["header"], "an empty array flag must advertise no default")
+	assert.Nil(t, op.Schema.Properties["param"].Default,
+		"the schema property must not carry the empty-slice default either")
+
+	// A slice flag with real defaults, and every scalar flag, keep theirs.
+	assert.Equal(t, "[a,b]", defaults["tag"])
+	assert.Equal(t, "fallback", defaults["name"])
+}

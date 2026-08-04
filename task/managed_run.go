@@ -16,6 +16,12 @@ type ManagedRun struct {
 func StartManagedRun(name string, opts ...TaskGroupOption) *ManagedRun {
 	group := StartGroup[any](name, opts...)
 	t := global.newTask(name, WithGroup(group.Group))
+	group.mu.RLock()
+	controller := group.controller
+	group.mu.RUnlock()
+	if controller != nil {
+		t.SetController(controller)
+	}
 	attachTaskableToGroup(t, t)
 	now := time.Now()
 	t.mu.Lock()

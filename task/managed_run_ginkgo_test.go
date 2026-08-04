@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	commonscontext "github.com/flanksource/commons/context"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
@@ -22,10 +23,11 @@ type recordingController struct {
 }
 
 type recordingRunSource struct {
-	runs       []task.RunMeta
-	snapshots  map[string][]task.TaskSnapshot
-	controlled string
-	points     []metrics.Point
+	runs           []task.RunMeta
+	snapshots      map[string][]task.TaskSnapshot
+	controlled     string
+	controlledTask string
+	points         []metrics.Point
 }
 
 func (s *recordingRunSource) Runs(_ context.Context, filter task.RunFilter) ([]task.RunMeta, error) {
@@ -44,6 +46,11 @@ func (s *recordingRunSource) Snapshot(_ context.Context, id string) ([]task.Task
 
 func (s *recordingRunSource) Control(_ context.Context, id string, action task.ControlAction) error {
 	s.controlled = id + ":" + string(action)
+	return nil
+}
+
+func (s *recordingRunSource) ControlTask(_ context.Context, runID, taskID string, action task.ControlAction) error {
+	s.controlledTask = runID + ":" + taskID + ":" + string(action)
 	return nil
 }
 
@@ -94,9 +101,12 @@ var _ = Describe("Managed task runs", func() {
 		Expect(snapshots[0].Details).To(Equal(map[string]any{"pid": 1234.0, "status": "running"}))
 		Expect(snapshots[1].Stdout).To(Equal("ready\n"))
 		Expect(snapshots[1].Stderr).To(Equal("warning\n"))
+		Expect(snapshots[1].Controls).To(Equal([]task.ControlAction{task.ControlStop, task.ControlRestart}))
 
 		Expect(task.ControlRun(context.Background(), run.ID(), task.ControlRestart)).To(Succeed())
 		Expect(controller.called).To(Equal(task.ControlRestart))
+		Expect(task.ControlTask(context.Background(), run.ID(), run.TaskID(), task.ControlStop)).To(Succeed())
+		Expect(controller.called).To(Equal(task.ControlStop))
 	})
 
 	It("freezes terminal output and details and aggregates cancellation correctly", func() {
@@ -163,6 +173,46 @@ var _ = Describe("Managed task runs", func() {
 		Eventually(done).Should(BeClosed())
 	})
 
+	It("controls an advertised child task through the task API", func() {
+		controller := &recordingController{actions: []task.ControlAction{task.ControlStop}}
+		group := task.StartGroup[struct{}]("commit project", task.WithGroupID("commit-project-1"))
+		child := group.Add("commit one.go", func(_ commonscontext.Context, _ *task.Task) (struct{}, error) {
+			return struct{}{}, nil
+		}, task.WithTaskController(controller))
+		Eventually(child.Status).Should(Equal(task.StatusSuccess))
+
+		mux := http.NewServeMux()
+		task.RegisterHandlers(mux, "/api")
+		request := httptest.NewRequest(
+			http.MethodPost,
+			"/api/tasks/"+group.ID()+"/tasks/"+child.ID()+"/control",
+			bytes.NewBufferString(`{"action":"stop"}`),
+		)
+		response := httptest.NewRecorder()
+		mux.ServeHTTP(response, request)
+
+		Expect(response.Code).To(Equal(http.StatusNoContent), response.Body.String())
+		Expect(controller.called).To(Equal(task.ControlStop))
+
+		request = httptest.NewRequest(
+			http.MethodPost,
+			"/api/tasks/"+group.ID()+"/tasks/"+child.ID()+"/control",
+			bytes.NewBufferString(`{"action":"restart"}`),
+		)
+		response = httptest.NewRecorder()
+		mux.ServeHTTP(response, request)
+		Expect(response.Code).To(Equal(http.StatusConflict), response.Body.String())
+
+		request = httptest.NewRequest(
+			http.MethodPost,
+			"/api/tasks/"+group.ID()+"/tasks/missing/control",
+			bytes.NewBufferString(`{"action":"stop"}`),
+		)
+		response = httptest.NewRecorder()
+		mux.ServeHTTP(response, request)
+		Expect(response.Code).To(Equal(http.StatusNotFound), response.Body.String())
+	})
+
 	It("merges externally-owned runs into list, detail, stream, and control routes", func() {
 		source := &recordingRunSource{
 			runs: []task.RunMeta{{ID: "remote-1", Name: "api", Kind: "supervised-process", Status: "running"}},
@@ -189,6 +239,12 @@ var _ = Describe("Managed task runs", func() {
 		mux.ServeHTTP(response, request)
 		Expect(response.Code).To(Equal(http.StatusNoContent), response.Body.String())
 		Expect(source.controlled).To(Equal("remote-1:restart"))
+
+		request = httptest.NewRequest(http.MethodPost, "/api/tasks/remote-1/tasks/commit-1/control", bytes.NewBufferString(`{"action":"stop"}`))
+		response = httptest.NewRecorder()
+		mux.ServeHTTP(response, request)
+		Expect(response.Code).To(Equal(http.StatusNoContent), response.Body.String())
+		Expect(source.controlledTask).To(Equal("remote-1:commit-1:stop"))
 
 		response = httptest.NewRecorder()
 		mux.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/tasks/metrics/remote-1%3Acpu?since=1h", nil))

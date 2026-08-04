@@ -326,16 +326,27 @@ func (t *Task) PopDirty() bool {
 // Infof logs an info message (only shown in verbose mode)
 func (t *Task) Infof(format string, args ...interface{}) {
 	t.getBufferedLogger().Infof(format, args...)
+	t.markLogForStreaming()
 }
 
 // Errorf logs an error message
 func (t *Task) Errorf(format string, args ...interface{}) {
 	t.getBufferedLogger().Errorf(format, args...)
+	t.markLogForStreaming()
 }
 
 // Warnf logs a warning message
 func (t *Task) Warnf(format string, args ...interface{}) {
 	t.getBufferedLogger().Warnf(format, args...)
+	t.markLogForStreaming()
+}
+
+// markLogForStreaming flags the task dirty so the plain render loop emits a
+// just-appended log line on its next tick instead of batching it until the
+// next status transition. Called for Info and more-severe appends only —
+// Debug/Trace lines stay batched.
+func (t *Task) markLogForStreaming() {
+	t.dirty.Store(true)
 }
 
 // SetName sets the task name
@@ -815,6 +826,7 @@ func (t *Task) Tracef(format string, args ...interface{}) {
 // Fatalf logs a fatal message (implements Logger interface)
 func (t *Task) Fatalf(format string, args ...interface{}) {
 	t.getBufferedLogger().Fatalf(format, args...)
+	t.markLogForStreaming()
 }
 
 // WithValues returns a logger with additional key-value pairs (implements Logger interface)

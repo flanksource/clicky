@@ -155,7 +155,10 @@ func (w *worker) executeTask(task *Task) {
 		originalCtx := task.ctx
 		originalCancel := task.cancel
 
-		task.flanksourceCtx = flanksourcecontext.NewContext(timeoutCtx)
+		// Rebuild around the timeout context but keep the original context's
+		// Logger — it routes into the task's buffered logger; a bare
+		// NewContext would silently reset it to the global standard logger.
+		task.flanksourceCtx = flanksourcecontext.NewContext(timeoutCtx, flanksourcecontext.WithLogger(originalCtx.Logger))
 		task.ctx = task.flanksourceCtx
 		task.cancel = func() {
 			timeoutCancel()
@@ -167,7 +170,7 @@ func (w *worker) executeTask(task *Task) {
 		defer func() {
 			task.mu.Lock()
 			task.ctx = originalCtx
-			task.flanksourceCtx = flanksourcecontext.NewContext(originalCtx)
+			task.flanksourceCtx = originalCtx
 			task.cancel = originalCancel
 			task.mu.Unlock()
 		}()

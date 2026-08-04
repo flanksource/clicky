@@ -11,15 +11,13 @@ import (
 
 const logDisplayMessage = "log-display-probe"
 
-// newTaskAtLogLevel creates an unqueued task whose context logger (which
-// Pretty() consults for the display filter) and buffered logger (which gates
-// Debugf/Tracef at append time) are both set to the given level, without
-// touching global logger state.
+// newTaskAtLogLevel creates an unqueued task at the given log level without
+// touching global logger state. The context logger routes into the task's
+// buffered logger, so one SetLogLevel controls both the append-time gate
+// (Debugf/Tracef) and the render-time display filter Pretty() consults.
 func newTaskAtLogLevel(tm *Manager, name string, level logger.LogLevel) *Task {
 	task := tm.newTask(name)
-	ctxLogger := logger.NewBufferedLogger(1)
-	ctxLogger.SetLogLevel(level)
-	task.ctx.Logger = ctxLogger
+	task.SetLogLevel(level)
 	return task
 }
 

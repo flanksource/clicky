@@ -615,6 +615,124 @@ func entityBodyExcludingID(flagMap map[string]string) map[string]any {
 	return body
 }
 
+// entityListOperation builds the "list" operation for an entity, or reports
+// false when it declares no list func. An Admin sub-entity is the same Entity
+// type, so it registers through here too — keeping one implementation is what
+// stops the admin surface from silently lagging behind the main one.
+func entityListOperation[T EntityItem, ListOpts any, R any](e Entity[T, ListOpts, R]) (EntityOperation, bool) {
+	if e.ListPagedWithContext == nil && e.ListPaged == nil && e.ListWithContext == nil && e.List == nil {
+		return EntityOperation{}, false
+	}
+	op := EntityOperation{
+		Verb:              "list",
+		LookupFunc:        buildLookupFunc[ListOpts](e.Filters),
+		ContextLookupFunc: buildLookupFuncWithContext[ListOpts](e.Filters),
+		BindCompletions:   buildFilterCompletionBinder[ListOpts](e.Filters),
+		ResponseType:      reflect.TypeOf((*T)(nil)).Elem(),
+		ResponseArray:     true,
+		ResponseEntityID:  true,
+	}
+	switch {
+	case e.ListPagedWithContext != nil:
+		op.ResponsePaged = true
+		op.ContextDataFunc = func(ctx context.Context, flagMap map[string]string, args []string) (any, error) {
+			opts, err := resolveEntityOpts[ListOpts](flagMap, e.Filters)
+			if err != nil {
+				return nil, err
+			}
+			page, err := e.ListPagedWithContext(ctx, opts)
+			if err != nil {
+				return nil, err
+			}
+			return NewPagedResult(withEntityIDs(page.Data), page.Page.Limit, page.Page.Offset, page.Page.Total), nil
+		}
+	case e.ListPaged != nil:
+		op.ResponsePaged = true
+		op.DataFunc = func(flagMap map[string]string, args []string) (any, error) {
+			opts, err := resolveEntityOpts[ListOpts](flagMap, e.Filters)
+			if err != nil {
+				return nil, err
+			}
+			page, err := e.ListPaged(opts)
+			if err != nil {
+				return nil, err
+			}
+			return NewPagedResult(withEntityIDs(page.Data), page.Page.Limit, page.Page.Offset, page.Page.Total), nil
+		}
+	case e.ListWithContext != nil:
+		op.ContextDataFunc = func(ctx context.Context, flagMap map[string]string, args []string) (any, error) {
+			opts, err := resolveEntityOpts[ListOpts](flagMap, e.Filters)
+			if err != nil {
+				return nil, err
+			}
+			items, err := e.ListWithContext(ctx, opts)
+			if err != nil {
+				return nil, err
+			}
+			return withEntityIDs(items), nil
+		}
+	default:
+		op.DataFunc = func(flagMap map[string]string, args []string) (any, error) {
+			opts, err := resolveEntityOpts[ListOpts](flagMap, e.Filters)
+			if err != nil {
+				return nil, err
+			}
+			items, err := e.List(opts)
+			if err != nil {
+				return nil, err
+			}
+			return withEntityIDs(items), nil
+		}
+	}
+	return op, true
+}
+
+// entityGetOperation builds the "get" operation for an entity, or reports false
+// when it declares no get func. Shared with Admin sub-entities — see
+// entityListOperation.
+func entityGetOperation[T EntityItem, ListOpts any, R any](e Entity[T, ListOpts, R]) (EntityOperation, bool) {
+	op := EntityOperation{Verb: "get", ResponseType: responseTypeOf[R]()}
+	switch {
+	case e.GetWithFlagsAndContext != nil:
+		op.FlagsType = actionFlagsType(e.GetFlags)
+		op.ContextDataFunc = func(ctx context.Context, flagMap map[string]string, args []string) (any, error) {
+			id, err := entityIDFrom(flagMap, args)
+			if err != nil {
+				return nil, err
+			}
+			return e.GetWithFlagsAndContext(ctx, id, flagMap)
+		}
+	case e.GetWithFlags != nil:
+		op.FlagsType = actionFlagsType(e.GetFlags)
+		op.DataFunc = func(flagMap map[string]string, args []string) (any, error) {
+			id, err := entityIDFrom(flagMap, args)
+			if err != nil {
+				return nil, err
+			}
+			return e.GetWithFlags(id, flagMap)
+		}
+	case e.GetWithContext != nil:
+		op.ContextDataFunc = func(ctx context.Context, flagMap map[string]string, args []string) (any, error) {
+			id, err := entityIDFrom(flagMap, args)
+			if err != nil {
+				return nil, err
+			}
+			return e.GetWithContext(ctx, id)
+		}
+	case e.Get != nil:
+		op.DataFunc = func(flagMap map[string]string, args []string) (any, error) {
+			id, err := entityIDFrom(flagMap, args)
+			if err != nil {
+				return nil, err
+			}
+			return e.Get(id)
+		}
+	default:
+		return EntityOperation{}, false
+	}
+	return op, true
+}
+
 // RegisterEntity registers a CRUD entity. Call during init().
 // CLI commands and HTTP routes are generated later via GenerateCLI/GenerateRoutes.
 //
@@ -644,122 +762,11 @@ func RegisterEntity[T EntityItem, ListOpts any, R any](e Entity[T, ListOpts, R])
 		info.ToolGroup = info.ToolHints.Group
 	}
 
-	if e.ListPagedWithContext != nil || e.ListPaged != nil || e.ListWithContext != nil || e.List != nil {
-		op := EntityOperation{
-			Verb:              "list",
-			LookupFunc:        buildLookupFunc[ListOpts](e.Filters),
-			ContextLookupFunc: buildLookupFuncWithContext[ListOpts](e.Filters),
-			BindCompletions:   buildFilterCompletionBinder[ListOpts](e.Filters),
-			ResponseType:      reflect.TypeOf((*T)(nil)).Elem(),
-			ResponseArray:     true,
-			ResponseEntityID:  true,
-		}
-		switch {
-		case e.ListPagedWithContext != nil:
-			op.ResponsePaged = true
-			op.ContextDataFunc = func(ctx context.Context, flagMap map[string]string, args []string) (any, error) {
-				opts, err := resolveEntityOpts[ListOpts](flagMap, e.Filters)
-				if err != nil {
-					return nil, err
-				}
-				page, err := e.ListPagedWithContext(ctx, opts)
-				if err != nil {
-					return nil, err
-				}
-				return NewPagedResult(withEntityIDs(page.Data), page.Page.Limit, page.Page.Offset, page.Page.Total), nil
-			}
-		case e.ListPaged != nil:
-			op.ResponsePaged = true
-			op.DataFunc = func(flagMap map[string]string, args []string) (any, error) {
-				opts, err := resolveEntityOpts[ListOpts](flagMap, e.Filters)
-				if err != nil {
-					return nil, err
-				}
-				page, err := e.ListPaged(opts)
-				if err != nil {
-					return nil, err
-				}
-				return NewPagedResult(withEntityIDs(page.Data), page.Page.Limit, page.Page.Offset, page.Page.Total), nil
-			}
-		case e.ListWithContext != nil:
-			op.ContextDataFunc = func(ctx context.Context, flagMap map[string]string, args []string) (any, error) {
-				opts, err := resolveEntityOpts[ListOpts](flagMap, e.Filters)
-				if err != nil {
-					return nil, err
-				}
-				items, err := e.ListWithContext(ctx, opts)
-				if err != nil {
-					return nil, err
-				}
-				return withEntityIDs(items), nil
-			}
-		default:
-			op.DataFunc = func(flagMap map[string]string, args []string) (any, error) {
-				opts, err := resolveEntityOpts[ListOpts](flagMap, e.Filters)
-				if err != nil {
-					return nil, err
-				}
-				items, err := e.List(opts)
-				if err != nil {
-					return nil, err
-				}
-				return withEntityIDs(items), nil
-			}
-		}
+	if op, ok := entityListOperation(e); ok {
 		info.Operations = append(info.Operations, op)
 	}
-
-	switch {
-	case e.GetWithFlagsAndContext != nil:
-		info.Operations = append(info.Operations, EntityOperation{
-			Verb:         "get",
-			FlagsType:    actionFlagsType(e.GetFlags),
-			ResponseType: responseTypeOf[R](),
-			ContextDataFunc: func(ctx context.Context, flagMap map[string]string, args []string) (any, error) {
-				id, err := entityIDFrom(flagMap, args)
-				if err != nil {
-					return nil, err
-				}
-				return e.GetWithFlagsAndContext(ctx, id, flagMap)
-			},
-		})
-	case e.GetWithFlags != nil:
-		info.Operations = append(info.Operations, EntityOperation{
-			Verb:         "get",
-			FlagsType:    actionFlagsType(e.GetFlags),
-			ResponseType: responseTypeOf[R](),
-			DataFunc: func(flagMap map[string]string, args []string) (any, error) {
-				id, err := entityIDFrom(flagMap, args)
-				if err != nil {
-					return nil, err
-				}
-				return e.GetWithFlags(id, flagMap)
-			},
-		})
-	case e.GetWithContext != nil:
-		info.Operations = append(info.Operations, EntityOperation{
-			Verb:         "get",
-			ResponseType: responseTypeOf[R](),
-			ContextDataFunc: func(ctx context.Context, flagMap map[string]string, args []string) (any, error) {
-				id, err := entityIDFrom(flagMap, args)
-				if err != nil {
-					return nil, err
-				}
-				return e.GetWithContext(ctx, id)
-			},
-		})
-	case e.Get != nil:
-		info.Operations = append(info.Operations, EntityOperation{
-			Verb:         "get",
-			ResponseType: responseTypeOf[R](),
-			DataFunc: func(flagMap map[string]string, args []string) (any, error) {
-				id, err := entityIDFrom(flagMap, args)
-				if err != nil {
-					return nil, err
-				}
-				return e.Get(id)
-			},
-		})
+	if op, ok := entityGetOperation(e); ok {
+		info.Operations = append(info.Operations, op)
 	}
 
 	if e.CreateWithContext != nil || e.Create != nil {
@@ -863,59 +870,11 @@ func RegisterEntity[T EntityItem, ListOpts any, R any](e Entity[T, ListOpts, R])
 			ValidArgs: adminValidArgs,
 			IsAdmin:   true,
 		}
-		if admin.List != nil {
-			adminInfo.Operations = append(adminInfo.Operations, EntityOperation{
-				Verb: "list",
-				DataFunc: func(flagMap map[string]string, args []string) (any, error) {
-					opts, err := resolveEntityOpts[ListOpts](flagMap, admin.Filters)
-					if err != nil {
-						return nil, err
-					}
-					items, err := admin.List(opts)
-					if err != nil {
-						return nil, err
-					}
-					return withEntityIDs(items), nil
-				},
-				LookupFunc:        buildLookupFunc[ListOpts](admin.Filters),
-				ContextLookupFunc: buildLookupFuncWithContext[ListOpts](admin.Filters),
-				BindCompletions:   buildFilterCompletionBinder[ListOpts](admin.Filters),
-				ResponseType:      reflect.TypeOf((*T)(nil)).Elem(),
-				ResponseArray:     true,
-				ResponseEntityID:  true,
-			})
+		if op, ok := entityListOperation(admin); ok {
+			adminInfo.Operations = append(adminInfo.Operations, op)
 		}
-		if admin.GetWithFlags != nil {
-			adminInfo.Operations = append(adminInfo.Operations, EntityOperation{
-				Verb:         "get",
-				FlagsType:    actionFlagsType(admin.GetFlags),
-				ResponseType: responseTypeOf[R](),
-				DataFunc: func(flagMap map[string]string, args []string) (any, error) {
-					id := flagMap["id"]
-					if id == "" && len(args) > 0 {
-						id = args[0]
-					}
-					if id == "" {
-						return nil, fmt.Errorf("id is required")
-					}
-					return admin.GetWithFlags(id, flagMap)
-				},
-			})
-		} else if admin.Get != nil {
-			adminInfo.Operations = append(adminInfo.Operations, EntityOperation{
-				Verb:         "get",
-				ResponseType: responseTypeOf[R](),
-				DataFunc: func(flagMap map[string]string, args []string) (any, error) {
-					id := flagMap["id"]
-					if id == "" && len(args) > 0 {
-						id = args[0]
-					}
-					if id == "" {
-						return nil, fmt.Errorf("id is required")
-					}
-					return admin.Get(id)
-				},
-			})
+		if op, ok := entityGetOperation(admin); ok {
+			adminInfo.Operations = append(adminInfo.Operations, op)
 		}
 		for _, action := range admin.Actions {
 			if action == nil {
@@ -1620,13 +1579,13 @@ type boundFilter struct {
 	Selected   map[string]api.Textable
 	// Options returns the head set (query == "") or search matches, plus the true
 	// total behind the head. A non-positive limit means "no cap".
-	Options func(query string, limit int) (map[string]api.Textable, int)
+	Options func(query string, limit int) (map[string]api.Textable, int, error)
 }
 
 // resolveLookupCore renders bound filters into the lookup response, applying the
 // searchable head/search/total logic uniformly. It is the single place the
 // lookup wire shape is built, shared by the typed and dynamic entity paths.
-func resolveLookupCore(filters []boundFilter, searchKey, searchQuery string) entityLookupResponse {
+func resolveLookupCore(filters []boundFilter, searchKey, searchQuery string) (entityLookupResponse, error) {
 	response := entityLookupResponse{
 		Filters: make(map[string]entityLookupFilter, len(filters)),
 	}
@@ -1640,22 +1599,31 @@ func resolveLookupCore(filters []boundFilter, searchKey, searchQuery string) ent
 		switch {
 		case f.Searchable && searchKey == f.Key && searchQuery != "":
 			// Targeted server-side search: return matches for this filter only.
-			options, _ := f.Options(searchQuery, lookupOptionsLimit)
+			options, _, err := f.Options(searchQuery, lookupOptionsLimit)
+			if err != nil {
+				return entityLookupResponse{}, err
+			}
 			entry.Options = toClickyNodeMap(options)
 		case f.Searchable:
 			// Head request: first N options plus the true distinct total so
 			// the UI can show "… and N more" and decide whether to search.
-			options, total := f.Options("", lookupOptionsLimit)
+			options, total, err := f.Options("", lookupOptionsLimit)
+			if err != nil {
+				return entityLookupResponse{}, err
+			}
 			entry.Options = toClickyNodeMap(options)
 			entry.Total = total
 			entry.Truncated = total > len(options)
 		default:
-			options, _ := f.Options("", 0)
+			options, _, err := f.Options("", 0)
+			if err != nil {
+				return entityLookupResponse{}, err
+			}
 			entry.Options = toClickyNodeMap(options)
 		}
 		response.Filters[f.Key] = entry
 	}
-	return response
+	return response, nil
 }
 
 func resolveLookup[T any](
@@ -1698,17 +1666,18 @@ func resolveLookup[T any](
 			Multi:      meta.Multi,
 			Searchable: searchable,
 			Selected:   selected[f.Key()],
-			Options: func(query string, limit int) (map[string]api.Textable, int) {
+			Options: func(query string, limit int) (map[string]api.Textable, int, error) {
 				if searchable {
-					return filterOptionsWithQuery(ctx, f, opts, query, limit)
+					options, total := filterOptionsWithQuery(ctx, f, opts, query, limit)
+					return options, total, nil
 				}
 				options := filterOptions(ctx, f, opts)
-				return options, len(options)
+				return options, len(options), nil
 			},
 		})
 	}
 
-	return resolveLookupCore(bound, searchKey, searchQuery), nil
+	return resolveLookupCore(bound, searchKey, searchQuery)
 }
 
 // filterIsSearchable reports whether filter exposes a head/search option set,

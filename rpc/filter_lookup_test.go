@@ -1,6 +1,7 @@
 package rpc
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -163,4 +164,30 @@ func TestSwaggerServer_FilterLookupRoutes(t *testing.T) {
 		assert.Equal(t, http.StatusNotFound, w.Code)
 		assert.Equal(t, 0, bulkExecutions)
 	})
+}
+
+func TestLookupPreservesUndeclaredSiblingParameters(t *testing.T) {
+	var captured map[string]string
+	op := &RPCOperation{
+		ContextLookupFunc: func(_ context.Context, flags map[string]string, _ []string) (any, error) {
+			captured = flags
+			return map[string]any{"filters": map[string]any{}}, nil
+		},
+	}
+	server := &SwaggerServer{
+		executor: NewCommandExecutor(&RPCService{}, &ExecutorConfig{}),
+	}
+	request := httptest.NewRequest(
+		http.MethodGet,
+		"/api/v1/profile?region=prod&filter.service=api&__lookup=filters",
+		nil,
+	)
+	response := httptest.NewRecorder()
+
+	server.handleLookupCommand(response, request, op)
+
+	require.Equal(t, http.StatusOK, response.Code)
+	assert.Equal(t, "prod", captured["region"])
+	assert.Equal(t, "api", captured["filter.service"])
+	assert.NotContains(t, captured, "__lookup")
 }

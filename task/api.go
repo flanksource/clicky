@@ -104,34 +104,77 @@ func RunControlHandler() http.Handler {
 // RunControlHandlerWithSource routes controls to the live owner of a run.
 func RunControlHandlerWithSource(source RunSource) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var request struct {
-			Action ControlAction `json:"action"`
-		}
-		decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10))
-		decoder.DisallowUnknownFields()
-		if err := decoder.Decode(&request); err != nil {
-			http.Error(w, "invalid control request: "+err.Error(), http.StatusBadRequest)
+		action, ok := decodeControlAction(w, r)
+		if !ok {
 			return
 		}
 		id := r.PathValue("id")
 		var err error
 		if groupByID(id) != nil {
-			err = ControlRun(r.Context(), id, request.Action)
+			err = ControlRun(r.Context(), id, action)
 		} else if source != nil {
-			err = source.Control(r.Context(), id, request.Action)
+			err = source.Control(r.Context(), id, action)
 		} else {
-			err = ControlRun(r.Context(), id, request.Action)
+			err = ControlRun(r.Context(), id, action)
 		}
 		if err != nil {
-			status := http.StatusConflict
-			if strings.Contains(err.Error(), "not found") {
-				status = http.StatusNotFound
-			}
-			http.Error(w, err.Error(), status)
+			writeControlError(w, err)
 			return
 		}
 		w.WriteHeader(http.StatusNoContent)
 	})
+}
+
+// TaskControlHandler performs a lifecycle action advertised by a child task.
+func TaskControlHandler() http.Handler {
+	return TaskControlHandlerWithSource(nil)
+}
+
+// TaskControlHandlerWithSource routes child controls to the live owner of a
+// run, including runs owned by an external source.
+func TaskControlHandlerWithSource(source RunSource) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		action, ok := decodeControlAction(w, r)
+		if !ok {
+			return
+		}
+		runID := r.PathValue("id")
+		taskID := r.PathValue("taskID")
+		var err error
+		if groupByID(runID) != nil {
+			err = ControlTask(r.Context(), runID, taskID, action)
+		} else if external, ok := source.(TaskControlSource); ok {
+			err = external.ControlTask(r.Context(), runID, taskID, action)
+		} else {
+			err = ControlTask(r.Context(), runID, taskID, action)
+		}
+		if err != nil {
+			writeControlError(w, err)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+	})
+}
+
+func decodeControlAction(w http.ResponseWriter, r *http.Request) (ControlAction, bool) {
+	var request struct {
+		Action ControlAction `json:"action"`
+	}
+	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4<<10))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&request); err != nil {
+		http.Error(w, "invalid control request: "+err.Error(), http.StatusBadRequest)
+		return "", false
+	}
+	return request.Action, true
+}
+
+func writeControlError(w http.ResponseWriter, err error) {
+	status := http.StatusConflict
+	if strings.Contains(err.Error(), "not found") {
+		status = http.StatusNotFound
+	}
+	http.Error(w, err.Error(), status)
 }
 
 // TaskStdinHandler writes live stdin to a task. Input is deliberately not
@@ -166,6 +209,7 @@ func TaskStdinHandler() http.Handler {
 //	GET {prefix}/tasks/runs/stream persistent SSE stream of RunMeta listings
 //	GET {prefix}/tasks/{id}    id-scoped snapshot (group + tasks)
 //	POST {prefix}/tasks/{id}/control lifecycle action
+//	POST {prefix}/tasks/{id}/tasks/{taskID}/control child lifecycle action
 //	POST {prefix}/tasks/{id}/tasks/{taskID}/stdin live stdin (never persisted)
 //
 // The {id} route reuses Go 1.22 net/http path-value routing; the stream route is
@@ -181,6 +225,7 @@ func RegisterHandlersWithSource(mux *http.ServeMux, prefix string, source RunSou
 	mux.Handle("GET "+prefix+"/tasks/stream", SSEHandlerWithSource(source))
 	mux.Handle("GET "+prefix+"/tasks/runs/stream", RunsSSEHandlerWithSource(source))
 	mux.Handle("POST "+prefix+"/tasks/{id}/control", RunControlHandlerWithSource(source))
+	mux.Handle("POST "+prefix+"/tasks/{id}/tasks/{taskID}/control", TaskControlHandlerWithSource(source))
 	mux.Handle("POST "+prefix+"/tasks/{id}/tasks/{taskID}/stdin", TaskStdinHandler())
 	mux.Handle("GET "+prefix+"/tasks/{id}", RunHandlerWithSource(source))
 	timeseries := Metrics()

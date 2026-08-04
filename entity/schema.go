@@ -30,6 +30,7 @@ type schemaProperty struct {
 	IsID        bool            `json:"x-clicky-id"`
 	IsName      bool            `json:"x-clicky-name"`
 	Filter      string          `json:"x-clicky-filter"`
+	FilterKey   string          `json:"x-clicky-filter-key"`
 	Label       string          `json:"x-clicky-label"`
 	PrettyFmt   string          `json:"x-clicky-format"`
 	Short       bool            `json:"x-clicky-short"`
@@ -46,6 +47,7 @@ type schemaField struct {
 	PrettyFmt string
 	Short     bool
 	Filter    string // referenced named filter; "" => not filterable
+	FilterKey string // bound CLI/query parameter; defaults to Name
 }
 
 func (f schemaField) isArray() bool { return f.JSONType == "array" }
@@ -99,9 +101,13 @@ func parseSchema(raw []byte) (*parsedSchema, error) {
 			PrettyFmt: p.PrettyFmt,
 			Short:     p.Short,
 			Filter:    p.Filter,
+			FilterKey: p.FilterKey,
 		}
 		if p.Items != nil {
 			field.ItemType = p.Items.Type
+		}
+		if field.Filter != "" && field.FilterKey == "" {
+			field.FilterKey = name
 		}
 		if p.IsID {
 			if ps.IDKey != "" {
@@ -142,7 +148,7 @@ func (ps *parsedSchema) listType() reflect.Type {
 		fields = append(fields, reflect.StructField{
 			Name: f.GoName,
 			Type: fieldType,
-			Tag:  reflect.StructTag(fmt.Sprintf("flag:%q json:%q", f.Name, f.Name)),
+			Tag:  reflect.StructTag(fmt.Sprintf("flag:%q json:%q", f.FilterKey, f.FilterKey)),
 		})
 	}
 	return reflect.StructOf(fields)
