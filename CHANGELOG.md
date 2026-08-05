@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.21.54](https://github.com/flanksource/clicky/compare/v1.21.53...v1.21.54) (2026-08-05)
+
+
+### ⚠ BREAKING CHANGES
+
+* DynamicFilter.Options and Selected now return errors; update implementations and callers accordingly.
+* **entity:** schema-declared filters now use their bound filter key for requests instead of the property name.
+
+Claude-Session-Id: 131441b4-c773-478c-87f4-5f7174a16d4d
+
+### ✨ Features
+
+* Expand RPC schemas and task runtime controls ([49957ea](https://github.com/flanksource/clicky/commit/49957eac923284d21b06018b46b9cc10772c6a6e))
+* **api:** Add ANSI text rendering and schema-driven column formatting ([7c8a87a](https://github.com/flanksource/clicky/commit/7c8a87af8c0a19b4a9a370f27d343bc15ba17a0f))
+* **entity:** support filters without schema properties ([de65632](https://github.com/flanksource/clicky/commit/de656322b111f205c6732ca70de55df2e44596c8))
+
+
+### 👷 CI/CD
+
+* **ci:** provide GitHub token to Gavel workflows ([052b907](https://github.com/flanksource/clicky/commit/052b9078283527a563ec664a37626f34ec70ac54))
+
+
+### 🔧 Maintenance
+
+* **release:** pin sub-modules to v1.21.53 [skip ci] ([f469e91](https://github.com/flanksource/clicky/commit/f469e911a0b1cb7619eb06a9cff3d678338e2d2f))
+
 ## [1.21.53](https://github.com/flanksource/clicky/compare/v1.21.52...v1.21.53) (2026-07-31)
 
 
