@@ -386,6 +386,7 @@ func (g *OpenAPIGenerator) convertOperationToOpenAPI(op RPCOperation) OpenAPIOpe
 		meta.Aliases = nil
 		meta.Admin = false
 		meta.Icon = ""
+		meta.Path = ""
 		meta.Title = ""
 		meta.Order = 0
 		openAPIOp.Clicky = &meta
@@ -682,6 +683,7 @@ func (g *OpenAPIGenerator) buildClickySpecMeta(operations []RPCOperation) *Click
 					Admin:  meta.Admin,
 					Title:  title,
 					Icon:   meta.Icon,
+					Path:   meta.Path,
 					Order:  index,
 				},
 				baseKey: baseKey,

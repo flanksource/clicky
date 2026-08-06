@@ -18,6 +18,7 @@ type jsonSchema struct {
 	Aliases    []string                   `json:"x-clicky-aliases"`
 	Parent     string                     `json:"x-clicky-parent"`
 	Icon       string                     `json:"x-clicky-icon"`
+	Path       string                     `json:"x-clicky-path"`
 	Title      string                     `json:"x-clicky-title"`
 }
 
@@ -57,6 +58,7 @@ type parsedSchema struct {
 	Aliases []string
 	Parent  string
 	Icon    string
+	Path    string
 	Title   string
 	IDKey   string
 	NameKey string
@@ -81,7 +83,7 @@ func parseSchema(raw []byte) (*parsedSchema, error) {
 	}
 	sort.Strings(names)
 
-	ps := &parsedSchema{Aliases: doc.Aliases, Parent: doc.Parent, Icon: doc.Icon, Title: doc.Title}
+	ps := &parsedSchema{Aliases: doc.Aliases, Parent: doc.Parent, Icon: doc.Icon, Path: doc.Path, Title: doc.Title}
 	seen := map[string]int{}
 	for _, name := range names {
 		p := doc.Properties[name]

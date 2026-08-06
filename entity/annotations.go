@@ -13,6 +13,7 @@ const (
 	annotationClickyEntityAliases      = "clicky/entity-aliases"
 	annotationClickyEntityAdmin        = "clicky/entity-admin"
 	annotationClickyEntityIcon         = "clicky/entity-icon"
+	annotationClickyEntityPath         = "clicky/entity-path"
 	annotationClickyEntityTitle        = "clicky/entity-title"
 	annotationClickyOperationVerb      = "clicky/operation-verb"
 	annotationClickyOperationMethod    = "clicky/operation-method"
@@ -58,6 +59,8 @@ type CommandOpenAPIMeta struct {
 	// Icon is an opaque UI icon name (e.g. "database"); clicky never interprets
 	// it — it is emitted verbatim on the surface for the frontend to resolve.
 	Icon string
+	// Path is the entity's hierarchy position within Parent, PathSeparator-joined.
+	Path string
 	// Title overrides the auto-generated surface title when non-empty.
 	Title              string
 	Verb               string
@@ -116,6 +119,7 @@ func GetCommandOpenAPIMeta(cmd *cobra.Command) *CommandOpenAPIMeta {
 		Aliases:            splitAnnotationList(cmd.Annotations[annotationClickyEntityAliases]),
 		Admin:              parseAnnotationBool(cmd.Annotations[annotationClickyEntityAdmin]),
 		Icon:               cmd.Annotations[annotationClickyEntityIcon],
+		Path:               cmd.Annotations[annotationClickyEntityPath],
 		Title:              cmd.Annotations[annotationClickyEntityTitle],
 		Verb:               cmd.Annotations[annotationClickyOperationVerb],
 		Method:             cmd.Annotations[annotationClickyOperationMethod],
@@ -146,6 +150,7 @@ func annotateEntityCommand(cmd *cobra.Command, entity EntityInfo) {
 	setCommandAnnotation(cmd, annotationClickyEntityAliases, strings.Join(entity.Aliases, ","))
 	setCommandAnnotation(cmd, annotationClickyEntityAdmin, strconv.FormatBool(entity.IsAdmin))
 	setCommandAnnotation(cmd, annotationClickyEntityIcon, entity.Icon)
+	setCommandAnnotation(cmd, annotationClickyEntityPath, entity.Path)
 	setCommandAnnotation(cmd, annotationClickyEntityTitle, entity.Title)
 	hints := entity.ToolHints
 	if hints.Group == "" {
@@ -223,6 +228,7 @@ func inheritEntityAnnotations(cmd *cobra.Command, parent *cobra.Command) {
 	setCommandAnnotation(cmd, annotationClickyEntityAliases, strings.Join(meta.Aliases, ","))
 	setCommandAnnotation(cmd, annotationClickyEntityAdmin, strconv.FormatBool(meta.Admin))
 	setCommandAnnotation(cmd, annotationClickyEntityIcon, meta.Icon)
+	setCommandAnnotation(cmd, annotationClickyEntityPath, meta.Path)
 	setCommandAnnotation(cmd, annotationClickyEntityTitle, meta.Title)
 	AnnotateTool(cmd, meta.ToolHints)
 }

@@ -60,6 +60,9 @@ type EntityInfo struct {
 	// Icon is an opaque UI icon name carried through to the OpenAPI surface
 	// (x-clicky.surfaces[].icon). Empty for entities that declare no icon.
 	Icon string
+	// Path is the entity's hierarchy position within Parent, PathSeparator-joined
+	// (x-clicky.surfaces[].path). Empty for entities that declare no hierarchy.
+	Path string
 	// Title overrides the auto-generated surface title when non-empty.
 	Title       string
 	Type        reflect.Type
@@ -320,6 +323,18 @@ type ActionSpec[R any] struct {
 	toolHints  MCPToolHints
 }
 
+// dataOrError type-erases a typed handler result, dropping the value when the
+// handler failed. Without it a failed handler's zero R is boxed into a non-nil
+// `any`, and callers that branch on `data != nil` (the RPC executor serializing
+// partial results) render a zero struct as the response body — hiding the error
+// behind `{"field": "", ...}`.
+func dataOrError[R any](result R, err error) (any, error) {
+	if err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
 // Action creates a typed custom operation on a single entity by ID.
 func Action[R any](name string, fn func(id string, flags map[string]string) (R, error)) *ActionSpec[R] {
 	return &ActionSpec[R]{name: name, run: fn}
@@ -420,7 +435,7 @@ func (a *ActionSpec[R]) actionInfo() ActionInfo {
 			if err != nil {
 				return nil, err
 			}
-			return a.runCtx(ctx, id, flagMap)
+			return dataOrError(a.runCtx(ctx, id, flagMap))
 		}
 	} else {
 		info.DataFunc = func(flagMap map[string]string, args []string) (any, error) {
@@ -428,7 +443,7 @@ func (a *ActionSpec[R]) actionInfo() ActionInfo {
 			if err != nil {
 				return nil, err
 			}
-			return a.run(id, flagMap)
+			return dataOrError(a.run(id, flagMap))
 		}
 	}
 	return info
@@ -497,7 +512,7 @@ func (b *BulkActionSpec[R]) bulkActionInfo(resolveOpts func(map[string]string) (
 	}
 	if b.run != nil {
 		info.DataFunc = func(flagMap map[string]string, args []string) (any, error) {
-			return b.run(args, flagMap)
+			return dataOrError(b.run(args, flagMap))
 		}
 	} else {
 		info.DataFunc = func(flagMap map[string]string, args []string) (any, error) {
@@ -510,7 +525,7 @@ func (b *BulkActionSpec[R]) bulkActionInfo(resolveOpts func(map[string]string) (
 			if err != nil {
 				return nil, err
 			}
-			return b.filterFunc(opts, flagMap)
+			return dataOrError(b.filterFunc(opts, flagMap))
 		}
 	}
 	return info
@@ -700,7 +715,7 @@ func entityGetOperation[T EntityItem, ListOpts any, R any](e Entity[T, ListOpts,
 			if err != nil {
 				return nil, err
 			}
-			return e.GetWithFlagsAndContext(ctx, id, flagMap)
+			return dataOrError(e.GetWithFlagsAndContext(ctx, id, flagMap))
 		}
 	case e.GetWithFlags != nil:
 		op.FlagsType = actionFlagsType(e.GetFlags)
@@ -709,7 +724,7 @@ func entityGetOperation[T EntityItem, ListOpts any, R any](e Entity[T, ListOpts,
 			if err != nil {
 				return nil, err
 			}
-			return e.GetWithFlags(id, flagMap)
+			return dataOrError(e.GetWithFlags(id, flagMap))
 		}
 	case e.GetWithContext != nil:
 		op.ContextDataFunc = func(ctx context.Context, flagMap map[string]string, args []string) (any, error) {
@@ -717,7 +732,7 @@ func entityGetOperation[T EntityItem, ListOpts any, R any](e Entity[T, ListOpts,
 			if err != nil {
 				return nil, err
 			}
-			return e.GetWithContext(ctx, id)
+			return dataOrError(e.GetWithContext(ctx, id))
 		}
 	case e.Get != nil:
 		op.DataFunc = func(flagMap map[string]string, args []string) (any, error) {
@@ -725,7 +740,7 @@ func entityGetOperation[T EntityItem, ListOpts any, R any](e Entity[T, ListOpts,
 			if err != nil {
 				return nil, err
 			}
-			return e.Get(id)
+			return dataOrError(e.Get(id))
 		}
 	default:
 		return EntityOperation{}, false
@@ -773,11 +788,11 @@ func RegisterEntity[T EntityItem, ListOpts any, R any](e Entity[T, ListOpts, R])
 		op := EntityOperation{Verb: "create", ResponseType: responseTypeOf[R]()}
 		if e.CreateWithContext != nil {
 			op.ContextDataFunc = func(ctx context.Context, flagMap map[string]string, args []string) (any, error) {
-				return e.CreateWithContext(ctx, entityBody(flagMap))
+				return dataOrError(e.CreateWithContext(ctx, entityBody(flagMap)))
 			}
 		} else {
 			op.DataFunc = func(flagMap map[string]string, args []string) (any, error) {
-				return e.Create(entityBody(flagMap))
+				return dataOrError(e.Create(entityBody(flagMap)))
 			}
 		}
 		info.Operations = append(info.Operations, op)
@@ -791,7 +806,7 @@ func RegisterEntity[T EntityItem, ListOpts any, R any](e Entity[T, ListOpts, R])
 				if err != nil {
 					return nil, err
 				}
-				return e.UpdateWithContext(ctx, id, entityBodyExcludingID(flagMap))
+				return dataOrError(e.UpdateWithContext(ctx, id, entityBodyExcludingID(flagMap)))
 			}
 		} else {
 			op.DataFunc = func(flagMap map[string]string, args []string) (any, error) {
@@ -799,7 +814,7 @@ func RegisterEntity[T EntityItem, ListOpts any, R any](e Entity[T, ListOpts, R])
 				if err != nil {
 					return nil, err
 				}
-				return e.Update(id, entityBodyExcludingID(flagMap))
+				return dataOrError(e.Update(id, entityBodyExcludingID(flagMap)))
 			}
 		}
 		info.Operations = append(info.Operations, op)

@@ -15,9 +15,9 @@ import (
 )
 
 // TestOpenAPIGenerator_DynamicEntitySurfaceIcon asserts that the x-clicky-icon /
-// x-clicky-title carried by a dynamic entity propagate to the OpenAPI surface
-// (x-clicky.surfaces[].icon / .title), and that icon does NOT leak onto the
-// operation-level x-clicky.
+// x-clicky-path / x-clicky-title carried by a dynamic entity propagate to the
+// OpenAPI surface (x-clicky.surfaces[].icon / .path / .title), and that icon
+// does NOT leak onto the operation-level x-clicky.
 func TestOpenAPIGenerator_DynamicEntitySurfaceIcon(t *testing.T) {
 	const entityName = "openapi-icon-stack"
 	root := &cobra.Command{Use: "testapp"}
@@ -25,6 +25,7 @@ func TestOpenAPIGenerator_DynamicEntitySurfaceIcon(t *testing.T) {
 	clicky.RegisterDynamicEntity(clicky.DynamicEntitySpec{
 		Name:     entityName,
 		Icon:     "database",
+		Path:     "jms/incoming",
 		Title:    "My Stack",
 		ListType: reflect.StructOf(nil),
 		List: func(context.Context, map[string]string, []string) (any, error) {
@@ -47,6 +48,7 @@ func TestOpenAPIGenerator_DynamicEntitySurfaceIcon(t *testing.T) {
 	}
 	require.NotNil(t, surface, "surface for %q missing", entityName)
 	assert.Equal(t, "database", surface.Icon, "surface carries the entity icon")
+	assert.Equal(t, "jms/incoming", surface.Path, "surface carries the entity hierarchy path")
 	assert.Equal(t, "My Stack", surface.Title, "surface title overridden by x-clicky-title")
 
 	listOp := spec.Paths["/api/v1/"+entityName]["get"]

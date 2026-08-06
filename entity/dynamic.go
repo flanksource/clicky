@@ -83,6 +83,7 @@ func (b *DynamicEntityBuilder) Register() {
 		Parent:     ps.Parent,
 		Aliases:    ps.Aliases,
 		Icon:       ps.Icon,
+		Path:       ps.Path,
 		Title:      ps.Title,
 		ListType:   ps.listType(),
 		ItemType:   ps.itemType(),
