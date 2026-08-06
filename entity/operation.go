@@ -47,7 +47,13 @@ type ClickySurface struct {
 	Description string `json:"description,omitempty"`
 	// Icon is an opaque UI icon name (e.g. "database") the frontend resolves to
 	// a glyph. Emitted verbatim from the entity's x-clicky-icon annotation.
-	Icon  string `json:"icon,omitempty"`
+	Icon string `json:"icon,omitempty"`
+	// Path is this surface's position within its Parent group, always separated
+	// by PathSeparator (e.g. "jms/incoming/disbursements"). Producers split
+	// their own naming convention with SplitPath before emitting it, so the
+	// frontend never guesses a delimiter. Empty — the default for every surface
+	// that does not opt in — means the group renders as a flat list.
+	Path  string `json:"path,omitempty"`
 	Order int    `json:"-"`
 }
 
@@ -63,6 +69,7 @@ type ClickyOperationMeta struct {
 	Aliases            []string      `json:"-"`
 	Admin              bool          `json:"-"`
 	Icon               string        `json:"-"`
+	Path               string        `json:"-"`
 	Title              string        `json:"-"`
 	Verb               string        `json:"verb,omitempty"`
 	Scope              string        `json:"scope,omitempty"`

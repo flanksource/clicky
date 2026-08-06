@@ -309,7 +309,7 @@ func addNamedCommand[T any, R any](
 			if err := flags.PopulateFromRequest(optsValue, capturedFields, flagMap, args); err != nil {
 				return nil, err
 			}
-			return fnCtx(ctx, optsValue.Interface().(T))
+			return dataOrError(fnCtx(ctx, optsValue.Interface().(T)))
 		})
 	} else {
 		dataFuncRegistry.Store(cmd, func(flagMap map[string]string, args []string) (any, error) {
@@ -317,7 +317,7 @@ func addNamedCommand[T any, R any](
 			if err := flags.PopulateFromRequest(optsValue, capturedFields, flagMap, args); err != nil {
 				return nil, err
 			}
-			return fn(optsValue.Interface().(T))
+			return dataOrError(fn(optsValue.Interface().(T)))
 		})
 	}
 

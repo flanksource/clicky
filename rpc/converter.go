@@ -180,6 +180,7 @@ func (c *Converter) ConvertCommand(cmd *cobra.Command) (*RPCOperation, error) {
 		operation.Clicky.Aliases = append([]string(nil), meta.Aliases...)
 		operation.Clicky.Admin = meta.Admin
 		operation.Clicky.Icon = meta.Icon
+		operation.Clicky.Path = meta.Path
 		operation.Clicky.Title = meta.Title
 		operation.Clicky.Verb = meta.Verb
 		operation.Clicky.Scope = meta.Scope

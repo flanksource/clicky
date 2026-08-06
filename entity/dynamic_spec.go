@@ -35,6 +35,8 @@ type DynamicEntitySpec struct {
 	Aliases []string
 	// Icon is an opaque UI icon name emitted on the surface (x-clicky.surfaces[].icon).
 	Icon string
+	// Path is the hierarchy position emitted on the surface (x-clicky.surfaces[].path).
+	Path string
 	// Title overrides the auto-generated surface title when non-empty.
 	Title    string
 	ListType reflect.Type // generated struct type: flag binding + OpenAPI params
@@ -77,6 +79,7 @@ func RegisterDynamicEntity(spec DynamicEntitySpec) {
 		Parent:     spec.Parent,
 		Aliases:    spec.Aliases,
 		Icon:       spec.Icon,
+		Path:       spec.Path,
 		Title:      spec.Title,
 		Type:       responseType,
 		ListType:   spec.ListType,
