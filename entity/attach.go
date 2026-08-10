@@ -54,6 +54,9 @@ func (a *attachedFilter[ListOpts]) FilterName() string { return a.nf.Name }
 // inferred bool/number/date/multi-filter type in place).
 func (a *attachedFilter[ListOpts]) LookupType() string { return a.nf.Type }
 
+// LookupLimit returns the filter's own option cap, or zero to take the default.
+func (a *attachedFilter[ListOpts]) LookupLimit() int { return a.nf.Limit }
+
 // Lookup labels the currently-selected value(s) of the bound field. It does not
 // mutate opts — named filters carry no backend transform.
 func (a *attachedFilter[ListOpts]) Lookup(opts *ListOpts) (map[string]api.Textable, error) {
