@@ -65,6 +65,15 @@ func (f *FormatManager) JSON(data interface{}) (string, error) {
 	return f.jsonFormatter.Format(data)
 }
 
+// NDJSON renders data as JSON Lines — the format the streaming export serves
+// and the --format spec has always advertised.
+func (f *FormatManager) NDJSON(data interface{}) (string, error) {
+	if f.jsonFormatter == nil {
+		f.jsonFormatter = NewJSONFormatter()
+	}
+	return f.jsonFormatter.FormatLines(data)
+}
+
 // YAML implements api.FormatManager.
 func (f *FormatManager) YAML(data interface{}) (string, error) {
 	if f.yamlFormatter == nil {
@@ -151,6 +160,8 @@ func (f *FormatManager) Format(format string, data interface{}) (string, error) 
 	switch format {
 	case "json":
 		return f.JSON(data)
+	case "ndjson":
+		return f.NDJSON(data)
 	case "yaml", "yml":
 		return f.YAML(data)
 	case "csv":
@@ -281,6 +292,9 @@ func (f *FormatManager) formatWithOptions(options FormatOptions, data ...any) (s
 	case "json":
 
 		return f.JSON(d)
+
+	case "ndjson":
+		return f.NDJSON(d)
 
 	case "yaml", "yml":
 		return f.YAML(d)

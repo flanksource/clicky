@@ -20,9 +20,22 @@ func NewExcelFormatter() *ExcelFormatter {
 	}
 }
 
-// Format is not supported for Excel as it needs to write to files
+// Format renders data as the bytes of an xlsx workbook.
+//
+// The string is binary, not text — callers write it verbatim (FormatToFile does,
+// and a --format excel sink is a file). It is a string because that is the
+// FormatterFunc contract every other format shares.
 func (f *ExcelFormatter) Format(data interface{}) (string, error) {
-	return "", fmt.Errorf("Excel formatter requires file output - use FormatToFile instead")
+	// Unwrap single-element varargs slices, as the other formatters do.
+	if slice, ok := data.([]interface{}); ok && len(slice) == 1 {
+		data = slice[0]
+	}
+
+	prettyData, err := ToPrettyData(data)
+	if err != nil {
+		return "", fmt.Errorf("failed to convert data to PrettyData: %w", err)
+	}
+	return f.FormatPrettyData(prettyData)
 }
 
 // FormatToFile creates an Excel file and saves it to the specified path
@@ -41,9 +54,24 @@ func (f *ExcelFormatter) FormatToFile(data interface{}, filename string) error {
 	return f.FormatPrettyDataToFile(prettyData, filename, file)
 }
 
-// FormatPrettyDataToFile formats PrettyData to Excel file
+// FormatPrettyDataToFile formats PrettyData into file and saves it to filename.
 func (f *ExcelFormatter) FormatPrettyDataToFile(data *api.PrettyData, filename string, file *excelize.File) error {
-	if data == nil || data.Schema == nil {
+	if err := f.writeSheet(data, file); err != nil {
+		return err
+	}
+	if err := file.SaveAs(filename); err != nil {
+		return fmt.Errorf("failed to save Excel file: %w", err)
+	}
+	return nil
+}
+
+// writeSheet lays the PrettyData's first table out on a worksheet.
+//
+// The guard admits a nil Schema: every table-shaped PrettyData has one, because
+// api.TryTypedValue populates TypedValue.Table and leaves Schema alone. Rejecting
+// it turned away exactly the data this formatter exists to write.
+func (f *ExcelFormatter) writeSheet(data *api.PrettyData, file *excelize.File) error {
+	if data == nil || (data.Schema == nil && data.FirstTable() == nil) {
 		return fmt.Errorf("no data to format")
 	}
 
@@ -94,14 +122,14 @@ func (f *ExcelFormatter) FormatPrettyDataToFile(data *api.PrettyData, filename s
 	}
 	currentRow++
 
-	// Write data rows using Text.String() for formatted text
+	// Write data rows using Text.String() for formatted text. AsString resolves
+	// each header through FieldNames — rows are keyed by column name, so looking
+	// them up by header label silently blanked every column carrying a label.
 	for _, row := range table.Rows {
-		for i, fieldName := range headers {
+		for i, cell := range table.AsString(row) {
 			cellRef := f.getCellReference(i+1, currentRow)
-			if fieldValue, exists := row[fieldName]; exists {
-				if err := file.SetCellValue(sheetName, cellRef, fieldValue.String()); err != nil {
-					return fmt.Errorf("failed to set cell value: %w", err)
-				}
+			if err := file.SetCellValue(sheetName, cellRef, cell); err != nil {
+				return fmt.Errorf("failed to set cell value: %w", err)
 			}
 		}
 		currentRow++
@@ -116,11 +144,6 @@ func (f *ExcelFormatter) FormatPrettyDataToFile(data *api.PrettyData, filename s
 		}
 	}
 
-	// Save the file
-	if err := file.SaveAs(filename); err != nil {
-		return fmt.Errorf("failed to save Excel file: %w", err)
-	}
-
 	return nil
 }
 
@@ -131,7 +154,7 @@ func (f *ExcelFormatter) FormatPrettyData(data *api.PrettyData) (string, error) 
 		_ = file.Close() // ignore error on close
 	}()
 
-	if err := f.FormatPrettyDataToFile(data, "", file); err != nil {
+	if err := f.writeSheet(data, file); err != nil {
 		return "", err
 	}
 

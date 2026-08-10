@@ -420,7 +420,6 @@ func convertLinkCommand(link api.LinkCommand) ClickyNode {
 func convertList(list api.List) ClickyNode {
 	node := ClickyNode{
 		Kind:     "list",
-		Plain:    list.String(),
 		Ordered:  list.Numbered || list.Ordered,
 		Unstyled: list.Unstyled,
 		Inline:   list.MaxInline > 0 && len(list.Items) <= list.MaxInline,
@@ -439,7 +438,7 @@ func convertList(list api.List) ClickyNode {
 }
 
 func convertTextList(list api.TextList) ClickyNode {
-	node := ClickyNode{Kind: "list", Plain: list.String()}
+	node := ClickyNode{Kind: "list"}
 	for _, item := range list {
 		node.Items = append(node.Items, convertTextable(item))
 	}
@@ -459,7 +458,7 @@ func convertTextMap(tm api.TextMap, schema *api.PrettyObject) ClickyNode {
 			Value: convertTextable(value),
 		})
 	}
-	return ClickyNode{Kind: "map", Plain: tm.String(), Fields: fields}
+	return ClickyNode{Kind: "map", Fields: fields}
 }
 
 func convertTypedMap(tm *api.TypedMap, schema *api.PrettyObject) ClickyNode {
@@ -479,7 +478,7 @@ func convertTypedMap(tm *api.TypedMap, schema *api.PrettyObject) ClickyNode {
 			Value: convertTypedValue(&value, nil),
 		})
 	}
-	return ClickyNode{Kind: "map", Plain: tm.String(), Fields: fields}
+	return ClickyNode{Kind: "map", Fields: fields}
 }
 
 func convertTypedList(tl *api.TypedList) ClickyNode {
@@ -487,7 +486,7 @@ func convertTypedList(tl *api.TypedList) ClickyNode {
 		return ClickyNode{Kind: "list"}
 	}
 
-	node := ClickyNode{Kind: "list", Plain: tl.String()}
+	node := ClickyNode{Kind: "list"}
 	for _, item := range *tl {
 		node.Items = append(node.Items, convertTypedValue(&item, nil))
 	}
@@ -499,7 +498,7 @@ func convertTable(table *api.TextTable) ClickyNode {
 		return ClickyNode{Kind: "table"}
 	}
 
-	node := ClickyNode{Kind: "table", Plain: table.String()}
+	node := ClickyNode{Kind: "table"}
 
 	if len(table.Headers) > 0 {
 		for i, header := range table.Headers {
@@ -525,8 +524,15 @@ func convertTable(table *api.TextTable) ClickyNode {
 				column.Label = header.String()
 			}
 
-			headerNode := convertTextable(header)
-			column.Header = &headerNode
+			// A header node that says exactly what Label already says is three
+			// copies of one string per column. It is kept only when it carries
+			// something Label cannot — styling, a tooltip, nested content.
+			headerNode := compactNode(convertTextable(header))
+			if headerNode.Kind != "text" || headerNode.Plain != "" ||
+				headerNode.Text != column.Label || headerNode.Style != nil ||
+				headerNode.Tooltip != nil || len(headerNode.Children) > 0 {
+				column.Header = &headerNode
+			}
 			node.Columns = append(node.Columns, column)
 		}
 	} else {
@@ -554,13 +560,13 @@ func convertTable(table *api.TextTable) ClickyNode {
 			if cell, ok := row[column.Name]; ok {
 				cellNode := convertTypedValue(&cell, nil)
 				cellNode.FilterValue = cell.FilterValue
-				rowNode.Cells[column.Name] = cellNode
+				rowNode.Cells[column.Name] = compactNode(cellNode)
 				continue
 			}
 			if cell, ok := row[column.Label]; ok {
 				cellNode := convertTypedValue(&cell, nil)
 				cellNode.FilterValue = cell.FilterValue
-				rowNode.Cells[column.Name] = cellNode
+				rowNode.Cells[column.Name] = compactNode(cellNode)
 				continue
 			}
 			rowNode.Cells[column.Name] = clickyTextNode("")
@@ -569,7 +575,7 @@ func convertTable(table *api.TextTable) ClickyNode {
 			if _, exists := rowNode.Cells[cellName]; exists {
 				continue
 			}
-			rowNode.Cells[cellName] = convertTypedValue(&cell, nil)
+			rowNode.Cells[cellName] = compactNode(convertTypedValue(&cell, nil))
 		}
 
 		if rowIndex < len(table.RowDetail) && table.RowDetail[rowIndex] != nil {
@@ -588,7 +594,7 @@ func convertTree(tree *api.TextTree) ClickyNode {
 		return ClickyNode{Kind: "tree"}
 	}
 
-	node := ClickyNode{Kind: "tree", Plain: tree.String()}
+	node := ClickyNode{Kind: "tree"}
 	if tree.Node == nil {
 		for index, child := range tree.Children {
 			node.Roots = append(node.Roots, convertTreeItem(&child, fmt.Sprintf("root-%d", index)))
@@ -695,7 +701,7 @@ func convertFootnote(footnote api.Footnote) ClickyNode {
 }
 
 func convertFootnotes(footnotes api.Footnotes) ClickyNode {
-	node := ClickyNode{Kind: "footnotes", Plain: footnotes.String()}
+	node := ClickyNode{Kind: "footnotes"}
 	for _, footnote := range footnotes.Items {
 		if strings.TrimSpace(footnote.ID) == "" {
 			continue
@@ -797,7 +803,7 @@ func convertButton(button api.Button) ClickyNode {
 }
 
 func convertButtonGroup(group api.ButtonGroup) ClickyNode {
-	node := ClickyNode{Kind: "button-group", Plain: group.String()}
+	node := ClickyNode{Kind: "button-group"}
 	for _, button := range group.Buttons {
 		node.Items = append(node.Items, convertButton(button))
 	}
@@ -845,7 +851,7 @@ func convertLabelBadge(b api.LabelBadge) ClickyNode {
 }
 
 func convertDescriptionList(list api.DescriptionList) ClickyNode {
-	node := ClickyNode{Kind: "map", Plain: list.String()}
+	node := ClickyNode{Kind: "map"}
 	for _, item := range list.Items {
 		if item.IsEmpty() {
 			continue
@@ -867,7 +873,76 @@ func convertAnyToNode(value any) ClickyNode {
 }
 
 func clickyTextNode(text string) ClickyNode {
-	return ClickyNode{Kind: "text", Plain: text, Text: text}
+	return ClickyNode{Kind: "text", Text: text}
+}
+
+// PlainText flattens a node to the string a reader sorts, filters and searches
+// on, following the same fallback order the clicky-ui renderer uses.
+//
+// It exists because Plain is now omitted wherever it would only repeat what is
+// already derivable: which field carries the string is an encoding detail, and
+// a consumer that reads one field directly breaks the moment the encoding gets
+// cheaper.
+func (n ClickyNode) PlainText() string {
+	if n.Plain != "" {
+		return n.Plain
+	}
+	if n.Text != "" {
+		return n.Text
+	}
+	if n.Source != "" {
+		return n.Source
+	}
+	parts := make([]string, 0, len(n.Children)+len(n.Items)+len(n.Fields))
+	for _, child := range n.Children {
+		parts = append(parts, child.PlainText())
+	}
+	for _, item := range n.Items {
+		parts = append(parts, item.PlainText())
+	}
+	for _, field := range n.Fields {
+		parts = append(parts, field.Value.PlainText())
+	}
+	joined := make([]string, 0, len(parts))
+	for _, part := range parts {
+		if part != "" {
+			joined = append(joined, part)
+		}
+	}
+	return strings.Join(joined, " ")
+}
+
+// compactNode drops the copies of a node's text that a reader can derive.
+//
+// Plain, Text and FilterValue are three projections of the same string and are
+// usually byte-identical: for a leaf, Plain is what String() rendered and Text
+// is the content it rendered from. Sending all three triples the cost of every
+// cell in a table for no added meaning.
+//
+// Only exact duplicates are dropped. Plain survives wherever it says something
+// Text does not — a styled or composite node whose rendering differs from its
+// raw content — because it is the sort and filter key, and deriving the wrong
+// one silently reorders a table.
+func compactNode(node ClickyNode) ClickyNode {
+	// A lone text child inside a text parent adds a nesting level and repeats
+	// the same string; the parent can carry it directly.
+	if node.Kind == "text" && node.Text == "" && len(node.Children) == 1 {
+		if child := node.Children[0]; child.Kind == "text" && len(child.Children) == 0 &&
+			child.Tooltip == nil && child.Style == nil && child.Href == "" {
+			node.Text = child.Text
+			if node.Plain == "" {
+				node.Plain = child.Plain
+			}
+			node.Children = nil
+		}
+	}
+	if node.Plain == node.Text {
+		node.Plain = ""
+	}
+	if filter, ok := node.FilterValue.(string); ok && (filter == node.Plain || filter == node.Text) {
+		node.FilterValue = nil
+	}
+	return node
 }
 
 func convertTextStyle(styleStr string, class api.Class, monospace bool) *ClickyStyle {
