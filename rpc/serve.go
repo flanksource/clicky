@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/flanksource/clicky"
+	"github.com/flanksource/clicky/entity"
 	"github.com/flanksource/clicky/formatters"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
@@ -303,7 +304,21 @@ func (s *SwaggerServer) renderSpec(format specFormat) (*specDocument, error) {
 		return nil, fmt.Errorf("failed to generate OpenAPI spec: %w", err)
 	}
 
+	doc, err := encodeSpec(spec, format)
+	if err != nil {
+		return nil, err
+	}
+	if s.specDocs == nil {
+		s.specDocs = make(map[specFormat]*specDocument, 2)
+	}
+	s.specDocs[format] = doc
+	return doc, nil
+}
+
+// encodeSpec renders a document and its content validator.
+func encodeSpec(spec *OpenAPISpec, format specFormat) (*specDocument, error) {
 	var body []byte
+	var err error
 	if format == specFormatYAML {
 		body, err = yaml.Marshal(spec)
 	} else {
@@ -312,13 +327,31 @@ func (s *SwaggerServer) renderSpec(format specFormat) (*specDocument, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to encode OpenAPI spec as %s: %w", format, err)
 	}
+	return &specDocument{body: body, etag: contentETag(body)}, nil
+}
 
-	doc := &specDocument{body: body, etag: contentETag(body)}
-	if s.specDocs == nil {
-		s.specDocs = make(map[specFormat]*specDocument, 2)
+// specDocument returns the document to serve this request.
+//
+// The memoized rendering is a pure function of the command tree, which a
+// dynamic-entity family is not part of: its instances come and go while the
+// server runs, so a document that described them would be stale the moment it
+// was cached. A consumer with no families therefore never leaves the cache,
+// and one with families pays a rendering per request for a document that is
+// true when it is read — which is the point of registering a family at all.
+func (s *SwaggerServer) specDocument(r *http.Request, format specFormat) (*specDocument, error) {
+	families := entity.GetDynamicEntityFamilies()
+	if len(families) == 0 {
+		return s.renderSpec(format)
 	}
-	s.specDocs[format] = doc
-	return doc, nil
+
+	spec, err := s.generator.GenerateFromCobraWithConfig(s.rootCmd, s.converterCfg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate OpenAPI spec: %w", err)
+	}
+	if err := s.addFamilyPaths(r.Context(), spec, families); err != nil {
+		return nil, err
+	}
+	return encodeSpec(spec, format)
 }
 
 // serveSpec writes a rendered OpenAPI document, answering a matching
@@ -333,7 +366,7 @@ func (s *SwaggerServer) serveSpec(w http.ResponseWriter, r *http.Request, format
 		return
 	}
 
-	doc, err := s.renderSpec(format)
+	doc, err := s.specDocument(r, format)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -581,6 +614,17 @@ func (s *SwaggerServer) registerExecutionRoutes(mux *http.ServeMux) {
 			registerRoute(http.MethodGet, path, op.Name+" lookup")
 		}
 	}
+
+	// A family registers one route for a shape, not one per instance: its
+	// instances are created after this has run and could never be enumerated
+	// here. Go 1.22's ServeMux routes HEAD to the GET pattern, so these three are
+	// every method a family answers.
+	for _, family := range entity.GetDynamicEntityFamilies() {
+		path := s.pathPrefix() + "/" + family.Name + "/{name}"
+		for _, method := range []string{http.MethodGet, http.MethodPost, http.MethodOptions} {
+			registerRoute(method, path, family.Name+" family")
+		}
+	}
 	clicky.Infof("Registered %d executor routes", routeCount)
 }
 
@@ -648,7 +692,13 @@ func (s *SwaggerServer) executeCommandCore(r *http.Request) (any, *ExecutionResp
 		}
 		return resp, resp, http.StatusNotFound, fmt.Errorf("operation not found")
 	}
+	return s.executeOperation(r, op)
+}
 
+// executeOperation is executeCommandCore against an operation the caller already
+// has. A dynamic-family instance is resolved per request and never enters the
+// route table, so it can only be executed by being handed over directly.
+func (s *SwaggerServer) executeOperation(r *http.Request, op *RPCOperation) (any, *ExecutionResponse, int, error) {
 	// Extract request parameters
 	req, err := s.executor.ExtractRequestFromHTTP(r, op)
 	if err != nil {
@@ -693,8 +743,23 @@ func (s *SwaggerServer) handleExecuteCommand(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	// A family's instances come into being while the server runs, so they are not
+	// in the route table this handler was reached through. Reading the path is
+	// what lets an entity that did not exist at startup be served at all.
+	if family, name, matched := s.matchDynamicFamily(r.URL.Path); matched {
+		s.handleDynamicFamily(w, r, family, name)
+		return
+	}
+
 	lookupRequested := isLookupRequest(r)
 	op := s.executor.FindOperation(r.Method, r.URL.Path)
+	// A paged operation owns its own response. A bare HEAD against one asks for
+	// that response's headers rather than for the filter metadata HEAD means
+	// everywhere else; an explicit ?__lookup=filters still reaches the lookup.
+	if paged := s.pagedOperation(r, op); paged != nil && !explicitLookup(r) {
+		s.handlePagedCommand(w, r, paged, paged.PagedFunc, exportName(paged))
+		return
+	}
 	if lookupRequested {
 		if !hasLookup(op) {
 			op = s.executor.FindLookupOperation(r.Method, r.URL.Path)
@@ -714,7 +779,12 @@ func (s *SwaggerServer) handleExecuteCommand(w http.ResponseWriter, r *http.Requ
 
 	// Execute command and get data + metadata
 	data, metadata, statusCode, _ := s.executeCommandCore(r)
+	s.writeExecutionResult(w, r, data, metadata, statusCode)
+}
 
+// writeExecutionResult writes the metadata headers and the formatted body of an
+// executed operation.
+func (s *SwaggerServer) writeExecutionResult(w http.ResponseWriter, r *http.Request, data any, metadata *ExecutionResponse, statusCode int) {
 	// Add execution metadata headers
 	if metadata != nil {
 		w.Header().Set("X-CLI-Command", metadata.CLI)

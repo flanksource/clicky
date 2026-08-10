@@ -23,6 +23,7 @@ type RPCOperation struct {
 	ToolHints         MCPToolHints         `json:"-"`                // MCP annotations and Clicky-specific tool metadata
 	DataFunc          DataFunc             `json:"-"`                // Direct data provider, bypasses stdout capture
 	ContextDataFunc   ContextDataFunc      `json:"-"`                // Context-aware data provider; preferred over DataFunc when set
+	PagedFunc         PagedFunc            `json:"-"`                // Paging/export data provider returning a PageResponse; preferred over ContextDataFunc when set. The operation supplies rows and the paging facts about them, and clicky owns the response: headers, content negotiation, streaming and the download name.
 	LookupFunc        DataFunc             `json:"-"`                // Direct filter metadata provider
 	ContextLookupFunc ContextLookupFunc    `json:"-"`                // Context-aware filter metadata provider; preferred over LookupFunc when set
 	Clicky            *ClickyOperationMeta `json:"-"`                // Entity semantics used for OpenAPI extensions

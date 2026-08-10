@@ -33,7 +33,38 @@ const (
 	annotationClickyToolOpenWorld      = "clicky/tool-open-world-hint"
 	annotationClickyToolPermission     = "clicky/tool-default-permission"
 	annotationClickyToolStrict         = "clicky/tool-strict"
+	annotationClickyLocalOnly          = "clicky/local-only"
 )
+
+// MarkLocalOnly keeps a command off the generated HTTP surface.
+//
+// Publishing a CLI as an API publishes every runnable command in the tree, which
+// is wrong for the ones that administer the process rather than serve a
+// resource: `serve` would start a nested server, and `migrate` would let an
+// unauthenticated request alter the schema. Such commands stay in `--help` and
+// on the CLI — they are simply not routes.
+//
+// It marks the whole subtree: marking a parent covers every subcommand under it.
+func MarkLocalOnly(cmd *cobra.Command) {
+	if cmd == nil {
+		return
+	}
+	if cmd.Annotations == nil {
+		cmd.Annotations = map[string]string{}
+	}
+	cmd.Annotations[annotationClickyLocalOnly] = "true"
+}
+
+// IsLocalOnly reports whether a command, or any command it is nested under, is
+// marked local-only.
+func IsLocalOnly(cmd *cobra.Command) bool {
+	for c := cmd; c != nil; c = c.Parent() {
+		if c.Annotations != nil && parseAnnotationBool(c.Annotations[annotationClickyLocalOnly]) {
+			return true
+		}
+	}
+	return false
+}
 
 const (
 	AnnotationClickyToolGroup             = annotationClickyToolGroup

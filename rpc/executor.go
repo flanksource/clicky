@@ -393,9 +393,23 @@ func convertValueToString(value interface{}) string {
 		return ""
 	case []interface{}:
 		return csvRecord(v)
+	case map[string]interface{}:
+		return jsonRecord(v)
 	default:
 		return fmt.Sprintf("%v", v)
 	}
+}
+
+// jsonRecord encodes a nested object as JSON. For the same reason as csvRecord:
+// without it a body's {"a":1} reaches the handler as Go's bracket form `map[a:1]`,
+// which is not valid JSON and cannot be decoded back into anything. A flag value
+// is a string, so JSON is the only lossless encoding available here.
+func jsonRecord(value map[string]interface{}) string {
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		return fmt.Sprintf("%v", value)
+	}
+	return string(encoded)
 }
 
 // csvRecord encodes a JSON array the way the CLI encodes a repeatable flag, so
