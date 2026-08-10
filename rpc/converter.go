@@ -284,6 +284,13 @@ func (c *Converter) shouldConvertCommand(cmd *cobra.Command) bool {
 	if cmd.Parent() == nil || (cmd.Run == nil && cmd.RunE == nil) {
 		return false
 	}
+	// A command the author marked local-only administers the process rather than
+	// serving a resource. Publishing the CLI published these too, so an
+	// unauthenticated request could run a schema migration or start a nested
+	// server.
+	if clicky.IsLocalOnly(cmd) {
+		return false
+	}
 	// Skip an entity's `list` subcommand when its parent entity-root is itself
 	// runnable as a list shortcut (parent has RunE, an entity annotation, and
 	// no operation verb). Both produce the same GET /api/v1/<entity>, and the
@@ -330,33 +337,58 @@ func (c *Converter) inferHTTPMethod(cmd *cobra.Command, cmdPath string) string {
 		if meta.Verb == "" && meta.Entity != "" {
 			return "GET"
 		}
+		// An annotated operation states its verb, so use it rather than guessing
+		// from the command path. The guess below matches CRUD keywords anywhere
+		// in that path, which silently misreads any entity whose *name* contains
+		// one: "target update" contains "get", so it inferred GET and collided
+		// with the entity's own list route. "budget delete" and "asset set" fail
+		// the same way.
+		if method := methodForVerb(meta.Verb); method != "" {
+			return method
+		}
 	}
 
-	cmdLower := strings.ToLower(cmdPath)
+	// Match the last segment — the verb — rather than searching the whole path.
+	// A command path carries its parents' names, and matching anywhere in it
+	// reads a CRUD keyword out of a noun: "target scan" contains "get", so the
+	// action that starts a scan was published as a safe, prefetchable GET.
+	verb := strings.ToLower(cmdPath)
+	if index := strings.LastIndex(verb, " "); index != -1 {
+		verb = verb[index+1:]
+	}
 
-	// Check for common CRUD patterns
-	if strings.Contains(cmdLower, "get") || strings.Contains(cmdLower, "list") ||
-		strings.Contains(cmdLower, "show") || strings.Contains(cmdLower, "describe") {
+	switch verb {
+	case "get", "list", "show", "describe":
 		return "GET"
-	}
-
-	if strings.Contains(cmdLower, "create") || strings.Contains(cmdLower, "add") ||
-		strings.Contains(cmdLower, "new") {
+	case "create", "add", "new":
 		return "POST"
-	}
-
-	if strings.Contains(cmdLower, "update") || strings.Contains(cmdLower, "edit") ||
-		strings.Contains(cmdLower, "modify") || strings.Contains(cmdLower, "set") {
+	case "update", "edit", "modify", "set":
 		return "PUT"
-	}
-
-	if strings.Contains(cmdLower, "delete") || strings.Contains(cmdLower, "remove") ||
-		strings.Contains(cmdLower, "destroy") {
+	case "delete", "remove", "destroy":
 		return "DELETE"
 	}
 
-	// Default to configured method
+	// Anything else does something rather than returning something, so the
+	// configured default (POST) is the safe reading.
 	return c.config.DefaultMethod
+}
+
+// methodForVerb maps an entity operation verb to its HTTP method. An empty
+// result means the verb is not one of the CRUD four — a custom action, say —
+// and the caller should fall back to inferring one.
+func methodForVerb(verb string) string {
+	switch strings.ToLower(verb) {
+	case "list", "get":
+		return "GET"
+	case "create":
+		return "POST"
+	case "update":
+		return "PUT"
+	case "delete":
+		return "DELETE"
+	default:
+		return ""
+	}
 }
 
 // generateRESTPath generates a REST API path from command hierarchy

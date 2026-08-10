@@ -81,6 +81,8 @@ var (
 	GetCommandResponseMeta = entity.GetCommandResponseMeta
 	SetCommandResponseMeta = entity.SetCommandResponseMeta
 	AnnotateTool           = entity.AnnotateTool
+	MarkLocalOnly          = entity.MarkLocalOnly
+	IsLocalOnly            = entity.IsLocalOnly
 )
 
 const (
