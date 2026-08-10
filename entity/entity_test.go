@@ -200,8 +200,15 @@ func TestWrappedEntityClickyRowsIncludeHiddenID(t *testing.T) {
 		if len(doc.Node.Rows) != 1 {
 			t.Fatalf("%s expected one row, got %d", tt.name, len(doc.Node.Rows))
 		}
-		if got := doc.Node.Rows[0].Cells["_id"].Plain; got != tt.wantID {
-			t.Fatalf("%s _id plain = %q, want %q", tt.name, got, tt.wantID)
+		// Plain is omitted when it would only repeat Text, so the id is read the
+		// way every consumer reads it — plain first, then text.
+		cell := doc.Node.Rows[0].Cells["_id"]
+		got := cell.Plain
+		if got == "" {
+			got = cell.Text
+		}
+		if got != tt.wantID {
+			t.Fatalf("%s _id text = %q, want %q", tt.name, got, tt.wantID)
 		}
 		for _, column := range doc.Node.Columns {
 			if column.Name == "_id" {

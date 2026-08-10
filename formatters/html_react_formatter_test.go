@@ -221,11 +221,76 @@ func TestHTMLReactConvertTable(t *testing.T) {
 	if len(node.Rows) != 2 {
 		t.Fatalf("expected 2 rows, got %d", len(node.Rows))
 	}
-	if node.Rows[0].Cells["Name"].Plain != "svc-a" {
-		t.Errorf("expected row[0][Name]=svc-a, got %s", node.Rows[0].Cells["Name"].Plain)
+	// Asserted through the same flattening the reader does, rather than on one
+	// field: Plain is omitted when it would only repeat Text, so which field
+	// carries the string is an encoding detail and not the contract.
+	if got := node.Rows[0].Cells["Name"].PlainText(); got != "svc-a" {
+		t.Errorf("expected row[0][Name]=svc-a, got %q", got)
+	}
+	if plain := node.Rows[0].Cells["Name"].Plain; plain != "" {
+		t.Errorf("Plain=%q duplicates Text and should have been dropped", plain)
 	}
 	if node.Rows[0].Detail == nil || node.Rows[0].Detail.Kind != "code" {
 		t.Fatalf("expected row detail code node, got %#v", node.Rows[0].Detail)
+	}
+}
+
+// A table node used to carry a full box-drawing render of itself in Plain,
+// which nothing reads: the renderer takes columns and rows, and the terminal
+// view is fetched separately as text/plain. On a wide table that copy was a
+// sixth of the payload.
+func TestHTMLReactTableCarriesNoSecondRendering(t *testing.T) {
+	table := &api.TextTable{
+		Headers: api.TextList{api.Text{Content: "Name"}},
+		Columns: []api.PrettyField{{Name: "Name", Label: "Name"}},
+		Rows: []api.TableRow{
+			{"Name": api.TypedValue{Textable: api.Text{Content: "svc-a"}}},
+			{"Name": api.TypedValue{Textable: api.Text{Content: "svc-b"}}},
+		},
+	}
+	node := convertTable(table)
+	if node.Plain != "" {
+		t.Fatalf("table node carries a %d byte second rendering of itself", len(node.Plain))
+	}
+	// The rows are still there — the copy was removed, not the content.
+	if got := node.Rows[0].Cells["Name"].PlainText(); got != "svc-a" {
+		t.Fatalf("row text = %q, want svc-a", got)
+	}
+	// A header that only repeats its column's label is not sent either.
+	if node.Columns[0].Header != nil {
+		t.Fatalf("header node duplicates Label %q: %#v", node.Columns[0].Label, node.Columns[0].Header)
+	}
+}
+
+// Plain, Text and FilterValue are three projections of one string. Sending all
+// three tripled the cost of every populated cell.
+func TestHTMLReactCellDropsDuplicateProjections(t *testing.T) {
+	table := &api.TextTable{
+		Headers: api.TextList{api.Text{Content: "State"}},
+		Columns: []api.PrettyField{{Name: "State", Label: "State", FilterKey: "filter.state"}},
+		Rows: []api.TableRow{
+			{"State": api.TypedValue{Textable: api.Text{Content: "idle"}, FilterValue: "idle"}},
+			{"State": api.TypedValue{Textable: api.Text{Content: "idle"}, FilterValue: "IDLE_RAW"}},
+		},
+	}
+	node := convertTable(table)
+
+	same := node.Rows[0].Cells["State"]
+	if same.Plain != "" {
+		t.Errorf("Plain=%q repeats Text", same.Plain)
+	}
+	if same.FilterValue != nil {
+		t.Errorf("FilterValue=%v repeats the display text", same.FilterValue)
+	}
+	if same.PlainText() != "idle" {
+		t.Errorf("flattened text = %q, want idle", same.PlainText())
+	}
+
+	// A filter value that genuinely differs from what is displayed is the whole
+	// point of the field and must survive.
+	differs := node.Rows[1].Cells["State"]
+	if differs.FilterValue != "IDLE_RAW" {
+		t.Errorf("FilterValue=%v, want the distinct value to survive", differs.FilterValue)
 	}
 }
 

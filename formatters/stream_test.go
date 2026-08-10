@@ -1,14 +1,19 @@
 package formatters
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/csv"
 	"encoding/json"
 	"io"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/flanksource/clicky/api"
 	"github.com/xuri/excelize/v2"
@@ -199,6 +204,247 @@ func TestWriteTableStreamEmptyYAMLIsSequence(t *testing.T) {
 	}
 	if output.String() != "[]\n" {
 		t.Fatalf("unexpected empty yaml: %q", output.String())
+	}
+}
+
+// flushRecordingWriter records everything received so far each time it is
+// flushed, so a test can tell what was actually observable mid-stream.
+type flushRecordingWriter struct {
+	mu       sync.Mutex
+	received bytes.Buffer
+	flushes  []string
+}
+
+func (w *flushRecordingWriter) Write(p []byte) (int, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	return w.received.Write(p)
+}
+
+func (w *flushRecordingWriter) Flush() error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.flushes = append(w.flushes, w.received.String())
+	return nil
+}
+
+// gatedRowIterator stalls before the second row until the consumer signals that
+// it has already seen the first one.
+type gatedRowIterator struct {
+	columns  []api.ColumnDef
+	rows     []map[string]any
+	index    int
+	gate     chan struct{}
+	timedOut bool
+}
+
+func (i *gatedRowIterator) Columns() []api.ColumnDef { return i.columns }
+func (i *gatedRowIterator) Next() bool {
+	if i.index == 1 {
+		select {
+		case <-i.gate:
+		case <-time.After(5 * time.Second):
+			i.timedOut = true
+		}
+	}
+	if i.index >= len(i.rows) {
+		return false
+	}
+	i.index++
+	return true
+}
+func (i *gatedRowIterator) Row() map[string]any { return i.rows[i.index-1] }
+func (i *gatedRowIterator) Err() error          { return nil }
+func (i *gatedRowIterator) Close() error        { return nil }
+
+func parseStreamCSV(t *testing.T, output string) [][]string {
+	t.Helper()
+	records, err := csv.NewReader(strings.NewReader(strings.TrimPrefix(output, csvBOM))).ReadAll()
+	if err != nil {
+		t.Fatalf("invalid csv %q: %v", output, err)
+	}
+	return records
+}
+
+func TestWriteTableStreamFlushEveryDrainsTheCSVBufferFirst(t *testing.T) {
+	columns := []api.ColumnDef{{Name: "name"}}
+	rows := []map[string]any{{"name": "alpha"}, {"name": "beta"}, {"name": "gamma"}}
+
+	flushed := &flushRecordingWriter{}
+	if _, err := WriteTableStream(context.Background(), flushed, &sliceRowIterator{columns: columns, rows: rows}, StreamOptions{Format: "csv", FlushEvery: 1}); err != nil {
+		t.Fatal(err)
+	}
+	if len(flushed.flushes) != len(rows) {
+		t.Fatalf("expected one flush per row, got %d", len(flushed.flushes))
+	}
+	if !strings.Contains(flushed.flushes[0], "alpha") {
+		t.Fatalf("csv buffer was not drained before the writer flush: %q", flushed.flushes[0])
+	}
+	if strings.Contains(flushed.flushes[0], "beta") {
+		t.Fatalf("first flush leaked later rows: %q", flushed.flushes[0])
+	}
+
+	buffered := &flushRecordingWriter{}
+	if _, err := WriteTableStream(context.Background(), buffered, &sliceRowIterator{columns: columns, rows: rows}, StreamOptions{Format: "csv"}); err != nil {
+		t.Fatal(err)
+	}
+	if len(buffered.flushes) != 0 {
+		t.Fatalf("FlushEvery=0 must not flush, got %d flushes", len(buffered.flushes))
+	}
+}
+
+func TestWriteTableStreamFlushEveryDeliversRowsBeforeTheResponseEnds(t *testing.T) {
+	iterator := &gatedRowIterator{
+		columns: []api.ColumnDef{{Name: "name"}},
+		rows:    []map[string]any{{"name": "alpha"}, {"name": "beta"}},
+		gate:    make(chan struct{}),
+	}
+	done := make(chan error, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, err := WriteTableStream(r.Context(), w, iterator, StreamOptions{Format: "csv", FlushEvery: 1})
+		done <- err
+	}))
+	defer server.Close()
+
+	resp, err := http.Get(server.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	body := bufio.NewReader(resp.Body)
+	if _, err := body.ReadString('\n'); err != nil {
+		t.Fatalf("header not delivered: %v", err)
+	}
+	firstRow, err := body.ReadString('\n')
+	if err != nil {
+		t.Fatalf("first row not delivered: %v", err)
+	}
+	close(iterator.gate)
+
+	rest, err := io.ReadAll(body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := <-done; err != nil {
+		t.Fatal(err)
+	}
+	if iterator.timedOut {
+		t.Fatalf("first row only reached the client once the response ended: %q", firstRow)
+	}
+	if !strings.Contains(firstRow, "alpha") || !strings.Contains(string(rest), "beta") {
+		t.Fatalf("unexpected stream: first=%q rest=%q", firstRow, rest)
+	}
+}
+
+func TestWriteTableStreamCSVEscapesSpreadsheetFormulas(t *testing.T) {
+	dangerous := map[string]string{
+		"equals": "=1+1",
+		"plus":   "+1+1",
+		"minus":  "-1+1",
+		"at":     "@SUM(A1)",
+		"tab":    "\t=cmd|'/c calc'!A0",
+		"cr":     "\r=cmd|'/c calc'!A0",
+	}
+	columns := []api.ColumnDef{
+		{Name: "equals"}, {Name: "plus"}, {Name: "minus"}, {Name: "at"}, {Name: "tab"}, {Name: "cr"},
+		{Name: "safe"}, {Name: "negative", Type: "number"},
+	}
+	row := map[string]any{"safe": "hello", "negative": -5}
+	for name, value := range dangerous {
+		row[name] = value
+	}
+
+	var output bytes.Buffer
+	if _, err := WriteTableStream(context.Background(), &output, &sliceRowIterator{columns: columns, rows: []map[string]any{row}}, StreamOptions{Format: "csv"}); err != nil {
+		t.Fatal(err)
+	}
+	records := parseStreamCSV(t, output.String())
+	cells := map[string]string{}
+	for i, column := range columns {
+		cells[column.Name] = records[1][i]
+	}
+	for name, value := range dangerous {
+		if cells[name] != "'"+value {
+			t.Fatalf("%s cell was not neutralised: %q", name, cells[name])
+		}
+	}
+	if cells["safe"] != "hello" {
+		t.Fatalf("harmless value was rewritten: %q", cells["safe"])
+	}
+	if cells["negative"] != "-5" {
+		t.Fatalf("numeric cell must stay a number, got %q", cells["negative"])
+	}
+}
+
+func TestWriteTableStreamStructuredFormatsKeepFormulaText(t *testing.T) {
+	columns := []api.ColumnDef{{Name: "note"}}
+	rows := []map[string]any{{"note": "=1+1"}}
+
+	for _, format := range []string{"json", "ndjson", "yaml"} {
+		t.Run(format, func(t *testing.T) {
+			var output bytes.Buffer
+			if _, err := WriteTableStream(context.Background(), &output, &sliceRowIterator{columns: columns, rows: rows}, StreamOptions{Format: format}); err != nil {
+				t.Fatal(err)
+			}
+			if strings.Contains(output.String(), "'=1+1") {
+				t.Fatalf("%s must not spreadsheet-escape values: %s", format, output.String())
+			}
+		})
+	}
+}
+
+func TestWriteTableStreamExcelEscapesFormulasButKeepsNumbers(t *testing.T) {
+	columns := []api.ColumnDef{{Name: "note"}, {Name: "delta", Type: "number"}}
+	rows := []map[string]any{{"note": "=1+1", "delta": -5}}
+
+	var output bytes.Buffer
+	if _, err := WriteTableStream(context.Background(), &output, &sliceRowIterator{columns: columns, rows: rows}, StreamOptions{Format: "excel"}); err != nil {
+		t.Fatal(err)
+	}
+	book, err := excelize.OpenReader(bytes.NewReader(output.Bytes()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer book.Close()
+	if note, _ := book.GetCellValue("Sheet1", "A2"); note != "'=1+1" {
+		t.Fatalf("formula cell was not neutralised: %q", note)
+	}
+	if delta, _ := book.GetCellValue("Sheet1", "B2"); delta != "-5" {
+		t.Fatalf("numeric cell must stay a number, got %q", delta)
+	}
+	deltaType, err := book.GetCellType("Sheet1", "B2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if deltaType == excelize.CellTypeInlineString || deltaType == excelize.CellTypeSharedString {
+		t.Fatalf("negative number was written as text (%v)", deltaType)
+	}
+}
+
+func TestWriteTableStreamCSVBOM(t *testing.T) {
+	columns := []api.ColumnDef{{Name: "name"}}
+	rows := []map[string]any{{"name": "Ünicode"}}
+
+	// A plain API read is piped into cut/awk or another parser, so the first
+	// header name must not pick up three extra bytes.
+	var apiRead bytes.Buffer
+	if _, err := WriteTableStream(context.Background(), &apiRead, &sliceRowIterator{columns: columns, rows: rows}, StreamOptions{Format: "csv"}); err != nil {
+		t.Fatal(err)
+	}
+	if strings.HasPrefix(apiRead.String(), csvBOM) {
+		t.Fatalf("csv gained a BOM the caller did not ask for: %q", apiRead.String())
+	}
+
+	var download bytes.Buffer
+	if _, err := WriteTableStream(context.Background(), &download, &sliceRowIterator{columns: columns, rows: rows}, StreamOptions{Format: "csv", CSVBOM: true}); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(download.String(), csvBOM) {
+		t.Fatalf("CSVBOM did not emit the UTF-8 BOM: %q", download.String())
+	}
+	if strings.TrimPrefix(download.String(), csvBOM) != apiRead.String() {
+		t.Fatalf("BOM changed more than the prefix: %q vs %q", download.String(), apiRead.String())
 	}
 }
 

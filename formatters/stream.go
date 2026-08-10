@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/csv"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html"
 	"io"
+	"net/http"
 	"sort"
 	"strings"
 
@@ -14,6 +16,10 @@ import (
 	"github.com/xuri/excelize/v2"
 	"gopkg.in/yaml.v3"
 )
+
+// csvBOM makes Excel on Windows decode a downloaded export as UTF-8 instead of
+// the machine's ANSI code page, which otherwise mangles every non-ASCII cell.
+const csvBOM = "\xEF\xBB\xBF"
 
 // RowIterator is the bounded-memory table source consumed by WriteTableStream.
 // Columns may be empty; in that case the first row establishes a stable,
@@ -32,6 +38,15 @@ type RowIterator interface {
 type StreamOptions struct {
 	Format  string
 	MaxRows int64
+	// FlushEvery pushes buffered output downstream every N rows so a long
+	// running HTTP export appears as it is produced instead of arriving in one
+	// burst. Zero keeps the single flush at the end of the stream.
+	FlushEvery int
+	// CSVBOM writes a UTF-8 BOM ahead of CSV output. It exists for files that
+	// are downloaded and opened in a spreadsheet; a caller streaming CSV into a
+	// pipe or a parser must not receive bytes it did not ask for, so the same
+	// endpoint serving a plain API read leaves this false.
+	CSVBOM bool
 }
 
 // WriteTableStream writes rows incrementally in a Clicky-supported tabular
@@ -62,21 +77,21 @@ func WriteTableStream(ctx context.Context, w io.Writer, rows RowIterator, opts S
 
 	switch format {
 	case "json":
-		return writeJSONStream(ctx, w, rows, structuredColumns, first, ok, false, opts.MaxRows)
+		return writeJSONStream(ctx, w, rows, structuredColumns, first, ok, false, opts)
 	case "ndjson":
-		return writeJSONStream(ctx, w, rows, structuredColumns, first, ok, true, opts.MaxRows)
+		return writeJSONStream(ctx, w, rows, structuredColumns, first, ok, true, opts)
 	case "yaml":
-		return writeYAMLStream(ctx, w, rows, structuredColumns, first, ok, opts.MaxRows)
+		return writeYAMLStream(ctx, w, rows, structuredColumns, first, ok, opts)
 	case "csv":
-		return writeCSVStream(ctx, w, rows, columns, first, ok, opts.MaxRows)
+		return writeCSVStream(ctx, w, rows, columns, first, ok, opts)
 	case "markdown":
-		return writeMarkdownStream(ctx, w, rows, columns, first, ok, opts.MaxRows)
+		return writeMarkdownStream(ctx, w, rows, columns, first, ok, opts)
 	case "html":
-		return writeHTMLStream(ctx, w, rows, columns, first, ok, opts.MaxRows)
+		return writeHTMLStream(ctx, w, rows, columns, first, ok, opts)
 	case "excel":
-		return writeExcelStream(ctx, w, rows, columns, first, ok, opts.MaxRows)
+		return writeExcelStream(ctx, w, rows, columns, first, ok, opts)
 	case "pdf":
-		return writePDFStream(ctx, w, rows, columns, first, ok, opts.MaxRows)
+		return writePDFStream(ctx, w, rows, columns, first, ok, opts)
 	default:
 		return 0, fmt.Errorf("unsupported streaming format: %s", format)
 	}
@@ -160,7 +175,72 @@ func streamRows(ctx context.Context, rows RowIterator, first map[string]any, has
 	}
 }
 
-func writeJSONStream(ctx context.Context, w io.Writer, rows RowIterator, columns []api.ColumnDef, first map[string]any, ok, ndjson bool, maxRows int64) (int64, error) {
+// flushingEmit wraps emit so buffered bytes reach the client every n rows.
+// n <= 0 returns emit untouched, keeping the historical behaviour where an
+// export is only visible once the whole response has been produced.
+func flushingEmit(n int, flush func() error, emit func(map[string]any) error) func(map[string]any) error {
+	if n <= 0 {
+		return emit
+	}
+	written := 0
+	return func(row map[string]any) error {
+		if err := emit(row); err != nil {
+			return err
+		}
+		written++
+		if written%n != 0 {
+			return nil
+		}
+		return flush()
+	}
+}
+
+// flushStream pushes whatever w has buffered towards the client. HTTP handlers
+// need a ResponseController because net/http and any middleware wrap the
+// original writer; other writers qualify only if they expose Flush themselves,
+// and the rest (files, buffers) are unbuffered so there is nothing to push.
+func flushStream(w io.Writer) error {
+	switch target := w.(type) {
+	case http.ResponseWriter:
+		// A transport that cannot flush is not an export failure.
+		if err := http.NewResponseController(target).Flush(); err != nil && !errors.Is(err, http.ErrNotSupported) {
+			return err
+		}
+	case interface{ Flush() error }:
+		return target.Flush()
+	case interface{ Flush() }:
+		target.Flush()
+	}
+	return nil
+}
+
+// escapeSpreadsheetFormula neutralises a cell that Excel, LibreOffice or Sheets
+// would evaluate as a formula. Row values come from backends the operator does
+// not control, and these exports are opened as downloads; a leading single
+// quote forces the cell to be read as literal text.
+func escapeSpreadsheetFormula(text string) string {
+	if text == "" {
+		return text
+	}
+	switch text[0] {
+	case '=', '+', '-', '@', '\t', '\r':
+		return "'" + text
+	}
+	return text
+}
+
+// escapeSpreadsheetCell escapes only string-shaped values. A number is emitted
+// as a number and cannot carry a formula, so quoting a value like -5 would just
+// turn it into text and break sorting and arithmetic in the sheet.
+func escapeSpreadsheetCell(value any, rendered string) string {
+	switch value.(type) {
+	case nil, bool, int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64, json.Number:
+		return rendered
+	}
+	return escapeSpreadsheetFormula(rendered)
+}
+
+func writeJSONStream(ctx context.Context, w io.Writer, rows RowIterator, columns []api.ColumnDef, first map[string]any, ok, ndjson bool, opts StreamOptions) (int64, error) {
 	enc := json.NewEncoder(w)
 	firstJSON := true
 	if !ndjson {
@@ -168,7 +248,8 @@ func writeJSONStream(ctx context.Context, w io.Writer, rows RowIterator, columns
 			return 0, err
 		}
 	}
-	count, err := streamRows(ctx, rows, first, ok, maxRows, func(row map[string]any) error {
+	flush := func() error { return flushStream(w) }
+	count, err := streamRows(ctx, rows, first, ok, opts.MaxRows, flushingEmit(opts.FlushEvery, flush, func(row map[string]any) error {
 		row = projectedStreamRow(row, columns)
 		if ndjson {
 			return enc.Encode(row)
@@ -185,7 +266,7 @@ func writeJSONStream(ctx context.Context, w io.Writer, rows RowIterator, columns
 		}
 		_, err = w.Write(data)
 		return err
-	})
+	}))
 	if err != nil {
 		return count, err
 	}
@@ -195,12 +276,13 @@ func writeJSONStream(ctx context.Context, w io.Writer, rows RowIterator, columns
 	return count, err
 }
 
-func writeYAMLStream(ctx context.Context, w io.Writer, rows RowIterator, columns []api.ColumnDef, first map[string]any, ok bool, maxRows int64) (int64, error) {
+func writeYAMLStream(ctx context.Context, w io.Writer, rows RowIterator, columns []api.ColumnDef, first map[string]any, ok bool, opts StreamOptions) (int64, error) {
 	if !ok {
 		_, err := io.WriteString(w, "[]\n")
 		return 0, err
 	}
-	return streamRows(ctx, rows, first, ok, maxRows, func(row map[string]any) error {
+	flush := func() error { return flushStream(w) }
+	return streamRows(ctx, rows, first, ok, opts.MaxRows, flushingEmit(opts.FlushEvery, flush, func(row map[string]any) error {
 		data, err := yaml.Marshal(projectedStreamRow(row, columns))
 		if err != nil {
 			return err
@@ -216,25 +298,39 @@ func writeYAMLStream(ctx context.Context, w io.Writer, rows RowIterator, columns
 			}
 		}
 		return nil
-	})
+	}))
 }
 
-func writeCSVStream(ctx context.Context, w io.Writer, rows RowIterator, columns []api.ColumnDef, first map[string]any, ok bool, maxRows int64) (int64, error) {
+func writeCSVStream(ctx context.Context, w io.Writer, rows RowIterator, columns []api.ColumnDef, first map[string]any, ok bool, opts StreamOptions) (int64, error) {
+	if opts.CSVBOM {
+		if _, err := io.WriteString(w, csvBOM); err != nil {
+			return 0, err
+		}
+	}
 	writer := csv.NewWriter(w)
 	headers := make([]string, len(columns))
 	for i, column := range columns {
-		headers[i] = column.DisplayLabel()
+		headers[i] = escapeSpreadsheetFormula(column.DisplayLabel())
 	}
 	if err := writer.Write(headers); err != nil {
 		return 0, err
 	}
-	count, err := streamRows(ctx, rows, first, ok, maxRows, func(row map[string]any) error {
+	// csv.Writer holds its own 4KiB buffer, so it has to be drained before the
+	// response writer is flushed or nothing reaches the client.
+	flush := func() error {
+		writer.Flush()
+		if err := writer.Error(); err != nil {
+			return err
+		}
+		return flushStream(w)
+	}
+	count, err := streamRows(ctx, rows, first, ok, opts.MaxRows, flushingEmit(opts.FlushEvery, flush, func(row map[string]any) error {
 		values := make([]string, len(columns))
 		for i, column := range columns {
-			values[i] = streamCell(row[column.Name], column, "plain")
+			values[i] = escapeSpreadsheetCell(row[column.Name], streamCell(row[column.Name], column, "plain"))
 		}
 		return writer.Write(values)
-	})
+	}))
 	writer.Flush()
 	if err == nil {
 		err = writer.Error()
@@ -242,7 +338,7 @@ func writeCSVStream(ctx context.Context, w io.Writer, rows RowIterator, columns 
 	return count, err
 }
 
-func writeMarkdownStream(ctx context.Context, w io.Writer, rows RowIterator, columns []api.ColumnDef, first map[string]any, ok bool, maxRows int64) (int64, error) {
+func writeMarkdownStream(ctx context.Context, w io.Writer, rows RowIterator, columns []api.ColumnDef, first map[string]any, ok bool, opts StreamOptions) (int64, error) {
 	headers := make([]string, len(columns))
 	separators := make([]string, len(columns))
 	for i, column := range columns {
@@ -252,17 +348,18 @@ func writeMarkdownStream(ctx context.Context, w io.Writer, rows RowIterator, col
 	if _, err := fmt.Fprintf(w, "| %s |\n| %s |\n", strings.Join(headers, " | "), strings.Join(separators, " | ")); err != nil {
 		return 0, err
 	}
-	return streamRows(ctx, rows, first, ok, maxRows, func(row map[string]any) error {
+	flush := func() error { return flushStream(w) }
+	return streamRows(ctx, rows, first, ok, opts.MaxRows, flushingEmit(opts.FlushEvery, flush, func(row map[string]any) error {
 		values := make([]string, len(columns))
 		for i, column := range columns {
 			values[i] = escapeMarkdownStream(streamCell(row[column.Name], column, "markdown"))
 		}
 		_, err := fmt.Fprintf(w, "| %s |\n", strings.Join(values, " | "))
 		return err
-	})
+	}))
 }
 
-func writeHTMLStream(ctx context.Context, w io.Writer, rows RowIterator, columns []api.ColumnDef, first map[string]any, ok bool, maxRows int64) (int64, error) {
+func writeHTMLStream(ctx context.Context, w io.Writer, rows RowIterator, columns []api.ColumnDef, first map[string]any, ok bool, opts StreamOptions) (int64, error) {
 	if _, err := io.WriteString(w, "<!doctype html><html><head><meta charset=\"utf-8\"><title>Clicky export</title><style>body{font-family:system-ui,sans-serif;margin:24px}table{border-collapse:collapse;width:100%}th,td{border:1px solid #d1d5db;padding:6px 8px;text-align:left;vertical-align:top}th{background:#f3f4f6;position:sticky;top:0}</style></head><body><table><thead><tr>"); err != nil {
 		return 0, err
 	}
@@ -274,7 +371,8 @@ func writeHTMLStream(ctx context.Context, w io.Writer, rows RowIterator, columns
 	if _, err := io.WriteString(w, "</tr></thead><tbody>"); err != nil {
 		return 0, err
 	}
-	count, err := streamRows(ctx, rows, first, ok, maxRows, func(row map[string]any) error {
+	flush := func() error { return flushStream(w) }
+	count, err := streamRows(ctx, rows, first, ok, opts.MaxRows, flushingEmit(opts.FlushEvery, flush, func(row map[string]any) error {
 		if _, err := io.WriteString(w, "<tr>"); err != nil {
 			return err
 		}
@@ -285,7 +383,7 @@ func writeHTMLStream(ctx context.Context, w io.Writer, rows RowIterator, columns
 		}
 		_, err := io.WriteString(w, "</tr>")
 		return err
-	})
+	}))
 	if err != nil {
 		return count, err
 	}
@@ -293,7 +391,7 @@ func writeHTMLStream(ctx context.Context, w io.Writer, rows RowIterator, columns
 	return count, err
 }
 
-func writeExcelStream(ctx context.Context, w io.Writer, rows RowIterator, columns []api.ColumnDef, first map[string]any, ok bool, maxRows int64) (int64, error) {
+func writeExcelStream(ctx context.Context, w io.Writer, rows RowIterator, columns []api.ColumnDef, first map[string]any, ok bool, opts StreamOptions) (int64, error) {
 	file := excelize.NewFile()
 	defer file.Close()
 	stream, err := file.NewStreamWriter("Sheet1")
@@ -302,19 +400,24 @@ func writeExcelStream(ctx context.Context, w io.Writer, rows RowIterator, column
 	}
 	headers := make([]any, len(columns))
 	for i, column := range columns {
-		headers[i] = column.DisplayLabel()
+		headers[i] = escapeSpreadsheetFormula(column.DisplayLabel())
 	}
 	if err := stream.SetRow("A1", headers); err != nil {
 		return 0, err
 	}
 	rowNumber := 2
-	count, err := streamRows(ctx, rows, first, ok, maxRows, func(row map[string]any) error {
+	// excelize writes strings as inline strings, which Excel does not evaluate,
+	// but the quote also survives a re-export of the sheet to CSV where it would.
+	count, err := streamRows(ctx, rows, first, ok, opts.MaxRows, func(row map[string]any) error {
 		values := make([]any, len(columns))
 		for i, column := range columns {
+			value := row[column.Name]
 			if api.IsStructuredColumnType(column.Type) {
-				values[i] = api.ColumnString(column, row[column.Name])
+				values[i] = escapeSpreadsheetFormula(api.ColumnString(column, value))
+			} else if text, isText := value.(string); isText {
+				values[i] = escapeSpreadsheetFormula(text)
 			} else {
-				values[i] = row[column.Name]
+				values[i] = value
 			}
 		}
 		cell, err := excelize.CoordinatesToCellName(1, rowNumber)
@@ -333,8 +436,8 @@ func writeExcelStream(ctx context.Context, w io.Writer, rows RowIterator, column
 	return count, file.Write(w)
 }
 
-func writePDFStream(ctx context.Context, w io.Writer, rows RowIterator, columns []api.ColumnDef, first map[string]any, ok bool, maxRows int64) (int64, error) {
-	if maxRows <= 0 {
+func writePDFStream(ctx context.Context, w io.Writer, rows RowIterator, columns []api.ColumnDef, first map[string]any, ok bool, opts StreamOptions) (int64, error) {
+	if opts.MaxRows <= 0 {
 		return 0, fmt.Errorf("pdf streaming requires a positive row limit")
 	}
 	table := api.TextTable{}
@@ -343,7 +446,7 @@ func writePDFStream(ctx context.Context, w io.Writer, rows RowIterator, columns 
 		table.FieldNames = append(table.FieldNames, column.Name)
 		table.Columns = append(table.Columns, api.PrettyField{Name: column.Name, Label: column.DisplayLabel(), Type: column.Type, Format: column.Format, Unit: column.Unit})
 	}
-	count, err := streamRows(ctx, rows, first, ok, maxRows, func(row map[string]any) error {
+	count, err := streamRows(ctx, rows, first, ok, opts.MaxRows, func(row map[string]any) error {
 		out := api.TableRow{}
 		for _, column := range columns {
 			out[column.Name] = api.NewTypedValue(api.ColumnTextable(column, row[column.Name]))
