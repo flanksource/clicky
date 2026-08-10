@@ -56,6 +56,11 @@ type NamedFilter struct {
 	Type string
 	// Multi reports whether the control accepts multiple selections.
 	Multi bool
+	// Limit caps the option set this filter enumerates in one shot. Zero takes
+	// MaxLookupOptions, which is also the ceiling. Declare a smaller one for a
+	// field whose cardinality makes a full head set useless to pick from: what
+	// is past it is reached by typing, not by scrolling.
+	Limit int
 	// Source resolves the filter's options.
 	Source FilterSource
 }

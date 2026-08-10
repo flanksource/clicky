@@ -142,6 +142,11 @@ func (b *EntityBuilder[T, ListOpts, R]) Filters(filters ...Filter[ListOpts]) *En
 	return b
 }
 
+func (b *EntityBuilder[T, ListOpts, R]) WithPrimaryAction(action EntityAction) *EntityBuilder[T, ListOpts, R] {
+	b.entity.PrimaryAction = action
+	return b
+}
+
 func (b *EntityBuilder[T, ListOpts, R]) WithAction(action EntityAction) *EntityBuilder[T, ListOpts, R] {
 	b.entity.Actions = append(b.entity.Actions, action)
 	return b

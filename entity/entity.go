@@ -64,14 +64,15 @@ type EntityInfo struct {
 	// (x-clicky.surfaces[].path). Empty for entities that declare no hierarchy.
 	Path string
 	// Title overrides the auto-generated surface title when non-empty.
-	Title       string
-	Type        reflect.Type
-	ListType    reflect.Type
-	Operations  []EntityOperation
-	Actions     []ActionInfo
-	BulkActions []BulkActionInfo
-	ValidArgs   func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective)
-	IsAdmin     bool
+	Title         string
+	Type          reflect.Type
+	ListType      reflect.Type
+	Operations    []EntityOperation
+	PrimaryAction *ActionInfo
+	Actions       []ActionInfo
+	BulkActions   []BulkActionInfo
+	ValidArgs     func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective)
+	IsAdmin       bool
 	// FilterRefs maps a list filter's flag key to the name of the reusable named
 	// filter backing it (when the filter was attached via the entity package's
 	// Use/As helper). The OpenAPI layer uses it to emit an x-clicky-lookup $ref
@@ -177,6 +178,14 @@ type Filter[ListOpts any] interface {
 // lookup response should still advertise a from/to date-range control.
 type TypedFilter[ListOpts any] interface {
 	LookupType() string
+}
+
+// LimitedFilter is an OPTIONAL extension a Filter may implement to cap its own
+// option set below the package ceiling. It is unparameterized because the cap is
+// a property of the filter's cardinality, not of the entity it is attached to.
+type LimitedFilter interface {
+	// LookupLimit returns the head/search cap, or zero to take the default.
+	LookupLimit() int
 }
 
 // SearchableFilter is an OPTIONAL extension a Filter may implement when its
@@ -577,8 +586,9 @@ type Entity[T EntityItem, ListOpts any, R any] struct {
 	DeleteWithContext func(ctx context.Context, id string) error
 	Filters           []Filter[ListOpts]
 
-	Actions     []EntityAction
-	BulkActions []EntityBulkAction
+	PrimaryAction EntityAction
+	Actions       []EntityAction
+	BulkActions   []EntityBulkAction
 
 	// Admin groups admin-only operations (inspect, configure, etc.)
 	// that produce different views/columns from the main CRUD operations.
@@ -842,6 +852,11 @@ func RegisterEntity[T EntityItem, ListOpts any, R any](e Entity[T, ListOpts, R])
 		info.Operations = append(info.Operations, op)
 	}
 
+	if e.PrimaryAction != nil {
+		primary := e.PrimaryAction.actionInfo()
+		info.PrimaryAction = &primary
+	}
+
 	for _, action := range e.Actions {
 		if action == nil {
 			continue
@@ -1016,7 +1031,11 @@ func generateEntityCLI(parent *cobra.Command, entity EntityInfo) {
 		generateEntitySubcommand(entityCmd, entity, op)
 	}
 
-	promoteListToEntityRoot(entityCmd)
+	if entity.PrimaryAction != nil {
+		generatePrimaryAction(entityCmd, *entity.PrimaryAction)
+	} else {
+		promoteListToEntityRoot(entityCmd)
+	}
 
 	for _, action := range entity.Actions {
 		scope := "entity"
@@ -1542,7 +1561,16 @@ func resolveEntityOpts[T any](flagMap map[string]string, filters []Filter[T]) (T
 // both for the head set and per-search. SearchableFilter implementations enumerate
 // only this many; the UI shows "… and N more" against the reported total and
 // re-queries as the user types.
+//
+// It is a ceiling rather than a target: a filter that knows its own cardinality
+// says so with its own smaller Limit, and this is what remains for the ones that
+// do not.
 const lookupOptionsLimit = 200
+
+// MaxLookupOptions is lookupOptionsLimit exported, so a caller declaring a
+// per-filter Limit can validate it against the ceiling rather than discovering
+// at request time that it was silently reduced.
+const MaxLookupOptions = lookupOptionsLimit
 
 // Reserved flag keys the lookup handler injects from the request query so a
 // single filter can be searched server-side. They never collide with entity
@@ -1592,15 +1620,52 @@ type boundFilter struct {
 	Multi      bool
 	Searchable bool
 	Selected   map[string]api.Textable
+	// Limit caps this filter's option set. Zero takes lookupOptionsLimit, which
+	// is also the ceiling — a filter cannot ask for a larger head than the
+	// response is willing to carry.
+	Limit int
 	// Options returns the head set (query == "") or search matches, plus the true
 	// total behind the head. A non-positive limit means "no cap".
 	Options func(query string, limit int) (map[string]api.Textable, int, error)
 }
 
+// limit is the option cap for one filter: its own when it declares a smaller
+// one, the package ceiling otherwise.
+func (f boundFilter) limit() int {
+	if f.Limit > 0 && f.Limit < lookupOptionsLimit {
+		return f.Limit
+	}
+	return lookupOptionsLimit
+}
+
+// searchTarget reports which filter a targeted search names, or -1 when the
+// request is a plain head request over all of them.
+//
+// A search asks about one filter. Answering it by re-enumerating every other
+// filter's head set costs one backend round trip per filter per keystroke, and
+// the client reads only the filter it asked about — so the rest is work nobody
+// receives.
+func searchTarget[T any](filters []T, describe func(T) (key string, searchable bool), searchKey, searchQuery string) int {
+	if searchKey == "" || searchQuery == "" {
+		return -1
+	}
+	for i, filter := range filters {
+		if key, searchable := describe(filter); searchable && key == searchKey {
+			return i
+		}
+	}
+	return -1
+}
+
+func describeBoundFilter(f boundFilter) (string, bool) { return f.Key, f.Searchable }
+
 // resolveLookupCore renders bound filters into the lookup response, applying the
 // searchable head/search/total logic uniformly. It is the single place the
 // lookup wire shape is built, shared by the typed and dynamic entity paths.
 func resolveLookupCore(filters []boundFilter, searchKey, searchQuery string) (entityLookupResponse, error) {
+	if target := searchTarget(filters, describeBoundFilter, searchKey, searchQuery); target >= 0 {
+		filters = filters[target : target+1]
+	}
 	response := entityLookupResponse{
 		Filters: make(map[string]entityLookupFilter, len(filters)),
 	}
@@ -1613,16 +1678,21 @@ func resolveLookupCore(filters []boundFilter, searchKey, searchQuery string) (en
 		}
 		switch {
 		case f.Searchable && searchKey == f.Key && searchQuery != "":
-			// Targeted server-side search: return matches for this filter only.
-			options, _, err := f.Options(searchQuery, lookupOptionsLimit)
+			// Targeted server-side search: matches for this filter only, and how
+			// many there are behind the cap. A search can overflow just as a head
+			// set can — reporting the total is what stops a clipped result being
+			// rendered as the whole answer.
+			options, total, err := f.Options(searchQuery, f.limit())
 			if err != nil {
 				return entityLookupResponse{}, err
 			}
 			entry.Options = toClickyNodeMap(options)
+			entry.Total = total
+			entry.Truncated = total > len(options)
 		case f.Searchable:
 			// Head request: first N options plus the true distinct total so
 			// the UI can show "… and N more" and decide whether to search.
-			options, total, err := f.Options("", lookupOptionsLimit)
+			options, total, err := f.Options("", f.limit())
 			if err != nil {
 				return entityLookupResponse{}, err
 			}
@@ -1674,12 +1744,17 @@ func resolveLookup[T any](
 		}
 		f := filter
 		searchable := filterIsSearchable(f)
+		limit := 0
+		if limited, ok := filter.(LimitedFilter); ok {
+			limit = limited.LookupLimit()
+		}
 		bound = append(bound, boundFilter{
 			Key:        f.Key(),
 			Label:      f.Label(),
 			Type:       meta.Type,
 			Multi:      meta.Multi,
 			Searchable: searchable,
+			Limit:      limit,
 			Selected:   selected[f.Key()],
 			Options: func(query string, limit int) (map[string]api.Textable, int, error) {
 				if searchable {

@@ -17,6 +17,9 @@ type DynamicFilter struct {
 	Type       string
 	Multi      bool
 	Searchable bool
+	// Limit caps the option set this filter enumerates in one shot. Zero takes
+	// MaxLookupOptions, which is also the ceiling.
+	Limit int
 	// Options returns the head set (query == "") or search matches, plus the true
 	// total behind the head. Required.
 	Options func(ctx context.Context, flags map[string]string, query string, limit int) (map[string]api.Textable, int, error)
@@ -24,6 +27,8 @@ type DynamicFilter struct {
 	// Optional; nil means "no selection rendering".
 	Selected func(ctx context.Context, flags map[string]string) (map[string]api.Textable, error)
 }
+
+func describeDynamicFilter(f DynamicFilter) (string, bool) { return f.Key, f.Searchable }
 
 // DynamicEntitySpec is the type-erased description of a schema-driven entity,
 // assembled by the entity package's NewDynamicEntity builder. It reuses the
@@ -130,6 +135,13 @@ func resolveDynamicLookup(ctx context.Context, filters []DynamicFilter, flagMap 
 	delete(flagMap, lookupFilterKeyParam)
 	delete(flagMap, lookupQueryParam)
 
+	// Narrowed here as well as in resolveLookupCore, because Selected is resolved
+	// eagerly: a dynamic filter's selection labels can be a backend round trip of
+	// their own, and a targeted search discards every entry but one.
+	if target := searchTarget(filters, describeDynamicFilter, searchKey, searchQuery); target >= 0 {
+		filters = filters[target : target+1]
+	}
+
 	bound := make([]boundFilter, 0, len(filters))
 	for _, df := range filters {
 		df := df
@@ -147,6 +159,7 @@ func resolveDynamicLookup(ctx context.Context, filters []DynamicFilter, flagMap 
 			Type:       df.Type,
 			Multi:      df.Multi,
 			Searchable: df.Searchable,
+			Limit:      df.Limit,
 			Selected:   selected,
 			Options: func(query string, limit int) (map[string]api.Textable, int, error) {
 				return df.Options(ctx, flagMap, query, limit)
