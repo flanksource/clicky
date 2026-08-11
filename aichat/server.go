@@ -20,8 +20,6 @@ type Options struct {
 	// RootCmd is the Cobra command tree whose operations become AI tools
 	// (executed in-process via clicky's RPC executor). Optional.
 	RootCmd *cobra.Command
-	// MCPServers are external MCP servers consumed as additional tools. Optional.
-	MCPServers []MCPServer
 	// System is the agent's system prompt. A default is used when empty.
 	System string
 	// Threads persists conversations for the thread endpoints. When nil, those
@@ -233,11 +231,6 @@ func (s *Server) buildTools(ctx context.Context, g *genkit.Genkit) ([]registered
 		return nil, err
 	}
 	tools = append(tools, customTools...)
-	mcpTools, err := MCPRegisteredTools(ctx, g, s.opts.MCPServers)
-	if err != nil {
-		return nil, err
-	}
-	tools = append(tools, mcpTools...)
 	if s.opts.ToolFilter != nil {
 		filtered := tools[:0]
 		for _, tool := range tools {

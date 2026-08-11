@@ -23,11 +23,11 @@ func TestCostUSD(t *testing.T) {
 			want:  3 + 15,
 		},
 		{
-			// captain Opus-4 rates: input $15, output $75 per MTok.
+			// captain Opus-4.5 rates: input $5, output $25 per MTok.
 			name:  "anthropic opus via captain",
-			model: "anthropic/claude-opus-4-1",
+			model: "anthropic/claude-opus-4-5",
 			usage: &ai.GenerationUsage{InputTokens: oneM, OutputTokens: oneM},
-			want:  15 + 75,
+			want:  5 + 25,
 		},
 		{
 			// clicky extraPricing gpt-4o: input $2.5, output $10 per MTok.

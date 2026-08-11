@@ -8,10 +8,10 @@ import (
 	"github.com/flanksource/captain/pkg/claude"
 )
 
-// extraPricing supplements captain's Anthropic-only PricingTable with rates for
-// the non-Anthropic models in this catalog. captain.CalculateCost prices the
-// Claude models (opus/sonnet/haiku); these rows cover OpenAI + Google. Rates are
-// USD per million tokens — keep in sync with the providers' pricing pages.
+// extraPricing supplements captain's model catalog (claude.PricingFor) with
+// rates for models it does not carry. captain prices the Claude lines; these
+// rows cover OpenAI + Google. Rates are USD per million tokens — keep in sync
+// with the providers' pricing pages.
 var extraPricing = map[string]claude.ModelPricing{
 	"openai/gpt-4o":             {InputPerMTok: 2.5, OutputPerMTok: 10},
 	"openai/o3":                 {InputPerMTok: 2, OutputPerMTok: 8},
@@ -71,9 +71,9 @@ func captainUsageBreakdown(u *capapi.Usage) usageBreakdown {
 	}.withTotal()
 }
 
-// costUSD prices one generation. Anthropic models go through captain's pricing
-// table (the source of truth for Claude); other providers use extraPricing with
-// captain's same arithmetic. An unpriced model returns 0 rather than guessing.
+// costUSD prices one generation. Models listed in extraPricing use those rates;
+// everything else goes through captain's model catalog (the source of truth for
+// Claude). An unpriced model returns 0 rather than guessing.
 func costUSD(modelID string, u *ai.GenerationUsage) float64 {
 	return costForUsage(modelID, genkitUsageBreakdown(u)).TotalUsd
 }
@@ -95,16 +95,17 @@ func costForUsage(modelID string, u usageBreakdown) costBreakdown {
 	return breakdown
 }
 
+// pricingForModel prefers this package's explicit rows, then falls back to
+// captain's generated catalog (which prices the Claude lines and resolves
+// provider prefixes, aliases and dated snapshots).
 func pricingForModel(modelID string) (claude.ModelPricing, bool) {
-	if family := claude.ClassifyModel(modelID); family != claude.ModelFamilyUnknown {
-		return claude.PricingTable[family], true
-	}
 	if p, ok := extraPricing[modelID]; ok {
 		return p, true
 	}
 	if strings.HasPrefix(modelID, "google/") {
-		p, ok := extraPricing["googleai/"+strings.TrimPrefix(modelID, "google/")]
-		return p, ok
+		if p, ok := extraPricing["googleai/"+strings.TrimPrefix(modelID, "google/")]; ok {
+			return p, true
+		}
 	}
-	return claude.ModelPricing{}, false
+	return claude.PricingFor(modelID)
 }

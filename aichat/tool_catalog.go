@@ -132,10 +132,6 @@ func customCatalogEntry(def ToolDefinition, name string, schema map[string]any) 
 	}
 }
 
-func mcpCatalogEntry(tool ai.ToolRef) ToolCatalogEntry {
-	return catalogEntryFromToolRef("mcp", tool, ToolInfo{Name: tool.Name()})
-}
-
 func catalogEntryFromToolRef(source string, ref ai.ToolRef, info ToolInfo) ToolCatalogEntry {
 	entry := ToolCatalogEntry{
 		Name:              ref.Name(),

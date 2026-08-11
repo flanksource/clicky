@@ -56,11 +56,19 @@ func TestRegisterModelAddsAndUpdatesCatalog(t *testing.T) {
 func TestSetModelCatalogAndReset(t *testing.T) {
 	t.Cleanup(ResetModelCatalog)
 
+	// Sampled from the live catalog rather than hard-coded: captain owns the
+	// menu, so any specific model id retires when captain bumps a version line.
+	builtIn := Catalog()
+	if len(builtIn) == 0 {
+		t.Fatal("built-in catalog is empty")
+	}
+	builtInID := builtIn[0].ID
+
 	if err := SetModelCatalog([]Model{{ID: "openai/only-model", Backend: capapi.BackendOpenAI, Label: "Only"}}); err != nil {
 		t.Fatalf("SetModelCatalog: %v", err)
 	}
-	if _, err := LookupModel("openai/gpt-5.5"); err == nil {
-		t.Error("expected built-in model to be absent after SetModelCatalog")
+	if _, err := LookupModel(builtInID); err == nil {
+		t.Errorf("expected built-in model %q to be absent after SetModelCatalog", builtInID)
 	}
 	m, err := LookupModel("openai/only-model")
 	if err != nil {
@@ -71,8 +79,8 @@ func TestSetModelCatalogAndReset(t *testing.T) {
 	}
 
 	ResetModelCatalog()
-	if _, err := LookupModel("openai/gpt-5.5"); err != nil {
-		t.Fatalf("built-in model should be restored: %v", err)
+	if _, err := LookupModel(builtInID); err != nil {
+		t.Fatalf("built-in model %q should be restored: %v", builtInID, err)
 	}
 }
 
