@@ -5,6 +5,39 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.21.55](https://github.com/flanksource/clicky/compare/v1.21.54...v1.21.55) (2026-08-11)
+
+
+### ⚠ BREAKING CHANGES
+
+* **api:** unclassified HTTP failures now return a generic message instead of the underlying error text
+
+Claude-Session-Id: 265660cb-236f-494a-9095-0ba83f484b14
+* **api:** commands marked local-only are no longer published as HTTP routes, and affected inferred routes may use corrected HTTP methods.
+
+### ⚡ Performance Improvements
+
+* **rpc:** compress eligible RPC responses ([bc235ef](https://github.com/flanksource/clicky/commit/bc235ef12027afb5b29dd22b90b551660b9e553e))
+
+
+### ✨ Features
+
+* **api:** add dynamic entity families and paged export responses ([d47d7b8](https://github.com/flanksource/clicky/commit/d47d7b8bb9e8ff79965201a72d2bb742f2774139))
+* **entity:** add primary actions and bounded filter lookups ([295e0ba](https://github.com/flanksource/clicky/commit/295e0ba6885edf06bb7af95b0363f6ab8568d5f9))
+* **entity:** support entity hierarchy paths and omit failed action data ([32618fb](https://github.com/flanksource/clicky/commit/32618fbd17d1866649b6d73121f68c16bfdfa589))
+* **formatters:** add complete tabular exports and compact rendered payloads ([eca2ac1](https://github.com/flanksource/clicky/commit/eca2ac15f8e7bc833785e438af0e2ccb91ef1873))
+
+
+### 🐛 Bug Fixes
+
+* fix terminal rendering and process output behavior ([f62be17](https://github.com/flanksource/clicky/commit/f62be173c32f919203c9101fd0014041fd8b5731))
+* **api:** Harden API, rendering, and terminal edge cases ([3cd4ba5](https://github.com/flanksource/clicky/commit/3cd4ba5938b4ab66fd96a638986b6e0aa0a79ed9))
+
+
+### 🔧 Maintenance
+
+* **release:** pin sub-modules to v1.21.54 [skip ci] ([e983395](https://github.com/flanksource/clicky/commit/e9833953a0088c536a1f852c8739c1610f093d2b))
+
 ## [1.21.54](https://github.com/flanksource/clicky/compare/v1.21.53...v1.21.54) (2026-08-05)
 
 
