@@ -75,10 +75,14 @@ func (c *compressingWriter) WriteHeader(status int) {
 	c.wroteHeader = true
 	header := c.Header()
 
-	// 204 and 304 carry no body, and a handler that encoded its own body owns
-	// that decision.
-	noBody := status == http.StatusNoContent || status == http.StatusNotModified
-	if noBody || header.Get("Content-Encoding") != "" || !compressible(header.Get("Content-Type")) {
+	// 204 and 304 carry no body to compress. A 206 carries one, but it is a
+	// selected range of the representation and Content-Range describes it in the
+	// representation's own uncompressed bytes: compressing the range would leave
+	// the client reassembling the parts into a body that is neither. And a
+	// handler that encoded its own body owns that decision.
+	asIs := status == http.StatusNoContent || status == http.StatusNotModified ||
+		status == http.StatusPartialContent
+	if asIs || header.Get("Content-Encoding") != "" || !compressible(header.Get("Content-Type")) {
 		c.ResponseWriter.WriteHeader(status)
 		return
 	}
@@ -204,19 +208,34 @@ func variesOnAcceptEncoding(header http.Header) bool {
 
 // acceptsGzip reports whether the header offers gzip without refusing it — a
 // "gzip;q=0" is an explicit no rather than a yes with a weight.
+//
+// RFC 9110 gives "*" the codings not named anywhere else in the field, so a
+// caller sending it has offered gzip too and withholding compression from it
+// would be reading the wildcard as if it were absent. A gzip entry of its own is
+// the more specific rule and settles the question whichever way it points: with
+// "gzip;q=0, *" the client has named gzip precisely to refuse it.
 func acceptsGzip(accept string) bool {
+	wildcard := false
 	for _, part := range strings.Split(accept, ",") {
 		fields := strings.Split(part, ";")
-		if strings.TrimSpace(strings.ToLower(fields[0])) != "gzip" {
-			continue
+		switch strings.TrimSpace(strings.ToLower(fields[0])) {
+		case "gzip":
+			return !refusedWeight(fields[1:])
+		case "*":
+			wildcard = !refusedWeight(fields[1:])
 		}
-		for _, parameter := range fields[1:] {
-			parameter = strings.ReplaceAll(strings.TrimSpace(strings.ToLower(parameter)), " ", "")
-			if parameter == "q=0" || strings.HasPrefix(parameter, "q=0.0") {
-				return false
-			}
+	}
+	return wildcard
+}
+
+// refusedWeight reports whether a coding's parameters weight it to zero, which
+// is a refusal rather than a low preference.
+func refusedWeight(parameters []string) bool {
+	for _, parameter := range parameters {
+		parameter = strings.ReplaceAll(strings.TrimSpace(strings.ToLower(parameter)), " ", "")
+		if parameter == "q=0" || strings.HasPrefix(parameter, "q=0.0") {
+			return true
 		}
-		return true
 	}
 	return false
 }

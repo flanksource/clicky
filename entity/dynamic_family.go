@@ -59,6 +59,18 @@ var (
 // Replacing rather than appending is deliberate: a family is a route, not an
 // instance, and two families claiming one path segment is a wiring bug that
 // would otherwise surface as whichever registration happened to be found first.
+//
+// Register every family before the server builds its mux (rpc.RegisterRoutes).
+// The mux pattern for a family is written once, from the families registered at
+// that moment: a family registered afterwards is described by the OpenAPI
+// document — which is resolved per request — but has no pattern, so the mux
+// answers 404 before the family dispatch is ever reached. Unregistering has the
+// mirror shape: the pattern stays, and the path falls through to ordinary
+// operation lookup and 404s there.
+//
+// Name must not collide with the first path segment of a registered operation.
+// The dispatch resolves a registered operation first, so a colliding family is
+// simply never reached for the paths the operation owns.
 func RegisterDynamicEntityFamily(family DynamicEntityFamily) {
 	if family.Name == "" {
 		panic("clicky.RegisterDynamicEntityFamily: Name must not be empty")

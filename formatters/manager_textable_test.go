@@ -3,6 +3,7 @@ package formatters
 import (
 	"bytes"
 	"encoding/csv"
+	"regexp"
 	"strings"
 
 	"github.com/flanksource/clicky/api"
@@ -10,6 +11,12 @@ import (
 	. "github.com/onsi/gomega"
 	"github.com/xuri/excelize/v2"
 )
+
+var gridjsTableID = regexp.MustCompile(`gridjs-table-\d+`)
+
+func normalizeTableIDs(html string) string {
+	return gridjsTableID.ReplaceAllString(html, "gridjs-table")
+}
 
 var _ = Describe("Textable formatting", func() {
 	table := api.NewTableFrom([]excelTableRow{{ID: 1, Name: "alpha"}, {ID: 2, Name: "beta"}})
@@ -52,7 +59,9 @@ var _ = Describe("Textable formatting", func() {
 
 			output, err := NewFormatManager().FormatWithOptions(FormatOptions{Format: format}, table)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(output).To(Equal(expected))
+			// The Grid.js mount id is deliberately unique per render, so two renders of
+			// the same table never match byte-for-byte; the rest must be identical.
+			Expect(normalizeTableIDs(output)).To(Equal(normalizeTableIDs(expected)))
 		},
 		Entry("json", "json"),
 		Entry("yaml", "yaml"),

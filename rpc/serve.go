@@ -6,10 +6,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"html/template"
+	"maps"
 	"net/http"
 	"os/exec"
 	"path"
 	"runtime"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -62,6 +64,11 @@ type SwaggerServer struct {
 	// reflected — register the whole tree before serving.
 	specMu   sync.Mutex
 	specDocs map[specFormat]*specDocument
+	// specBase is the same document before any family path is added. A consumer
+	// with families cannot memoize the encoded rendering, but the static portion
+	// it is built from is still a pure function of rootCmd and converterCfg, so
+	// only the family paths are re-derived per request.
+	specBase *OpenAPISpec
 }
 
 // specFormat identifies a rendering of the OpenAPI document. Each rendering is
@@ -344,14 +351,49 @@ func (s *SwaggerServer) specDocument(r *http.Request, format specFormat) (*specD
 		return s.renderSpec(format)
 	}
 
-	spec, err := s.generator.GenerateFromCobraWithConfig(s.rootCmd, s.converterCfg)
+	base, err := s.baseSpec()
 	if err != nil {
-		return nil, fmt.Errorf("failed to generate OpenAPI spec: %w", err)
+		return nil, err
 	}
+	spec := cloneSpecForFamilies(base)
 	if err := s.addFamilyPaths(r.Context(), spec, families); err != nil {
 		return nil, err
 	}
 	return encodeSpec(spec, format)
+}
+
+// baseSpec renders the family-independent document once and keeps it, so a
+// consumer with families pays the command-tree walk on the first request only.
+func (s *SwaggerServer) baseSpec() (*OpenAPISpec, error) {
+	s.specMu.Lock()
+	defer s.specMu.Unlock()
+
+	if s.specBase != nil {
+		return s.specBase, nil
+	}
+	spec, err := s.generator.GenerateFromCobraWithConfig(s.rootCmd, s.converterCfg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate OpenAPI spec: %w", err)
+	}
+	s.specBase = spec
+	return spec, nil
+}
+
+// cloneSpecForFamilies copies exactly what addFamilyPaths writes to — the path
+// map and the surface list — so a request's instances never reach the cached
+// base. Everything else is shared: nothing on this path mutates it.
+func cloneSpecForFamilies(base *OpenAPISpec) *OpenAPISpec {
+	spec := *base
+	spec.Paths = maps.Clone(base.Paths)
+	if spec.Paths == nil {
+		spec.Paths = make(map[string]OpenAPIPath)
+	}
+	if base.Clicky != nil {
+		meta := *base.Clicky
+		meta.Surfaces = slices.Clone(base.Clicky.Surfaces)
+		spec.Clicky = &meta
+	}
+	return &spec
 }
 
 // serveSpec writes a rendered OpenAPI document, answering a matching
@@ -743,16 +785,22 @@ func (s *SwaggerServer) handleExecuteCommand(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	lookupRequested := isLookupRequest(r)
+	op := s.executor.FindOperation(r.Method, r.URL.Path)
+
 	// A family's instances come into being while the server runs, so they are not
 	// in the route table this handler was reached through. Reading the path is
 	// what lets an entity that did not exist at startup be served at all.
-	if family, name, matched := s.matchDynamicFamily(r.URL.Path); matched {
-		s.handleDynamicFamily(w, r, family, name)
-		return
+	//
+	// A registered operation wins: the family matcher compares only the first
+	// segment, so a family named after an existing entity would otherwise swallow
+	// that entity's item routes and make them unreachable.
+	if op == nil {
+		if family, name, matched := s.matchDynamicFamily(r.URL.Path); matched {
+			s.handleDynamicFamily(w, r, family, name)
+			return
+		}
 	}
-
-	lookupRequested := isLookupRequest(r)
-	op := s.executor.FindOperation(r.Method, r.URL.Path)
 	// A paged operation owns its own response. A bare HEAD against one asks for
 	// that response's headers rather than for the filter metadata HEAD means
 	// everywhere else; an explicit ?__lookup=filters still reaches the lookup.

@@ -893,23 +893,79 @@ func (n ClickyNode) PlainText() string {
 	if n.Source != "" {
 		return n.Source
 	}
-	parts := make([]string, 0, len(n.Children)+len(n.Items)+len(n.Fields))
-	for _, child := range n.Children {
-		parts = append(parts, child.PlainText())
-	}
-	for _, item := range n.Items {
-		parts = append(parts, item.PlainText())
-	}
-	for _, field := range n.Fields {
-		parts = append(parts, field.Value.PlainText())
-	}
-	joined := make([]string, 0, len(parts))
-	for _, part := range parts {
-		if part != "" {
-			joined = append(joined, part)
+	parts := make([]string, 0, len(n.Children)+len(n.Items)+len(n.Fields)+len(n.Rows)+len(n.Roots)+2)
+	add := func(text string) {
+		if text != "" {
+			parts = append(parts, text)
 		}
 	}
-	return strings.Join(joined, " ")
+	// Label and Content carry the whole text of a collapsed, admonition or
+	// button node; Rows and Roots carry a table's and a tree's, none of which
+	// keep a second rendering in Plain.
+	if n.Label != nil {
+		add(n.Label.PlainText())
+	}
+	if n.Content != nil {
+		add(n.Content.PlainText())
+	}
+	for _, child := range n.Children {
+		add(child.PlainText())
+	}
+	for _, item := range n.Items {
+		add(item.PlainText())
+	}
+	for _, field := range n.Fields {
+		add(field.Value.PlainText())
+	}
+	for _, row := range n.Rows {
+		for _, name := range n.cellOrder(row) {
+			add(row.Cells[name].PlainText())
+		}
+		if row.Detail != nil {
+			add(row.Detail.PlainText())
+		}
+	}
+	for _, root := range n.Roots {
+		add(root.PlainText())
+	}
+	return strings.Join(parts, " ")
+}
+
+// cellOrder lists a row's cells in the order the table displays them, so a
+// flattened row reads like the row. Cells with no column follow, sorted, so the
+// result never depends on map iteration order.
+func (n ClickyNode) cellOrder(row ClickyRow) []string {
+	names := make([]string, 0, len(row.Cells))
+	extra := make([]string, 0, len(row.Cells))
+	seen := make(map[string]bool, len(row.Cells))
+	for _, column := range n.Columns {
+		if _, ok := row.Cells[column.Name]; ok && !seen[column.Name] {
+			seen[column.Name] = true
+			names = append(names, column.Name)
+		}
+	}
+	for name := range row.Cells {
+		if !seen[name] {
+			extra = append(extra, name)
+		}
+	}
+	sort.Strings(extra)
+	return append(names, extra...)
+}
+
+// PlainText flattens a tree item and its descendants to the string a reader
+// sorts, filters and searches on.
+func (i ClickyTreeItem) PlainText() string {
+	parts := make([]string, 0, len(i.Children)+1)
+	if label := i.Label.PlainText(); label != "" {
+		parts = append(parts, label)
+	}
+	for _, child := range i.Children {
+		if text := child.PlainText(); text != "" {
+			parts = append(parts, text)
+		}
+	}
+	return strings.Join(parts, " ")
 }
 
 // compactNode drops the copies of a node's text that a reader can derive.
@@ -927,8 +983,12 @@ func compactNode(node ClickyNode) ClickyNode {
 	// A lone text child inside a text parent adds a nesting level and repeats
 	// the same string; the parent can carry it directly.
 	if node.Kind == "text" && node.Text == "" && len(node.Children) == 1 {
+		// Only a bare leaf can be lifted: the parent keeps Text and Plain, so a
+		// child carrying anything else would lose it silently.
 		if child := node.Children[0]; child.Kind == "text" && len(child.Children) == 0 &&
-			child.Tooltip == nil && child.Style == nil && child.Href == "" {
+			child.Tooltip == nil && child.Style == nil && child.Href == "" &&
+			child.HTML == "" && child.FilterValue == nil &&
+			len(child.Attributes) == 0 && child.Bullet == nil {
 			node.Text = child.Text
 			if node.Plain == "" {
 				node.Plain = child.Plain

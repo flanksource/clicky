@@ -44,7 +44,7 @@ func (c *countingFilter) filter() DynamicFilter {
 				if limit > 0 && len(out) >= limit {
 					break
 				}
-				out[value] = api.Text{Content: value}
+				out[value] = api.Text{}.Append(value)
 			}
 			return out, len(matched), nil
 		},

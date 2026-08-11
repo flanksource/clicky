@@ -49,6 +49,13 @@ func (f *TreeFormatter) Format(data ...any) (string, error) {
 			} else {
 				return text.ANSI(), nil
 			}
+		} else if textable, ok := data[0].(api.Textable); ok {
+			// A Textable without tree structure (a table, a badge) still renders
+			// itself; falling through to PrettyData would yield an empty tree.
+			if f.NoColor {
+				return textable.String(), nil
+			}
+			return textable.ANSI(), nil
 		}
 	}
 

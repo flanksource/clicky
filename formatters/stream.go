@@ -9,6 +9,7 @@ import (
 	"html"
 	"io"
 	"net/http"
+	"reflect"
 	"sort"
 	"strings"
 
@@ -233,11 +234,40 @@ func escapeSpreadsheetFormula(text string) string {
 // as a number and cannot carry a formula, so quoting a value like -5 would just
 // turn it into text and break sorting and arithmetic in the sheet.
 func escapeSpreadsheetCell(value any, rendered string) string {
-	switch value.(type) {
-	case nil, bool, int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64, float32, float64, json.Number:
+	if isSpreadsheetNumber(value) {
 		return rendered
 	}
 	return escapeSpreadsheetFormula(rendered)
+}
+
+// isSpreadsheetNumber reports whether the sheet holds the value as a number (or
+// a boolean), which no spreadsheet evaluates as a formula.
+//
+// The kind is resolved through reflection rather than matched against a list of
+// concrete types, because rows come from arbitrary backends: a *int64, a named
+// type like `type Bytes uint64`, or a pointer to one are all still numbers, and
+// listing types meant a negative number reached the sheet as the text '-5.
+// json.Number is a string kind but a number in the sheet; []byte is a slice
+// carrying text, so it stays escaped.
+func isSpreadsheetNumber(value any) bool {
+	switch value.(type) {
+	case nil, json.Number:
+		return true
+	case []byte:
+		return false
+	}
+	valueType := reflect.TypeOf(value)
+	for valueType.Kind() == reflect.Pointer {
+		valueType = valueType.Elem()
+	}
+	switch valueType.Kind() {
+	case reflect.Bool,
+		reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64,
+		reflect.Float32, reflect.Float64:
+		return true
+	}
+	return false
 }
 
 func writeJSONStream(ctx context.Context, w io.Writer, rows RowIterator, columns []api.ColumnDef, first map[string]any, ok, ndjson bool, opts StreamOptions) (int64, error) {

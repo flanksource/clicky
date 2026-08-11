@@ -13,16 +13,18 @@ const PathSeparator = "/"
 // Runes outside delimiters are never separators — SplitPath("a-b.c", ".")
 // yields ["a-b", "c"], not three segments.
 //
+// PathSeparator is always a separator, whatever delimiters says (including when
+// it is empty): a segment containing it would be re-split by any consumer of the
+// JoinPath output, so SplitPath("jms/api.incoming", ".") yields
+// ["jms", "api", "incoming"] and the round-trip through JoinPath is stable.
+//
 // A name with no delimiter yields a single segment, i.e. a root-level leaf.
 func SplitPath(name, delimiters string) []string {
-	if name == "" || delimiters == "" {
-		if name == "" {
-			return nil
-		}
-		return []string{name}
+	if name == "" {
+		return nil
 	}
 	fields := strings.FieldsFunc(name, func(r rune) bool {
-		return strings.ContainsRune(delimiters, r)
+		return strings.ContainsRune(PathSeparator, r) || strings.ContainsRune(delimiters, r)
 	})
 	if len(fields) == 0 {
 		return nil

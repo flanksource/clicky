@@ -551,8 +551,12 @@ type Entity[T EntityItem, ListOpts any, R any] struct {
 	Parent string
 	// Aliases applied to the generated entity cobra command.
 	Aliases []string
-	List    func(opts ListOpts) ([]T, error)
-	Get     func(id string) (R, error)
+	// Path is the entity's hierarchy position within Parent, PathSeparator-joined
+	// (x-clicky.surfaces[].path). Build it with JoinPath/SplitPath so the
+	// separator stays the wire convention. Empty declares no hierarchy.
+	Path string
+	List func(opts ListOpts) ([]T, error)
+	Get  func(id string) (R, error)
 	// ListWithContext / GetWithContext / GetWithFlagsAndContext are context-aware
 	// variants of List / Get / GetWithFlags. When set they take precedence over
 	// their non-context counterparts and receive the request-scoped
@@ -773,6 +777,7 @@ func RegisterEntity[T EntityItem, ListOpts any, R any](e Entity[T, ListOpts, R])
 		Name:       name,
 		Parent:     e.Parent,
 		Aliases:    e.Aliases,
+		Path:       e.Path,
 		Type:       reflect.TypeOf((*T)(nil)).Elem(),
 		ListType:   reflect.TypeOf((*ListOpts)(nil)).Elem(),
 		ValidArgs:  e.ValidArgs,
@@ -857,11 +862,20 @@ func RegisterEntity[T EntityItem, ListOpts any, R any](e Entity[T, ListOpts, R])
 		info.PrimaryAction = &primary
 	}
 
+	// An action's verb becomes a subcommand name, so two actions sharing one are a
+	// wiring bug: cobra keeps whichever was added first and the other silently
+	// never runs, however different their routes are.
+	verbs := make(map[string]bool, len(e.Actions))
 	for _, action := range e.Actions {
 		if action == nil {
 			continue
 		}
-		info.Actions = append(info.Actions, action.actionInfo())
+		actionInfo := action.actionInfo()
+		if verbs[actionInfo.Name] {
+			panic("clicky.RegisterEntity: entity " + name + " declares two actions with the verb " + actionInfo.Name)
+		}
+		verbs[actionInfo.Name] = true
+		info.Actions = append(info.Actions, actionInfo)
 	}
 
 	listType := reflect.TypeOf((*ListOpts)(nil)).Elem()
