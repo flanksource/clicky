@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/flanksource/commons/logger"
+	"golang.org/x/term"
 )
 
 const (
@@ -74,8 +75,20 @@ func SetTerminalRestoreFunc(fn func()) {
 // restoreTerminal ensures terminal is in a clean state before exit.
 // Uses raw ANSI escapes as a safety net, then calls the registered
 // restore callback for full term.Restore if available.
+//
+// The escapes are only meaningful to a terminal; writing them to a redirected
+// stderr appends junk bytes to whatever the user captured.
+//
+// Deliberately no "\x1b[?1049l": nothing here ever enters the alternate screen,
+// and asking a terminal to leave a buffer it was never in is not a no-op
+// everywhere — terminals that honour it restore the primary buffer and discard
+// the output the command just finished printing. A consumer that does use the
+// alternate screen restores it through SetTerminalRestoreFunc, which knows it
+// entered.
 func restoreTerminal() {
-	fmt.Fprint(os.Stderr, "\x1b[?1049l\x1b[?25h\x1b[0m")
+	if term.IsTerminal(int(os.Stderr.Fd())) {
+		fmt.Fprint(os.Stderr, "\x1b[?25h\x1b[0m")
+	}
 	terminalRestoreMu.Lock()
 	fn := terminalRestoreFunc
 	terminalRestoreMu.Unlock()
@@ -115,7 +128,7 @@ func AddHookWithPriority(label string, priority int, fn func()) {
 
 // Shutdown executes all registered hooks in priority order
 func Shutdown() {
-	logger.Infof("Starting graceful shutdown with %d hooks", len(hooks))
+	logger.Debugf("Starting graceful shutdown with %d hooks", len(hooks))
 	hooksMux.Lock()
 	defer hooksMux.Unlock()
 
@@ -126,7 +139,7 @@ func Shutdown() {
 		return
 	}
 
-	logger.Infof("Executing %d shutdown hooks", len(hooks))
+	logger.Debugf("Executing %d shutdown hooks", len(hooks))
 
 	// Execute hooks in priority order (lowest priority first)
 	for hooks.Len() > 0 {
@@ -143,8 +156,8 @@ func Shutdown() {
 		}()
 	}
 
-	logger.Infof("All shutdown hooks executed")
-	restoreTerminal()
+	// The deferred restoreTerminal above already covers every return path.
+	logger.Debugf("All shutdown hooks executed")
 }
 
 // WaitForSignal waits for interrupt signals and triggers shutdown

@@ -26,21 +26,23 @@ var log = logger.GetLogger("exec")
 // NewExecf creates a new Process with formatted command string
 func NewExecf(cmd string, args ...any) *Process {
 	return &Process{
-		Cmd:  fmt.Sprintf(cmd, args...),
-		log:  log,
-		Env:  map[string]string{},
-		done: make(chan struct{}),
+		Cmd:           fmt.Sprintf(cmd, args...),
+		log:           log,
+		captureOutput: NewExecLogger(),
+		Env:           map[string]string{},
+		done:          make(chan struct{}),
 	}
 }
 
 // NewExec creates a new Process with the specified command and arguments
 func NewExec(cmd string, args ...string) *Process {
 	return &Process{
-		Cmd:  cmd,
-		log:  log,
-		Args: args,
-		Env:  map[string]string{},
-		done: make(chan struct{}),
+		Cmd:           cmd,
+		log:           log,
+		Args:          args,
+		captureOutput: NewExecLogger(),
+		Env:           map[string]string{},
+		done:          make(chan struct{}),
 	}
 }
 

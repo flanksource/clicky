@@ -489,13 +489,18 @@ func (t Text) ANSI() string {
 		return result
 	}
 
-	// Apply tailwind styles using ANSI escape codes
-	content := transformedText
+	// Style this node's own content only, then append each child's rendered
+	// output beside it. Folding children into the styled content instead would
+	// open this node's SGR before them and close it after the last one, so a
+	// `font-bold` header leaks bold onto its whole subtree — and the first
+	// child that emits its own \x1b[0m cancels the parent's attribute for
+	// everything after it.
+	result := formatANSI(transformedText, style)
 	for _, child := range t.Children {
-		content += child.ANSI()
+		result += child.ANSI()
 	}
 
-	return formatANSI(content, style)
+	return result
 }
 
 // KeyValuePair represents a single key-value pair that can be rendered to multiple output formats.

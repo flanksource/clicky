@@ -19,14 +19,21 @@ func (i Icon) String() string {
 	return i.Unicode
 }
 
-// ANSI returns the Unicode representation with color styling applied
+// ANSI returns the Unicode representation with color styling applied.
+//
+// The profile is pinned rather than auto-detected so icons colour on the same
+// terms as api.formatANSI, which every other Text segment goes through.
+// termenv.DefaultOutput() degrades to the Ascii profile whenever stdout is not
+// a TTY, which left piped output with coloured labels beside monochrome
+// status icons. Colour is suppressed wholesale one level up, by rendering
+// String() instead of ANSI() when NO_COLOR is set.
 func (i Icon) ANSI() string {
 	if i.Style == "" {
 		return i.Unicode
 	}
 
 	style := tailwind.ParseStyle(i.Style)
-	output := termenv.DefaultOutput()
+	output := termenv.NewOutput(termenv.DefaultOutput().Writer(), termenv.WithProfile(termenv.ANSI))
 	styled := output.String(i.Unicode)
 
 	if style.Foreground != "" {
