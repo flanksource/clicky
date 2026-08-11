@@ -79,11 +79,11 @@ func TestResolveDynamicLookup_AnswersFromASpecThatWasNeverRegistered(t *testing.
 			Searchable: true,
 			Options: func(_ context.Context, _ map[string]string, query string, _ int) (map[string]api.Textable, int, error) {
 				if query == "pr" {
-					return map[string]api.Textable{"prod": api.Text{Content: "Production"}}, 1, nil
+					return map[string]api.Textable{"prod": api.Text{}.Append("Production")}, 1, nil
 				}
 				return map[string]api.Textable{
-					"prod": api.Text{Content: "Production"},
-					"dev":  api.Text{Content: "Development"},
+					"prod": api.Text{}.Append("Production"),
+					"dev":  api.Text{}.Append("Development"),
 				}, 2, nil
 			},
 		}},

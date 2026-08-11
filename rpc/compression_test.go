@@ -1,12 +1,14 @@
 package rpc
 
 import (
+	"bytes"
 	"compress/gzip"
 	"errors"
 	"io"
 	"log"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -93,40 +95,63 @@ func TestCompressGzipsWhatTheCallerAccepts(t *testing.T) {
 // wrapper forwards a Flush instead of swallowing it — not that any real
 // endpoint flushes. Nothing fails here if a streaming handler forgets to.
 func TestCompressPassesFlushThrough(t *testing.T) {
-	flushed := make(chan struct{}, 1)
+	first, second := `{"id":1}`+"\n", `{"id":2}`+"\n"
+	rec := httptest.NewRecorder()
+	// What had reached the recorder by the time the handler returned from its
+	// flush — the bytes a client would already have been able to read. Asserting
+	// on the finished response instead would prove nothing: a wrapper that never
+	// flushed at all still produces the whole body when it is closed.
+	var earlyBytes []byte
+	flushed := false
+
 	handler := Compress(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/x-ndjson")
-		_, _ = io.WriteString(w, `{"id":1}`+"\n")
+		_, _ = io.WriteString(w, first)
 		flusher, ok := w.(http.Flusher)
 		if !ok {
 			t.Error("compressing writer is not an http.Flusher")
 			return
 		}
 		flusher.Flush()
-		flushed <- struct{}{}
-		_, _ = io.WriteString(w, `{"id":2}`+"\n")
+		flushed = true
+		earlyBytes = append([]byte(nil), rec.Body.Bytes()...)
+		_, _ = io.WriteString(w, second)
 	}))
 
 	request := httptest.NewRequest(http.MethodGet, "/api/v1/profile/anything?scope=all", nil)
 	request.Header.Set("Accept-Encoding", "gzip")
-	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, request)
 
-	select {
-	case <-flushed:
-	default:
+	if !flushed {
 		t.Fatal("handler never reached its flush")
 	}
+	// A gzip header alone is what a swallowed Flush leaves behind: the row is
+	// still inside the compressor's window, so it has to be decoded rather than
+	// merely counted.
+	early, err := gzip.NewReader(bytes.NewReader(earlyBytes))
+	if err != nil {
+		t.Fatalf("nothing decodable had left the wrapper by the flush (%d bytes): %v", len(earlyBytes), err)
+	}
+	decoded, err := io.ReadAll(early)
+	// The member is deliberately unfinished here — the handler had not returned
+	// — so the stream ending early is expected and only the bytes matter.
+	if err != nil && !errors.Is(err, io.ErrUnexpectedEOF) {
+		t.Fatal(err)
+	}
+	if string(decoded) != first {
+		t.Fatalf("flushed bytes decoded to %q, want the first row %q", decoded, first)
+	}
+
 	reader, err := gzip.NewReader(rec.Body)
 	if err != nil {
 		t.Fatal(err)
 	}
-	decoded, err := io.ReadAll(reader)
+	whole, err := io.ReadAll(reader)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := `{"id":1}` + "\n" + `{"id":2}` + "\n"; string(decoded) != want {
-		t.Fatalf("streamed body = %q, want %q", decoded, want)
+	if want := first + second; string(whole) != want {
+		t.Fatalf("streamed body = %q, want %q", whole, want)
 	}
 }
 
@@ -147,6 +172,94 @@ func TestCompressLeavesEmptyResponsesAlone(t *testing.T) {
 	}
 	if encoding := rec.Header().Get("Content-Encoding"); encoding != "" {
 		t.Fatalf("Content-Encoding=%q on a bodiless response", encoding)
+	}
+}
+
+// A 206 answers a range request, and Content-Range counts in the bytes of the
+// uncompressed representation. Compressing the selected range would leave those
+// two describing different things, and a client stitching the parts back
+// together would assemble a body that is neither.
+func TestCompressLeavesAPartialRangeAlone(t *testing.T) {
+	body := strings.Repeat(`{"kind":"text","plain":"idle","text":"idle"},`, 200)
+	handler := Compress(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Content-Range", "bytes 0-"+strconv.Itoa(len(body)-1)+"/"+strconv.Itoa(len(body)*2))
+		w.WriteHeader(http.StatusPartialContent)
+		_, _ = io.WriteString(w, body)
+	}))
+
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/profile/anything", nil)
+	request.Header.Set("Accept-Encoding", "gzip")
+	request.Header.Set("Range", "bytes=0-"+strconv.Itoa(len(body)-1))
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, request)
+
+	if rec.Code != http.StatusPartialContent {
+		t.Fatalf("status=%d", rec.Code)
+	}
+	if encoding := rec.Header().Get("Content-Encoding"); encoding != "" {
+		t.Fatalf("Content-Encoding=%q on a partial range", encoding)
+	}
+	if got := rec.Body.String(); got != body {
+		t.Fatalf("the range was re-encoded: %d bytes, want the %d Content-Range describes", len(got), len(body))
+	}
+}
+
+// "*" is the wildcard for every coding the field does not name, so a caller
+// sending it has offered gzip. An entry for gzip itself is more specific and
+// settles it either way.
+func TestCompressHonoursTheAcceptEncodingWildcard(t *testing.T) {
+	body := strings.Repeat(`{"kind":"text","plain":"idle","text":"idle"},`, 200)
+
+	for _, tc := range []struct {
+		name     string
+		accept   string
+		wantGzip bool
+	}{
+		{"a bare wildcard offers gzip", "*", true},
+		{"a weighted wildcard offers it too", "*;q=1", true},
+		{"a wildcard with other codings", "br, *", true},
+		{"a refused wildcard is a refusal", "*;q=0", false},
+		{"a wildcard refused with a decimal weight", "identity, *;q=0.0", false},
+		// The specific entry wins over the wildcard, whichever way it points.
+		{"gzip named to be refused beside a wildcard", "gzip;q=0, *", false},
+		{"gzip named to be accepted beside a refused wildcard", "*;q=0, gzip", true},
+		{"a wildcard the client only weighted lower", "*;q=0.5", true},
+		// Naming another coding says nothing about gzip; only "*" does.
+		{"another coding on its own", "br", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			handler := Compress(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = io.WriteString(w, body)
+			}))
+
+			request := httptest.NewRequest(http.MethodGet, "/api/v1/profile/anything", nil)
+			request.Header.Set("Accept-Encoding", tc.accept)
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, request)
+
+			if gzipped := rec.Header().Get("Content-Encoding") == "gzip"; gzipped != tc.wantGzip {
+				t.Fatalf("Accept-Encoding: %s gzipped=%v, want %v", tc.accept, gzipped, tc.wantGzip)
+			}
+			if !tc.wantGzip {
+				if got := rec.Body.String(); got != body {
+					t.Fatalf("uncompressed body changed: %d bytes, want %d", len(got), len(body))
+				}
+				return
+			}
+			reader, err := gzip.NewReader(rec.Body)
+			if err != nil {
+				t.Fatal(err)
+			}
+			decoded, err := io.ReadAll(reader)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if string(decoded) != body {
+				t.Fatalf("round trip changed the body: %d bytes, want %d", len(decoded), len(body))
+			}
+		})
 	}
 }
 

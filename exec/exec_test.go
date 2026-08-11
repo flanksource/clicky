@@ -278,11 +278,16 @@ echo line3`
 				close(done)
 			}()
 
+			// Bounded: a Result() that deadlocks against the running process must
+			// fail this spec rather than spin a core until the suite times out.
+			deadline := time.After(30 * time.Second)
 			for {
 				select {
 				case <-done:
 					Expect(process.Result().Stdout).To(Equal("captured"))
 					return
+				case <-deadline:
+					Fail("process did not finish while Result() was being snapshotted")
 				default:
 					_ = process.Result()
 				}

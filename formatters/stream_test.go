@@ -377,6 +377,43 @@ func TestWriteTableStreamCSVEscapesSpreadsheetFormulas(t *testing.T) {
 	}
 }
 
+// Rows come from arbitrary backends, so a number reaches the exporter as a
+// pointer or a named type just as often as an int. Matching concrete types made
+// those cells text: -5 was written as '-5 and stopped sorting as a number.
+func TestEscapeSpreadsheetCellExemptsEveryNumericKind(t *testing.T) {
+	type megabytes float64
+	type revision uint16
+	negative := int64(-5)
+
+	numeric := map[string]any{
+		"int":              -5,
+		"float64":          -5.0,
+		"uint16":           uint16(5),
+		"json.Number":      json.Number("-5"),
+		"bool":             false,
+		"named float":      megabytes(-5),
+		"named uint":       revision(5),
+		"pointer to int64": &negative,
+		"nil":              nil,
+	}
+	for name, value := range numeric {
+		if got := escapeSpreadsheetCell(value, "-5"); got != "-5" {
+			t.Errorf("%s cell must stay a number, got %q", name, got)
+		}
+	}
+
+	// []byte is a slice, not a number: it carries text a sheet would evaluate.
+	textual := map[string]any{
+		"string": "-5+1",
+		"[]byte": []byte("-5+1"),
+	}
+	for name, value := range textual {
+		if got := escapeSpreadsheetCell(value, "-5+1"); got != "'-5+1" {
+			t.Errorf("%s cell was not neutralised, got %q", name, got)
+		}
+	}
+}
+
 func TestWriteTableStreamStructuredFormatsKeepFormulaText(t *testing.T) {
 	columns := []api.ColumnDef{{Name: "note"}}
 	rows := []map[string]any{{"note": "=1+1"}}

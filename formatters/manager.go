@@ -2,6 +2,7 @@ package formatters
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -190,6 +191,10 @@ func (f *FormatManager) Format(format string, data interface{}) (string, error) 
 	}
 }
 
+// errTextableFormatUnsupported marks a format formatTextable does not implement,
+// so callers can fall through to the generic formatting pipeline instead of failing.
+var errTextableFormatUnsupported = errors.New("unsupported format for Textable")
+
 func formatTextable(data api.Textable, opts FormatOptions) (string, error) {
 	format := strings.ToLower(opts.ResolveFormat())
 	switch format {
@@ -216,7 +221,7 @@ func formatTextable(data api.Textable, opts FormatOptions) (string, error) {
 		slack := NewSlackFormatter()
 		return slack.Format(data, opts)
 	default:
-		return "", fmt.Errorf("unsupported format for Textable: %s", opts.Format)
+		return "", fmt.Errorf("%w: %s", errTextableFormatUnsupported, format)
 	}
 }
 
@@ -231,6 +236,21 @@ func (f *FormatManager) formatWithOptions(options FormatOptions, data ...any) (s
 	// Resolve format from boolean flags first to check for custom formatters
 	format := strings.ToLower(options.ResolveFormat())
 
+	// A single Textable renders itself for the formats formatTextable owns; any
+	// other format falls through to the generic pipeline below so Textable input
+	// can still reach csv/excel/ndjson/tree and custom formatters.
+	if len(data) == 1 {
+		if textable, ok := data[0].(api.Textable); ok {
+			output, err := formatTextable(textable, options)
+			if err == nil {
+				return output, nil
+			}
+			if !errors.Is(err, errTextableFormatUnsupported) {
+				return "", err
+			}
+		}
+	}
+
 	// Check for custom formatters BEFORE the string shortcut
 	// This allows custom formatters to process strings
 	if customFn, exists := GetCustomFormatter(format); exists {
@@ -243,8 +263,6 @@ func (f *FormatManager) formatWithOptions(options FormatOptions, data ...any) (s
 			return v, nil
 		case []byte:
 			return string(v), nil
-		case api.Textable:
-			return formatTextable(v, options)
 		}
 	}
 

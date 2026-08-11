@@ -207,6 +207,18 @@ func ExportResponseHeaders() map[string]ExportHeaderDoc {
 	return headers
 }
 
+// exportAllowedOrigin is the origin every export response is readable from.
+// Empty means the library states none, which is the "*" default.
+var exportAllowedOrigin string
+
+// SetExportAllowedOrigin narrows Access-Control-Allow-Origin on every export
+// response to a single origin. A consumer that serves its frontend from a known
+// origin should set it at startup; leaving it unset (or passing "") keeps the
+// permissive "*" a library with no knowledge of its host has to default to.
+func SetExportAllowedOrigin(origin string) {
+	exportAllowedOrigin = origin
+}
+
 // SetCORSHeaders permits a cross-origin caller to read this response, whatever
 // it turns out to be.
 //
@@ -215,8 +227,17 @@ func ExportResponseHeaders() map[string]ExportHeaderDoc {
 // success is what makes an error body unreadable in a browser — and an error
 // nobody can read is worse than the one it describes.
 func SetCORSHeaders(w http.ResponseWriter) {
+	origin := exportAllowedOrigin
+	if origin == "" {
+		origin = "*"
+	}
 	header := w.Header()
-	header.Set("Access-Control-Allow-Origin", "*")
+	header.Set("Access-Control-Allow-Origin", origin)
+	if origin != "*" {
+		// The response now varies by origin, so a shared cache must not serve one
+		// origin's copy to another.
+		header.Add("Vary", "Origin")
+	}
 	header.Set("Access-Control-Expose-Headers", strings.Join(ExportHeaderNames(), ", "))
 }
 

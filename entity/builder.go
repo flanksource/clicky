@@ -32,6 +32,14 @@ func (b *EntityBuilder[T, ListOpts, R]) Aliases(aliases ...string) *EntityBuilde
 	return b
 }
 
+// Path sets the entity's hierarchy position within its parent, joined by
+// PathSeparator, and surfaced as x-clicky.surfaces[].path. Pass segments through
+// JoinPath rather than concatenating them by hand.
+func (b *EntityBuilder[T, ListOpts, R]) Path(segments ...string) *EntityBuilder[T, ListOpts, R] {
+	b.entity.Path = JoinPath(segments)
+	return b
+}
+
 // ToolGroup names the group this entity's operations belong to. Every generated
 // operation inherits it (an action can override it via WithToolGroup). AI
 // tool-preference layers use the group to enable/disable related tools together.

@@ -5,7 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+
+	"github.com/flanksource/commons/logger"
 )
+
+// InternalErrorMessage is the body message every unclassified failure is
+// reported with, so an internal detail can never reach a client by accident.
+const InternalErrorMessage = "internal server error"
 
 // StatusError is the body every failed HTTP operation returns.
 //
@@ -59,13 +65,17 @@ func (e *StatusError) Write(w http.ResponseWriter) {
 // choose between two error formats depending on where the failure came from.
 //
 // An error that did not state a status is a bug rather than a refusal, so it
-// becomes a 500 with an opaque code: the message is still forwarded because a
-// developer reading a browser console is the only person it can help.
+// becomes a 500 with an opaque code and a fixed message. Its own text is not
+// forwarded: an unclassified error is whatever the failing dependency said, and
+// that routinely names hosts, DSNs, file paths, or credentials. The detail stays
+// server-side in the log; a handler that wants the client to see a reason must
+// classify the failure with a StatusError.
 func WriteError(w http.ResponseWriter, err error) {
 	var status *StatusError
 	if errors.As(err, &status) {
 		status.Write(w)
 		return
 	}
-	NewStatusError(http.StatusInternalServerError, "internal_error", err.Error()).Write(w)
+	logger.Errorf("unclassified handler error: %v", err)
+	NewStatusError(http.StatusInternalServerError, "internal_error", InternalErrorMessage).Write(w)
 }

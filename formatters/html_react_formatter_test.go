@@ -593,3 +593,76 @@ func TestClickyJSONShortTagRendersPrettyShort(t *testing.T) {
 		t.Errorf("without short tag: expected Pretty's full block, got:\n%s", plain)
 	}
 }
+
+// A table and a tree keep no second rendering of themselves in Plain, and a
+// collapsed node's text lives in Label/Content, so flattening has to walk Rows,
+// Roots, Label and Content or the reader sorts and filters on an empty string.
+func TestClickyNodePlainTextWalksEveryTextCarrier(t *testing.T) {
+	table := convertTable(&api.TextTable{
+		Headers: api.TextList{api.Text{Content: "Name"}, api.Text{Content: "Status"}},
+		Columns: []api.PrettyField{{Name: "Name", Label: "Name"}, {Name: "Status", Label: "Status"}},
+		Rows: []api.TableRow{
+			{
+				"Name":   api.TypedValue{Textable: api.Text{Content: "svc-a"}},
+				"Status": api.TypedValue{Textable: api.Text{Content: "healthy"}},
+			},
+			{
+				"Name":   api.TypedValue{Textable: api.Text{Content: "svc-b"}},
+				"Status": api.TypedValue{Textable: api.Text{Content: "degraded"}},
+			},
+		},
+		RowDetail: []api.Textable{api.Text{Content: "restarted 2m ago"}, nil},
+	})
+	if got := table.PlainText(); got != "svc-a healthy restarted 2m ago svc-b degraded" {
+		t.Errorf("table PlainText = %q, want every cell in column order plus the row detail", got)
+	}
+
+	tree := convertTree(&api.TextTree{
+		Node:     api.Text{Content: "root"},
+		Children: []api.TextTree{{Node: api.Text{Content: "child"}}},
+	})
+	if got := tree.PlainText(); got != "root child" {
+		t.Errorf("tree PlainText = %q, want root child", got)
+	}
+
+	collapsed := ClickyNode{
+		Kind:    "collapsed",
+		Label:   &ClickyNode{Kind: "text", Text: "Stack trace"},
+		Content: &ClickyNode{Kind: "text", Text: "panic: boom"},
+	}
+	if got := collapsed.PlainText(); got != "Stack trace panic: boom" {
+		t.Errorf("collapsed PlainText = %q, want the label and the content", got)
+	}
+}
+
+// Flattening a single-child text node copies only Text and Plain onto the
+// parent, so anything else the child carries would disappear with it.
+func TestHTMLReactCompactNodeFlattensOnlyBareLeaves(t *testing.T) {
+	bullet := ClickyNode{Kind: "text", Text: "-"}
+	carriers := map[string]func(*ClickyNode){
+		"html":        func(n *ClickyNode) { n.HTML = "<em>idle</em>" },
+		"filterValue": func(n *ClickyNode) { n.FilterValue = "IDLE_RAW" },
+		"attributes":  func(n *ClickyNode) { n.Attributes = map[string]string{"data-state": "idle"} },
+		"bullet":      func(n *ClickyNode) { n.Bullet = &bullet },
+		"href":        func(n *ClickyNode) { n.Href = "https://example.com/idle" },
+	}
+	for name, carry := range carriers {
+		t.Run(name, func(t *testing.T) {
+			child := ClickyNode{Kind: "text", Text: "idle"}
+			carry(&child)
+			compacted := compactNode(ClickyNode{Kind: "text", Children: []ClickyNode{child}})
+			if len(compacted.Children) != 1 {
+				t.Fatalf("child carrying %s was flattened away, losing it: %#v", name, compacted)
+			}
+		})
+	}
+
+	// A child with nothing but text is still lifted — the saving is the point.
+	compacted := compactNode(ClickyNode{
+		Kind:     "text",
+		Children: []ClickyNode{{Kind: "text", Text: "idle", Plain: "idle"}},
+	})
+	if compacted.Text != "idle" || len(compacted.Children) != 0 {
+		t.Fatalf("a bare leaf should have been lifted into the parent, got %#v", compacted)
+	}
+}

@@ -126,7 +126,7 @@ func (c *Converter) ConvertCommand(cmd *cobra.Command) (*RPCOperation, error) {
 			// generated form field, and a client that posts the pre-filled value
 			// back sends a one-element slice containing "[]". A repeatable flag
 			// with no default simply has none.
-			if flag.DefValue != "" && !(isSliceFlag(flag) && flag.DefValue == "[]") {
+			if flag.DefValue != "" && (!isSliceFlag(flag) || flag.DefValue != "[]") {
 				prop.Default = flag.DefValue
 				param.Default = flag.DefValue
 			}

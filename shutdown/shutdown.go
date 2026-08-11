@@ -3,6 +3,7 @@ package shutdown
 import (
 	"container/heap"
 	"fmt"
+	"io"
 	"os"
 	"os/signal"
 	"sync"
@@ -61,6 +62,7 @@ var (
 	once                sync.Once
 	terminalRestoreFunc func()
 	terminalRestoreMu   sync.Mutex
+	terminalWriter      io.Writer = os.Stderr
 )
 
 // SetTerminalRestoreFunc registers a callback that performs full terminal
@@ -70,6 +72,21 @@ func SetTerminalRestoreFunc(fn func()) {
 	terminalRestoreMu.Lock()
 	defer terminalRestoreMu.Unlock()
 	terminalRestoreFunc = fn
+}
+
+// SetTerminalWriter points the terminal reset at the writer that owns the
+// terminal, so the sequence serializes with everything else clicky prints
+// there. It must be a writer that reaches the terminal synchronously: the reset
+// is terminal control, not log output, and a writer that defers or drops it
+// leaves the cursor hidden after exit. Defaults to os.Stderr — the writer this
+// package can reach without depending on the renderer that sits above it.
+func SetTerminalWriter(w io.Writer) {
+	terminalRestoreMu.Lock()
+	defer terminalRestoreMu.Unlock()
+	if w == nil {
+		w = os.Stderr
+	}
+	terminalWriter = w
 }
 
 // restoreTerminal ensures terminal is in a clean state before exit.
@@ -86,12 +103,14 @@ func SetTerminalRestoreFunc(fn func()) {
 // alternate screen restores it through SetTerminalRestoreFunc, which knows it
 // entered.
 func restoreTerminal() {
-	if term.IsTerminal(int(os.Stderr.Fd())) {
-		fmt.Fprint(os.Stderr, "\x1b[?25h\x1b[0m")
-	}
 	terminalRestoreMu.Lock()
+	writer := terminalWriter
 	fn := terminalRestoreFunc
 	terminalRestoreMu.Unlock()
+
+	if term.IsTerminal(int(os.Stderr.Fd())) {
+		fmt.Fprint(writer, "\x1b[?25h\x1b[0m")
+	}
 	if fn != nil {
 		fn()
 	}

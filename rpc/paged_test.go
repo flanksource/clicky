@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -139,6 +140,31 @@ func TestHandlePaged_StreamsWithExportHeaders(t *testing.T) {
 	assert.Contains(t, res.Header.Get("Access-Control-Expose-Headers"), "X-Export-Mode")
 	assert.Equal(t, "\xEF\xBB\xBFN\nrow-0\nrow-1\nrow-2\n", rec.Body.String(), "every row, once, behind the download BOM")
 	assert.Equal(t, 1, source.closes)
+}
+
+// An operation with no total order serves its first page and refuses every page
+// after it. Reporting an offset or a cursor would be true and useless: both name
+// a position whose only use is a request this server answers 400, so they are
+// withheld and X-Has-More is false whatever the provider believes.
+func TestHandlePaged_UnpageableWithholdsThePositionHeaders(t *testing.T) {
+	source := &staticRows{columns: []api.ColumnDef{{Name: "n"}}, rows: numberedRows(3)}
+	server := pagedServer(staticPaged(source, entity.PageResponse{
+		Mode: entity.ModeStreaming, Pageable: false, HasMore: true, Next: "after-row-2",
+	}))
+
+	req := httptest.NewRequest("GET", "/api/v1/config?format=csv&offset=0", nil)
+	rec := httptest.NewRecorder()
+	server.handleExecuteCommand(rec, req)
+
+	res := rec.Result()
+	require.Equal(t, http.StatusOK, res.StatusCode)
+	assert.Empty(t, res.Header.Get("X-Page-Offset"), "an offset that cannot be asked for is not a position to report")
+	assert.Empty(t, res.Header.Get("X-Next-Cursor"), "nor is a cursor to resume from")
+	assert.Equal(t, "false", res.Header.Get("X-Has-More"), "even though the provider reported more")
+	// The page it did serve is still described: the limit is the size of this
+	// answer, not an invitation to ask for the next one.
+	assert.Equal(t, strconv.Itoa(entity.DefaultPageSize), res.Header.Get("X-Page-Limit"))
+	assert.Equal(t, "N\nrow-0\nrow-1\nrow-2\n", rec.Body.String())
 }
 
 // C1: a query that dies on its first read must be a status, not a short body

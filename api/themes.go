@@ -242,7 +242,14 @@ func InvalidateTerminalSize() {
 	terminalHeight.Store(unmeasuredTerminalSize)
 }
 
+// SetTerminalWidth pins the width every width-aware renderer lays out against.
+// A non-positive width is not a width: it clears the cache, so the next read
+// re-measures rather than laying every frame out against a bogus size.
 func SetTerminalWidth(width int) {
+	if width <= 0 {
+		terminalWidth.Store(unmeasuredTerminalSize)
+		return
+	}
 	terminalWidth.Store(int32(width))
 }
 
@@ -268,7 +275,13 @@ func GetTerminalWidth() int {
 	return width
 }
 
+// SetTerminalLines pins the height, with the same rule as SetTerminalWidth: a
+// non-positive height clears the cache instead of being stored as one.
 func SetTerminalLines(height int) {
+	if height <= 0 {
+		terminalHeight.Store(unmeasuredTerminalSize)
+		return
+	}
 	terminalHeight.Store(int32(height))
 }
 

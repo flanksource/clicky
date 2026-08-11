@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/flanksource/clicky"
 	"github.com/flanksource/clicky/entity"
 	"github.com/flanksource/clicky/formatters"
 )
@@ -330,9 +331,33 @@ func (s *SwaggerServer) pathPrefix() string {
 	return entity.DefaultConfig().PathPrefix
 }
 
+// familyReadMethods are the methods a family instance answers. OPTIONS never
+// reaches here — the CORS preflight is answered before dispatch.
+var familyReadMethods = []string{http.MethodGet, http.MethodHead}
+
+func isFamilyReadMethod(method string) bool {
+	for _, allowed := range familyReadMethods {
+		if strings.EqualFold(method, allowed) {
+			return true
+		}
+	}
+	return false
+}
+
 // handleDynamicFamily serves one instance of a family, resolved now rather than
 // at startup.
 func (s *SwaggerServer) handleDynamicFamily(w http.ResponseWriter, r *http.Request, family entity.DynamicEntityFamily, name string) {
+	// A family instance is read-only: it is served by the spec's List, whatever
+	// the request method. Running that read for a POST would answer a write with
+	// 200 and rows, so a method the instance cannot serve is refused outright.
+	if !isFamilyReadMethod(r.Method) {
+		entity.SetCORSHeaders(w)
+		w.Header().Set("Allow", strings.Join(familyReadMethods, ", "))
+		entity.NewStatusErrorf(http.StatusMethodNotAllowed, "method_not_allowed",
+			"%s is not supported for %s instances", r.Method, family.Name).Write(w)
+		return
+	}
+
 	spec, err := family.Resolve(r.Context(), name)
 	if err != nil {
 		entity.SetCORSHeaders(w)
@@ -450,7 +475,11 @@ func (s *SwaggerServer) addFamilyPaths(ctx context.Context, spec *OpenAPISpec, f
 		}
 		instances, err := family.List(ctx)
 		if err != nil {
-			return fmt.Errorf("failed to list %s entities: %w", family.Name, err)
+			// One unreachable backing store must not take the whole document with
+			// it: the static operations are still described, and this family's
+			// instances reappear as soon as its store answers again.
+			clicky.Errorf("Omitting %s entities from the OpenAPI document: %v", family.Name, err)
+			continue
 		}
 		for _, instance := range instances {
 			if instance.Name == "" {

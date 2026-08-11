@@ -56,6 +56,39 @@ func TestOpenAPIGenerator_DynamicEntitySurfaceIcon(t *testing.T) {
 	assert.Empty(t, listOp.Clicky.Icon, "icon must stay surface-only, not on the operation")
 }
 
+// TestOpenAPIGenerator_StaticEntitySurfacePath asserts a statically registered
+// entity can declare a hierarchy path too: the surface metadata is the frontend's
+// only source of it, so an entity that cannot state one is invisible in the tree
+// no matter where it belongs.
+func TestOpenAPIGenerator_StaticEntitySurfacePath(t *testing.T) {
+	const entityName = "openapi-path-stack"
+	root := &cobra.Command{Use: "testapp"}
+
+	clicky.NewEntity[openAPISchemaListItem, openAPISchemaOpts, openAPISchemaDetail](entityName).
+		Path("jms", "incoming").
+		List(func(openAPISchemaOpts) ([]openAPISchemaListItem, error) {
+			return nil, nil
+		}).
+		Register()
+
+	clicky.GenerateCLI(root)
+
+	spec, err := NewOpenAPIGenerator(nil).GenerateFromCobra(root)
+	require.NoError(t, err)
+	require.NotNil(t, spec.Clicky, "spec must carry x-clicky surfaces")
+
+	var surface *ClickySurface
+	for i := range spec.Clicky.Surfaces {
+		if spec.Clicky.Surfaces[i].Entity == entityName {
+			surface = &spec.Clicky.Surfaces[i]
+			break
+		}
+	}
+	require.NotNil(t, surface, "surface for %q missing", entityName)
+	assert.Equal(t, "jms/incoming", surface.Path,
+		"a static entity's path reaches the surface, as a dynamic entity's does")
+}
+
 // TestOpenAPIGenerator_SurfaceKeyNotPluralized asserts the surface route key is
 // the singular entity name (no automatic pluralization), and that the same key
 // is stamped on the list and get operations. clicky-ui builds a row-click route

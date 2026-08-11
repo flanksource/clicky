@@ -3,6 +3,7 @@ package rpc
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -32,7 +33,7 @@ func profileSpec(name string) entity.DynamicEntitySpec {
 			Key:   "env",
 			Label: "Environment",
 			Options: func(_ context.Context, _ map[string]string, _ string, _ int) (map[string]api.Textable, int, error) {
-				return map[string]api.Textable{"prod": api.Text{Content: "Production"}}, 1, nil
+				return map[string]api.Textable{"prod": api.Text{}.Append("Production")}, 1, nil
 			},
 		}},
 	}
@@ -230,4 +231,78 @@ func TestDynamicFamily_LeavesUnrelatedPathsAlone(t *testing.T) {
 		_, _, matched := server.matchDynamicFamily(target)
 		assert.False(t, matched, "%s is not a family instance", target)
 	}
+}
+
+// The family matcher compares only the first segment, so a family named after a
+// registered entity would capture that entity's item route. The registered
+// operation has to win, or registering a family makes an existing entity
+// unreachable.
+func TestDynamicFamily_DoesNotCaptureARegisteredOperationsPath(t *testing.T) {
+	family := profileFamily("daily")
+	family.Name = "config"
+	registerTestFamily(t, family)
+
+	service := &RPCService{Name: "api", Operations: []RPCOperation{{
+		Name: "config get", Path: "/api/v1/config/{id}", Method: "GET",
+		DataFunc: func(flags map[string]string, args []string) (any, error) {
+			return map[string]any{"served_by": "operation"}, nil
+		},
+	}}}
+	server := &SwaggerServer{
+		config:       &ServeConfig{Executor: &ExecutorConfig{Enabled: true}},
+		converterCfg: &Config{PathPrefix: "/api/v1"},
+		executor:     NewCommandExecutor(service, &ExecutorConfig{Enabled: true, SkipPreRun: true, PathPrefix: "/api/v1"}),
+	}
+
+	rec := httptest.NewRecorder()
+	server.handleExecuteCommand(rec, httptest.NewRequest("GET", "/api/v1/config/daily", nil))
+
+	res := rec.Result()
+	require.Equal(t, http.StatusOK, res.StatusCode)
+	assert.Contains(t, rec.Body.String(), "operation",
+		"the registered operation serves its own path, not the colliding family")
+	assert.NotContains(t, rec.Body.String(), "profile")
+}
+
+// A family instance is read-only, so a POST must not quietly run its List and
+// answer 200 with rows.
+func TestDynamicFamily_RefusesAWriteMethod(t *testing.T) {
+	registerTestFamily(t, profileFamily("daily"))
+	server := familyServer()
+
+	rec := httptest.NewRecorder()
+	server.handleExecuteCommand(rec, httptest.NewRequest("POST", "/api/v1/profile/daily", nil))
+
+	res := rec.Result()
+	require.Equal(t, http.StatusMethodNotAllowed, res.StatusCode)
+	assert.Equal(t, "GET, HEAD", res.Header.Get("Allow"))
+
+	var body entity.StatusError
+	require.NoError(t, json.NewDecoder(res.Body).Decode(&body))
+	assert.Equal(t, "method_not_allowed", body.Code)
+}
+
+// A family whose store is unreachable must not remove every other path from the
+// document: a broken family costs its own instances, nothing more.
+func TestDynamicFamily_ListFailureLeavesTheRestOfTheDocument(t *testing.T) {
+	family := profileFamily("daily")
+	family.List = func(context.Context) ([]entity.DynamicEntitySpec, error) {
+		return nil, errors.New("backing store is unreachable")
+	}
+	registerTestFamily(t, family)
+
+	server := NewSwaggerServer(
+		&ServeConfig{Version: "1.0.0", Executor: &ExecutorConfig{Enabled: true, PathPrefix: "/api/v1"}},
+		createTestRootCommand(),
+		&OpenAPIConfig{Title: "Test API", Version: "1.0.0"},
+	)
+
+	rec := httptest.NewRecorder()
+	server.serveSpec(rec, httptest.NewRequest("GET", "/api/openapi.json", nil), specFormatJSON, "application/json")
+
+	require.Equal(t, http.StatusOK, rec.Result().StatusCode)
+	var spec OpenAPISpec
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &spec))
+	assert.NotEmpty(t, spec.Paths, "the static operations are still described")
+	assert.NotContains(t, spec.Paths, "/api/v1/profile/daily")
 }

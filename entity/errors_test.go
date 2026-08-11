@@ -62,13 +62,17 @@ var _ = Describe("StatusError", func() {
 		Expect(body["code"]).To(Equal("profile_not_found"))
 	})
 
-	It("gives an unclassified error the same shape at 500", func() {
+	It("gives an unclassified error the same shape at 500 without leaking its text", func() {
+		// An unclassified error is whatever the failing dependency said — a DSN, a
+		// host, a path — so the client gets a fixed message and the detail stays in
+		// the server log.
 		w := httptest.NewRecorder()
-		WriteError(w, errors.New("connection refused"))
+		WriteError(w, errors.New("dial tcp 10.0.0.7:5432: connection refused"))
 
 		Expect(w.Code).To(Equal(http.StatusInternalServerError))
 		var body map[string]string
 		Expect(json.Unmarshal(w.Body.Bytes(), &body)).To(Succeed())
-		Expect(body).To(Equal(map[string]string{"code": "internal_error", "message": "connection refused"}))
+		Expect(body).To(Equal(map[string]string{"code": "internal_error", "message": InternalErrorMessage}))
+		Expect(w.Body.String()).ToNot(ContainSubstring("10.0.0.7"))
 	})
 })
