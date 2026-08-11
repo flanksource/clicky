@@ -269,6 +269,26 @@ echo line3`
 	})
 
 	Describe("Concurrent Execution", func() {
+		It("should allow result snapshots while a process starts", func() {
+			process := NewExec("/bin/sh", "-c", "printf captured")
+			Expect(process.captureOutput).ToNot(BeNil())
+			done := make(chan struct{})
+			go func() {
+				process.Run()
+				close(done)
+			}()
+
+			for {
+				select {
+				case <-done:
+					Expect(process.Result().Stdout).To(Equal("captured"))
+					return
+				default:
+					_ = process.Result()
+				}
+			}
+		})
+
 		It("should handle multiple processes running concurrently", func() {
 			processes := make([]*Process, 3)
 			results := make(chan string, 3)

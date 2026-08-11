@@ -296,7 +296,7 @@ func newManagerWithConcurrency(maxConcurrent int) *Manager {
 		select {
 		case success := <-done:
 			if success {
-				logger.Infof("All tasks completed gracefully")
+				logger.Debugf("All tasks completed gracefully")
 			} else {
 				logger.Warnf("Task shutdown timeout reached")
 			}

@@ -212,41 +212,76 @@ func AutoTheme() Theme {
 	return LightTheme()
 }
 
-var terminalWidth atomic.Int32
+const (
+	// unmeasuredTerminalSize marks the cache as empty. Any non-positive size
+	// reported by the terminal is treated as unmeasured too — see
+	// GetTerminalWidth.
+	unmeasuredTerminalSize = -1
+
+	defaultTerminalWidth = 120
+	defaultTerminalLines = 40
+)
+
+var (
+	terminalWidth  atomic.Int32
+	terminalHeight atomic.Int32
+)
 
 func init() {
-	terminalWidth.Store(-1)
-	terminalHeight.Store(-1)
+	InvalidateTerminalSize()
 	tailwind.TerminalWidthFunc = GetTerminalWidth
 	tailwind.TerminalHeightFunc = GetTerminalLines
+	watchTerminalResize()
 }
 
+// InvalidateTerminalSize drops the cached terminal size so the next read
+// re-measures. Called on SIGWINCH; the size is otherwise sampled once per
+// process and a resize would leave every frame laid out for the old width.
+func InvalidateTerminalSize() {
+	terminalWidth.Store(unmeasuredTerminalSize)
+	terminalHeight.Store(unmeasuredTerminalSize)
+}
+
+func SetTerminalWidth(width int) {
+	terminalWidth.Store(int32(width))
+}
+
+// GetTerminalWidth returns the terminal width, always positive: it falls back
+// to defaultTerminalWidth whenever the width cannot be measured.
+//
+// term.GetSize reports (0, 0, nil) — success, zero size — for a pty created
+// without a window size, which every non-interactive `script`/CI capture hits.
+// Caching that zero pinned the width at 0 for the whole process, and
+// width-aware renderers (api/meta.go buildLipglossTree) then truncated every
+// label to a single `…`. A non-positive size is unmeasured, never a real width,
+// so it is neither returned nor cached.
 func GetTerminalWidth() int {
-	if w := terminalWidth.Load(); w != -1 {
+	if w := terminalWidth.Load(); w > 0 {
 		return int(w)
 	}
 	width, _, err := term.GetSize(int(os.Stderr.Fd()))
-	if err != nil {
-		return 120 // Default width
+	if err != nil || width <= 0 {
+		return defaultTerminalWidth
 	}
 	terminalWidth.Store(int32(width))
 
 	return width
 }
 
-var terminalHeight atomic.Int32
-
 func SetTerminalLines(height int) {
 	terminalHeight.Store(int32(height))
 }
 
+// GetTerminalLines returns the terminal height, always positive, falling back
+// to defaultTerminalLines. Non-positive sizes are unmeasured — see
+// GetTerminalWidth.
 func GetTerminalLines() int {
-	if h := terminalHeight.Load(); h != -1 {
+	if h := terminalHeight.Load(); h > 0 {
 		return int(h)
 	}
 	_, height, err := term.GetSize(int(os.Stderr.Fd()))
-	if err != nil {
-		return 40 // Default height
+	if err != nil || height <= 0 {
+		return defaultTerminalLines
 	}
 	terminalHeight.Store(int32(height))
 	return height

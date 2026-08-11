@@ -82,6 +82,11 @@ func MustPrint(o any, opts ...FormatOptions) {
 		panic(err)
 	}
 
+	// Terminate the output. Without this the shell prompt lands on the last
+	// rendered line, and line-oriented consumers of a redirect drop it.
+	if result != "" && !strings.HasSuffix(result, "\n") {
+		result += "\n"
+	}
 	fmt.Print(result)
 }
 
