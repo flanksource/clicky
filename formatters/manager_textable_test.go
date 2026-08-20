@@ -45,6 +45,10 @@ var _ = Describe("Textable formatting", func() {
 			Expect(strings.Count(strings.TrimSuffix(output, "\n"), "\n")).To(Equal(0))
 			Expect(output).To(ContainSubstring("alpha"))
 		}),
+		Entry("toon", "toon", func(output string) {
+			Expect(output).To(HavePrefix("[2]{"))
+			Expect(output).To(ContainSubstring("alpha"))
+		}),
 		Entry("tree", "tree", func(output string) {
 			Expect(output).NotTo(BeEmpty())
 		}),

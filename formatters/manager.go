@@ -24,6 +24,7 @@ type FormatManager struct {
 	htmlStaticFormatter *HTMLFormatter
 	htmlPdf             *HTMLPDFFormatter
 	slackFormatter      *SlackFormatter
+	toonFormatter       *TOONFormatter
 }
 
 // NewFormatManager creates a new format manager with all formatters initialized
@@ -37,6 +38,7 @@ func NewFormatManager() *FormatManager {
 		treeFormatter:     NewTreeFormatter(api.DefaultTheme(), false, nil),
 		excelFormatter:    NewExcelFormatter(),
 		slackFormatter:    NewSlackFormatter(),
+		toonFormatter:     NewTOONFormatter(),
 	}
 }
 
@@ -73,6 +75,15 @@ func (f *FormatManager) NDJSON(data interface{}) (string, error) {
 		f.jsonFormatter = NewJSONFormatter()
 	}
 	return f.jsonFormatter.FormatLines(data)
+}
+
+// TOON renders data as Token-Oriented Object Notation, a compact encoding for
+// handing structured results to an LLM.
+func (f *FormatManager) TOON(data interface{}) (string, error) {
+	if f.toonFormatter == nil {
+		f.toonFormatter = NewTOONFormatter()
+	}
+	return f.toonFormatter.Format(data)
 }
 
 // YAML implements api.FormatManager.
@@ -163,6 +174,8 @@ func (f *FormatManager) Format(format string, data interface{}) (string, error) 
 		return f.JSON(data)
 	case "ndjson":
 		return f.NDJSON(data)
+	case "toon":
+		return f.TOON(data)
 	case "yaml", "yml":
 		return f.YAML(data)
 	case "csv":
@@ -313,6 +326,9 @@ func (f *FormatManager) formatWithOptions(options FormatOptions, data ...any) (s
 
 	case "ndjson":
 		return f.NDJSON(d)
+
+	case "toon":
+		return f.TOON(d)
 
 	case "yaml", "yml":
 		return f.YAML(d)
