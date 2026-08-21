@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.21.56](https://github.com/flanksource/clicky/compare/v1.21.55...v1.21.56) (2026-08-21)
+
+
+### ✨ Features
+
+* add toon support ([#178](https://github.com/flanksource/clicky/issues/178)) ([301ba17](https://github.com/flanksource/clicky/commit/301ba17ee1b825fb156f5364016712610d6d01ca))
+
+
+### 🔧 Maintenance
+
+* **release:** pin sub-modules to v1.21.55 [skip ci] ([cfe0057](https://github.com/flanksource/clicky/commit/cfe0057426942a3494a7bcb80e36607559b764e8))
+
 ## [1.21.55](https://github.com/flanksource/clicky/compare/v1.21.54...v1.21.55) (2026-08-11)
 
 
