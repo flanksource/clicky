@@ -94,8 +94,8 @@ available and ` + "`pnpm install`" + ` already run in webapp/.`,
 				return err
 			}
 			chat := capchat.NewService(capchat.ServiceOptions{
-				Settings: capchat.RuntimeSettingsProviderFunc(captainRuntimeSettings),
-				Tools:    chatTools, Threads: capchat.NewMemoryThreadStore(),
+				Profile: capchat.RuntimeProfileProviderFunc(captainRuntimeProfile),
+				Tools:   chatTools, Threads: capchat.FixedThreadStore(capchat.NewMemoryThreadStore()),
 			})
 			// Mount as a subtree so /api/chat, /api/chat/models and the thread
 			// endpoints all resolve.
@@ -165,17 +165,26 @@ available and ` + "`pnpm install`" + ` already run in webapp/.`,
 	return cmd
 }
 
-func captainRuntimeSettings(context.Context) (capchat.RuntimeSettings, error) {
+func captainRuntimeProfile(context.Context) (capchat.RuntimeProfile, error) {
 	defaults, err := aiflags.LoadDefaults()
 	if err != nil {
-		return capchat.RuntimeSettings{}, fmt.Errorf("load Captain AI defaults: %w", err)
+		return capchat.RuntimeProfile{}, fmt.Errorf("load Captain AI defaults: %w", err)
 	}
 	model, err := aiflags.ApplyDefaults(capapi.Model{}, defaults)
 	if err != nil {
-		return capchat.RuntimeSettings{}, fmt.Errorf("resolve Captain AI defaults: %w", err)
+		return capchat.RuntimeProfile{}, fmt.Errorf("resolve Captain AI defaults: %w", err)
 	}
-	return capchat.RuntimeSettings{
+	// The profile is a resolved stack of named layers rather than a bare spec, so
+	// even a single-layer demo declares its one layer explicitly.
+	resolved, err := capapi.ResolveSpecLayers(capapi.SpecLayer{
+		Name: "entity demo", Scope: capapi.SpecLayerGlobal,
 		Spec: capapi.Spec{Model: model},
+	})
+	if err != nil {
+		return capchat.RuntimeProfile{}, fmt.Errorf("resolve Captain runtime profile: %w", err)
+	}
+	return capchat.RuntimeProfile{
+		Resolved: resolved,
 		System: "You are an operator assistant for this entity demo " +
 			"(stacks, clusters, teams). Prefer calling an operation over " +
 			"guessing, and summarize results clearly.",

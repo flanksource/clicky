@@ -21,7 +21,7 @@ const TYPE_CONFIG: ContextTypeConfig = {
 /** Multi-window chat shell for the entity demo: a launch FAB plus up to six
  *  draggable/resizable windows, each hosting clicky-ui's <Chat> against the
  *  demo's /api/chat endpoint (where entity operations are exposed as tools) and
- *  switching between persisted threads via /api/chat/threads.
+ *  switching between persisted threads via /api/chat/sessions.
  *
  *  Wired to the same `client` the explorer uses, so the tool-preferences popover
  *  reflects the same RPC operations the explorer exposes (parity with the
@@ -37,7 +37,7 @@ export function ChatWidget({ client }: { client: OperationsApiClient }) {
     <ChatWindowManagerProvider storageId="entity-demo">
       <ChatFab />
       <ChatWindowLayer
-        threadsApi="/api/chat/threads"
+        sessionsApi="/api/chat/sessions"
         contextTypeConfig={TYPE_CONFIG}
         tools={tools}
         chat={{
