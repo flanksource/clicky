@@ -100,6 +100,7 @@ func (p *StructParser) parseStruct(val reflect.Value) (*PrettyObject, error) {
 
 		prettyField := p.parsePrettyTag(prettyTag)
 		prettyField.Name = jsonFieldName(field)
+		prettyField.SortKey = field.Tag.Get("sort")
 		prettyField.Type = p.inferType(fieldVal)
 
 		// Handle table formatting for slices
@@ -219,6 +220,7 @@ func (p *StructParser) getTableFields(val reflect.Value) ([]PrettyField, error) 
 
 		prettyField := p.parsePrettyTag(prettyTag)
 		prettyField.Name = jsonFieldName(field)
+		prettyField.SortKey = field.Tag.Get("sort")
 		prettyField.Type = p.inferType(fieldVal)
 
 		fields = append(fields, prettyField)
@@ -602,6 +604,7 @@ func (p *StructParser) ParseStructSchema(val reflect.Value) (*PrettyObject, erro
 		}
 
 		prettyField := ParsePrettyTagWithName(field.Name, prettyTag)
+		prettyField.SortKey = field.Tag.Get("sort")
 
 		// Check if it's a table field (slice/array of structs)
 		fieldVal := val.Field(i)
@@ -701,6 +704,7 @@ func (p *StructParser) GetTableFields(val reflect.Value) ([]PrettyField, error) 
 		}
 
 		prettyField := ParsePrettyTagWithName(jsonFieldName(field), prettyTag)
+		prettyField.SortKey = field.Tag.Get("sort")
 		fields = append(fields, prettyField)
 	}
 

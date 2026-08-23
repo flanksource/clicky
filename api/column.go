@@ -1,6 +1,9 @@
 package api
 
-import "fmt"
+import (
+	"fmt"
+	"reflect"
+)
 
 // ColumnDef defines a table column's schema and display properties.
 // Order is determined by array position when returned from TableProvider.Columns().
@@ -14,6 +17,7 @@ type ColumnDef struct {
 	Format        string
 	Unit          string
 	FilterKey     string
+	SortKey       string
 	FormatOptions map[string]string
 	MaxWidth      int
 	Hidden        bool
@@ -88,6 +92,12 @@ func (b *ColumnBuilder) FilterKey(key string) *ColumnBuilder {
 	return b
 }
 
+// SortKey binds this output column to a public server-side sort key.
+func (b *ColumnBuilder) SortKey(key string) *ColumnBuilder {
+	b.col.SortKey = key
+	return b
+}
+
 // FormatOption adds a single format option key-value pair.
 func (b *ColumnBuilder) FormatOption(key, value string) *ColumnBuilder {
 	if b.col.FormatOptions == nil {
@@ -159,6 +169,7 @@ func NewEmptyTable(columns []ColumnDef) TextTable {
 			Format:        col.Format,
 			Unit:          col.Unit,
 			FilterKey:     col.FilterKey,
+			SortKey:       col.SortKey,
 			FormatOptions: col.FormatOptions,
 		})
 	}
@@ -168,61 +179,17 @@ func NewEmptyTable(columns []ColumnDef) TextTable {
 // NewTableFrom creates a TextTable from a slice of TableProvider items.
 func NewTableFrom[T TableProvider](items []T) TextTable {
 	if len(items) == 0 {
-		var zero T
-		return NewEmptyTable(zero.Columns())
+		rowType := reflect.TypeFor[T]()
+		zero := zeroTableProvider(rowType)
+		columns := MustMergeSortableColumns(rowType, zero.Columns())
+		return NewEmptyTable(columns)
 	}
 
-	// Get column definitions from first item
-	columns := items[0].Columns()
-	table := NewEmptyTable(columns)
-
-	// Build rows and collect detail content
-	var hasDetail bool
-	for _, item := range items {
-		rowData := item.Row()
-		row := TableRow{}
-
-		for _, col := range columns {
-			if val, exists := rowData[col.Name]; exists && col.Hidden {
-				row[col.Name] = TypedValue{Textable: Text{}.Add(ColumnTextable(col, val))}
-				continue
-			}
-			if col.Hidden {
-				continue
-			}
-			if val, exists := rowData[col.Name]; exists {
-				style := col.Style
-				if col.MaxWidth > 0 {
-					style = fmt.Sprintf("%s max-w-[%dch] truncate", style, col.MaxWidth)
-				}
-				text := Text{Style: style}.Add(ColumnTextable(col, val))
-				cell := TypedValue{Textable: text}
-				if col.FilterKey != "" {
-					cell.FilterValue = val
-				}
-				row[col.Name] = cell
-			} else {
-				row[col.Name] = TypedValue{Textable: Text{}}
-			}
-		}
-
-		table.Rows = append(table.Rows, row)
-
-		if dp, ok := any(item).(DetailProvider); ok {
-			detail := dp.RowDetail()
-			table.RowDetail = append(table.RowDetail, detail)
-			if detail != nil {
-				hasDetail = true
-			}
-		}
+	providers := make([]TableProvider, len(items))
+	for i := range items {
+		providers[i] = items[i]
 	}
-
-	// Clear RowDetail if no items actually provided detail content
-	if !hasDetail {
-		table.RowDetail = nil
-	}
-
-	return table
+	return newTableFromProviders(providers, reflect.TypeOf(items[0]))
 }
 
 // convertToTextable converts any value to a Textable for table cells.

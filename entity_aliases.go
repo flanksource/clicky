@@ -48,6 +48,10 @@ type (
 	Paged               = entity.Paged
 	Name                = entity.Name
 	Help                = entity.Help
+	SortDirection       = entity.SortDirection
+	SortOptions         = entity.SortOptions
+	SortCarrier         = entity.SortCarrier
+	SortSpec            = entity.SortSpec
 )
 
 // --- generic type aliases (Go 1.24+; go.mod is 1.26.1) ---
@@ -90,6 +94,8 @@ const (
 	ToolPermissionOff  = entity.ToolPermissionOff
 	ToolPermissionOn   = entity.ToolPermissionOn
 	ToolPermissionAuto = entity.ToolPermissionAuto
+	SortDirectionAsc   = entity.SortDirectionAsc
+	SortDirectionDesc  = entity.SortDirectionDesc
 
 	AnnotationClickyToolGroup             = entity.AnnotationClickyToolGroup
 	AnnotationClickyToolTitle             = entity.AnnotationClickyToolTitle

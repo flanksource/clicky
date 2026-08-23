@@ -109,6 +109,7 @@ type EntityOperation struct {
 	ResponseArray     bool
 	ResponsePaged     bool
 	ResponseEntityID  bool
+	Sort              *SortSpec
 }
 
 // ActionInfo is the type-erased representation of a single-entity action.
@@ -366,6 +367,22 @@ func ActionWithFlagsAndContext[R any](name string, flags ActionFlags, fn func(ct
 	return &ActionSpec[R]{name: name, flags: flags, runCtx: fn}
 }
 
+// TypedActionWithContext is ActionWithFlagsAndContext with the flags already
+// resolved into their options struct, the way PrimaryActionWithContext resolves
+// them for the collection action. A handler that reads its flags out of the raw
+// map has to repeat every flag name the struct already declares, and the two
+// drift apart silently the first time one is renamed.
+func TypedActionWithContext[Opts ActionFlags, R any](name string, opts Opts, fn func(ctx context.Context, id string, opts Opts) (R, error)) *ActionSpec[R] {
+	return ActionWithFlagsAndContext(name, opts, func(ctx context.Context, id string, flagMap map[string]string) (R, error) {
+		resolved, err := buildOpts[Opts](flagMap)
+		if err != nil {
+			var zero R
+			return zero, err
+		}
+		return fn(ctx, id, resolved)
+	})
+}
+
 func (a *ActionSpec[R]) WithShort(short string) *ActionSpec[R] {
 	a.short = short
 	return a
@@ -589,6 +606,9 @@ type Entity[T EntityItem, ListOpts any, R any] struct {
 	UpdateWithContext func(ctx context.Context, id string, body map[string]any) (R, error)
 	DeleteWithContext func(ctx context.Context, id string) error
 	Filters           []Filter[ListOpts]
+	// Sort enables validated server-side sorting on the list operation. Public
+	// keys are derived from the response column metadata, never from SQL names.
+	Sort *SortSpec
 
 	PrimaryAction EntityAction
 	Actions       []EntityAction
@@ -652,6 +672,7 @@ func entityListOperation[T EntityItem, ListOpts any, R any](e Entity[T, ListOpts
 	if e.ListPagedWithContext == nil && e.ListPaged == nil && e.ListWithContext == nil && e.List == nil {
 		return EntityOperation{}, false
 	}
+	sortSpec := prepareSortSpec[T, ListOpts](e.Sort)
 	op := EntityOperation{
 		Verb:              "list",
 		LookupFunc:        buildLookupFunc[ListOpts](e.Filters),
@@ -660,12 +681,13 @@ func entityListOperation[T EntityItem, ListOpts any, R any](e Entity[T, ListOpts
 		ResponseType:      reflect.TypeOf((*T)(nil)).Elem(),
 		ResponseArray:     true,
 		ResponseEntityID:  true,
+		Sort:              sortSpec,
 	}
 	switch {
 	case e.ListPagedWithContext != nil:
 		op.ResponsePaged = true
 		op.ContextDataFunc = func(ctx context.Context, flagMap map[string]string, args []string) (any, error) {
-			opts, err := resolveEntityOpts[ListOpts](flagMap, e.Filters)
+			opts, err := resolveSortableEntityOpts[ListOpts](flagMap, e.Filters, sortSpec)
 			if err != nil {
 				return nil, err
 			}
@@ -678,7 +700,7 @@ func entityListOperation[T EntityItem, ListOpts any, R any](e Entity[T, ListOpts
 	case e.ListPaged != nil:
 		op.ResponsePaged = true
 		op.DataFunc = func(flagMap map[string]string, args []string) (any, error) {
-			opts, err := resolveEntityOpts[ListOpts](flagMap, e.Filters)
+			opts, err := resolveSortableEntityOpts[ListOpts](flagMap, e.Filters, sortSpec)
 			if err != nil {
 				return nil, err
 			}
@@ -690,7 +712,7 @@ func entityListOperation[T EntityItem, ListOpts any, R any](e Entity[T, ListOpts
 		}
 	case e.ListWithContext != nil:
 		op.ContextDataFunc = func(ctx context.Context, flagMap map[string]string, args []string) (any, error) {
-			opts, err := resolveEntityOpts[ListOpts](flagMap, e.Filters)
+			opts, err := resolveSortableEntityOpts[ListOpts](flagMap, e.Filters, sortSpec)
 			if err != nil {
 				return nil, err
 			}
@@ -702,7 +724,7 @@ func entityListOperation[T EntityItem, ListOpts any, R any](e Entity[T, ListOpts
 		}
 	default:
 		op.DataFunc = func(flagMap map[string]string, args []string) (any, error) {
-			opts, err := resolveEntityOpts[ListOpts](flagMap, e.Filters)
+			opts, err := resolveSortableEntityOpts[ListOpts](flagMap, e.Filters, sortSpec)
 			if err != nil {
 				return nil, err
 			}
@@ -1107,8 +1129,20 @@ func promoteListToEntityRoot(entityCmd *cobra.Command) {
 	if listMeta := GetCommandOpenAPIMeta(listCmd); listMeta != nil && listMeta.SupportsLookup {
 		setCommandAnnotation(entityCmd, annotationClickySupportsLookup, "true")
 	}
-	if entityCmd.Annotations[annotationClickyToolPermission] == "" {
-		setCommandAnnotation(entityCmd, annotationClickyToolPermission, listCmd.Annotations[annotationClickyToolPermission])
+	// The promoted root IS the list operation, so it inherits list's declared
+	// permission and its safety hints. The hints matter more than they used to:
+	// with verb defaults gone, they are what lets a consumer's policy resolve an
+	// unset permission to auto-run. Forwarding only the permission would leave the
+	// root looking like an unannotated command and silently downgrade it to "ask".
+	for _, annotation := range []string{
+		annotationClickyToolPermission,
+		annotationClickyToolReadOnlyHint,
+		annotationClickyToolDestructive,
+		annotationClickyToolIdempotent,
+	} {
+		if entityCmd.Annotations[annotation] == "" {
+			setCommandAnnotation(entityCmd, annotation, listCmd.Annotations[annotation])
+		}
 	}
 
 	if df := GetDataFunc(listCmd); df != nil {
@@ -1225,6 +1259,7 @@ func generateListCommand(parent *cobra.Command, entity EntityInfo, op EntityOper
 
 	// Bind filter flags from the ListOpts type
 	bindTypeFlags(cmd, entity.ListType)
+	bindSortFlags(cmd, op.Sort)
 	if op.BindCompletions != nil {
 		op.BindCompletions(cmd)
 	}
@@ -1244,6 +1279,21 @@ func generateListCommand(parent *cobra.Command, entity EntityInfo, op EntityOper
 	if op.ContextLookupFunc != nil {
 		contextLookupFuncRegistry.Store(cmd, op.ContextLookupFunc)
 	}
+}
+
+func bindSortFlags(cmd *cobra.Command, spec *SortSpec) {
+	if spec == nil {
+		return
+	}
+	for _, name := range []string{"sort", "order"} {
+		if cmd.Flags().Lookup(name) != nil {
+			panic(fmt.Sprintf("clicky sortable entity list options must not declare --%s", name))
+		}
+	}
+	cmd.Flags().String("sort", spec.Default.Key, "Sort by a response column")
+	cmd.Flags().String("order", string(spec.Default.Direction), "Sort direction")
+	flags.SetAllowedValues(cmd.Flags().Lookup("sort"), spec.Keys()...)
+	flags.SetAllowedValues(cmd.Flags().Lookup("order"), string(SortDirectionAsc), string(SortDirectionDesc))
 }
 
 func generateIDCommand(
@@ -1633,7 +1683,10 @@ type boundFilter struct {
 	Type       string
 	Multi      bool
 	Searchable bool
-	Selected   map[string]api.Textable
+	// TimeEnabled offers a clock on a range control; nil leaves the choice to the
+	// control type.
+	TimeEnabled *bool
+	Selected    map[string]api.Textable
 	// Limit caps this filter's option set. Zero takes lookupOptionsLimit, which
 	// is also the ceiling — a filter cannot ask for a larger head than the
 	// response is willing to carry.
@@ -1685,10 +1738,11 @@ func resolveLookupCore(filters []boundFilter, searchKey, searchQuery string) (en
 	}
 	for _, f := range filters {
 		entry := entityLookupFilter{
-			Label:    f.Label,
-			Selected: toClickyNodeMap(f.Selected),
-			Multi:    f.Multi,
-			Type:     f.Type,
+			Label:       f.Label,
+			Selected:    toClickyNodeMap(f.Selected),
+			Multi:       f.Multi,
+			Type:        f.Type,
+			TimeEnabled: f.TimeEnabled,
 		}
 		switch {
 		case f.Searchable && searchKey == f.Key && searchQuery != "":
@@ -1926,6 +1980,7 @@ func (e entityWithID[T]) GetName() string { return e.Inner.GetName() }
 
 func (e entityWithID[T]) Columns() []api.ColumnDef {
 	withID := func(columns []api.ColumnDef) []api.ColumnDef {
+		columns = api.MustMergeSortableColumns(reflect.TypeFor[T](), columns)
 		for _, column := range columns {
 			if column.Name == "_id" {
 				return columns
@@ -2089,6 +2144,7 @@ func columnsAndRowFromStruct(inner any) ([]api.ColumnDef, map[string]any, bool) 
 			HeaderStyle:   field.LabelStyle,
 			Type:          field.Type,
 			Format:        field.Format,
+			SortKey:       field.SortKey,
 			FormatOptions: field.FormatOptions,
 		})
 		if value, ok := typedRow[field.Name]; ok {

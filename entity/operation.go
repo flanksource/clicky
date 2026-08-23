@@ -103,6 +103,7 @@ type RPCParameter struct {
 	Required    bool        `json:"required"`
 	Default     interface{} `json:"default,omitempty"`
 	In          string      `json:"in,omitempty"` // "query", "path", "header" for REST
+	Enum        []string    `json:"enum,omitempty"`
 }
 
 // RPCService represents a collection of RPC operations.

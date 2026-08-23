@@ -419,7 +419,7 @@ type FieldMeta struct {
 }
 
 type TypedValue struct {
-	Textable    Textable
+	Textable Textable
 	// FilterValue preserves a filterable table cell's raw scalar independently
 	// from its formatted Textable representation.
 	FilterValue any
@@ -575,8 +575,15 @@ func TryTypedValue(o any) *TypedValue {
 		// of the concrete element type sources the columns.
 		if val.Len() == 0 {
 			if elemType.Implements(tableProviderType) {
+				// An interface element type has no concrete zero value to read
+				// Columns() from: render an empty table without a schema
+				// instead of panicking on a nil-interface assertion.
+				if elemType.Kind() == reflect.Interface {
+					return &TypedValue{Table: lo.ToPtr(NewEmptyTable(nil))}
+				}
 				zero := zeroTableProvider(elemType)
-				return &TypedValue{Table: lo.ToPtr(NewEmptyTable(zero.Columns()))}
+				columns := MustMergeSortableColumns(elemType, zero.Columns())
+				return &TypedValue{Table: lo.ToPtr(NewEmptyTable(columns))}
 			}
 			return nil
 		}
@@ -587,7 +594,12 @@ func TryTypedValue(o any) *TypedValue {
 			for i := 0; i < val.Len(); i++ {
 				items[i] = val.Index(i).Interface().(TableProvider)
 			}
-			return &TypedValue{Table: lo.ToPtr(NewTableFrom(items))}
+			rowType := elemType
+			if elemType.Kind() == reflect.Interface {
+				// Merge sort tags from the concrete first item, not the interface.
+				rowType = reflect.TypeOf(items[0])
+			}
+			return &TypedValue{Table: lo.ToPtr(newTableFromProviders(items, rowType))}
 		}
 
 		// Check TableMixin
@@ -652,6 +664,49 @@ func TryTypedValue(o any) *TypedValue {
 	}
 
 	return nil
+}
+
+func newTableFromProviders(items []TableProvider, rowType reflect.Type) TextTable {
+	columns := MustMergeSortableColumns(rowType, items[0].Columns())
+	table := NewEmptyTable(columns)
+	var hasDetail bool
+	for _, item := range items {
+		rowData := item.Row()
+		row := TableRow{}
+		for _, col := range columns {
+			if val, exists := rowData[col.Name]; exists && col.Hidden {
+				row[col.Name] = TypedValue{Textable: Text{}.Add(ColumnTextable(col, val))}
+				continue
+			}
+			if col.Hidden {
+				continue
+			}
+			if val, exists := rowData[col.Name]; exists {
+				style := col.Style
+				if col.MaxWidth > 0 {
+					style = fmt.Sprintf("%s max-w-[%dch] truncate", style, col.MaxWidth)
+				}
+				text := Text{Style: style}.Add(ColumnTextable(col, val))
+				cell := TypedValue{Textable: text}
+				if col.FilterKey != "" {
+					cell.FilterValue = val
+				}
+				row[col.Name] = cell
+			} else {
+				row[col.Name] = TypedValue{Textable: Text{}}
+			}
+		}
+		table.Rows = append(table.Rows, row)
+		if detail, ok := item.(DetailProvider); ok {
+			content := detail.RowDetail()
+			table.RowDetail = append(table.RowDetail, content)
+			hasDetail = hasDetail || content != nil
+		}
+	}
+	if !hasDetail {
+		table.RowDetail = nil
+	}
+	return table
 }
 
 // zeroTableProvider returns a usable zero TableProvider for an element type so
