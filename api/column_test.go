@@ -134,13 +134,18 @@ var _ = Describe("Column", func() {
 			Expect(table.Rows[0]["name"].String()).To(Equal("Alice"))
 		})
 
-		It("keeps only filterable hidden cells, carrying their raw filter value", func() {
-			table := NewTableFrom([]hiddenColumnRow{{Name: "web", Tenant: "acme", Internal: "secret"}})
+		It("carries hidden cells as row metadata and keeps the raw value of filterable ones", func() {
+			table := NewTableFrom([]hiddenColumnRow{{Name: "web", Tenant: "acme", Internal: "meta"}})
 
+			// Hidden columns are row metadata, never visible columns.
 			Expect(table.FieldNames).To(Equal([]string{"name"}))
-			Expect(table.Rows[0]).To(HaveKey("tenant"))
+			Expect(table.Rows[0]["tenant"].String()).To(Equal("acme"))
+			Expect(table.Rows[0]["internal"].String()).To(Equal("meta"))
+
+			// Only a filterable cell retains its raw scalar for filtering.
 			Expect(table.Rows[0]["tenant"].FilterValue).To(Equal("acme"))
-			Expect(table.Rows[0]).ToNot(HaveKey("internal"))
+			Expect(table.Rows[0]["internal"].FilterValue).To(BeNil())
+			Expect(table.Rows[0]["name"].FilterValue).To(BeNil())
 		})
 
 		It("emits header-only table (schema, no rows) from empty slice", func() {

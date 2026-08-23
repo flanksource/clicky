@@ -92,6 +92,9 @@ func (p *Process) StdoutReader() io.Reader {
 	return p.stdoutR
 }
 
+// clone derives a per-invocation Process from a template. Every caller-supplied
+// setting is carried over, including the bound task — a template configured with
+// WithTask must keep task-scoped logging and GetTask() working on its clones.
 func (p *Process) clone() *Process {
 	var capture *ExecLogger
 	if p.captureOutput != nil {
