@@ -16,7 +16,7 @@ import (
 )
 
 type CobraToolFilter func(captools.ToolInfo) bool
-type CobraToolPermission func(captools.ToolInfo) api.ToolMode
+type CobraToolPermission func(captools.ToolInfo) api.ToolPolicy
 
 type CobraToolProviderOptions struct {
 	Root       *cobra.Command
@@ -79,10 +79,10 @@ func (p *CobraToolProvider) ToolSet(context.Context) (capchat.ToolSet, error) {
 			continue
 		}
 		if p.permission != nil {
-			mode := p.permission(info)
-			normalized, ok := api.NormalizeToolMode(mode)
+			policy := p.permission(info)
+			normalized, ok := normalizeToolPolicy(string(policy))
 			if !ok {
-				return capchat.ToolSet{}, fmt.Errorf("operation %q resolved invalid tool permission %q", op.Name, mode)
+				return capchat.ToolSet{}, fmt.Errorf("operation %q resolved invalid tool permission %q", op.Name, policy)
 			}
 			info.DefaultPermission = normalized
 		}
@@ -135,25 +135,46 @@ func toolInfo(name string, op *rpc.RPCOperation) (captools.ToolInfo, error) {
 	return info, nil
 }
 
-func defaultToolPermission(op *rpc.RPCOperation, hints entity.MCPToolHints) (api.ToolMode, error) {
+// defaultToolPermission decides how an RPC operation is exposed when its hints
+// do not say. A read-only operation, or a read-shaped HTTP method, auto-runs;
+// anything that mutates asks; anything else defers to the runtime policy.
+//
+// Captain's tool vocabulary is auto | ask | allow | deny — it used to carry a
+// second on | ask | off | auto spelling for the same idea, and the bridges
+// between the two disagreed. `allow` here is the old `on`: run it without
+// asking.
+func defaultToolPermission(op *rpc.RPCOperation, hints entity.MCPToolHints) (api.ToolPolicy, error) {
 	if hints.DefaultPermission != "" {
-		mode, ok := api.NormalizeToolMode(api.ToolMode(hints.DefaultPermission))
+		policy, ok := normalizeToolPolicy(string(hints.DefaultPermission))
 		if !ok {
 			return "", fmt.Errorf("operation %q has invalid default tool permission %q", op.Name, hints.DefaultPermission)
 		}
-		return mode, nil
+		return policy, nil
 	}
 	if hints.ReadOnlyHint != nil && *hints.ReadOnlyHint {
-		return api.ToolModeOn, nil
+		return api.ToolPolicyAllow, nil
 	}
 	switch strings.ToUpper(op.Method) {
 	case "GET", "HEAD", "OPTIONS":
-		return api.ToolModeOn, nil
+		return api.ToolPolicyAllow, nil
 	case "POST", "PUT", "PATCH", "DELETE":
-		return api.ToolModeAsk, nil
+		return api.ToolPolicyAsk, nil
 	default:
-		return api.ToolModeAuto, nil
+		return api.ToolPolicyAuto, nil
 	}
+}
+
+// normalizeToolPolicy canonicalizes a tool-policy string into Captain's tool
+// vocabulary (auto | ask | allow | deny), accepting the legacy on | off
+// spellings that clicky entities still advertise (entity.ToolPermission).
+//
+// The mapping itself lives in captain: this encoding has no separate allow list,
+// so `on` is its only way to say auto-run and resolves to allow — which is not
+// what `on` means in the legacy permissions.tools shape, where an allow list
+// already carries allow and `on` means auto. Keeping a private copy of that rule
+// here is how the two ended up disagreeing.
+func normalizeToolPolicy(value string) (api.ToolPolicy, bool) {
+	return api.ParseToolPolicy(value, api.ParseToolPolicyOptions{LegacyOn: api.ToolPolicyAllow})
 }
 
 // catalogEntry builds the frontend-facing DTO. outputSchema is applied raw
