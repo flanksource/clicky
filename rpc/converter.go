@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/flanksource/clicky"
+	"github.com/flanksource/clicky/flags"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 )
@@ -94,6 +95,8 @@ func (c *Converter) ConvertCommand(cmd *cobra.Command) (*RPCOperation, error) {
 			Required:    false,
 			In:          "query",
 		}
+		prop.Enum = flags.AllowedValues(flag)
+		param.Enum = flags.AllowedValues(flag)
 
 		// Determine type based on flag type
 		switch flag.Value.Type() {
