@@ -674,31 +674,33 @@ func newTableFromProviders(items []TableProvider, rowType reflect.Type) TextTabl
 		rowData := item.Row()
 		row := TableRow{}
 		for _, col := range columns {
-			if col.Hidden {
-				// A hidden column is carried in the row payload only when it is
-				// filterable — the raw value is what client-side filtering reads.
-				// Non-filterable hidden cells are dropped entirely.
-				if val, exists := rowData[col.Name]; exists && col.FilterKey != "" {
-					row[col.Name] = TypedValue{
-						Textable:    Text{}.Add(ColumnTextable(col, val)),
-						FilterValue: val,
-					}
+			val, exists := rowData[col.Name]
+			if !exists {
+				// A hidden column with no value contributes nothing; a visible one
+				// still needs a placeholder cell so the row stays column-aligned.
+				if !col.Hidden {
+					row[col.Name] = TypedValue{Textable: Text{}.Styles(col.Style)}
 				}
 				continue
 			}
-			if val, exists := rowData[col.Name]; exists {
-				text := Text{}.Add(ColumnTextable(col, val)).Styles(col.Style)
+			// Hidden columns ride along as row metadata (row identity such as
+			// _id, and raw values backing client-side filters). They are absent
+			// from table.Columns, so they never render as a visible cell — and
+			// display styling therefore only applies to visible columns.
+			text := Text{}.Add(ColumnTextable(col, val))
+			if !col.Hidden {
+				text = text.Styles(col.Style)
 				if col.MaxWidth > 0 {
 					text = text.Styles(fmt.Sprintf("max-w-[%dch]", col.MaxWidth), "truncate")
 				}
-				cell := TypedValue{Textable: text}
-				if col.FilterKey != "" {
-					cell.FilterValue = val
-				}
-				row[col.Name] = cell
-			} else {
-				row[col.Name] = TypedValue{Textable: Text{}}
 			}
+			cell := TypedValue{Textable: text}
+			// A filterable cell keeps its raw scalar so filtering compares
+			// against the value, not its rendered representation.
+			if col.FilterKey != "" {
+				cell.FilterValue = val
+			}
+			row[col.Name] = cell
 		}
 		table.Rows = append(table.Rows, row)
 		if detail, ok := item.(DetailProvider); ok {
