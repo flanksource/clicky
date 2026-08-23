@@ -6,6 +6,7 @@ packages:
   - "."
 
 catalog:
+  '@flanksource/clicky-ui': ^0.3.25
   "@iconify/react": ^5.0.2
   "@radix-ui/react-compose-refs": ^1.1.2
   "@radix-ui/react-slot": ^1.1.1
