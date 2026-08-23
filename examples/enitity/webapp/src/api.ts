@@ -2,6 +2,7 @@ import type {
   ExecutionResponse,
   OpenAPISpec,
   OperationLookupResponse,
+  OperationRequestValues,
   OperationsApiClient,
 } from "@flanksource/clicky-ui";
 
@@ -10,18 +11,33 @@ import type {
 // remaining params (those not consumed by a path segment).
 function substitutePath(
   path: string,
-  params: Record<string, string>,
-): { resolved: string; remaining: Record<string, string> } {
+  params: OperationRequestValues,
+): { resolved: string; remaining: OperationRequestValues } {
   const remaining = { ...params };
   let resolved = path;
   for (const [key, value] of Object.entries(params)) {
-    if (resolved.includes(`{${key}}`)) {
-      resolved = resolved.replace(`{${key}}`, encodeURIComponent(value));
-      delete remaining[key];
-      delete remaining.args;
+    if (!resolved.includes(`{${key}}`)) {
+      continue;
     }
+    if (Array.isArray(value)) {
+      throw new Error(`Path parameter ${key} must be a scalar value`);
+    }
+    resolved = resolved.replace(`{${key}}`, encodeURIComponent(value));
+    delete remaining[key];
+    delete remaining.args;
   }
   return { resolved, remaining };
+}
+
+// Multi-valued params are sent comma-joined, matching how the Go executor
+// decodes repeated filter values (rpc/executor.go splits on ",").
+function toSearchParams(params: OperationRequestValues): URLSearchParams {
+  return new URLSearchParams(
+    Object.entries(params).map(([key, value]) => [
+      key,
+      Array.isArray(value) ? value.join(",") : value,
+    ]),
+  );
 }
 
 async function request(
@@ -95,7 +111,7 @@ export const apiClient: OperationsApiClient = {
   async executeCommand(path, method, params, headers) {
     const { resolved, remaining } = substitutePath(path, params);
     if (method.toUpperCase() === "GET") {
-      const search = new URLSearchParams(remaining).toString();
+      const search = toSearchParams(remaining).toString();
       const url = search ? `${resolved}?${search}` : resolved;
       return request(url, method, undefined, headers, url);
     }
@@ -105,11 +121,11 @@ export const apiClient: OperationsApiClient = {
   async lookupFilters(
     path: string,
     _method: string,
-    params: Record<string, string>,
+    params: OperationRequestValues,
     headers?: Record<string, string>,
   ): Promise<OperationLookupResponse> {
     const { resolved, remaining } = substitutePath(path, params);
-    const searchParams = new URLSearchParams(remaining);
+    const searchParams = toSearchParams(remaining);
     searchParams.set("__lookup", "filters");
     const url = `${resolved}?${searchParams.toString()}`;
     const response = await fetch(url, {

@@ -27,9 +27,9 @@ var _ = Describe("Captain chat settings", func() {
 			},
 		})).To(Succeed())
 
-		settings, err := captainRuntimeSettings(context.Background())
+		profile, err := captainRuntimeProfile(context.Background())
 		Expect(err).NotTo(HaveOccurred())
-		Expect(settings.Spec.Model.Name).To(Equal(configuredModel))
-		Expect(settings.Spec.Model.Backend).To(Equal(provider))
+		Expect(profile.Resolved.Spec.Model.Name).To(Equal(configuredModel))
+		Expect(profile.Resolved.Spec.Model.Backend).To(Equal(provider))
 	})
 })

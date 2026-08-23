@@ -12,7 +12,20 @@ const clickyUiDist = path.resolve(
   "../../../../clicky-ui/packages/ui/dist",
 );
 
-export default defineConfig({
+// `vite dev` (and `serve-ui --dev`) resolves clicky-ui from the sibling
+// checkout so local library edits show up on reload. A production `vite build`
+// must NOT: it would bundle whatever that checkout happens to hold while tsc
+// type-checked the installed package, shipping a different version than was
+// verified. Builds resolve @flanksource/clicky-ui from node_modules instead.
+const devClickyUiAlias = {
+  "@flanksource/clicky-ui/styles.css": path.join(clickyUiDist, "styles.css"),
+  "@flanksource/clicky-ui/chat": path.join(clickyUiDist, "chat.js"),
+  "@flanksource/clicky-ui/ai": path.join(clickyUiDist, "ai.js"),
+  "@flanksource/clicky-ui/icons": path.join(clickyUiDist, "icons.js"),
+  "@flanksource/clicky-ui": path.join(clickyUiDist, "index.js"),
+};
+
+export default defineConfig(({ command }) => ({
   // The example app is embedded and served from "/", so root-relative assets
   // keep deep links like /entity/:domainKey/:id working on full page loads.
   base: "/",
@@ -20,14 +33,7 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
-      "@flanksource/clicky-ui/styles.css": path.join(
-        clickyUiDist,
-        "styles.css",
-      ),
-      "@flanksource/clicky-ui/chat": path.join(clickyUiDist, "chat.js"),
-      "@flanksource/clicky-ui/ai": path.join(clickyUiDist, "ai.js"),
-      "@flanksource/clicky-ui/icons": path.join(clickyUiDist, "icons.js"),
-      "@flanksource/clicky-ui": path.join(clickyUiDist, "index.js"),
+      ...(command === "serve" ? devClickyUiAlias : {}),
     },
     dedupe: ["react", "react-dom", "@tanstack/react-query"],
   },
@@ -53,4 +59,4 @@ export default defineConfig({
     outDir: "dist",
     emptyOutDir: true,
   },
-});
+}));
