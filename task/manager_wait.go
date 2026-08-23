@@ -96,14 +96,25 @@ func ClearTasks() {
 	global.groups = activeGroups
 }
 
-// awaitAllTasks blocks until the queue is drained, no worker is active, and
-// every registered task has flipped completed.
+// awaitAllTasks blocks until the queue is drained, no worker is running
+// foreground work, and every registered non-background task has flipped
+// completed. Background tasks are long-lived servers that outlive the wait by
+// contract and are skipped — waiting on one deadlocks (see Task.SetBackground).
+// Worker occupancy is judged per in-flight task (foregroundWorkersActive), not
+// by the raw workersActive counter: a background server scheduled through the
+// queue holds a worker for its whole life and must not block the drain.
 //
-// A task that never completes is named on a doubling interval instead of being
-// waited on in silence: a mute poll here is what let a single wedged task leave
-// gavel processes ticking at 10ms for days with nothing in the logs and no open
-// file descriptors to point at the cause.
+// The wait is deliberately unbounded: a legitimately long run (a 30-minute test
+// suite) must not be killed by a timer. A task that never completes is instead
+// named on a doubling interval rather than waited on in silence — a mute poll
+// here is what let a single wedged task leave gavel processes ticking at 10ms
+// for days with nothing in the logs and no open file descriptors to point at
+// the cause.
 func awaitAllTasks() {
+	global.awaitAll()
+}
+
+func (tm *Manager) awaitAll() {
 	ticker := time.NewTicker(10 * time.Millisecond)
 	defer ticker.Stop()
 
@@ -111,13 +122,13 @@ func awaitAllTasks() {
 	warnAfter := waitForWarnAfter
 
 	for {
-		if global.taskQueue.Empty() && global.workersActive.Load() == 0 && allTasksCompleted() {
+		if tm.taskQueue.Empty() && tm.foregroundWorkersActive() == 0 && tm.allTasksCompleted() {
 			return
 		}
 
 		if waited := time.Since(start); waited >= warnAfter {
 			logger.Warnf("Still waiting after %s for: %s",
-				waited.Round(time.Second), strings.Join(incompleteTaskNames(), ", "))
+				waited.Round(time.Second), strings.Join(tm.incompleteTaskNames(), ", "))
 			warnAfter *= 2
 		}
 
@@ -125,11 +136,39 @@ func awaitAllTasks() {
 	}
 }
 
-func allTasksCompleted() bool {
-	global.mu.RLock()
-	defer global.mu.RUnlock()
+// foregroundWorkersActive counts workers whose in-flight task a wait is
+// entitled to drain. Judged from the task's live background flag rather than a
+// snapshot taken at dequeue, because the flag can flip mid-run: a supervised
+// process scheduled through the queue (exec.RunSupervisedAsTask) marks its
+// bound task background only once the server generation starts. tm.workers is
+// populated once at construction and never mutated, so it is read without mu.
+func (tm *Manager) foregroundWorkersActive() int {
+	active := 0
+	for _, w := range tm.workers {
+		if t := w.inflight.Load(); t != nil && !t.IsBackground() {
+			active++
+		}
+	}
+	return active
+}
 
-	for _, task := range global.tasks {
+func (tm *Manager) allTasksCompleted() bool {
+	tm.mu.RLock()
+	defer tm.mu.RUnlock()
+
+	return tasksDrained(tm.tasks)
+}
+
+// tasksDrained reports whether every task a wait is entitled to block on has
+// completed. Background tasks are skipped: they are long-lived servers that by
+// contract outlive the wait, so counting them deadlocks it — the wait blocks the
+// work that would shut the server down, and the server keeps the wait from
+// returning. See Task.SetBackground.
+func tasksDrained(tasks []*Task) bool {
+	for _, task := range tasks {
+		if task.IsBackground() {
+			continue
+		}
 		if !task.completed.Load() {
 			return false
 		}
@@ -138,14 +177,19 @@ func allTasksCompleted() bool {
 }
 
 // incompleteTaskNames names the tasks still blocking a wait, for diagnostics.
-func incompleteTaskNames() []string {
-	global.mu.RLock()
-	tasks := make([]*Task, len(global.tasks))
-	copy(tasks, global.tasks)
-	global.mu.RUnlock()
+func (tm *Manager) incompleteTaskNames() []string {
+	tm.mu.RLock()
+	tasks := make([]*Task, len(tm.tasks))
+	copy(tasks, tm.tasks)
+	tm.mu.RUnlock()
 
 	var names []string
 	for _, task := range tasks {
+		// Background tasks never block the wait, so naming one would point the
+		// reader at a task that is not the cause.
+		if task.IsBackground() {
+			continue
+		}
 		if task.completed.Load() {
 			continue
 		}
