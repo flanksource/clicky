@@ -143,8 +143,10 @@ type SupervisedProcess struct {
 	killed  bool
 	// handles caches one gopsutil Process per pid so Percent(0) yields the CPU
 	// delta since the previous sample rather than the lifetime average.
-	handles map[int32]*gops.Process
-	taskRun *task.ManagedRun
+	handles   map[int32]*gops.Process
+	taskRun   *task.ManagedRun
+	boundTask *task.Task
+	result    *ExecResult
 }
 
 // Supervise turns a configured Process into a SupervisedProcess using it as the
@@ -256,10 +258,22 @@ func (s *SupervisedProcess) Pid() int {
 func (s *SupervisedProcess) TaskRunID() string {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
+	if s.boundTask != nil {
+		return s.boundTask.ID()
+	}
 	if s.taskRun == nil {
 		return ""
 	}
 	return s.taskRun.ID()
+}
+
+func (s *SupervisedProcess) Result() ExecResult {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if s.result == nil {
+		return ExecResult{Status: "pending", ExitCode: -1}
+	}
+	return *s.result
 }
 
 // IsRunning reports whether a run is currently executing.

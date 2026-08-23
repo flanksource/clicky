@@ -207,6 +207,11 @@ func (s *SupervisedProcess) runLoop() {
 			}
 			s.mu.Unlock()
 
+			// Measure once as soon as the child is published. monitorLoop only
+			// samples on tick boundaries, so a run shorter than the sample
+			// interval would otherwise finish with an empty latest/peak.
+			s.sample()
+
 			// Notify after the child is current and running so the callback can
 			// read proc.Stdin()/StdoutReader(). Must return promptly (see doc).
 			if s.opts.OnStarted != nil {
@@ -222,6 +227,8 @@ func (s *SupervisedProcess) runLoop() {
 		res := proc.Result()
 
 		s.mu.Lock()
+		result := *res
+		s.result = &result
 		code := res.ExitCode
 		s.exitCode = &code
 		genChanged := s.gen != myGen
