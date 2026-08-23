@@ -40,7 +40,7 @@ func WithTee(stdout, stderr io.Writer) WrapperOption {
 		if p.captureOutput == nil {
 			p.captureOutput = NewExecLogger()
 		}
-		p.captureOutput.Tee(stdout, stderr)
+		p.captureOutput = p.captureOutput.Tee(stdout, stderr)
 	})
 }
 
@@ -106,6 +106,7 @@ func (p *Process) clone() *Process {
 		captureOutput:    capture,
 		SucceedOnNonZero: p.SucceedOnNonZero,
 		log:              p.log,
+		task:             p.task,
 		Shell:            p.Shell,
 		exactEnvironment: p.exactEnvironment,
 		newProcessGroup:  p.newProcessGroup,

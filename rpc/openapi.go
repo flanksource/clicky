@@ -403,6 +403,7 @@ func (g *OpenAPIGenerator) convertOperationToOpenAPI(op RPCOperation) OpenAPIOpe
 				Type:        param.Type,
 				Description: param.Description,
 				Default:     param.Default,
+				Enum:        param.Enum,
 			}),
 		}
 		if role := ParamRole(op, param); role != "" {
@@ -524,6 +525,10 @@ func paramRole(param RPCParameter, supportsLookup, isListOp bool) string {
 	name := strings.ToLower(param.Name)
 	if isListOp {
 		switch name {
+		case "sort":
+			return "sort"
+		case "order":
+			return "order"
 		case "limit":
 			return "limit"
 		case "offset":

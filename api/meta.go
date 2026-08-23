@@ -674,19 +674,23 @@ func newTableFromProviders(items []TableProvider, rowType reflect.Type) TextTabl
 		rowData := item.Row()
 		row := TableRow{}
 		for _, col := range columns {
-			if val, exists := rowData[col.Name]; exists && col.Hidden {
-				row[col.Name] = TypedValue{Textable: Text{}.Add(ColumnTextable(col, val))}
-				continue
-			}
 			if col.Hidden {
+				// A hidden column is carried in the row payload only when it is
+				// filterable — the raw value is what client-side filtering reads.
+				// Non-filterable hidden cells are dropped entirely.
+				if val, exists := rowData[col.Name]; exists && col.FilterKey != "" {
+					row[col.Name] = TypedValue{
+						Textable:    Text{}.Add(ColumnTextable(col, val)),
+						FilterValue: val,
+					}
+				}
 				continue
 			}
 			if val, exists := rowData[col.Name]; exists {
-				style := col.Style
+				text := Text{}.Add(ColumnTextable(col, val)).Styles(col.Style)
 				if col.MaxWidth > 0 {
-					style = fmt.Sprintf("%s max-w-[%dch] truncate", style, col.MaxWidth)
+					text = text.Styles(fmt.Sprintf("max-w-[%dch]", col.MaxWidth), "truncate")
 				}
-				text := Text{Style: style}.Add(ColumnTextable(col, val))
 				cell := TypedValue{Textable: text}
 				if col.FilterKey != "" {
 					cell.FilterValue = val

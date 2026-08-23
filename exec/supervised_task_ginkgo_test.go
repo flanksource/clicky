@@ -4,6 +4,7 @@ package exec
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -36,6 +37,22 @@ var _ = Describe("Supervised process task runs", func() {
 		Expect(details.Args).To(Equal([]string{"-c", "echo sliced; sleep 0.2"}))
 		Expect(details.Metrics).To(HaveKeyWithValue("rss", task.MetricID(handle.GetTask().ID(), "rss")))
 		Expect(details.Peak.VMSBytes).To(BeNumerically(">", 0))
+	})
+
+	It("never starts the process when the task context is already cancelled", func() {
+		marker := filepath.Join(GinkgoT().TempDir(), "started")
+		handle := NewExec("touch", marker).WithoutShell().RunSupervisedAsTask(
+			RunSupervisedTaskOptions{
+				Name: "cancelled-before-start",
+				Task: []task.Option{task.WithTaskTimeout(time.Nanosecond)},
+			},
+		)
+
+		result, err := handle.GetResult()
+
+		Expect(err).To(HaveOccurred())
+		Expect(result.Status).To(Equal("cancelled"))
+		Expect(marker).ToNot(BeAnExistingFile())
 	})
 
 	It("returns a terminal failed status for a process that cannot start", func() {

@@ -207,16 +207,19 @@ func (s *SupervisedProcess) runLoop() {
 			}
 			s.mu.Unlock()
 
+			// Notify after the child is current and running so the callback can
+			// read proc.Stdin()/StdoutReader(). Must return promptly (see doc).
+			// This runs before the first sample because sample() enforces the
+			// resource limits: a first-sample breach would otherwise terminate
+			// proc before the callback ever bound to it.
+			if s.opts.OnStarted != nil {
+				s.opts.OnStarted(proc)
+			}
+
 			// Measure once as soon as the child is published. monitorLoop only
 			// samples on tick boundaries, so a run shorter than the sample
 			// interval would otherwise finish with an empty latest/peak.
 			s.sample()
-
-			// Notify after the child is current and running so the callback can
-			// read proc.Stdin()/StdoutReader(). Must return promptly (see doc).
-			if s.opts.OnStarted != nil {
-				s.opts.OnStarted(proc)
-			}
 		}
 
 		if s.opts.DetectPorts && proc.IsRunning() {

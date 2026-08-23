@@ -180,6 +180,12 @@ func NewEmptyTable(columns []ColumnDef) TextTable {
 func NewTableFrom[T TableProvider](items []T) TextTable {
 	if len(items) == 0 {
 		rowType := reflect.TypeFor[T]()
+		// An interface type parameter has no concrete zero value to read
+		// Columns() from — asserting a nil interface would panic. Render a
+		// schema-less empty table instead.
+		if rowType.Kind() == reflect.Interface {
+			return NewEmptyTable(nil)
+		}
 		zero := zeroTableProvider(rowType)
 		columns := MustMergeSortableColumns(rowType, zero.Columns())
 		return NewEmptyTable(columns)
