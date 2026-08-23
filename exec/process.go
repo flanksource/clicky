@@ -134,17 +134,19 @@ func (p *Process) Start() error {
 	return nil
 }
 
-func (p *Process) MustStop(_ time.Duration) error { return p.Terminate() }
-func (p *Process) Stop() error                    { return p.Terminate() }
-func (p *Process) GetOutput() string              { return p.captureOutput.GetOutput() }
-func (p *Process) GetStdout() string              { return p.captureOutput.GetStdout() }
-func (p *Process) GetStderr() string              { return p.captureOutput.GetStderr() }
+// MustStop interrupts the process and escalates to SIGKILL when it has not
+// exited within timeout, so a child that ignores SIGINT is still reaped.
+func (p *Process) MustStop(timeout time.Duration) error { return p.Kill(timeout) }
+func (p *Process) Stop() error                          { return p.Terminate() }
+func (p *Process) GetOutput() string                    { return p.captureOutput.GetOutput() }
+func (p *Process) GetStdout() string                    { return p.captureOutput.GetStdout() }
+func (p *Process) GetStderr() string                    { return p.captureOutput.GetStderr() }
 
 func (p *Process) Stream(stdout, stderr io.Writer) *Process {
 	if p.captureOutput == nil {
 		p.captureOutput = NewExecLogger()
 	}
-	p.captureOutput.Tee(stdout, stderr)
+	p.captureOutput = p.captureOutput.Tee(stdout, stderr)
 	return p
 }
 

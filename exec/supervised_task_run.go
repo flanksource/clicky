@@ -26,6 +26,17 @@ func (p *Process) RunSupervisedAsTask(options RunSupervisedTaskOptions) task.Typ
 		supervisor.mu.Lock()
 		supervisor.boundTask = current
 		supervisor.mu.Unlock()
+		// An already-cancelled task never starts the process at all.
+		if err := ctx.Err(); err != nil {
+			return ExecResult{Status: "cancelled", ExitCode: -1}, err
+		}
+
+		// Start before the cancellation watcher is installed. Stop() is a no-op
+		// while the supervise loop is inactive, so a watcher that fired in the
+		// gap before Start() would leave the process running with nothing left
+		// to cancel it.
+		supervisor.Start()
+
 		cancelled := make(chan struct{})
 		defer close(cancelled)
 		go func() {
@@ -35,7 +46,6 @@ func (p *Process) RunSupervisedAsTask(options RunSupervisedTaskOptions) task.Typ
 			case <-cancelled:
 			}
 		}()
-		supervisor.Start()
 		supervisor.Wait()
 		result := supervisor.Result()
 		return result, result.Error

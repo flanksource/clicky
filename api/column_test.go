@@ -38,6 +38,26 @@ func (e mockEmployee) Row() map[string]any {
 	}
 }
 
+// hiddenColumnRow pairs a filterable hidden column with a non-filterable one so
+// the two halves of the hidden-cell contract can be asserted in one table.
+type hiddenColumnRow struct {
+	Name     string
+	Tenant   string
+	Internal string
+}
+
+func (hiddenColumnRow) Columns() []ColumnDef {
+	return []ColumnDef{
+		Column("name").Build(),
+		Column("tenant").Hidden().FilterKey("filter.tenant").Build(),
+		Column("internal").Hidden().Build(),
+	}
+}
+
+func (r hiddenColumnRow) Row() map[string]any {
+	return map[string]any{"name": r.Name, "tenant": r.Tenant, "internal": r.Internal}
+}
+
 var _ = Describe("Column", func() {
 	Describe("ColumnBuilder", func() {
 		It("creates a column with just a name", func() {
@@ -98,6 +118,31 @@ var _ = Describe("Column", func() {
 	})
 
 	Describe("NewTableFrom", func() {
+		It("emits a schema-less empty table for an empty interface-typed slice", func() {
+			table := NewTableFrom([]TableProvider(nil))
+
+			Expect(table.Headers).To(BeEmpty())
+			Expect(table.FieldNames).To(BeEmpty())
+			Expect(table.Rows).To(BeEmpty())
+		})
+
+		It("sources the schema from the concrete element of an interface-typed slice", func() {
+			table := NewTableFrom([]TableProvider{mockEmployee{ID: 1, Name: "Alice", Active: true}})
+
+			Expect(table.FieldNames).To(Equal([]string{"id", "name", "department", "salary", "status"}))
+			Expect(table.Rows).To(HaveLen(1))
+			Expect(table.Rows[0]["name"].String()).To(Equal("Alice"))
+		})
+
+		It("keeps only filterable hidden cells, carrying their raw filter value", func() {
+			table := NewTableFrom([]hiddenColumnRow{{Name: "web", Tenant: "acme", Internal: "secret"}})
+
+			Expect(table.FieldNames).To(Equal([]string{"name"}))
+			Expect(table.Rows[0]).To(HaveKey("tenant"))
+			Expect(table.Rows[0]["tenant"].FilterValue).To(Equal("acme"))
+			Expect(table.Rows[0]).ToNot(HaveKey("internal"))
+		})
+
 		It("emits header-only table (schema, no rows) from empty slice", func() {
 			table := NewTableFrom([]mockEmployee{})
 			Expect(table.Headers).To(HaveLen(5))
