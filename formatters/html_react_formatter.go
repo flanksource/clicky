@@ -74,6 +74,7 @@ type ClickyColumn struct {
 	Format    string      `json:"format,omitempty"`
 	Unit      string      `json:"unit,omitempty"`
 	FilterKey string      `json:"filterKey,omitempty"`
+	SortKey   string      `json:"sortKey,omitempty"`
 	Header    *ClickyNode `json:"header,omitempty"`
 	Align     string      `json:"align,omitempty"`
 }
@@ -518,6 +519,7 @@ func convertTable(table *api.TextTable) ClickyNode {
 				column.Format = table.Columns[i].Format
 				column.Unit = table.Columns[i].Unit
 				column.FilterKey = table.Columns[i].FilterKey
+				column.SortKey = table.Columns[i].SortKey
 				column.Align = alignFromStyle(table.Columns[i].Style)
 			}
 			if column.Label == "" {
@@ -545,6 +547,7 @@ func convertTable(table *api.TextTable) ClickyNode {
 				Format:    columnDef.Format,
 				Unit:      columnDef.Unit,
 				FilterKey: columnDef.FilterKey,
+				SortKey:   columnDef.SortKey,
 				Align:     alignFromStyle(columnDef.Style),
 			}
 			if column.Label == "" {

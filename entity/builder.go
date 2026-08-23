@@ -150,6 +150,12 @@ func (b *EntityBuilder[T, ListOpts, R]) Filters(filters ...Filter[ListOpts]) *En
 	return b
 }
 
+// Sort enables validated server-side sorting for the entity list operation.
+func (b *EntityBuilder[T, ListOpts, R]) Sort(spec SortSpec) *EntityBuilder[T, ListOpts, R] {
+	b.entity.Sort = &spec
+	return b
+}
+
 func (b *EntityBuilder[T, ListOpts, R]) WithPrimaryAction(action EntityAction) *EntityBuilder[T, ListOpts, R] {
 	b.entity.PrimaryAction = action
 	return b

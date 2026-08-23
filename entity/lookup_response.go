@@ -12,6 +12,9 @@ type entityLookupFilter struct {
 	Selected map[string]clickyNode `json:"selected,omitempty"`
 	Multi    bool                  `json:"multi,omitempty"`
 	Type     string                `json:"type,omitempty"`
+	// TimeEnabled offers a clock on a range control. Absent leaves the browser to
+	// decide from Type alone, which is what every control that is not a range does.
+	TimeEnabled *bool `json:"timeEnabled,omitempty"`
 	// Truncated is true when more options exist than are returned in Options:
 	// the filter is a SearchableFilter whose distinct count exceeds the option
 	// cap. The UI renders the returned head set plus an "… and N more" hint and

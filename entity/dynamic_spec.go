@@ -17,6 +17,10 @@ type DynamicFilter struct {
 	Type       string
 	Multi      bool
 	Searchable bool
+	// TimeEnabled offers a clock on a range control whose operands would
+	// otherwise be read as whole days. Nil leaves the choice to the control type,
+	// which is the right answer wherever the type already says which it is.
+	TimeEnabled *bool
 	// Limit caps the option set this filter enumerates in one shot. Zero takes
 	// MaxLookupOptions, which is also the ceiling.
 	Limit int
@@ -154,13 +158,14 @@ func resolveDynamicLookup(ctx context.Context, filters []DynamicFilter, flagMap 
 			}
 		}
 		bound = append(bound, boundFilter{
-			Key:        df.Key,
-			Label:      df.Label,
-			Type:       df.Type,
-			Multi:      df.Multi,
-			Searchable: df.Searchable,
-			Limit:      df.Limit,
-			Selected:   selected,
+			Key:         df.Key,
+			Label:       df.Label,
+			Type:        df.Type,
+			Multi:       df.Multi,
+			Searchable:  df.Searchable,
+			TimeEnabled: df.TimeEnabled,
+			Limit:       df.Limit,
+			Selected:    selected,
 			Options: func(query string, limit int) (map[string]api.Textable, int, error) {
 				return df.Options(ctx, flagMap, query, limit)
 			},
