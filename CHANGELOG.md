@@ -5,6 +5,39 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.21.57](https://github.com/flanksource/clicky/compare/v1.21.56...v1.21.57) (2026-08-23)
+
+
+### ⚠ BREAKING CHANGES
+
+* **exec:** WithContext now properly cancels in-flight commands and prevents already-canceled contexts from starting. Process.Short() renamed to PrettyShort() and returns api.Textable. Removed legacy Task-based restart/wrapper functions (kept TaskAsTask/RunAsTask). Supervise must now set RestartPolicy=RestartNo when running under RunSupervisedAsTask.
+
+### ♻️ Code Refactoring
+
+* improve table rendering and process lifecycle management ([1a86b05](https://github.com/flanksource/clicky/commit/1a86b0561abd921175afe3e2d8829ecb18451543))
+* refactor captain chat settings to use runtime profiles ([8055722](https://github.com/flanksource/clicky/commit/8055722250ed23eb9eb24ead857d757fee39552f))
+* refactor verb tool hints to use safety facts instead of permission defaults ([e73028d](https://github.com/flanksource/clicky/commit/e73028df718c2bc1632623fb65c4a34cc98e7031))
+* **aichat:** refactor tool permission API from ToolMode to ToolPolicy ([1e305ab](https://github.com/flanksource/clicky/commit/1e305ab70acac2e87e81ab277d93229ab49b2d5c))
+* **api:** refactor table cell handling for hidden columns and filtering ([d901d6e](https://github.com/flanksource/clicky/commit/d901d6e4f50a63d40455faa348994e7d5701110e))
+* **exec:** split exec into focused modules with proper context cancellation ([83522f5](https://github.com/flanksource/clicky/commit/83522f5a71a73a4bdfc1c65862762231196d5286))
+
+
+### ✅ Tests
+
+* Remove tool permission test files ([db72878](https://github.com/flanksource/clicky/commit/db728783f435a61dbb272494a71525c6349ff072))
+
+
+### ✨ Features
+
+* add server-side sorting support for entity lists and tables ([99b4ad9](https://github.com/flanksource/clicky/commit/99b4ad9e218e8dcf7e7f5e6ee10c185733d9d079))
+* **task:** Add background task support to prevent wait deadlocks ([6c266bb](https://github.com/flanksource/clicky/commit/6c266bb0c0deed799192d311da04a32b6c692954))
+
+
+### 🔧 Maintenance
+
+* update dependencies across multiple modules ([131f98b](https://github.com/flanksource/clicky/commit/131f98bca195d5e7a429756f05ee03c1be7fa26b))
+* **release:** pin sub-modules to v1.21.56 [skip ci] ([7ad379c](https://github.com/flanksource/clicky/commit/7ad379c9b8bd659a4d501eade197a1f8dd1cdd4f))
+
 ## [1.21.56](https://github.com/flanksource/clicky/compare/v1.21.55...v1.21.56) (2026-08-21)
 
 
