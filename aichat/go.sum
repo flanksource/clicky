@@ -276,8 +276,8 @@ github.com/fergusstrange/embedded-postgres v1.34.0 h1:c6RKhPKFsLVU+Tdxsx8q0UxCHs
 github.com/fergusstrange/embedded-postgres v1.34.0/go.mod h1:w0YvnCgf19o6tskInrOOACtnqfVlOvluz3hlNLY7tRk=
 github.com/firebase/genkit/go v1.11.0 h1:dmf219fDGP6IcKwPkJoTnXpcTEya7o5Bi+z5iP+FuTk=
 github.com/firebase/genkit/go v1.11.0/go.mod h1:x9h3TsbMLiuK1hgbwnkUmKQ9bmTNPORHaqG9XQhI0K8=
-github.com/flanksource/captain v0.0.39-0.20260823092324-30bb58f6ac4a h1:Jo/CZonhSz5+z15KIZW9FrXZTtxTUSEWRyxpjPiNHic=
-github.com/flanksource/captain v0.0.39-0.20260823092324-30bb58f6ac4a/go.mod h1:Qj+Ulm1CKtRPNdY3GH2r4T+qoLAO/8ETB1tUDK8MBP4=
+github.com/flanksource/captain v0.0.39-0.20260823125433-239c368a6a1c h1:j60vtPQBn6sS1G5O6uk+0xYSRUEjTcAyqK/+e6Rho0M=
+github.com/flanksource/captain v0.0.39-0.20260823125433-239c368a6a1c/go.mod h1:6pUFXZSrcsyt11lqWQgB545rVf6aXUR+4UPk3S7ZYBk=
 github.com/flanksource/commons v1.57.0 h1:umfE3uYDQUqmTENRY4ckXMSpzt8aKSIAdV/4hOlDSt4=
 github.com/flanksource/commons v1.57.0/go.mod h1:EW+UzX6XMuVrJ1jcBlXrDvUT2bSkbM6lq+QjPOIDgOM=
 github.com/flanksource/commons-db v0.1.27 h1:F6g5EY2pbK1qO/S6iewuk+VvYw7rdfp0xH9aiFP2AEU=

@@ -47,7 +47,11 @@ var _ = Describe("Cobra tool provider", func() {
 			"Parent":            Equal("Examples"),
 			"DefaultPermission": Equal(api.ToolPolicyAllow),
 		}))
-		Expect(definition.Annotations).To(HaveKeyWithValue("clicky/method", "POST"))
+		// The operation travels whole rather than as a string map, so captain reads
+		// the method from the model clicky already has.
+		Expect(definition.Operation).NotTo(BeNil())
+		Expect(definition.Operation.Method).To(Equal("POST"))
+		Expect(definition.Annotations).NotTo(HaveKey("clicky/method"))
 		Expect(definition.InputSchema).To(HaveKeyWithValue("type", "object"))
 		output, err := definition.Handler(context.Background(), map[string]any{"name": "world"})
 		Expect(err).NotTo(HaveOccurred())
