@@ -20,6 +20,13 @@ type SupervisedTaskOptions struct {
 	Labels map[string]string
 	Owner  string
 	Href   string
+	// Background marks the process task as long-lived, so global task waits
+	// (clicky.WaitForGlobalCompletion, clicky.MustPrint) skip it rather than
+	// block until it exits. Set it for a supervised server that must outlive the
+	// waits its own client makes — a JSON-RPC agent provider that stays alive
+	// across turns is the canonical case. Leave it false when the process IS the
+	// work and a wait should drain it. See task.Task.SetBackground.
+	Background bool
 	// OnFinish runs after a generation freezes its terminal task snapshot.
 	OnFinish func(runID string) error
 }
@@ -29,6 +36,7 @@ type SupervisedTaskOptions struct {
 type ProcessDetails struct {
 	PID           int               `json:"pid,omitempty"`
 	Command       string            `json:"command"`
+	Args          []string          `json:"args,omitempty"`
 	Status        Status            `json:"status"`
 	Started       *time.Time        `json:"started,omitempty"`
 	ExitCode      *int              `json:"exitCode,omitempty"`
@@ -51,6 +59,9 @@ type supervisedTaskController struct {
 func (c *supervisedTaskController) Actions() []task.ControlAction {
 	c.supervisor.mu.RLock()
 	latest := c.supervisor.taskRun != nil && c.supervisor.taskRun.ID() == c.runID
+	if c.supervisor.boundTask != nil {
+		latest = c.supervisor.boundTask.ID() == c.runID
+	}
 	active := c.supervisor.loopActive
 	desired := c.supervisor.desired
 	c.supervisor.mu.RUnlock()
@@ -88,6 +99,21 @@ func actionAllowed(actions []task.ControlAction, action task.ControlAction) bool
 }
 
 func (s *SupervisedProcess) beginTaskGeneration(proc *Process) *task.ManagedRun {
+	s.mu.RLock()
+	boundTask := s.boundTask
+	s.mu.RUnlock()
+	if boundTask != nil {
+		runID := boundTask.ID()
+		boundTask.SetBackground(s.opts.Task.Background)
+		boundTask.SetController(&supervisedTaskController{supervisor: s, runID: runID})
+		boundTask.SetOutputProvider(func() task.OutputSnapshot {
+			return task.OutputSnapshot{Stdout: proc.GetStdout(), Stderr: proc.GetStderr()}
+		})
+		boundTask.SetDetailsProvider(func() any { return s.processDetails(runID, proc) })
+		s.resetTaskMetrics()
+		return nil
+	}
+
 	runID := uuid.NewString()
 	name := s.opts.Task.Name
 	if name == "" {
@@ -110,6 +136,7 @@ func (s *SupervisedProcess) beginTaskGeneration(proc *Process) *task.ManagedRun 
 		task.WithOwner(s.opts.Task.Owner),
 		task.WithController(controller),
 	)
+	run.SetBackground(s.opts.Task.Background)
 	href := s.opts.Task.Href
 	if href == "" {
 		href = "/tasks/{id}"
@@ -120,6 +147,14 @@ func (s *SupervisedProcess) beginTaskGeneration(proc *Process) *task.ManagedRun 
 	})
 	run.SetDetailsProvider(func() any { return s.processDetails(runID, proc) })
 
+	s.resetTaskMetrics()
+	s.mu.Lock()
+	s.taskRun = run
+	s.mu.Unlock()
+	return run
+}
+
+func (s *SupervisedProcess) resetTaskMetrics() {
 	s.mu.Lock()
 	s.latest = ResourceSnapshot{}
 	s.peak = ResourceSnapshot{}
@@ -127,9 +162,7 @@ func (s *SupervisedProcess) beginTaskGeneration(proc *Process) *task.ManagedRun 
 	s.highCPU = 0
 	s.killed = false
 	clear(s.handles)
-	s.taskRun = run
 	s.mu.Unlock()
-	return run
 }
 
 func (s *SupervisedProcess) finishTaskGeneration(run *task.ManagedRun, status task.Status, err error) {
@@ -146,7 +179,8 @@ func (s *SupervisedProcess) finishTaskGeneration(run *task.ManagedRun, status ta
 func (s *SupervisedProcess) processDetails(runID string, proc *Process) ProcessDetails {
 	s.mu.RLock()
 	details := ProcessDetails{
-		Command:       proc.Short().Content,
+		Command:       proc.commandLabel(),
+		Args:          append([]string(nil), proc.Args...),
 		Status:        s.status,
 		Started:       ptrCopy(s.started),
 		ExitCode:      ptrCopy(s.exitCode),
@@ -173,8 +207,15 @@ func (s *SupervisedProcess) processDetails(runID string, proc *Process) ProcessD
 func (s *SupervisedProcess) recordTaskMetrics(snapshot ResourceSnapshot) {
 	s.mu.RLock()
 	run := s.taskRun
+	boundTask := s.boundTask
 	s.mu.RUnlock()
-	if run == nil {
+	runID := ""
+	if boundTask != nil {
+		runID = boundTask.ID()
+	} else if run != nil {
+		runID = run.ID()
+	}
+	if runID == "" {
 		return
 	}
 	for name, value := range map[string]float64{
@@ -182,12 +223,12 @@ func (s *SupervisedProcess) recordTaskMetrics(snapshot ResourceSnapshot) {
 		"rss": float64(snapshot.RSSBytes),
 		"vms": float64(snapshot.VMSBytes),
 	} {
-		if err := task.RecordMetric(run.ID(), name, value, snapshot.SampledAt); err != nil {
+		if err := task.RecordMetric(runID, name, value, snapshot.SampledAt); err != nil {
 			log.Debugf("record %s metric for %s: %v", name, s.Name(), err)
 		}
 	}
 	if snapshot.OpenFiles >= 0 {
-		if err := task.RecordMetric(run.ID(), "open-files", float64(snapshot.OpenFiles), snapshot.SampledAt); err != nil {
+		if err := task.RecordMetric(runID, "open-files", float64(snapshot.OpenFiles), snapshot.SampledAt); err != nil {
 			log.Debugf("record open-files metric for %s: %v", s.Name(), err)
 		}
 	}

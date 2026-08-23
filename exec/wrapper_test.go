@@ -72,8 +72,38 @@ var _ = Describe("Wrapper", func() {
 				_, err := sleep("10", WithContext(ctx))
 				duration := time.Since(start)
 
-				Expect(err).To(HaveOccurred())
+				Expect(err).To(MatchError(context.DeadlineExceeded))
 				Expect(duration).To(BeNumerically("<", 10*time.Second))
+			})
+
+			It("should not start the command when the context is already canceled", func() {
+				sleep := NewExec("sleep").AsWrapper()
+
+				ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(time.Hour))
+				cancel()
+
+				start := time.Now()
+				result, err := sleep("10", WithContext(ctx))
+
+				Expect(err).To(MatchError(context.Canceled))
+				Expect(time.Since(start)).To(BeNumerically("<", time.Second))
+				Expect(result.PID).To(BeZero(), "the command must never have started")
+				Expect(result.IsPending()).To(BeFalse())
+			})
+
+			It("should fail fast on an already-expired deadline instead of waiting without a timeout", func() {
+				sleep := NewExec("sleep").AsWrapper()
+
+				ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+				defer cancel()
+
+				start := time.Now()
+				result, err := sleep("10", WithContext(ctx))
+
+				Expect(err).To(MatchError(context.DeadlineExceeded))
+				Expect(time.Since(start)).To(BeNumerically("<", time.Second))
+				Expect(result.PID).To(BeZero(), "the command must never have started")
+				Expect(result.IsPending()).To(BeFalse())
 			})
 		})
 

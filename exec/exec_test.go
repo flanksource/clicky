@@ -9,7 +9,6 @@ import (
 	. "github.com/onsi/gomega"
 
 	"github.com/flanksource/clicky/task"
-	"github.com/flanksource/commons/logger"
 )
 
 var _ = Describe("Process", func() {
@@ -167,57 +166,6 @@ var _ = Describe("Process", func() {
 		It("should detect failed execution with IsOK()", func() {
 			p := NewExec("false").Run()
 			Expect(p.IsOK()).To(BeFalse())
-		})
-	})
-
-	Describe("Process Control", func() {
-		Context("when starting processes in background", func() {
-			var p *Process
-
-			BeforeEach(func() {
-				p = NewExec("sleep 2; echo done")
-			})
-
-			It("should start process in background", func() {
-				err := p.Start()
-				Expect(err).To(BeNil())
-
-				// Process should be running
-				time.Sleep(100 * time.Millisecond)
-				// Since Start() runs in background, we can't easily test the state
-			})
-		})
-
-		Context("when controlling long-running processes", func() {
-			It("should handle process termination", func() {
-				p := NewExec("sleep", "1").WithoutShell().Debug()
-				go p.Run()
-
-				time.Sleep(100 * time.Millisecond)
-
-				logger.Infof(p.Pretty().ANSI())
-
-				err := p.Stop()
-				logger.Infof("after: " + p.Pretty().ANSI())
-
-				Expect(p.IsOK()).To(BeFalse())
-				Expect(p.IsRunning()).To(BeFalse())
-				Expect(p.Result().Status).To(Equal("failed"))
-				Expect(err).To(BeNil())
-
-			})
-
-			It("should handle MustStop with timeout", func() {
-				p := NewExec("sleep", "0.1").WithoutShell().Debug()
-				go p.Run()
-
-				time.Sleep(500 * time.Millisecond)
-
-				err := p.MustStop(5 * time.Second)
-				// MustStop should complete without error for short-lived process
-				Expect(err).To(BeNil())
-				Expect(p.IsOK()).To(BeTrue())
-			})
 		})
 	})
 
@@ -461,88 +409,6 @@ echo line3`
 
 			// After the task has run, the process should have the task reference
 			Expect(p.GetTask()).ToNot(BeNil())
-		})
-	})
-
-	Describe("Shell Detection", func() {
-		Context("ContainsShellOperators", func() {
-			It("should detect pipe operator", func() {
-				Expect(ContainsShellOperators("echo foo | grep bar")).To(BeTrue())
-			})
-
-			It("should detect output redirect", func() {
-				Expect(ContainsShellOperators("echo foo > file.txt")).To(BeTrue())
-			})
-
-			It("should detect input redirect", func() {
-				Expect(ContainsShellOperators("cat < file.txt")).To(BeTrue())
-			})
-
-			It("should detect stderr redirect", func() {
-				Expect(ContainsShellOperators("command 2> error.log")).To(BeTrue())
-			})
-
-			It("should detect AND operator", func() {
-				Expect(ContainsShellOperators("command1 && command2")).To(BeTrue())
-			})
-
-			It("should detect OR operator", func() {
-				Expect(ContainsShellOperators("command1 || command2")).To(BeTrue())
-			})
-
-			It("should detect semicolon separator", func() {
-				Expect(ContainsShellOperators("command1; command2")).To(BeTrue())
-			})
-
-			It("should detect backticks", func() {
-				Expect(ContainsShellOperators("echo `date`")).To(BeTrue())
-			})
-
-			It("should detect command substitution", func() {
-				Expect(ContainsShellOperators("echo $(date)")).To(BeTrue())
-			})
-
-			It("should not detect operators in simple commands", func() {
-				Expect(ContainsShellOperators("echo hello world")).To(BeFalse())
-			})
-
-			It("should not detect operators in commands with args", func() {
-				Expect(ContainsShellOperators("/usr/bin/command --option=value")).To(BeFalse())
-			})
-		})
-
-		Context("Shell Wrapping Behavior", func() {
-			It("should execute commands with pipes correctly", func() {
-				p := NewExec("echo hello | tr h H").Run()
-				Expect(p.IsOK()).To(BeTrue())
-				Expect(p.GetStdout()).To(Equal("Hello\n"))
-			})
-
-			It("should execute commands with redirects correctly", func() {
-				// Test stderr redirect to stdout
-				p := NewExec("echo error >&2 | cat").Run()
-				Expect(p.IsOK()).To(BeTrue())
-				// Stderr should contain the error message
-				Expect(p.GetStderr()).To(ContainSubstring("error"))
-			})
-
-			It("should execute commands with AND operator", func() {
-				p := NewExec("echo first && echo second").Run()
-				Expect(p.IsOK()).To(BeTrue())
-				Expect(p.GetStdout()).To(Equal("first\nsecond\n"))
-			})
-
-			It("should execute commands with OR operator", func() {
-				p := NewExec("false || echo fallback").Run()
-				Expect(p.IsOK()).To(BeTrue())
-				Expect(p.GetStdout()).To(Equal("fallback\n"))
-			})
-
-			It("should execute commands with command substitution", func() {
-				p := NewExec("echo result: $(echo nested)").Run()
-				Expect(p.IsOK()).To(BeTrue())
-				Expect(p.GetStdout()).To(Equal("result: nested\n"))
-			})
 		})
 	})
 

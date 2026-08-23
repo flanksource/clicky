@@ -14,6 +14,42 @@ import (
 )
 
 var _ = Describe("Supervised process task runs", func() {
+	It("runs a supervised process inside a caller-owned task group", func() {
+		group := task.StartGroup[ExecResult]("slice model")
+		handle := NewExec("sh", "-c", "echo sliced; sleep 0.2").WithProcessGroup().RunSupervisedAsTask(
+			RunSupervisedTaskOptions{
+				Name:      "run OrcaSlicer",
+				Supervise: SuperviseOptions{Limits: ResourceLimits{Interval: 20 * time.Millisecond}},
+				Task:      []task.Option{task.WithGroup(group.Group)},
+			},
+		)
+
+		result, err := handle.GetResult()
+
+		Expect(err).ToNot(HaveOccurred())
+		Expect(result.Stdout).To(ContainSubstring("sliced"))
+		snapshots := task.SnapshotByID(group.ID())
+		Expect(snapshots).To(HaveLen(2))
+		Expect(snapshots[1].Details).To(BeAssignableToTypeOf(ProcessDetails{}))
+		details := snapshots[1].Details.(ProcessDetails)
+		Expect(details.Command).To(Equal("sh"))
+		Expect(details.Args).To(Equal([]string{"-c", "echo sliced; sleep 0.2"}))
+		Expect(details.Metrics).To(HaveKeyWithValue("rss", task.MetricID(handle.GetTask().ID(), "rss")))
+		Expect(details.Peak.VMSBytes).To(BeNumerically(">", 0))
+	})
+
+	It("returns a terminal failed status for a process that cannot start", func() {
+		handle := NewExec("echo", "started").WithoutShell().WithCwd("/nonexistent-dir-for-exec-tests").RunSupervisedAsTask(
+			RunSupervisedTaskOptions{Name: "invalid-executable"},
+		)
+
+		result, err := handle.GetResult()
+
+		Expect(err).To(HaveOccurred())
+		Expect(result.IsPending()).To(BeFalse())
+		Expect(result.Status).To(Equal("failed"))
+	})
+
 	It("creates a separate, output-isolated task run for every automatic generation", func() {
 		label := fmt.Sprintf("generation-%d", time.Now().UnixNano())
 		supervisor := NewExec("echo generation=$$; exit 7").WithProcessGroup().Supervise(SuperviseOptions{
