@@ -6,6 +6,7 @@ import (
 	"math"
 	"math/rand"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	flanksourcecontext "github.com/flanksource/commons/context"
@@ -15,6 +16,14 @@ import (
 type worker struct {
 	manager *Manager
 	id      int
+
+	// inflight is the task this worker is currently executing, nil when idle.
+	// Waits read it through Manager.foregroundWorkersActive to decide whether
+	// worker occupancy should block a drain: a background task holds a worker
+	// but never blocks. Kept as a live pointer rather than a counter snapshot
+	// because the background flag can flip mid-run (a supervised process marks
+	// its bound task background only once the server generation starts).
+	inflight atomic.Pointer[Task]
 }
 
 // run is the main loop for a worker goroutine
@@ -60,6 +69,7 @@ func (w *worker) run() {
 				continue
 			}
 
+			w.inflight.Store(task)
 			w.manager.workersActive.Add(1)
 
 			func() {
@@ -95,6 +105,11 @@ func (w *worker) run() {
 
 			// Signal done channel for compatibility
 			task.signalDone()
+
+			// Cleared only after all post-run bookkeeping so a wait that gates
+			// on foregroundWorkersActive never returns before identity cleanup
+			// and the done signal have landed.
+			w.inflight.Store(nil)
 		}
 	}
 }

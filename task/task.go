@@ -199,6 +199,7 @@ type Task struct {
 	enqueuedAt  time.Time     // Time when task was added to queue
 	dirty       atomic.Bool   // Indicates if the task has been modified since last render
 	completed   atomic.Bool   // Atomic flag for completion status
+	background  atomic.Bool   // Excluded from drain waits; see SetBackground
 
 	// Strings (16 bytes each on 64-bit)
 	name        string
@@ -574,6 +575,27 @@ func (t *Task) Name() string {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	return t.name
+}
+
+// SetBackground marks the task as long-lived: a server whose contract is to
+// outlive any wait, rather than work a wait is entitled to drain. Waits skip
+// such tasks entirely (see tasksDrained).
+//
+// Counting a long-lived server in a drain deadlocks every caller, because the
+// two sides need opposite things: the wait blocks the work that would shut the
+// server down, and the running server keeps the wait from returning. A
+// supervised agent-provider process is the canonical case — it must stay alive
+// across turns, so a commit hook that drains global tasks mid-run hangs forever.
+//
+// It is opt-in: a supervised process that IS the work (`gavel proc run`) must
+// keep blocking the wait.
+func (t *Task) SetBackground(background bool) {
+	t.background.Store(background)
+}
+
+// IsBackground reports whether waits skip this task. See SetBackground.
+func (t *Task) IsBackground() bool {
+	return t.background.Load()
 }
 
 const (

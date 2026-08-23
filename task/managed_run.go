@@ -41,6 +41,12 @@ func (r *ManagedRun) TaskID() string { return r.task.ID() }
 
 func (r *ManagedRun) Task() *Task { return r.task }
 
+// SetBackground marks the run's task as long-lived, so global waits skip it
+// instead of blocking on a server that never finishes. See Task.SetBackground.
+func (r *ManagedRun) SetBackground(background bool) {
+	r.task.SetBackground(background)
+}
+
 // SetHref updates the route advertised by the run.
 func (r *ManagedRun) SetHref(href string) {
 	r.group.mu.Lock()
