@@ -45,7 +45,7 @@ var _ = Describe("Cobra tool provider", func() {
 			"Name":              Equal("greet"),
 			"Group":             Equal("examples.read"),
 			"Parent":            Equal("Examples"),
-			"DefaultPermission": Equal(api.ToolModeOn),
+			"DefaultPermission": Equal(api.ToolPolicyAllow),
 		}))
 		Expect(definition.Annotations).To(HaveKeyWithValue("clicky/method", "POST"))
 		Expect(definition.InputSchema).To(HaveKeyWithValue("type", "object"))
@@ -59,7 +59,7 @@ var _ = Describe("Cobra tool provider", func() {
 			"Source":            Equal("clicky"),
 			"Group":             Equal("examples.read"),
 			"PreferenceKey":     Equal("examples.read"),
-			"DefaultPermission": Equal(captools.ToolModeOn),
+			"DefaultPermission": Equal(captools.ToolPolicyAllow),
 			"OperationName":     Equal("greet"),
 		}))
 	})
