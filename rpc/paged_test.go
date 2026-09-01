@@ -113,6 +113,7 @@ func pagedServer(paged entity.PagedFunc) *SwaggerServer {
 		config:       &ServeConfig{Executor: &ExecutorConfig{Enabled: true}},
 		converterCfg: &Config{PathPrefix: "/api/v1"},
 		executor:     NewCommandExecutor(service, &ExecutorConfig{Enabled: true, SkipPreRun: true, PathPrefix: "/api/v1"}),
+		errorWriter:  entity.NewErrorWriter(entity.ErrorOptions{}),
 	}
 }
 
@@ -388,6 +389,7 @@ func TestHandlePaged_ExplicitLookupStillReachesTheLookup(t *testing.T) {
 		config:       &ServeConfig{Executor: &ExecutorConfig{Enabled: true}},
 		converterCfg: &Config{PathPrefix: "/api/v1"},
 		executor:     NewCommandExecutor(service, &ExecutorConfig{Enabled: true, SkipPreRun: true, PathPrefix: "/api/v1"}),
+		errorWriter:  entity.NewErrorWriter(entity.ErrorOptions{}),
 	}
 
 	rec := httptest.NewRecorder()

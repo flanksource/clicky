@@ -403,14 +403,21 @@ func (c *Converter) generateRESTPath(cmd *cobra.Command, cmdPath string) string 
 	// e.g., "policy bulk-suspend <id> [id...]" -> "/api/v1/policy/{id}/bulk-suspend"
 
 	parts := strings.Split(cmdPath, " ")
+	operationMeta := clicky.GetCommandOpenAPIMeta(cmd)
 
 	// Build path with prefix
 	pathParts := []string{c.config.PathPrefix}
 
+	// A bulk action is an action on a selection whatever it is called: `delete`
+	// aimed at forty rows is not the entity's own delete, so the CRUD-name
+	// shortcuts below — which collapse a verb onto /entity/{id} — must not claim
+	// it. Its route is /entity/{id}/<action> like every other bulk action's.
+	bulkAction := isBulkActionCommand(operationMeta)
+
 	for i, part := range parts {
 		// Skip the last part if it's a CRUD operation
 		if i == len(parts)-1 {
-			if isCRUDOperation(part) {
+			if isCRUDOperation(part) && !bulkAction && (operationMeta == nil || !operationMeta.SupportsFilterMode) {
 				partLower := strings.ToLower(part)
 				// get/delete/inspect always take an {id} path parameter
 				if partLower == "get" || partLower == "delete" || partLower == "inspect" {
@@ -425,7 +432,7 @@ func (c *Converter) generateRESTPath(cmd *cobra.Command, cmdPath string) string 
 		}
 
 		// Use resource names as-is without pluralization
-		if i < len(parts)-1 || !isCRUDOperation(part) {
+		if i < len(parts)-1 || !isCRUDOperation(part) || bulkAction || (operationMeta != nil && operationMeta.SupportsFilterMode) {
 			pathParts = append(pathParts, part)
 		}
 	}
@@ -442,7 +449,7 @@ func (c *Converter) generateRESTPath(cmd *cobra.Command, cmdPath string) string 
 	// inserting an {id} segment would make the no-id REST call (which the
 	// frontend issues) fall through to the entity's get-by-id route. Keep the
 	// flat /entity/action path for those.
-	if meta := clicky.GetCommandOpenAPIMeta(cmd); meta != nil && meta.OptionalID {
+	if operationMeta != nil && operationMeta.OptionalID {
 		return strings.Join(pathParts, "/")
 	}
 	// A multi-operand action (e.g. `diff <a> <b>`) compares two instances and
@@ -453,7 +460,7 @@ func (c *Converter) generateRESTPath(cmd *cobra.Command, cmdPath string) string 
 	if positionalOperandCount(cmd.Use) > 1 {
 		return strings.Join(pathParts, "/")
 	}
-	if cmd.Parent() != nil && cmd.Parent().Parent() != nil && !isCRUDOperation(cmd.Name()) {
+	if cmd.Parent() != nil && cmd.Parent().Parent() != nil && (bulkAction || !isCRUDOperation(cmd.Name())) {
 		paramName := extractParameterName(cmd.Use)
 		if paramName != "" {
 			// Insert {id} before the action verb
@@ -540,6 +547,16 @@ func positionalOperandCount(use string) int {
 		}
 	}
 	return count
+}
+
+// isBulkActionCommand reports whether an operation is an entity bulk action —
+// an action on a collection that still addresses its selection through an id
+// path parameter. That combination is unique to bulk actions: a single action
+// is entity-scoped, and a collection-scoped action invocable without an id
+// (WithOptionalID) declares no id parameter to begin with.
+func isBulkActionCommand(meta *clicky.CommandOpenAPIMeta) bool {
+	return meta != nil && meta.ActionName != "" && meta.IDParam != "" &&
+		meta.Scope == "collection" && !meta.OptionalID
 }
 
 func isValidParamName(name string) bool {

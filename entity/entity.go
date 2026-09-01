@@ -1593,7 +1593,12 @@ func generateBulkActionCommand(parent *cobra.Command, ba BulkActionInfo) {
 	}
 
 	cmd := &cobra.Command{
-		Use:   fmt.Sprintf("%s [id...]", ba.Name),
+		// The first id is written as an operand rather than folded into the
+		// variadic tail because it is what the REST path is derived from: the
+		// route is /entity/{id}/action and the selection rides comma-joined in
+		// that segment. A bare "[id...]" is not a named operand, and the action
+		// then generates a collection route with nowhere to put the selection.
+		Use:   fmt.Sprintf("%s <id> [id...]", ba.Name),
 		Short: ba.Short,
 		Args:  cobra.ArbitraryArgs,
 		RunE: func(c *cobra.Command, args []string) error {
@@ -1629,7 +1634,7 @@ func generateBulkActionCommand(parent *cobra.Command, ba BulkActionInfo) {
 	// selector wins because it is the one the entity declared.
 	bindTypeFlagsSkippingExisting(cmd, ba.FlagsType)
 
-	annotateEntityOperationCommand(cmd, parent, "action", "", "collection", ba.Name, "", ba.LookupFunc != nil, ba.FilterFunc != nil || ba.ContextFilterFunc != nil, false, ba.ToolHints)
+	annotateEntityOperationCommand(cmd, parent, "action", "", "collection", ba.Name, "id", ba.LookupFunc != nil, ba.FilterFunc != nil || ba.ContextFilterFunc != nil, false, ba.ToolHints)
 	parent.AddCommand(cmd)
 	if ba.ContextDataFunc != nil || ba.ContextFilterFunc != nil {
 		contextDataFuncRegistry.Store(cmd, ContextDataFunc(execute))

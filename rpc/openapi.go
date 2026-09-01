@@ -560,6 +560,8 @@ func paramRole(param RPCParameter, supportsLookup, isListOp bool) string {
 	return ""
 }
 
+// executionResponseSchema documents the legacy envelope — the body a server
+// that has not opted into structured errors still answers with.
 func (g *OpenAPIGenerator) executionResponseSchema() *OpenAPISchema {
 	return g.convertGoTypeToOpenAPI(reflect.TypeOf(ExecutionResponse{}))
 }
@@ -570,6 +572,10 @@ func (g *OpenAPIGenerator) structuredErrorResponseSchema() *OpenAPISchema {
 	return schema
 }
 
+// structuredErrorResponseDescriptions lists every status the executor, family,
+// and paged handlers can return as an entity.ErrorResponse envelope. Clients
+// generating code from the specification need all of them typed, not just
+// 400/500.
 var structuredErrorResponseDescriptions = map[string]string{
 	"400": "Bad Request",
 	"404": "Not Found",

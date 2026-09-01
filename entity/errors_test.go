@@ -37,8 +37,10 @@ var _ = Describe("StatusError", func() {
 			Expect(json.Unmarshal(w.Body.Bytes(), &body)).To(Succeed())
 			Expect(body.Code).To(Equal(code))
 			Expect(body.Message).To(Equal(message))
-			Expect(body.Trace).To(MatchRegexp(`^[0-9a-f]{32}$`))
-			Expect(w.Header().Get(ErrorTraceHeader)).To(Equal(body.Trace))
+			// Write is the legacy path and stays exactly as wide as it was: the
+			// trace belongs to the structured writer, which a server opts into.
+			Expect(body.Trace).To(BeEmpty())
+			Expect(w.Header().Get(ErrorTraceHeader)).To(BeEmpty())
 		},
 		Entry("a stale cursor", http.StatusBadRequest, "cursor_stale", "the cursor no longer resolves"),
 		Entry("an unknown profile", http.StatusNotFound, "profile_not_found", `profile "invoices" not found`),
@@ -110,10 +112,10 @@ var _ = Describe("StatusError", func() {
 		GinkgoT().Setenv(HideErrorsEnv, "true")
 
 		w := httptest.NewRecorder()
-		// The package-level writer, not a configured server: a deployment that
-		// sets the variable expects every unclassified failure to go opaque, and
-		// this is the path the ones with no ServeConfig behind them take.
-		WriteError(w, errors.New("dial tcp 10.0.0.7:5432: connection refused"))
+		// A deployment that sets the variable expects every unclassified failure
+		// to go opaque, whether or not the server passed HideDetails itself.
+		NewErrorWriter(ErrorOptions{}).Write(context.Background(), w,
+			errors.New("dial tcp 10.0.0.7:5432: connection refused"))
 
 		var body ErrorResponse
 		Expect(json.Unmarshal(w.Body.Bytes(), &body)).To(Succeed())
@@ -124,11 +126,25 @@ var _ = Describe("StatusError", func() {
 
 	It("reports unclassified details when HIDE_ERRORS is unset", func() {
 		w := httptest.NewRecorder()
-		WriteError(w, errors.New("dial tcp 10.0.0.7:5432: connection refused"))
+		NewErrorWriter(ErrorOptions{}).Write(context.Background(), w,
+			errors.New("dial tcp 10.0.0.7:5432: connection refused"))
 
 		var body ErrorResponse
 		Expect(json.Unmarshal(w.Body.Bytes(), &body)).To(Succeed())
 		Expect(body.Message).To(ContainSubstring("connection refused"))
+	})
+
+	// The legacy writer is the other half of that contract: it never forwards an
+	// unclassified error's own text, whatever the environment says.
+	It("keeps the legacy writer opaque for unclassified errors", func() {
+		w := httptest.NewRecorder()
+		WriteError(w, errors.New("dial tcp 10.0.0.7:5432: connection refused"))
+
+		var body ErrorResponse
+		Expect(json.Unmarshal(w.Body.Bytes(), &body)).To(Succeed())
+		Expect(body.Code).To(Equal("internal_error"))
+		Expect(body.Message).To(Equal(InternalErrorMessage))
+		Expect(w.Body.String()).ToNot(ContainSubstring("10.0.0.7"))
 	})
 
 	It("cannot be reopened by the environment once a caller has hidden details", func() {
@@ -289,8 +305,12 @@ var _ = Describe("StatusError", func() {
 			Code: "internal_error", Message: "message must survive", Trace: strings.Repeat("a", 32),
 			Stacktrace: strings.Repeat("s", 256), Context: map[string]any{"keep": "context"},
 		}
+		// Dropping the stacktrace also marks the envelope truncated, so the cap
+		// has to be the size of what the writer would actually emit — otherwise
+		// the test asks it to fit into less than its own next step produces.
 		withoutStack := response
 		withoutStack.Stacktrace = ""
+		withoutStack.Truncated = true
 		capBody, err := json.Marshal(withoutStack)
 		Expect(err).ToNot(HaveOccurred())
 
