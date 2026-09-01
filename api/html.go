@@ -214,6 +214,10 @@ func (e HtmlElement) Markdown() string {
 	return e.Fallback.Markdown()
 }
 
+func (e HtmlElement) MarkdownWithOptions(options MarkdownOptions) string {
+	return RenderMarkdown(e.Fallback, options)
+}
+
 func (e HtmlElement) MarkdownSlack() string {
 	return markdownTextable(e.Fallback, true)
 }

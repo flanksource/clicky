@@ -107,6 +107,10 @@ func (c Collapsed) HTML() string {
 
 // Markdown returns Markdown with HTML details/summary fallback
 func (c Collapsed) Markdown() string {
+	return c.MarkdownWithOptions(MarkdownOptions{})
+}
+
+func (c Collapsed) MarkdownWithOptions(options MarkdownOptions) string {
 	var result strings.Builder
 
 	// Use HTML details/summary element which works in many Markdown renderers
@@ -114,7 +118,7 @@ func (c Collapsed) Markdown() string {
 	fmt.Fprintf(&result, "<summary>%s</summary>\n\n", c.Label)
 
 	if c.Content != nil {
-		result.WriteString(c.Content.Markdown())
+		result.WriteString(RenderMarkdown(c.Content, options))
 		result.WriteString("\n")
 	}
 

@@ -44,10 +44,14 @@ func blockTextableHTML(t Textable) string {
 }
 
 func blockTextableMarkdown(t Textable) string {
+	return blockTextableMarkdownWithOptions(t, MarkdownOptions{})
+}
+
+func blockTextableMarkdownWithOptions(t Textable, options MarkdownOptions) string {
 	if t == nil {
 		return ""
 	}
-	return t.Markdown()
+	return RenderMarkdown(t, options)
 }
 
 func (h Heading) String() string {
@@ -67,7 +71,11 @@ func (h Heading) HTML() string {
 }
 
 func (h Heading) Markdown() string {
-	content := strings.TrimSpace(blockTextableMarkdown(h.Content))
+	return h.MarkdownWithOptions(MarkdownOptions{})
+}
+
+func (h Heading) MarkdownWithOptions(options MarkdownOptions) string {
+	content := strings.TrimSpace(blockTextableMarkdownWithOptions(h.Content, options))
 	if content == "" {
 		return ""
 	}
@@ -107,7 +115,11 @@ func (b Blockquote) HTML() string {
 }
 
 func (b Blockquote) Markdown() string {
-	return quoteLines(blockTextableMarkdown(b.Content))
+	return b.MarkdownWithOptions(MarkdownOptions{})
+}
+
+func (b Blockquote) MarkdownWithOptions(options MarkdownOptions) string {
+	return quoteLines(blockTextableMarkdownWithOptions(b.Content, options))
 }
 
 // FootnoteRef is an inline reference to a matching footnote definition.

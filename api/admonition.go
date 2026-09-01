@@ -127,8 +127,12 @@ func (a Admonition) HTML() string {
 }
 
 func (a Admonition) Markdown() string {
+	return a.MarkdownWithOptions(MarkdownOptions{})
+}
+
+func (a Admonition) MarkdownWithOptions(options MarkdownOptions) string {
 	if a.Body == nil {
 		return a.header()
 	}
-	return a.header() + "\n" + indentLines(a.Body.Markdown(), "    ")
+	return a.header() + "\n" + indentLines(RenderMarkdown(a.Body, options), "    ")
 }

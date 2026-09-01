@@ -5,8 +5,27 @@ import (
 	"strings"
 )
 
+// Dialect selects the markdown flavour to emit. It exists because "markdown"
+// is not one target: the same document is consumed by GitHub-flavoured
+// renderers, by Slack, and by MDX compilers, and they disagree about how
+// styling and emphasis are expressed.
+type Dialect int
+
+const (
+	// DialectGFM is GitHub-Flavored Markdown, the zero value. Styling is
+	// emitted as inline-CSS HTML spans.
+	DialectGFM Dialect = iota
+	// DialectMDX emits JSX: styling becomes `className` carrying the source
+	// Tailwind classes, because MDX parses raw HTML as JSX, where a string
+	// `style` attribute is a compile error and the attribute is `className`.
+	DialectMDX
+	// DialectSlack emits Slack's mrkdwn, whose emphasis markers differ.
+	DialectSlack
+)
+
 type MarkdownOptions struct {
 	NoColor bool
+	Dialect Dialect
 }
 
 type MarkdownWithOptions interface {

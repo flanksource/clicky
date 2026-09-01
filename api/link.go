@@ -119,7 +119,11 @@ func (l Link) ANSI() string {
 }
 
 func (l Link) Markdown() string {
-	label := l.Content.Markdown()
+	return l.MarkdownWithOptions(MarkdownOptions{})
+}
+
+func (l Link) MarkdownWithOptions(options MarkdownOptions) string {
+	label := RenderMarkdown(l.Content, options)
 	if l.Href == "" {
 		return label
 	}

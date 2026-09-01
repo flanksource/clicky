@@ -16,6 +16,9 @@ func (k Keyed) String() string   { return textableString(k.Value) }
 func (k Keyed) ANSI() string     { return textableANSI(k.Value) }
 func (k Keyed) HTML() string     { return textableHTML(k.Value) }
 func (k Keyed) Markdown() string { return textableMarkdown(k.Value) }
+func (k Keyed) MarkdownWithOptions(options MarkdownOptions) string {
+	return textableMarkdownWithOptions(k.Value, options)
+}
 
 // MarshalJSON emits {Key: Value}. The wrapped value serializes via its own
 // MarshalJSON when it implements json.Marshaler, otherwise via its rendered
@@ -46,10 +49,14 @@ func textableHTML(t Textable) string {
 }
 
 func textableMarkdown(t Textable) string {
+	return textableMarkdownWithOptions(t, MarkdownOptions{})
+}
+
+func textableMarkdownWithOptions(t Textable, options MarkdownOptions) string {
 	if t == nil {
 		return ""
 	}
-	return t.Markdown()
+	return RenderMarkdown(t, options)
 }
 
 // jsonValue returns the wrapped value as-is when it can marshal itself (so a
