@@ -76,12 +76,29 @@ func parseStructFieldsRecursive(structType reflect.Type, fieldPath []int, fields
 			Hidden:       field.Tag.Get("hidden") == "true",
 			IsStdin:      isStdin,
 			IsArgs:       isArgs,
+			Enum:         splitEnumTag(field.Tag.Get("enum")),
 		}
 
 		*fields = append(*fields, info)
 	}
 
 	return nil
+}
+
+// splitEnumTag splits an `enum:"a,b,c"` tag into its values, trimming space and
+// dropping empties so a trailing comma is not a third, blank choice. An absent
+// tag yields nil — the field simply has no closed set.
+func splitEnumTag(tag string) []string {
+	if strings.TrimSpace(tag) == "" {
+		return nil
+	}
+	var values []string
+	for _, part := range strings.Split(tag, ",") {
+		if trimmed := strings.TrimSpace(part); trimmed != "" {
+			values = append(values, trimmed)
+		}
+	}
+	return values
 }
 
 // splitFlagTag splits a flag tag into its long name and optional single-char

@@ -132,5 +132,12 @@ func BindFlag(cmd *cobra.Command, info FieldInfo) *FlagValue {
 		_ = cmd.Flags().MarkHidden(info.FlagName)
 	}
 
+	// An `enum:` tag rides on the same annotation the sort/order flags use, so
+	// the RPC converter publishes it as the parameter's enum without knowing
+	// anything about struct tags.
+	if len(info.Enum) > 0 && info.FlagName != "" {
+		SetAllowedValues(cmd.Flags().Lookup(info.FlagName), info.Enum...)
+	}
+
 	return fv
 }
