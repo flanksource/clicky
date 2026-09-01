@@ -228,52 +228,6 @@ func annotateEntityOperationCommand(
 	// Applied after inheritance: non-empty per-action hints replace inherited
 	// entity hints; empty values are no-ops.
 	AnnotateTool(cmd, toolHints)
-	inferVerbToolHints(cmd, verb)
-}
-
-// inferVerbToolHints fills the safety hints a standard entity verb implies, when
-// neither the entity nor the action declared them.
-//
-// It replaces stamping a default permission into clicky/tool-default-permission.
-// That slot now carries explicit registrations only, because writing a verb
-// default into the same field an app configures is what made a group baseline
-// like `provider.xero.read: off` unreachable: whichever writer ran last won, and
-// clicky ran last. Hints are the honest thing for clicky to contribute — "this
-// operation only reads" is a fact about the operation, whereas "this operation is
-// auto-approved" was an authority decision clicky had no standing to make.
-//
-// list/get still auto-run, but now by consequence rather than by decree: the
-// consumer's policy resolves an unset permission through these hints.
-func inferVerbToolHints(cmd *cobra.Command, verb string) {
-	readOnly, destructive, ok := verbSafetyHints(verb)
-	if !ok {
-		return
-	}
-	if cmd.Annotations[annotationClickyToolReadOnlyHint] == "" {
-		setCommandAnnotation(cmd, annotationClickyToolReadOnlyHint, strconv.FormatBool(readOnly))
-	}
-	if cmd.Annotations[annotationClickyToolDestructive] == "" {
-		setCommandAnnotation(cmd, annotationClickyToolDestructive, strconv.FormatBool(destructive))
-	}
-}
-
-// verbSafetyHints reports the read-only and destructive facts a standard entity
-// verb implies. Custom actions get nothing: their safety is theirs to declare.
-//
-// Both hints are set together because a consumer that infers "auto-approve"
-// requires read-only AND non-destructive; leaving destructive unset would make a
-// read fall through to "ask" and silently change today's behaviour.
-func verbSafetyHints(verb string) (readOnly, destructive, ok bool) {
-	switch verb {
-	case "list", "get":
-		return true, false, true
-	case "create", "update":
-		return false, false, true
-	case "delete":
-		return false, true, true
-	default:
-		return false, false, false
-	}
 }
 
 func inheritEntityAnnotations(cmd *cobra.Command, parent *cobra.Command) {

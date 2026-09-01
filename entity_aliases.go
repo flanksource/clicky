@@ -143,8 +143,17 @@ func BulkFilterAction[ListOpts any, R any](name string, fn func(opts ListOpts, f
 	return entity.BulkFilterAction[ListOpts, R](name, fn)
 }
 
+// BuildOpts decodes an action's raw flag map into its typed flags struct.
+func BuildOpts[T any](flagMap map[string]string) (T, error) {
+	return entity.BuildOpts[T](flagMap)
+}
+
 func BulkActionWithFilter[ListOpts any, R any](name string, run func(ids []string, flags map[string]string) (R, error), runFilter func(opts ListOpts, flags map[string]string) (R, error)) *entity.BulkActionSpec[R] {
 	return entity.BulkActionWithFilter[ListOpts, R](name, run, runFilter)
+}
+
+func BulkActionWithFilterAndContext[ListOpts any, R any](name string, run func(context.Context, []string, map[string]string) (R, error), runFilter func(context.Context, ListOpts, map[string]string) (R, error)) *entity.BulkActionSpec[R] {
+	return entity.BulkActionWithFilterAndContext[ListOpts, R](name, run, runFilter)
 }
 
 func LiftFilters[Outer any, Inner any](filters []entity.Filter[Inner], project func(*Outer) *Inner) []entity.Filter[Outer] {
