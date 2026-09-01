@@ -3,17 +3,23 @@ package api
 import (
 	"fmt"
 	"strings"
+
+	"github.com/flanksource/clicky/api/tailwind"
 )
 
 func markdownTextable(t Textable, slack bool) string {
-	return markdownTextableWithOptions(t, slack, MarkdownOptions{})
+	options := MarkdownOptions{}
+	if slack {
+		options.Dialect = DialectSlack
+	}
+	return markdownTextableWithOptions(t, options)
 }
 
-func markdownTextableWithOptions(t Textable, slack bool, options MarkdownOptions) string {
+func markdownTextableWithOptions(t Textable, options MarkdownOptions) string {
 	if t == nil {
 		return ""
 	}
-	if slack {
+	if options.Dialect == DialectSlack {
 		if v, ok := t.(interface{ MarkdownSlack() string }); ok {
 			return v.MarkdownSlack()
 		}
@@ -26,11 +32,11 @@ func (t Text) Markdown() string {
 }
 
 func (t Text) MarkdownWithOptions(options MarkdownOptions) string {
-	return t.markdown(false, options)
+	return t.markdown(options)
 }
 
 func (t Text) MarkdownSlack() string {
-	return t.markdown(true, MarkdownOptions{})
+	return t.markdown(MarkdownOptions{Dialect: DialectSlack})
 }
 
 func (t Text) boldMD(text string, slack bool) string {
@@ -40,11 +46,12 @@ func (t Text) boldMD(text string, slack bool) string {
 	return "**" + text + "**"
 }
 
-func (t Text) markdown(slack bool, options MarkdownOptions) string {
+func (t Text) markdown(options MarkdownOptions) string {
+	slack := options.Dialect == DialectSlack
 	renderedContent := t.Content
 	plainContent := t.Content
 	for _, child := range t.Children {
-		renderedContent += markdownTextableWithOptions(child, slack, options)
+		renderedContent += markdownTextableWithOptions(child, options)
 		plainContent += child.String()
 	}
 
@@ -74,19 +81,33 @@ func (t Text) markdown(slack bool, options MarkdownOptions) string {
 		result = "~~" + result + "~~"
 	}
 
-	if !options.NoColor && (style.Foreground != "" || style.Background != "") {
-		var styles []string
-		if style.Foreground != "" {
-			styles = append(styles, fmt.Sprintf("color: %s", style.Foreground))
-		}
-		if style.Background != "" {
-			styles = append(styles, fmt.Sprintf("background-color: %s", style.Background))
-		}
-		if style.Faint {
-			styles = append(styles, "opacity: 0.6")
-		}
-		return fmt.Sprintf(`<span style="%s">%s</span>`, strings.Join(styles, "; "), result)
+	if options.NoColor || (style.Foreground == "" && style.Background == "") {
+		return result
 	}
 
-	return result
+	// MDX parses raw HTML as JSX, where a string `style` attribute is a compile
+	// error and the attribute is `className`. Forward the source classes rather
+	// than the resolved hex — there is no hex-to-class reverse mapping, and the
+	// class is what a downstream Tailwind build needs. Only the colour classes
+	// go: the rest of the style string is already spent (see ColorClasses).
+	if options.Dialect == DialectMDX {
+		if classes := tailwind.ColorClasses(t.Style); len(classes) > 0 {
+			return fmt.Sprintf(`<span className="%s">%s</span>`, strings.Join(classes, " "), result)
+		}
+		// A Class-styled Text carries resolved colours and no source class, so
+		// there is nothing MDX-safe to emit; the text keeps its emphasis.
+		return result
+	}
+
+	var styles []string
+	if style.Foreground != "" {
+		styles = append(styles, fmt.Sprintf("color: %s", style.Foreground))
+	}
+	if style.Background != "" {
+		styles = append(styles, fmt.Sprintf("background-color: %s", style.Background))
+	}
+	if style.Faint {
+		styles = append(styles, "opacity: 0.6")
+	}
+	return fmt.Sprintf(`<span style="%s">%s</span>`, strings.Join(styles, "; "), result)
 }
