@@ -5,7 +5,6 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
-	"runtime"
 	"strings"
 	"testing"
 
@@ -202,11 +201,10 @@ func TestParseKitchenSinkRoundTripAndClickyJSON(t *testing.T) {
 
 func readKitchenSink(t *testing.T) string {
 	t.Helper()
-	_, currentFile, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("failed to locate markdown test file")
-	}
-	sourcePath := filepath.Join(filepath.Dir(currentFile), "..", "examples", "kitchen-sink.md")
+	// go test runs with the package directory as the working directory. This
+	// cannot use runtime.Caller: under -trimpath it yields the import path
+	// rather than a filesystem location.
+	sourcePath := filepath.Join("..", "examples", "kitchen-sink.md")
 	data, err := os.ReadFile(sourcePath)
 	if err != nil {
 		t.Fatalf("read kitchen sink example: %v", err)
