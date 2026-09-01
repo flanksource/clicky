@@ -16,12 +16,18 @@ import (
 )
 
 type CobraToolFilter func(captools.ToolInfo) bool
-type CobraToolPermission func(captools.ToolInfo) api.ToolPolicy
 
 type CobraToolProviderOptions struct {
-	Root       *cobra.Command
-	Filter     CobraToolFilter
-	Permission CobraToolPermission
+	Root   *cobra.Command
+	Filter CobraToolFilter
+	// Policy and Strategies are the caller's permission model, carried to captain
+	// rather than applied here. This is the seam where a command tree is handed
+	// over, and so the place its authority layering is stated: Strategies derive
+	// an answer for the tools no rule mentions (nil takes captain's default of
+	// HTTP method, then safety hints), and Policy is the ordered rule list —
+	// preset first, user last — that overrides them.
+	Policy     api.PermissionPolicy
+	Strategies []api.PermissionStrategy
 }
 
 // CobraToolProvider projects Clicky RPC operations into Captain's provider-
@@ -30,8 +36,17 @@ type CobraToolProvider struct {
 	service    *rpc.RPCService
 	executor   *rpc.CommandExecutor
 	filter     CobraToolFilter
-	permission CobraToolPermission
+	policy     api.PermissionPolicy
+	strategies []api.PermissionStrategy
 }
+
+// ToolPolicy and Strategies are the permission model this provider was built
+// with, for the caller to pass into captools.ResolveOptions alongside the tool
+// set. They are returned rather than applied because resolution belongs to
+// captain, which sees every tool source at once.
+func (p *CobraToolProvider) ToolPolicy() api.PermissionPolicy { return p.policy }
+
+func (p *CobraToolProvider) Strategies() []api.PermissionStrategy { return p.strategies }
 
 func NewCobraToolProvider(options CobraToolProviderOptions) (*CobraToolProvider, error) {
 	if options.Root == nil {
@@ -48,13 +63,20 @@ func NewCobraToolProvider(options CobraToolProviderOptions) (*CobraToolProvider,
 			Enabled: true, SkipPreRun: true, PathPrefix: config.PathPrefix,
 		}),
 		filter:     options.Filter,
-		permission: options.Permission,
+		policy:     options.Policy,
+		strategies: options.Strategies,
 	}, nil
 }
 
-func (p *CobraToolProvider) ToolSet(context.Context) (capchat.ToolSet, error) {
+// ToolSet builds the executable tool set. Its context is not just a cancellation
+// handle: it is the last point at which the caller's request-scoped values are in
+// hand, so each handler captures them (see scopedContext).
+func (p *CobraToolProvider) ToolSet(ctx context.Context) (capchat.ToolSet, error) {
 	if p == nil || p.service == nil || p.executor == nil {
 		return capchat.ToolSet{}, fmt.Errorf("Cobra tool provider is not initialized")
+	}
+	if ctx == nil {
+		return capchat.ToolSet{}, fmt.Errorf("Cobra tool provider requires a context to scope its tools")
 	}
 	set := capchat.ToolSet{}
 	seen := map[string]bool{}
@@ -78,14 +100,6 @@ func (p *CobraToolProvider) ToolSet(context.Context) (capchat.ToolSet, error) {
 		if p.filter != nil && !p.filter(info) {
 			continue
 		}
-		if p.permission != nil {
-			policy := p.permission(info)
-			normalized, ok := normalizeToolPolicy(string(policy))
-			if !ok {
-				return capchat.ToolSet{}, fmt.Errorf("operation %q resolved invalid tool permission %q", op.Name, policy)
-			}
-			info.DefaultPermission = normalized
-		}
 		schema := jsonSchema(op.Schema)
 		definition := api.ToolDefinition{
 			Name: name, Description: op.Description, InputSchema: schema,
@@ -93,7 +107,8 @@ func (p *CobraToolProvider) ToolSet(context.Context) (capchat.ToolSet, error) {
 			DefaultPermission: info.DefaultPermission, Strict: info.Strict,
 			ReadOnlyHint: info.ReadOnlyHint, DestructiveHint: info.DestructiveHint,
 			IdempotentHint: info.IdempotentHint, Annotations: info.Annotations,
-			Handler: p.handlerFor(op),
+			Operation: info.Operation,
+			Handler:   p.handlerFor(op, ctx),
 		}
 		outputSchema, err := rpc.ResponseSchema(*op)
 		if err != nil {
@@ -111,7 +126,7 @@ func toolInfo(name string, op *rpc.RPCOperation) (captools.ToolInfo, error) {
 		return info, nil
 	}
 	hints := clickymcp.EffectiveToolHints(op)
-	permission, err := defaultToolPermission(op, hints)
+	permission, err := declaredToolPermission(op, hints)
 	if err != nil {
 		return captools.ToolInfo{}, err
 	}
@@ -123,58 +138,33 @@ func toolInfo(name string, op *rpc.RPCOperation) (captools.ToolInfo, error) {
 	info.ReadOnlyHint = hints.ReadOnlyHint
 	info.DestructiveHint = hints.DestructiveHint
 	info.IdempotentHint = hints.IdempotentHint
-	info.Annotations = map[string]string{
-		"clicky/method":    strings.ToUpper(op.Method),
-		"clicky/path":      op.Path,
-		"clicky/operation": op.Name,
-	}
-	if op.Clicky != nil {
-		info.Annotations["clicky/verb"] = op.Clicky.Verb
-		info.Annotations["clicky/scope"] = op.Clicky.Scope
-	}
+	// The operation travels whole. Flattening its entity, verb, scope, method and
+	// path into strings here is what obliged captain to parse them back, and left
+	// the key names to be kept in step by hand at both ends.
+	info.Operation = op
 	return info, nil
 }
 
-// defaultToolPermission decides how an RPC operation is exposed when its hints
-// do not say. A read-only operation, or a read-shaped HTTP method, auto-runs;
-// anything that mutates asks; anything else defers to the runtime policy.
-//
-// Captain's tool vocabulary is auto | ask | allow | deny — it used to carry a
-// second on | ask | off | auto spelling for the same idea, and the bridges
-// between the two disagreed. `allow` here is the old `on`: run it without
-// asking.
-func defaultToolPermission(op *rpc.RPCOperation, hints entity.MCPToolHints) (api.ToolPolicy, error) {
-	if hints.DefaultPermission != "" {
-		policy, ok := normalizeToolPolicy(string(hints.DefaultPermission))
-		if !ok {
-			return "", fmt.Errorf("operation %q has invalid default tool permission %q", op.Name, hints.DefaultPermission)
-		}
-		return policy, nil
+// declaredToolPermission returns the authority an operation's author registered,
+// and nothing else. An operation that registered none returns empty, which is
+// how it reaches captain's strategies: derived authority is captain's to decide,
+// from the method and hints this bridge hands over. Deciding it here is what made
+// a consumer's `auto` rule unable to hand a tool back to its own hints, because
+// the slot it would defer to had already been filled.
+func declaredToolPermission(op *rpc.RPCOperation, hints entity.MCPToolHints) (api.ToolPolicy, error) {
+	if hints.DefaultPermission == "" {
+		return "", nil
 	}
-	if hints.ReadOnlyHint != nil && *hints.ReadOnlyHint {
-		return api.ToolPolicyAllow, nil
+	// Captain owns the mapping, including how the legacy `on` spelling resolves
+	// in this encoding. A private copy of that rule here is how the two spellings
+	// came to disagree in the first place.
+	policy, ok := api.ParseToolPolicy(string(hints.DefaultPermission), api.ParseToolPolicyOptions{
+		LegacyOn: api.ToolPolicyAllow,
+	})
+	if !ok {
+		return "", fmt.Errorf("operation %q has invalid default tool permission %q", op.Name, hints.DefaultPermission)
 	}
-	switch strings.ToUpper(op.Method) {
-	case "GET", "HEAD", "OPTIONS":
-		return api.ToolPolicyAllow, nil
-	case "POST", "PUT", "PATCH", "DELETE":
-		return api.ToolPolicyAsk, nil
-	default:
-		return api.ToolPolicyAuto, nil
-	}
-}
-
-// normalizeToolPolicy canonicalizes a tool-policy string into Captain's tool
-// vocabulary (auto | ask | allow | deny), accepting the legacy on | off
-// spellings that clicky entities still advertise (entity.ToolPermission).
-//
-// The mapping itself lives in captain: this encoding has no separate allow list,
-// so `on` is its only way to say auto-run and resolves to allow — which is not
-// what `on` means in the legacy permissions.tools shape, where an allow list
-// already carries allow and `on` means auto. Keeping a private copy of that rule
-// here is how the two ended up disagreeing.
-func normalizeToolPolicy(value string) (api.ToolPolicy, bool) {
-	return api.ParseToolPolicy(value, api.ParseToolPolicyOptions{LegacyOn: api.ToolPolicyAllow})
+	return policy, nil
 }
 
 // catalogEntry builds the frontend-facing DTO. outputSchema is applied raw
@@ -189,6 +179,7 @@ func catalogEntry(definition api.ToolDefinition, outputSchema map[string]any) ca
 		DefaultPermission: definition.DefaultPermission, Strict: definition.Strict,
 		ReadOnlyHint: definition.ReadOnlyHint, DestructiveHint: definition.DestructiveHint,
 		IdempotentHint: definition.IdempotentHint, Annotations: definition.Annotations,
+		Operation: definition.Operation,
 	}, definition.Name, definition.InputSchema)
 	entry.Source = "clicky"
 	if outputSchema != nil {
@@ -197,11 +188,31 @@ func catalogEntry(definition api.ToolDefinition, outputSchema map[string]any) ca
 	return entry
 }
 
-func (p *CobraToolProvider) handlerFor(op *rpc.RPCOperation) api.ToolHandler {
+// scopedContext takes its lifetime from the active call and its values from the
+// context that built the tool set. Agent backends invoke tools over a loopback
+// MCP server rooted at context.Background(), so without this the handler sees
+// none of the caller's request-scoped values (auth identity, tenant, session).
+type scopedContext struct {
+	context.Context
+	values context.Context
+}
+
+func (c scopedContext) Value(key any) any {
+	if v := c.Context.Value(key); v != nil {
+		return v
+	}
+	return c.values.Value(key)
+}
+
+func (p *CobraToolProvider) handlerFor(op *rpc.RPCOperation, scope context.Context) api.ToolHandler {
 	positional := positionalParams(op)
+	// Detached from the scope's cancellation: an agent turn outlives the HTTP
+	// request that built the tool set, so its values must survive that request
+	// ending without its deadline cutting the tool call short.
+	values := context.WithoutCancel(scope)
 	return func(ctx context.Context, input map[string]any) (any, error) {
 		request := toExecutionRequest(input, positional)
-		request.Context = ctx
+		request.Context = scopedContext{Context: ctx, values: values}
 		data, response, err := p.executor.ExecuteCommand(op, request)
 		if err != nil {
 			return nil, fmt.Errorf("execute %s: %w", op.Name, err)
