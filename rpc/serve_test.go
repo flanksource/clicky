@@ -535,6 +535,24 @@ func TestExtractFormatOpts_ClickyJSON(t *testing.T) {
 			want: "clicky-json",
 		},
 		{
+			name: "higher quality beats header order",
+			req: func() *http.Request {
+				r := httptest.NewRequest("GET", "/x", nil)
+				r.Header.Set("Accept", "application/json;q=0.1, text/csv;q=0.9")
+				return r
+			}(),
+			want: "csv",
+		},
+		{
+			name: "refused representation is skipped",
+			req: func() *http.Request {
+				r := httptest.NewRequest("GET", "/x", nil)
+				r.Header.Set("Accept", "application/json;q=0, text/csv")
+				return r
+			}(),
+			want: "csv",
+		},
+		{
 			name: "no signal defaults to json",
 			req:  httptest.NewRequest("GET", "/x", nil),
 			want: "json",

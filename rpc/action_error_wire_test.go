@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/flanksource/clicky"
+	"github.com/flanksource/clicky/entity"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -23,7 +24,7 @@ type refreshResult struct {
 // fix the failed action's zero value was boxed into a non-nil `any`, so the
 // executor's partial-data branch served `{"connectionId":"","provider":"", ...}`
 // with the error only in the X-Error header — leaving web clients that read the
-// body with nothing to show.
+// body with nothing to show and no trace to correlate.
 func TestEntityAction_FailureServesErrorNotZeroValue(t *testing.T) {
 	const name = "rpc-action-error-wire-test"
 	clicky.NewEntity[testEntity, testListOpts, testEntity](name).
@@ -42,7 +43,10 @@ func TestEntityAction_FailureServesErrorNotZeroValue(t *testing.T) {
 			Title:      "t",
 			Version:    "v",
 			SkipHealth: true,
-			Executor:   &ExecutorConfig{Enabled: true, PathPrefix: "/api/v1"},
+			// The envelope is what this test is about, so it opts in the way a
+			// server that wants it does.
+			StructuredErrorResponses: true,
+			Executor:                 &ExecutorConfig{Enabled: true, PathPrefix: "/api/v1"},
 		},
 		root,
 		&OpenAPIConfig{Title: "t", Version: "v"},
@@ -57,8 +61,10 @@ func TestEntityAction_FailureServesErrorNotZeroValue(t *testing.T) {
 
 	require.Equal(t, http.StatusInternalServerError, rr.Code)
 
-	var body map[string]any
+	var body entity.ErrorResponse
 	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &body))
-	assert.Equal(t, "tenant name matches 2 companies", body["error"])
-	assert.NotContains(t, body, "connectionId", "the failed action's zero value must not be served as data")
+	assert.Equal(t, "tenant name matches 2 companies", body.Message)
+	assert.Equal(t, "internal_error", body.Code)
+	assert.NotEmpty(t, body.Trace)
+	assert.NotContains(t, rr.Body.String(), "connectionId", "the failed action's zero value must not be served as data")
 }

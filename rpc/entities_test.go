@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/flanksource/clicky"
@@ -69,6 +70,97 @@ func TestEntitiesHandler_ReturnsRegisteredEntities(t *testing.T) {
 	}
 	assert.True(t, verbs["list"], "list verb missing")
 	assert.True(t, verbs["get"], "get verb missing")
+}
+
+type bulkArchiveFlags struct {
+	Status  string   `flag:"status" help:"Status to apply" enum:"open,done" required:"true"`
+	Labels  []string `flag:"labels" help:"Labels to add"`
+	Dry     bool     `flag:"dry-run"`
+	Retries int      `flag:"retries" default:"3"`
+	Secret  string   `flag:"secret" hidden:"true"`
+}
+
+func (bulkArchiveFlags) ClickyActionFlags() {}
+
+// A front end renders a bulk action from this catalog. Name and short alone let
+// it print a label and nothing else — no icon, no idea the action is
+// destructive, no idea what parameters it takes — so every UI ends up
+// re-declaring the action and drifting from the server.
+func TestEntitiesHandler_BulkActionCarriesHintsAndParamSchema(t *testing.T) {
+	const name = "rpc-entities-bulk-catalog-test"
+	destructive := true
+	clicky.RegisterEntity(clicky.Entity[testEntity, testListOpts, testEntity]{
+		Name: name,
+		List: func(_ testListOpts) ([]testEntity, error) { return nil, nil },
+		BulkActions: []clicky.EntityBulkAction{
+			clicky.BulkActionWithFilter(
+				"archive",
+				func(ids []string, _ map[string]string) (any, error) { return ids, nil },
+				func(opts testListOpts, _ map[string]string) (any, error) { return opts, nil },
+			).
+				WithShort("Archive many").
+				WithFlags(bulkArchiveFlags{}).
+				WithToolHints(clicky.MCPToolHints{Icon: "archive", Group: "Danger", DestructiveHint: &destructive}),
+		},
+	})
+
+	server := NewSwaggerServer(
+		&ServeConfig{Title: "t", Version: "v", SkipHealth: true},
+		createTestRootCommand(),
+		&OpenAPIConfig{Title: "t", Version: "v"},
+	)
+	mux := http.NewServeMux()
+	server.RegisterRoutes(mux)
+
+	rr := httptest.NewRecorder()
+	mux.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/api/entities", nil))
+	require.Equal(t, http.StatusOK, rr.Code)
+
+	var payload []EntityDTO
+	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &payload))
+
+	var action *EntityActionDTO
+	for i := range payload {
+		if payload[i].Name != name {
+			continue
+		}
+		require.Len(t, payload[i].BulkActions, 1)
+		action = &payload[i].BulkActions[0]
+	}
+	require.NotNil(t, action, "bulk action should be exposed at /api/entities")
+
+	assert.Equal(t, "archive", action.Name)
+	assert.Equal(t, "Archive many", action.Short)
+	assert.True(t, action.SupportsFilterMode, "a filter-capable action must say so, or the caller can only send ids")
+
+	require.NotNil(t, action.ToolHints)
+	assert.Equal(t, "archive", action.ToolHints.Icon)
+	assert.Equal(t, "Danger", action.ToolHints.Group)
+	require.NotNil(t, action.ToolHints.DestructiveHint)
+	assert.True(t, *action.ToolHints.DestructiveHint)
+
+	require.NotNil(t, action.ParamSchema)
+	assert.Equal(t, "object", action.ParamSchema.Type)
+	assert.Equal(t, []string{"status"}, action.ParamSchema.Required)
+
+	status := action.ParamSchema.Properties["status"]
+	assert.Equal(t, "string", status.Type)
+	assert.Equal(t, "Status to apply", status.Description)
+	assert.Equal(t, []string{"open", "done"}, status.Enum, "enum tag should publish the closed set")
+
+	labels := action.ParamSchema.Properties["labels"]
+	assert.Equal(t, "array", labels.Type)
+	require.NotNil(t, labels.Items)
+	assert.Equal(t, "string", labels.Items.Type)
+
+	assert.Equal(t, "boolean", action.ParamSchema.Properties["dry-run"].Type)
+	assert.Equal(t, "integer", action.ParamSchema.Properties["retries"].Type)
+	assert.Equal(t, "3", action.ParamSchema.Properties["retries"].Default)
+
+	// Hidden flags are absent from --help and the OpenAPI schema; a rendered
+	// form is no different.
+	_, hasSecret := action.ParamSchema.Properties["secret"]
+	assert.False(t, hasSecret, "hidden flags must not surface in the param schema")
 }
 
 func TestEntityAction_ExplicitGETMethodUsesNestedEntityPath(t *testing.T) {
@@ -304,4 +396,79 @@ func TestEntitiesHandler_CORS(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, rr.Code)
 	assert.Equal(t, "*", rr.Header().Get("Access-Control-Allow-Origin"))
+}
+
+// The HTTP method is inferred from the action's name, so an action called
+// "delete" is served as a DELETE while its siblings are POSTs. A front end
+// dispatching from this catalog cannot know that, and guessing POST would 404
+// on precisely the destructive action — so the catalog has to say which route
+// each action really has.
+func TestEntitiesHandler_BulkActionPublishesItsRealRoute(t *testing.T) {
+	const name = "rpc-entities-bulk-route-test"
+	noop := func(ids []string, _ map[string]string) (any, error) { return ids, nil }
+	byFilter := func(opts testListOpts, _ map[string]string) (any, error) { return opts, nil }
+
+	clicky.RegisterEntity(clicky.Entity[testEntity, testListOpts, testEntity]{
+		Name: name,
+		List: func(_ testListOpts) ([]testEntity, error) { return nil, nil },
+		BulkActions: []clicky.EntityBulkAction{
+			clicky.BulkActionWithFilter("archive", noop, byFilter).WithShort("Archive many"),
+			clicky.BulkActionWithFilter("delete", noop, byFilter).WithShort("Delete many"),
+		},
+	})
+
+	// The executor's routes come from the cobra tree, so the entity's generated
+	// commands have to be on it before the server reads it.
+	root := createTestRootCommand()
+	clicky.GenerateCLI(root)
+
+	server := NewSwaggerServer(
+		&ServeConfig{
+			Title: "t", Version: "v", SkipHealth: true,
+			Executor: &ExecutorConfig{Enabled: true, PathPrefix: "/api/v1"},
+		},
+		root,
+		&OpenAPIConfig{Title: "t", Version: "v"},
+	)
+	mux := http.NewServeMux()
+	server.RegisterRoutes(mux)
+
+	rr := httptest.NewRecorder()
+	mux.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/api/entities", nil))
+	require.Equal(t, http.StatusOK, rr.Code)
+
+	var payload []EntityDTO
+	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &payload))
+
+	routes := map[string]EntityActionDTO{}
+	for _, entity := range payload {
+		if entity.Name != name {
+			continue
+		}
+		for _, action := range entity.BulkActions {
+			routes[action.Name] = action
+		}
+	}
+	require.Contains(t, routes, "archive")
+	require.Contains(t, routes, "delete")
+
+	assert.Equal(t, http.MethodPost, routes["archive"].Method)
+	assert.Equal(t, http.MethodDelete, routes["delete"].Method,
+		"an action named delete is served as DELETE; the catalog must not imply otherwise")
+
+	// A bulk action addresses its selection through the path — the ids ride
+	// comma-joined in the {id} segment — so that, not a flat collection route,
+	// is what the catalog publishes.
+	assert.Equal(t, "/api/v1/"+name+"/{id}/delete", routes["delete"].Path)
+	assert.Equal(t, "/api/v1/"+name+"/{id}/archive", routes["archive"].Path)
+
+	// And the published routes must actually answer, or the catalog is fiction.
+	for _, action := range []string{"archive", "delete"} {
+		published := routes[action]
+		exec := httptest.NewRecorder()
+		selection := strings.Replace(published.Path, "{id}", "abc,def", 1)
+		mux.ServeHTTP(exec, httptest.NewRequest(published.Method, selection, nil))
+		assert.NotEqual(t, http.StatusNotFound, exec.Code,
+			"%s: the route the catalog published must reach the handler", action)
+	}
 }

@@ -1,18 +1,13 @@
 package rpc
 
-// The two additive surfaces of the executor: an operation that supplies rows
-// instead of a formatted body (RPCOperation.PagedFunc), and an entity that does
-// not exist until it is asked for (entity.DynamicEntityFamily). Both are
-// unreachable for an operation that opted into neither, so the shared path in
-// serve.go is unchanged for every consumer that has not.
+// Paged operations supply rows instead of a formatted body and leave the shared
+// transport responsible for negotiation, headers, streaming, and downloads.
 
 import (
-	"context"
 	"net/http"
 	"strconv"
 	"strings"
 
-	"github.com/flanksource/clicky"
 	"github.com/flanksource/clicky/entity"
 	"github.com/flanksource/clicky/formatters"
 )
@@ -191,7 +186,7 @@ func exportName(op *RPCOperation) string {
 // headers the GET beside it would answer with — so it resolves against that one.
 func (s *SwaggerServer) pagedOperation(r *http.Request, op *RPCOperation) *RPCOperation {
 	if op == nil && strings.EqualFold(r.Method, http.MethodHead) {
-		op = s.executor.FindOperation(http.MethodGet, r.URL.Path)
+		op = s.executor.FindOperation(http.MethodGet, r.URL.EscapedPath())
 	}
 	if op == nil || op.PagedFunc == nil {
 		return nil
@@ -298,223 +293,4 @@ func (b *boundedRows) Next() bool {
 	}
 	b.delivered++
 	return true
-}
-
-// matchDynamicFamily resolves {prefix}/{family}/{name} to the family that owns
-// it. It reads the path itself rather than the startup route table because a
-// family's instances are not in that table — being absent from it is the whole
-// reason a family exists.
-func (s *SwaggerServer) matchDynamicFamily(path string) (entity.DynamicEntityFamily, string, bool) {
-	families := entity.GetDynamicEntityFamilies()
-	if len(families) == 0 {
-		return entity.DynamicEntityFamily{}, "", false
-	}
-	relative := strings.Trim(strings.TrimPrefix(strings.TrimSuffix(path, "/"), s.pathPrefix()), "/")
-	segment, name, found := strings.Cut(relative, "/")
-	if !found || name == "" || strings.Contains(name, "/") {
-		return entity.DynamicEntityFamily{}, "", false
-	}
-	for _, family := range families {
-		if family.Name == segment {
-			return family, name, true
-		}
-	}
-	return entity.DynamicEntityFamily{}, "", false
-}
-
-func (s *SwaggerServer) pathPrefix() string {
-	if s.converterCfg != nil && s.converterCfg.PathPrefix != "" {
-		return s.converterCfg.PathPrefix
-	}
-	return entity.DefaultConfig().PathPrefix
-}
-
-// familyReadMethods are the methods a family instance answers. OPTIONS never
-// reaches here — the CORS preflight is answered before dispatch.
-var familyReadMethods = []string{http.MethodGet, http.MethodHead}
-
-func isFamilyReadMethod(method string) bool {
-	for _, allowed := range familyReadMethods {
-		if strings.EqualFold(method, allowed) {
-			return true
-		}
-	}
-	return false
-}
-
-// handleDynamicFamily serves one instance of a family, resolved now rather than
-// at startup.
-func (s *SwaggerServer) handleDynamicFamily(w http.ResponseWriter, r *http.Request, family entity.DynamicEntityFamily, name string) {
-	// A family instance is read-only: it is served by the spec's List, whatever
-	// the request method. Running that read for a POST would answer a write with
-	// 200 and rows, so a method the instance cannot serve is refused outright.
-	if !isFamilyReadMethod(r.Method) {
-		entity.SetCORSHeaders(w)
-		w.Header().Set("Allow", strings.Join(familyReadMethods, ", "))
-		err := entity.NewStatusErrorf(http.StatusMethodNotAllowed, "method_not_allowed",
-			"%s is not supported for %s instances", r.Method, family.Name)
-		if s.structuredErrorResponses() {
-			s.writeError(w, r, err)
-		} else {
-			err.Write(w)
-		}
-		return
-	}
-
-	spec, err := family.Resolve(r.Context(), name)
-	if err != nil {
-		entity.SetCORSHeaders(w)
-		s.writeRPCError(w, r, err)
-		return
-	}
-	op := familyOperation(family, spec, r.URL.Path)
-
-	if explicitLookup(r) {
-		s.handleDynamicFamilyLookup(w, r, spec, op)
-		return
-	}
-	if family.Paged != nil {
-		paged := func(ctx context.Context, req entity.PageRequest, flags map[string]string) (entity.PageResponse, error) {
-			return family.Paged(ctx, spec, req, flags)
-		}
-		s.handlePagedCommand(w, r, op, paged, instanceName(spec, name))
-		return
-	}
-	data, metadata, statusCode, err := s.executeOperation(r, op)
-	if err != nil && s.structuredErrorResponses() {
-		s.writeOperationError(w, r, statusCode, err)
-		return
-	}
-	s.writeExecutionResult(w, r, data, metadata, statusCode)
-}
-
-// handleDynamicFamilyLookup answers ?__lookup=filters from the filters of the
-// instance that was just resolved. A family instance never enters the registry,
-// so the operation's own LookupFunc — which the registry would have built —
-// does not exist to be called.
-func (s *SwaggerServer) handleDynamicFamilyLookup(w http.ResponseWriter, r *http.Request, spec entity.DynamicEntitySpec, op *RPCOperation) {
-	flags, err := s.requestFlags(r, op)
-	if err != nil {
-		s.writeRPCError(w, r, err)
-		return
-	}
-	// Forwarded verbatim, as handleLookupCommand does: they are not declared
-	// parameters, so nothing else carries them to the filter that searches on
-	// them.
-	for _, key := range []string{"__lookup_filter", "__lookup_q"} {
-		if value := r.URL.Query().Get(key); value != "" {
-			flags[key] = value
-		}
-	}
-
-	data, err := entity.ResolveDynamicLookup(r.Context(), spec, flags)
-	if err != nil {
-		s.writeRPCError(w, r, err)
-		return
-	}
-	s.writeLookupResponse(w, r, data)
-}
-
-// familyOperation adapts a resolved instance to the RPCOperation shape the rest
-// of the executor speaks. It is built per request and never registered: the
-// instance it describes may be gone by the next one.
-func familyOperation(family entity.DynamicEntityFamily, spec entity.DynamicEntitySpec, path string) *RPCOperation {
-	name := instanceName(spec, family.Name)
-	parent := spec.Parent
-	if parent == "" {
-		parent = family.Parent
-	}
-	op := &RPCOperation{
-		Name:            family.Name + " " + name,
-		Description:     spec.Title,
-		Path:            path,
-		Method:          http.MethodGet,
-		ContextDataFunc: spec.List,
-		ResponseArray:   true,
-		Clicky: &entity.ClickyOperationMeta{
-			SurfaceID:      family.Name + "/" + name,
-			Entity:         name,
-			Parent:         parent,
-			Verb:           "list",
-			Icon:           spec.Icon,
-			Path:           spec.Path,
-			Title:          spec.Title,
-			SupportsLookup: len(spec.Filters) > 0,
-		},
-	}
-	if spec.ItemType != nil {
-		op.ResponseType = spec.ItemType
-		op.ResponseEntityID = true
-	}
-	for _, filter := range spec.Filters {
-		parameterType := "string"
-		if filter.Multi {
-			parameterType = "array"
-		}
-		op.Parameters = append(op.Parameters, entity.RPCParameter{
-			Name: filter.Key, Type: parameterType, In: "query", Description: filter.Label,
-		})
-	}
-	return op
-}
-
-func instanceName(spec entity.DynamicEntitySpec, fallback string) string {
-	if spec.Name != "" {
-		return spec.Name
-	}
-	return fallback
-}
-
-// addFamilyPaths describes the instances that exist as this document is read.
-func (s *SwaggerServer) addFamilyPaths(ctx context.Context, spec *OpenAPISpec, families []entity.DynamicEntityFamily) error {
-	prefix := s.pathPrefix()
-	for _, family := range families {
-		if family.List == nil {
-			continue
-		}
-		instances, err := family.List(ctx)
-		if err != nil {
-			// One unreachable backing store must not take the whole document with
-			// it: the static operations are still described, and this family's
-			// instances reappear as soon as its store answers again.
-			clicky.Errorf("Omitting %s entities from the OpenAPI document: %v", family.Name, err)
-			continue
-		}
-		for _, instance := range instances {
-			if instance.Name == "" {
-				continue
-			}
-			path := prefix + "/" + family.Name + "/" + instance.Name
-			op := familyOperation(family, instance, path)
-			if spec.Paths == nil {
-				spec.Paths = make(map[string]OpenAPIPath, len(instances))
-			}
-			spec.Paths[path] = OpenAPIPath{"get": s.generator.convertOperationToOpenAPI(*op)}
-			spec.Clicky = appendFamilySurface(spec.Clicky, op.Clicky, instance)
-		}
-	}
-	return nil
-}
-
-// appendFamilySurface adds the instance's UI surface to the document's own list,
-// keyed by the instance name so the frontend's /<surface>/<id> route resolves
-// against the same segment the API path uses.
-func appendFamilySurface(meta *ClickySpecMeta, op *entity.ClickyOperationMeta, instance entity.DynamicEntitySpec) *ClickySpecMeta {
-	if meta == nil {
-		meta = &ClickySpecMeta{}
-	}
-	title := instance.Title
-	if title == "" {
-		title = op.Entity
-	}
-	op.Surface = op.Entity
-	meta.Surfaces = append(meta.Surfaces, ClickySurface{
-		Key:    op.Entity,
-		Entity: op.Entity,
-		Parent: op.Parent,
-		Title:  title,
-		Icon:   instance.Icon,
-		Path:   instance.Path,
-	})
-	return meta
 }

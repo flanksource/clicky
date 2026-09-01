@@ -98,7 +98,10 @@ func (s *SwaggerServer) writeOperationError(w http.ResponseWriter, r *http.Reque
 
 func (s *SwaggerServer) clientErrorMessage(err error) string {
 	if !s.structuredErrorResponses() {
-		return err.Error()
+		// A legacy caller still reads the error's own text — but a header or
+		// trailer has to fit in one. An unbounded value is dropped by proxies,
+		// taking the response it was attached to with it.
+		return safeHeaderValue(err.Error(), entity.DefaultMaxErrorHeaderBytes)
 	}
 	var statusError *entity.StatusError
 	if s.config.HideErrorDetails && !errors.As(err, &statusError) {

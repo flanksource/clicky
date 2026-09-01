@@ -648,6 +648,8 @@ func TestOpenAPIGenerator_EntityResponseSchemas(t *testing.T) {
 	restartSchema := requireResponseSchema(t, restartOp)
 	assert.Contains(t, restartSchema.Properties, "restarted")
 
+	// A bulk action carries its selection comma-joined in the {id} segment, so
+	// that is the path it is documented at.
 	pauseOp := spec.Paths["/api/v1/"+entityName+"/{id}/pause"]["post"]
 	pauseSchema := requireResponseSchema(t, pauseOp)
 	assert.Contains(t, pauseSchema.Properties, "count")

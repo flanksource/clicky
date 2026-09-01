@@ -1,8 +1,10 @@
 package rpc
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
+	"net/http"
 	"net/http/httptest"
 	"sort"
 	"strings"
@@ -20,7 +22,15 @@ import (
 // neither feature, so the responses below are recorded verbatim: status, every
 // header, and the exact bytes. They were captured from the handler before the
 // branches existed, so a diff here is a regression in the shared path rather
-// than a restatement of whatever the code now does.
+// than a restatement of whatever the code now does. (One deliberate change is
+// recorded since: routing the origin policy through entity.SetCORSHeaders adds
+// the shared Access-Control-Expose-Headers line.)
+
+// corsExposeHeader is the shared expose line entity.SetCORSHeaders emits on
+// every executor response.
+const corsExposeHeader = "Access-Control-Expose-Headers: Content-Disposition, X-Export-Mode, " +
+	"X-Page-Limit, X-Page-Offset, X-Total-Count, X-Total-Relation, X-Has-More, " +
+	"X-Next-Cursor, X-Truncated, X-Max-Rows, X-Trace-ID\n"
 
 // dumpResponse renders a response as a stable, diffable transcript. Header order
 // is not part of the contract, so it is sorted; everything else is byte-exact.
@@ -79,7 +89,19 @@ func legacyServer() *SwaggerServer {
 		config:       &ServeConfig{Executor: &ExecutorConfig{Enabled: true}},
 		converterCfg: &Config{PathPrefix: "/api/v1"},
 		executor:     NewCommandExecutor(service, &ExecutorConfig{Enabled: true, SkipPreRun: true, PathPrefix: "/api/v1"}),
+		errorWriter:  entity.NewErrorWriter(entity.ErrorOptions{}),
 	}
+}
+
+// structuredServer is legacyServer with the error envelopes turned on — the
+// same routes, answered by a server that opted in.
+func structuredServer() *SwaggerServer {
+	server := legacyServer()
+	server.config = &ServeConfig{
+		Executor:                 &ExecutorConfig{Enabled: true},
+		StructuredErrorResponses: true,
+	}
+	return server
 }
 
 func TestHandleExecuteCommand_LegacyResponsesAreUnchanged(t *testing.T) {
@@ -99,6 +121,7 @@ func TestHandleExecuteCommand_LegacyResponsesAreUnchanged(t *testing.T) {
 				"Access-Control-Allow-Headers: Content-Type, Accept\n" +
 				"Access-Control-Allow-Methods: GET, POST, PUT, DELETE, HEAD, OPTIONS\n" +
 				"Access-Control-Allow-Origin: *\n" +
+				corsExposeHeader +
 				"Content-Type: application/json\n" +
 				"X-Cli-Command: \n" +
 				"X-Execution-Success: true\n" +
@@ -113,19 +136,8 @@ func TestHandleExecuteCommand_LegacyResponsesAreUnchanged(t *testing.T) {
 				"Access-Control-Allow-Headers: Content-Type, Accept\n" +
 				"Access-Control-Allow-Methods: GET, POST, PUT, DELETE, HEAD, OPTIONS\n" +
 				"Access-Control-Allow-Origin: *\n" +
+				corsExposeHeader +
 				"\n",
-		},
-		{
-			name:   "unknown path",
-			method: "GET",
-			target: "/api/v1/nothing",
-			want: "404\n" +
-				"Access-Control-Allow-Headers: Content-Type, Accept\n" +
-				"Access-Control-Allow-Methods: GET, POST, PUT, DELETE, HEAD, OPTIONS\n" +
-				"Access-Control-Allow-Origin: *\n" +
-				"Content-Type: text/plain; charset=utf-8\n" +
-				"X-Content-Type-Options: nosniff\n" +
-				"\nNo operation found for GET /api/v1/nothing\n",
 		},
 		{
 			name:   "filter lookup",
@@ -135,6 +147,7 @@ func TestHandleExecuteCommand_LegacyResponsesAreUnchanged(t *testing.T) {
 				"Access-Control-Allow-Headers: Content-Type, Accept\n" +
 				"Access-Control-Allow-Methods: GET, POST, PUT, DELETE, HEAD, OPTIONS\n" +
 				"Access-Control-Allow-Origin: *\n" +
+				corsExposeHeader +
 				"Content-Type: application/json+clicky\n" +
 				"\n{\"filters\":{\"env\":{\"label\":\"Environment\"}}}\n",
 		},
@@ -146,6 +159,7 @@ func TestHandleExecuteCommand_LegacyResponsesAreUnchanged(t *testing.T) {
 				"Access-Control-Allow-Headers: Content-Type, Accept\n" +
 				"Access-Control-Allow-Methods: GET, POST, PUT, DELETE, HEAD, OPTIONS\n" +
 				"Access-Control-Allow-Origin: *\n" +
+				corsExposeHeader +
 				"Content-Type: application/json+clicky\n" +
 				"\n",
 		},
@@ -165,6 +179,23 @@ func TestHandleExecuteCommand_LegacyResponsesAreUnchanged(t *testing.T) {
 			assert.Equal(t, test.want, dumpResponse(t, rec))
 		})
 	}
+}
+
+func TestHandleExecuteCommand_UnknownPathUsesSharedErrorEnvelope(t *testing.T) {
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/nothing", nil)
+	response := httptest.NewRecorder()
+
+	// The envelope is the opted-in surface; legacyServer answers the same miss
+	// with http.Error, which TestHandleExecuteCommand_LegacyResponsesAreUnchanged
+	// pins.
+	structuredServer().handleExecuteCommand(response, request)
+
+	require.Equal(t, http.StatusNotFound, response.Code)
+	var body entity.ErrorResponse
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &body))
+	assert.Equal(t, "operation_not_found", body.Code)
+	assert.Equal(t, "No operation found for GET /api/v1/nothing", body.Message)
+	assert.Equal(t, response.Header().Get(entity.ErrorTraceHeader), body.Trace)
 }
 
 // registerTestFamily keeps the process-wide family registry as it found it, so
