@@ -55,7 +55,7 @@ var _ = Describe("Export headers", func() {
 
 		Expect(w.Header().Get("Access-Control-Allow-Origin")).To(Equal("*"))
 		exposed := strings.Split(w.Header().Get("Access-Control-Expose-Headers"), ", ")
-		Expect(exposed).To(Equal(ExportHeaderNames()))
+		Expect(exposed).To(Equal(append(ExportHeaderNames(), ErrorTraceHeader)))
 	})
 
 	It("documents every header for OpenAPI with a description and a type", func() {

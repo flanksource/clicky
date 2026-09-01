@@ -747,3 +747,124 @@ func TestActionInfoOptionalIDSkipsIDRequiredCheck(t *testing.T) {
 		t.Fatalf("a normal action must still reject a missing id")
 	}
 }
+
+type bulkSetStatusFlags struct {
+	To     string `flag:"to" help:"Status to apply" enum:"open,done" required:"true"`
+	Reason string `flag:"reason" help:"Why"`
+	// Collides with the entity's own `status` filter on purpose: a selector and
+	// an operation can want the same word, and pflag panics on a redefinition.
+	Status string `flag:"status"`
+}
+
+func (bulkSetStatusFlags) ClickyActionFlags() {}
+
+// A bulk action is a selection and an operation. Its parameters say what to do;
+// the entity's ListOpts say which rows to do it to. Before WithFlags the second
+// half had no way to be declared, so id mode received whatever the caller
+// happened to send, unbound and unvalidated.
+func TestEntityBulkActionFlagsReachHandlerInBothModes(t *testing.T) {
+	resetEntityRegistry(t)
+	defer resetEntityRegistry(t)
+
+	var idModeFlags, filterModeFlags map[string]string
+	var idModeIDs []string
+	var filterModeOpts entityFilterTestOpts
+
+	RegisterEntity(Entity[entityFilterTestEntity, entityFilterTestOpts, entityFilterTestEntity]{
+		Name:    "flagged-bulk",
+		Filters: []Filter[entityFilterTestOpts]{ownerEntityFilter{}, statusEntityFilter{}},
+		BulkActions: []EntityBulkAction{
+			BulkActionWithFilter(
+				"set-status",
+				func(ids []string, flags map[string]string) (any, error) {
+					idModeIDs, idModeFlags = ids, flags
+					return ids, nil
+				},
+				func(opts entityFilterTestOpts, flags map[string]string) (any, error) {
+					filterModeOpts, filterModeFlags = opts, flags
+					return opts, nil
+				},
+			).WithFlags(bulkSetStatusFlags{}).WithShort("Set status on many entities"),
+		},
+	})
+
+	root := &cobra.Command{Use: "root"}
+	GenerateCLI(root)
+
+	cmd, _, err := root.Find([]string{"flagged-bulk", "set-status"})
+	if err != nil || cmd == nil {
+		t.Fatalf("expected to find bulk action command, got err=%v", err)
+	}
+
+	// The action's own parameters are real cobra flags, so `--to` is usable and
+	// documented rather than an undeclared key the handler hopes for.
+	if cmd.Flags().Lookup("to") == nil {
+		t.Fatal("expected the action's own --to flag to be bound")
+	}
+	if cmd.Flags().Lookup("reason") == nil {
+		t.Fatal("expected the action's own --reason flag to be bound")
+	}
+	// `--status` is declared by both the entity's filters and the action's
+	// parameters. Reaching this line at all is the assertion: pflag panics on a
+	// redefined flag, so an unguarded second bind would have taken the process
+	// down inside GenerateCLI above.
+	if cmd.Flags().Lookup("status") == nil {
+		t.Fatal("expected the entity filter to keep ownership of --status")
+	}
+
+	dataFunc := GetDataFunc(cmd)
+	if dataFunc == nil {
+		t.Fatal("expected bulk action to register data func")
+	}
+
+	if _, err := dataFunc(map[string]string{"to": "done", "reason": "ship it"}, []string{"a", "b"}); err != nil {
+		t.Fatalf("id-mode bulk action returned error: %v", err)
+	}
+	if len(idModeIDs) != 2 || idModeIDs[0] != "a" || idModeIDs[1] != "b" {
+		t.Fatalf("expected both ids in id mode, got %v", idModeIDs)
+	}
+	if idModeFlags["to"] != "done" || idModeFlags["reason"] != "ship it" {
+		t.Fatalf("expected action parameters in id mode, got %v", idModeFlags)
+	}
+
+	// Filter mode resolves the selection through the entity's filters, and the
+	// action's parameters must survive that resolution untouched.
+	if _, err := dataFunc(map[string]string{
+		"filter": "status == 'healthy'",
+		"owner":  "platform",
+		"to":     "open",
+	}, []string{"ignored"}); err != nil {
+		t.Fatalf("filter-mode bulk action returned error: %v", err)
+	}
+	if filterModeOpts.Owner != "team/platform" {
+		t.Fatalf("expected filter mode to resolve owner, got %q", filterModeOpts.Owner)
+	}
+	if filterModeFlags["to"] != "open" {
+		t.Fatalf("expected action parameters in filter mode, got %v", filterModeFlags)
+	}
+}
+
+// The published catalog is what a front end renders an action from, so an
+// action that declares parameters and hints has to arrive carrying them.
+func TestEntityBulkActionInfoCarriesFlagsAndHints(t *testing.T) {
+	spec := BulkActionWithFilter(
+		"archive",
+		func(ids []string, _ map[string]string) (any, error) { return ids, nil },
+		func(opts entityFilterTestOpts, _ map[string]string) (any, error) { return opts, nil },
+	).WithFlags(bulkSetStatusFlags{}).WithToolHints(MCPToolHints{Icon: "trash", Group: "Danger"})
+
+	info := spec.bulkActionInfo(func(map[string]string) (any, error) { return entityFilterTestOpts{}, nil })
+
+	if info.FlagsType == nil || info.FlagsType.Name() != "bulkSetStatusFlags" {
+		t.Fatalf("expected FlagsType to be reflected, got %v", info.FlagsType)
+	}
+	if info.ToolHints.Icon != "trash" || info.ToolHints.Group != "Danger" {
+		t.Fatalf("expected tool hints to survive, got %+v", info.ToolHints)
+	}
+	if info.ToolGroup != "Danger" {
+		t.Fatalf("expected WithToolHints to set the tool group, got %q", info.ToolGroup)
+	}
+	if info.FilterFunc == nil {
+		t.Fatal("expected filter mode to remain available")
+	}
+}
