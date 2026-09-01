@@ -227,7 +227,10 @@ func (s StackTrace) String() string {
 func (s StackTrace) ANSI() string     { return s.Render().ANSI() }
 func (s StackTrace) HTML() string     { return s.renderHTML() }
 func (s StackTrace) Markdown() string { return s.Render().Markdown() }
-func (s StackTrace) Pretty() Text     { return s.Render() }
+func (s StackTrace) MarkdownWithOptions(options MarkdownOptions) string {
+	return s.Render().MarkdownWithOptions(options)
+}
+func (s StackTrace) Pretty() Text { return s.Render() }
 
 // renderHTML produces a structured HTML block for the stack trace:
 //

@@ -620,12 +620,16 @@ func (dl DescriptionList) HTML() string {
 }
 
 func (dl DescriptionList) Markdown() string {
+	return dl.MarkdownWithOptions(MarkdownOptions{})
+}
+
+func (dl DescriptionList) MarkdownWithOptions(options MarkdownOptions) string {
 	if len(dl.Items) == 0 {
 		return ""
 	}
 	var parts []string
 	for _, item := range dl.Items {
-		parts = append(parts, item.Markdown())
+		parts = append(parts, RenderMarkdown(item, options))
 	}
 	return strings.Join(parts, ", ")
 }

@@ -422,6 +422,31 @@ func ParseStyle(styleStr string) Style {
 	return style
 }
 
+// ColorClasses returns the colour-bearing classes of a style string, in source
+// order, using the same test ParseStyle applies when resolving Foreground and
+// Background.
+//
+// It exists for renderers that forward classes rather than resolved colours.
+// The rest of a style string must not be forwarded: transform and truncate
+// classes are already materialised into the string by ApplyStyle, emphasis is
+// carried by the target syntax, and this package's private arbitrary values
+// (max-w-[tw-20ch]) mean nothing to a downstream Tailwind build.
+func ColorClasses(styleStr string) []string {
+	if styleStr == "" {
+		return nil
+	}
+	var out []string
+	for _, class := range strings.Fields(styleStr) {
+		switch {
+		case strings.HasPrefix(class, "text-") && !IsTextUtilityClass(class):
+			out = append(out, class)
+		case strings.HasPrefix(class, "bg-"):
+			out = append(out, class)
+		}
+	}
+	return out
+}
+
 // IsTextUtilityClass checks if a text- prefixed class is a utility rather than a color
 func IsTextUtilityClass(class string) bool {
 	utilities := []string{
