@@ -438,22 +438,16 @@ func (g *OpenAPIGenerator) convertOperationToOpenAPI(op RPCOperation) OpenAPIOpe
 		},
 	}
 
-	openAPIOp.Responses["400"] = OpenAPIResponse{
-		Description: "Bad Request",
-		Content: map[string]OpenAPIMediaType{
-			"application/json": {
-				Schema: g.executionResponseSchema(),
+	for status, description := range errorResponseDescriptions {
+		openAPIOp.Responses[status] = OpenAPIResponse{
+			Description: description,
+			Headers:     errorResponseHeaders(),
+			Content: map[string]OpenAPIMediaType{
+				"application/json": {
+					Schema: g.errorResponseSchema(),
+				},
 			},
-		},
-	}
-
-	openAPIOp.Responses["500"] = OpenAPIResponse{
-		Description: "Internal Server Error",
-		Content: map[string]OpenAPIMediaType{
-			"application/json": {
-				Schema: g.executionResponseSchema(),
-			},
-		},
+		}
 	}
 
 	return openAPIOp
@@ -545,8 +539,31 @@ func paramRole(param RPCParameter, supportsLookup, isListOp bool) string {
 	return ""
 }
 
-func (g *OpenAPIGenerator) executionResponseSchema() *OpenAPISchema {
-	return g.convertGoTypeToOpenAPI(reflect.TypeOf(ExecutionResponse{}))
+func (g *OpenAPIGenerator) errorResponseSchema() *OpenAPISchema {
+	schema := g.convertGoTypeToOpenAPI(reflect.TypeOf(entity.ErrorResponse{}))
+	schema.Required = []string{"code", "message", "trace"}
+	return schema
+}
+
+// errorResponseDescriptions lists every status the executor, family, and paged
+// handlers can return as an entity.ErrorResponse envelope. Clients generating
+// code from the specification need all of them typed, not just 400/500.
+var errorResponseDescriptions = map[string]string{
+	"400": "Bad Request",
+	"404": "Not Found",
+	"405": "Method Not Allowed",
+	"406": "Not Acceptable",
+	"500": "Internal Server Error",
+}
+
+func errorResponseHeaders() map[string]OpenAPIHeader {
+	return map[string]OpenAPIHeader{
+		entity.ErrorTraceHeader: {
+			Description: "Trace identifier shared by the response body, server log, and request span.",
+			Required:    true,
+			Schema:      &OpenAPISchema{Type: "string"},
+		},
+	}
 }
 
 func (g *OpenAPIGenerator) responseSchemaForOperation(op RPCOperation) *OpenAPISchema {

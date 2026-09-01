@@ -76,6 +76,7 @@ func familyServer() *SwaggerServer {
 		config:       &ServeConfig{Executor: &ExecutorConfig{Enabled: true}},
 		converterCfg: &Config{PathPrefix: "/api/v1"},
 		executor:     NewCommandExecutor(service, &ExecutorConfig{Enabled: true, SkipPreRun: true, PathPrefix: "/api/v1"}),
+		errorWriter:  entity.NewErrorWriter(entity.ErrorOptions{}),
 	}
 }
 
@@ -164,7 +165,7 @@ func TestDynamicFamily_RegistersOneRouteForTheWholeFamily(t *testing.T) {
 	mux := http.NewServeMux()
 	server.registerExecutionRoutes(mux)
 
-	for _, method := range []string{"GET", "POST", "OPTIONS", "HEAD"} {
+	for _, method := range []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"} {
 		_, pattern := mux.Handler(httptest.NewRequest(method, "/api/v1/profile/daily", nil))
 		assert.Equal(t, method+" /api/v1/profile/{name}", wildcardPattern(method, pattern),
 			"%s must resolve through the family's single pattern", method)
@@ -252,6 +253,7 @@ func TestDynamicFamily_DoesNotCaptureARegisteredOperationsPath(t *testing.T) {
 		config:       &ServeConfig{Executor: &ExecutorConfig{Enabled: true}},
 		converterCfg: &Config{PathPrefix: "/api/v1"},
 		executor:     NewCommandExecutor(service, &ExecutorConfig{Enabled: true, SkipPreRun: true, PathPrefix: "/api/v1"}),
+		errorWriter:  entity.NewErrorWriter(entity.ErrorOptions{}),
 	}
 
 	rec := httptest.NewRecorder()
@@ -262,6 +264,13 @@ func TestDynamicFamily_DoesNotCaptureARegisteredOperationsPath(t *testing.T) {
 	assert.Contains(t, rec.Body.String(), "operation",
 		"the registered operation serves its own path, not the colliding family")
 	assert.NotContains(t, rec.Body.String(), "profile")
+
+	spec := NewOpenAPIGenerator(nil).GenerateFromService(service)
+	require.NoError(t, server.addFamilyPaths(context.Background(), spec, []entity.DynamicEntityFamily{family}))
+	assert.NotContains(t, spec.Paths, "/api/v1/config/daily",
+		"the generated family path must not shadow the registered operation served at runtime")
+	assert.Equal(t, "config_get", spec.Paths["/api/v1/config/{id}"]["get"].OperationID,
+		"the registered templated path that captures the instance keeps describing it")
 }
 
 // A family instance is read-only, so a POST must not quietly run its List and

@@ -648,7 +648,7 @@ func TestOpenAPIGenerator_EntityResponseSchemas(t *testing.T) {
 	restartSchema := requireResponseSchema(t, restartOp)
 	assert.Contains(t, restartSchema.Properties, "restarted")
 
-	pauseOp := spec.Paths["/api/v1/"+entityName+"/{id}/pause"]["post"]
+	pauseOp := spec.Paths["/api/v1/"+entityName+"/pause"]["post"]
 	pauseSchema := requireResponseSchema(t, pauseOp)
 	assert.Contains(t, pauseSchema.Properties, "count")
 }

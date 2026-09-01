@@ -3,6 +3,7 @@ package rpc
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/flanksource/clicky"
 	"github.com/flanksource/clicky/api"
+	"github.com/flanksource/clicky/entity"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -145,7 +147,7 @@ func TestSwaggerServer_FilterLookupRoutes(t *testing.T) {
 	})
 
 	t.Run("GET companion lookup on bulk route does not execute action", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/api/v1/rpc-filter-entity/123/bulk-suspend?owner=platform&status=healthy&__lookup=filters", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/rpc-filter-entity/bulk-suspend?owner=platform&status=healthy&__lookup=filters", nil)
 		w := httptest.NewRecorder()
 
 		mux.ServeHTTP(w, req)
@@ -156,7 +158,7 @@ func TestSwaggerServer_FilterLookupRoutes(t *testing.T) {
 	})
 
 	t.Run("GET companion route without lookup does not execute action", func(t *testing.T) {
-		req := httptest.NewRequest(http.MethodGet, "/api/v1/rpc-filter-entity/123/bulk-suspend?owner=platform&status=healthy", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/v1/rpc-filter-entity/bulk-suspend?owner=platform&status=healthy", nil)
 		w := httptest.NewRecorder()
 
 		mux.ServeHTTP(w, req)
@@ -190,4 +192,35 @@ func TestLookupPreservesUndeclaredSiblingParameters(t *testing.T) {
 	assert.Equal(t, "prod", captured["region"])
 	assert.Equal(t, "api", captured["filter.service"])
 	assert.NotContains(t, captured, "__lookup")
+}
+
+func TestLookupPreservesBackendErrorStatus(t *testing.T) {
+	tests := []struct {
+		name   string
+		err    error
+		status int
+		code   string
+	}{
+		{name: "classified", err: entity.NewStatusError(http.StatusServiceUnavailable, "lookup_unavailable", "retry later"), status: http.StatusServiceUnavailable, code: "lookup_unavailable"},
+		{name: "unclassified", err: errors.New("backend unavailable"), status: http.StatusInternalServerError, code: "internal_error"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			server := &SwaggerServer{
+				executor:    NewCommandExecutor(&RPCService{}, &ExecutorConfig{}),
+				errorWriter: entity.NewErrorWriter(entity.ErrorOptions{}),
+			}
+			op := &RPCOperation{ContextLookupFunc: func(context.Context, map[string]string, []string) (any, error) {
+				return nil, test.err
+			}}
+			response := httptest.NewRecorder()
+
+			server.handleLookupCommand(response, httptest.NewRequest(http.MethodGet, "/lookup", nil), op)
+
+			require.Equal(t, test.status, response.Code)
+			var body entity.ErrorResponse
+			require.NoError(t, json.Unmarshal(response.Body.Bytes(), &body))
+			assert.Equal(t, test.code, body.Code)
+		})
+	}
 }

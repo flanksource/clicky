@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/flanksource/clicky/entity"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -36,8 +37,8 @@ func TestHandleExecuteCommand_DataFuncReturnsArray(t *testing.T) {
 	executor := NewCommandExecutor(service, &ExecutorConfig{Enabled: true, SkipPreRun: true, PathPrefix: "/api/v1"})
 
 	server := &SwaggerServer{
-		config:   &ServeConfig{Executor: &ExecutorConfig{Enabled: true}},
-		executor: executor,
+		config: &ServeConfig{Executor: &ExecutorConfig{Enabled: true}}, executor: executor,
+		errorWriter: entity.NewErrorWriter(entity.ErrorOptions{}),
 	}
 
 	req := httptest.NewRequest("GET", "/api/v1/config", nil)
@@ -55,7 +56,7 @@ func TestHandleExecuteCommand_DataFuncReturnsArray(t *testing.T) {
 	assert.Equal(t, want, got)
 }
 
-func TestHandleExecuteCommand_DataFuncPreservesStructuredDataOnError(t *testing.T) {
+func TestHandleExecuteCommand_DataFuncReturnsSharedErrorEnvelope(t *testing.T) {
 	type failedRun struct {
 		ActivityGUID string `json:"activityGuid"`
 		Exception    string `json:"exception"`
@@ -75,8 +76,8 @@ func TestHandleExecuteCommand_DataFuncPreservesStructuredDataOnError(t *testing.
 	service := &RPCService{Name: "api", Operations: []RPCOperation{op}}
 	executor := NewCommandExecutor(service, &ExecutorConfig{Enabled: true, SkipPreRun: true, PathPrefix: "/api/v1"})
 	server := &SwaggerServer{
-		config:   &ServeConfig{Executor: &ExecutorConfig{Enabled: true}},
-		executor: executor,
+		config: &ServeConfig{Executor: &ExecutorConfig{Enabled: true}}, executor: executor,
+		errorWriter: entity.NewErrorWriter(entity.ErrorOptions{}),
 	}
 
 	req := httptest.NewRequest("POST", "/api/v1/activity/8C055EB2-6F5C-4E46-945F-901AC8504865/execute", nil)
@@ -87,9 +88,12 @@ func TestHandleExecuteCommand_DataFuncPreservesStructuredDataOnError(t *testing.
 
 	res := w.Result()
 	require.Equal(t, 500, res.StatusCode)
-	assert.Equal(t, "false", res.Header.Get("X-Execution-Success"))
-	assert.Equal(t, "activity processing failed", res.Header.Get("X-Error"))
-	var got failedRun
+	assert.Empty(t, res.Header.Get("X-Error"))
+	assert.Empty(t, res.Header.Get("X-Stderr"))
+	var got entity.ErrorResponse
 	require.NoError(t, json.NewDecoder(res.Body).Decode(&got))
-	assert.Equal(t, want, got)
+	assert.Equal(t, "activity processing failed", got.Message)
+	assert.Equal(t, "internal_error", got.Code)
+	assert.NotEmpty(t, got.Trace)
+	assert.NotContains(t, w.Body.String(), want.ActivityGUID)
 }
