@@ -213,6 +213,26 @@ var _ = Describe("Managed task runs", func() {
 		Expect(response.Code).To(Equal(http.StatusNotFound), response.Body.String())
 	})
 
+	It("advertises stop on active groups and cancels running and queued tasks", func() {
+		started := make(chan struct{})
+		group := task.StartGroup[struct{}]("OpenSCAD preview", task.WithConcurrency(1))
+		running := group.Add("isometric", func(ctx commonscontext.Context, _ *task.Task) (struct{}, error) {
+			close(started)
+			<-ctx.Done()
+			return struct{}{}, ctx.Err()
+		})
+		queued := group.Add("front", func(_ commonscontext.Context, _ *task.Task) (struct{}, error) {
+			return struct{}{}, nil
+		})
+		Eventually(started).Should(BeClosed())
+
+		Expect(task.SnapshotByID(group.ID())[0].Controls).To(Equal([]task.ControlAction{task.ControlStop}))
+		Expect(task.ControlRun(context.Background(), group.ID(), task.ControlStop)).To(Succeed())
+		Eventually(running.Status).Should(Equal(task.StatusCancelled))
+		Eventually(queued.Status).Should(Equal(task.StatusCancelled))
+		Expect(task.SnapshotByID(group.ID())[0].Controls).To(BeEmpty())
+	})
+
 	It("merges externally-owned runs into list, detail, stream, and control routes", func() {
 		source := &recordingRunSource{
 			runs: []task.RunMeta{{ID: "remote-1", Name: "api", Kind: "supervised-process", Status: "running"}},
