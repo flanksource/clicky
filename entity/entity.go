@@ -122,7 +122,10 @@ type ActionInfo struct {
 	// path (fed cmd.Context()) and the RPC executor (fed r.Context()), mirroring
 	// the entity CRUD seam. Lets an action resolve request-scoped state instead
 	// of process globals.
-	ContextDataFunc ContextDataFunc
+	ContextDataFunc   ContextDataFunc
+	LookupFunc        func(flags map[string]string, args []string) (any, error)
+	ContextLookupFunc ContextLookupFunc
+	BindCompletions   func(cmd *cobra.Command)
 	// FlagsType, if non-nil, is the struct type whose `flag:"..."` tagged
 	// fields are registered as cobra flags on the generated action command
 	// and populated into the flag map passed to DataFunc.
@@ -144,12 +147,22 @@ type BulkActionInfo struct {
 	Name              string
 	Short             string
 	DataFunc          func(flags map[string]string, args []string) (any, error)
+	ContextDataFunc   ContextDataFunc
 	FilterFunc        func(flags map[string]string, args []string) (any, error)
+	ContextFilterFunc ContextDataFunc
 	LookupFunc        func(flags map[string]string, args []string) (any, error)
 	ContextLookupFunc ContextLookupFunc
 	ListType          reflect.Type
 	BindCompletions   func(cmd *cobra.Command)
 	ResponseType      reflect.Type
+	// FlagsType, if non-nil, is the struct type whose `flag:"..."` tagged fields
+	// are the action's own parameters — bound on the generated command and
+	// published as OpenAPI parameters, exactly as ActionInfo.FlagsType is.
+	FlagsType reflect.Type
+	// ToolGroup overrides the entity's tool group for this action only. Empty
+	// means the action inherits the entity's group.
+	ToolGroup string
+	ToolHints MCPToolHints
 }
 
 // ActionFlags is a marker interface implemented by options structs that
@@ -322,15 +335,18 @@ type EntityAction interface {
 }
 
 type ActionSpec[R any] struct {
-	name       string
-	short      string
-	method     string
-	run        func(id string, flags map[string]string) (R, error)
-	runCtx     func(ctx context.Context, id string, flags map[string]string) (R, error)
-	flags      ActionFlags
-	optionalID bool
-	toolGroup  string
-	toolHints  MCPToolHints
+	name              string
+	short             string
+	method            string
+	run               func(id string, flags map[string]string) (R, error)
+	runCtx            func(ctx context.Context, id string, flags map[string]string) (R, error)
+	flags             ActionFlags
+	lookupFunc        DataFunc
+	contextLookupFunc ContextLookupFunc
+	bindCompletions   func(cmd *cobra.Command)
+	optionalID        bool
+	toolGroup         string
+	toolHints         MCPToolHints
 }
 
 // dataOrError type-erases a typed handler result, dropping the value when the
@@ -373,14 +389,24 @@ func ActionWithFlagsAndContext[R any](name string, flags ActionFlags, fn func(ct
 // map has to repeat every flag name the struct already declares, and the two
 // drift apart silently the first time one is renamed.
 func TypedActionWithContext[Opts ActionFlags, R any](name string, opts Opts, fn func(ctx context.Context, id string, opts Opts) (R, error)) *ActionSpec[R] {
-	return ActionWithFlagsAndContext(name, opts, func(ctx context.Context, id string, flagMap map[string]string) (R, error) {
-		resolved, err := buildOpts[Opts](flagMap)
+	var actionFilters []Filter[Opts]
+	if filterable, ok := any(opts).(Filterable[Opts]); ok {
+		actionFilters = filterable.Filters()
+	}
+	action := ActionWithFlagsAndContext(name, opts, func(ctx context.Context, id string, flagMap map[string]string) (R, error) {
+		resolved, err := resolveActionOpts(ctx, id, flagMap, actionFilters)
 		if err != nil {
 			var zero R
 			return zero, err
 		}
 		return fn(ctx, id, resolved)
 	})
+	if len(actionFilters) > 0 {
+		action.lookupFunc = buildActionLookupFunc(actionFilters)
+		action.contextLookupFunc = buildActionLookupFuncWithContext(actionFilters)
+		action.bindCompletions = buildActionFilterCompletionBinder(actionFilters)
+	}
+	return action
 }
 
 func (a *ActionSpec[R]) WithShort(short string) *ActionSpec[R] {
@@ -446,14 +472,17 @@ func (a *ActionSpec[R]) actionID(flagMap map[string]string, args []string) (stri
 
 func (a *ActionSpec[R]) actionInfo() ActionInfo {
 	info := ActionInfo{
-		Name:         a.name,
-		Short:        a.short,
-		Method:       a.method,
-		FlagsType:    actionFlagsType(a.flags),
-		ResponseType: responseTypeOf[R](),
-		OptionalID:   a.optionalID,
-		ToolGroup:    a.toolGroup,
-		ToolHints:    a.toolHints,
+		Name:              a.name,
+		Short:             a.short,
+		Method:            a.method,
+		FlagsType:         actionFlagsType(a.flags),
+		ResponseType:      responseTypeOf[R](),
+		OptionalID:        a.optionalID,
+		ToolGroup:         a.toolGroup,
+		ToolHints:         a.toolHints,
+		LookupFunc:        a.lookupFunc,
+		ContextLookupFunc: a.contextLookupFunc,
+		BindCompletions:   a.bindCompletions,
 	}
 	if a.runCtx != nil {
 		info.ContextDataFunc = func(ctx context.Context, flagMap map[string]string, args []string) (any, error) {
@@ -482,11 +511,22 @@ type EntityBulkAction interface {
 }
 
 type BulkActionSpec[R any] struct {
-	name       string
-	short      string
-	run        func(ids []string, flags map[string]string) (R, error)
-	filterFunc func(opts any, flags map[string]string) (R, error)
-	listType   reflect.Type
+	name          string
+	short         string
+	run           func(ids []string, flags map[string]string) (R, error)
+	runCtx        func(context.Context, []string, map[string]string) (R, error)
+	filterFunc    func(opts any, flags map[string]string) (R, error)
+	filterFuncCtx func(context.Context, any, map[string]string) (R, error)
+	listType      reflect.Type
+	// flags are the action's own parameters, declared the same way a single
+	// action declares them. Without them a bulk action reaching id mode gets an
+	// unbound flag map: whatever the caller happened to send, with no cobra
+	// flags, no OpenAPI parameters and no validation. Filter mode inherits the
+	// entity's ListOpts flags, which say how to *select* rows, never what to do
+	// to them — so "set status to done on these forty" had nowhere to put "done".
+	flags     ActionFlags
+	toolGroup string
+	toolHints MCPToolHints
 }
 
 // BulkAction creates a typed custom operation on multiple entity IDs.
@@ -524,8 +564,68 @@ func BulkActionWithFilter[ListOpts any, R any](
 	return action
 }
 
+// BulkActionWithFilterAndContext creates a bulk action whose selected and
+// filtered handlers receive the request-scoped context.
+func BulkActionWithFilterAndContext[ListOpts any, R any](
+	name string,
+	run func(context.Context, []string, map[string]string) (R, error),
+	runFilter func(context.Context, ListOpts, map[string]string) (R, error),
+) *BulkActionSpec[R] {
+	listType := reflect.TypeOf((*ListOpts)(nil)).Elem()
+	return &BulkActionSpec[R]{
+		name:     name,
+		listType: listType,
+		runCtx:   run,
+		filterFuncCtx: func(ctx context.Context, opts any, flagMap map[string]string) (R, error) {
+			typed, ok := opts.(ListOpts)
+			if !ok {
+				var zero R
+				return zero, fmt.Errorf("expected %s options, got %T", listType, opts)
+			}
+			return runFilter(ctx, typed, flagMap)
+		},
+	}
+}
+
 func (b *BulkActionSpec[R]) WithShort(short string) *BulkActionSpec[R] {
 	b.short = short
+	return b
+}
+
+// WithFlags declares the action's own typed parameters, mirroring
+// ActionSpec.WithFlags. They bind alongside the entity's ListOpts flags rather
+// than instead of them: a bulk action is a selection *and* an operation, and the
+// two halves are independent — `--status pending` picks the rows, `--to done`
+// says what happens to them.
+func (b *BulkActionSpec[R]) WithFlags(flags ActionFlags) *BulkActionSpec[R] {
+	b.flags = flags
+	return b
+}
+
+// WithToolGroup overrides the entity's tool group for this bulk action only.
+func (b *BulkActionSpec[R]) WithToolGroup(group string) *BulkActionSpec[R] {
+	b.toolGroup = group
+	b.toolHints.Group = group
+	return b
+}
+
+// WithToolPermission sets this bulk action's default approval mode. A bulk
+// action is the one most worth asking about — it is the same verb aimed at
+// forty rows instead of one.
+func (b *BulkActionSpec[R]) WithToolPermission(permission ToolPermission) *BulkActionSpec[R] {
+	b.toolHints.DefaultPermission = permission
+	return b
+}
+
+// WithToolHints overrides this bulk action's inherited MCP tool hints. Icon,
+// Group and DestructiveHint are also what a UI needs to render the action in a
+// selection toolbar, so they are declared once here rather than duplicated in
+// every front end.
+func (b *BulkActionSpec[R]) WithToolHints(hints MCPToolHints) *BulkActionSpec[R] {
+	b.toolHints = b.toolHints.merge(hints)
+	if hints.Group != "" {
+		b.toolGroup = hints.Group
+	}
 	return b
 }
 
@@ -535,8 +635,15 @@ func (b *BulkActionSpec[R]) bulkActionInfo(resolveOpts func(map[string]string) (
 		Short:        b.short,
 		ListType:     b.listType,
 		ResponseType: responseTypeOf[R](),
+		FlagsType:    actionFlagsType(b.flags),
+		ToolGroup:    b.toolGroup,
+		ToolHints:    b.toolHints,
 	}
-	if b.run != nil {
+	if b.runCtx != nil {
+		info.ContextDataFunc = func(ctx context.Context, flagMap map[string]string, args []string) (any, error) {
+			return dataOrError(b.runCtx(ctx, args, flagMap))
+		}
+	} else if b.run != nil {
 		info.DataFunc = func(flagMap map[string]string, args []string) (any, error) {
 			return dataOrError(b.run(args, flagMap))
 		}
@@ -545,7 +652,15 @@ func (b *BulkActionSpec[R]) bulkActionInfo(resolveOpts func(map[string]string) (
 			return nil, fmt.Errorf("bulk action %q requires filter mode", b.name)
 		}
 	}
-	if b.filterFunc != nil {
+	if b.filterFuncCtx != nil {
+		info.ContextFilterFunc = func(ctx context.Context, flagMap map[string]string, args []string) (any, error) {
+			opts, err := resolveOpts(flagMap)
+			if err != nil {
+				return nil, err
+			}
+			return dataOrError(b.filterFuncCtx(ctx, opts, flagMap))
+		}
+	} else if b.filterFunc != nil {
 		info.FilterFunc = func(flagMap map[string]string, args []string) (any, error) {
 			opts, err := resolveOpts(flagMap)
 			if err != nil {
@@ -1079,13 +1194,16 @@ func generateEntityCLI(parent *cobra.Command, entity EntityInfo) {
 			scope = "collection"
 		}
 		generateIDCommand(entityCmd, action.Name, action.Short, EntityOperation{
-			Verb:            action.Name,
-			Method:          action.Method,
-			DataFunc:        action.DataFunc,
-			ContextDataFunc: action.ContextDataFunc,
-			FlagsType:       action.FlagsType,
-			ResponseType:    action.ResponseType,
-		}, entity.ValidArgs, "action", "", scope, action.Name, "id", false, false, action.OptionalID, action.ToolHints)
+			Verb:              action.Name,
+			Method:            action.Method,
+			DataFunc:          action.DataFunc,
+			ContextDataFunc:   action.ContextDataFunc,
+			LookupFunc:        action.LookupFunc,
+			ContextLookupFunc: action.ContextLookupFunc,
+			BindCompletions:   action.BindCompletions,
+			FlagsType:         action.FlagsType,
+			ResponseType:      action.ResponseType,
+		}, entity.ValidArgs, "action", "", scope, action.Name, "id", action.LookupFunc != nil || action.ContextLookupFunc != nil, false, action.OptionalID, action.ToolHints)
 	}
 
 	for _, ba := range entity.BulkActions {
@@ -1354,12 +1472,21 @@ func generateIDCommand(
 	if hasFlags {
 		bindTypeFlags(cmd, op.FlagsType)
 	}
+	if op.BindCompletions != nil {
+		op.BindCompletions(cmd)
+	}
 	if method == "" {
 		method = op.Method
 	}
 	annotateEntityOperationCommand(cmd, parent, metaVerb, method, scope, actionName, idParam, supportsLookup, supportsFilterMode, optionalID, toolHints)
 	parent.AddCommand(cmd)
 	storeEntityDataFuncs(cmd, op)
+	if op.LookupFunc != nil {
+		lookupFuncRegistry.Store(cmd, op.LookupFunc)
+	}
+	if op.ContextLookupFunc != nil {
+		contextLookupFuncRegistry.Store(cmd, op.ContextLookupFunc)
+	}
 	SetCommandResponseMeta(cmd, ResponseOpenAPIMeta{
 		Type:     op.ResponseType,
 		Array:    op.ResponseArray,
@@ -1450,25 +1577,36 @@ func generateBodyCommand(parent *cobra.Command, verb, short string, op EntityOpe
 }
 
 func generateBulkActionCommand(parent *cobra.Command, ba BulkActionInfo) {
-	execute := func(flagMap map[string]string, args []string) (any, error) {
-		if ba.FilterFunc != nil && flagMap["filter"] != "" {
-			return ba.FilterFunc(flagMap, args)
+	execute := func(ctx context.Context, flagMap map[string]string, args []string) (any, error) {
+		if flagMap["filter"] != "" {
+			if ba.ContextFilterFunc != nil {
+				return ba.ContextFilterFunc(ctx, flagMap, args)
+			}
+			if ba.FilterFunc != nil {
+				return ba.FilterFunc(flagMap, args)
+			}
+		}
+		if ba.ContextDataFunc != nil {
+			return ba.ContextDataFunc(ctx, flagMap, args)
 		}
 		return ba.DataFunc(flagMap, args)
 	}
 
 	cmd := &cobra.Command{
-		Use:   fmt.Sprintf("%s <id> [id...]", ba.Name),
+		Use:   fmt.Sprintf("%s [id...]", ba.Name),
 		Short: ba.Short,
-		Args:  cobra.MinimumNArgs(1),
+		Args:  cobra.ArbitraryArgs,
 		RunE: func(c *cobra.Command, args []string) error {
 			flagMap := make(map[string]string)
 			c.Flags().Visit(func(f *pflag.Flag) {
 				flagMap[f.Name] = flagMapValue(f)
 			})
+			if len(args) == 0 && flagMap["filter"] == "" {
+				return fmt.Errorf("bulk action %q requires one or more ids or --filter", ba.Name)
+			}
 
 			// Use filter mode if --filter flag is set and FilterFunc exists
-			result, err := execute(flagMap, args)
+			result, err := execute(c.Context(), flagMap, args)
 			if err != nil {
 				return err
 			}
@@ -1479,16 +1617,27 @@ func generateBulkActionCommand(parent *cobra.Command, ba BulkActionInfo) {
 		},
 	}
 
-	if ba.FilterFunc != nil {
+	if ba.FilterFunc != nil || ba.ContextFilterFunc != nil {
 		bindTypeFlags(cmd, ba.ListType)
 		if ba.BindCompletions != nil {
 			ba.BindCompletions(cmd)
 		}
 	}
+	// The action's own parameters bind after the selection flags, skipping any
+	// name the ListOpts already claimed: pflag panics on a redefined flag, and a
+	// selector and an operation can legitimately both want e.g. `--status`. The
+	// selector wins because it is the one the entity declared.
+	bindTypeFlagsSkippingExisting(cmd, ba.FlagsType)
 
-	annotateEntityOperationCommand(cmd, parent, "action", "", "collection", ba.Name, "id", ba.LookupFunc != nil, ba.FilterFunc != nil, false, MCPToolHints{})
+	annotateEntityOperationCommand(cmd, parent, "action", "", "collection", ba.Name, "", ba.LookupFunc != nil, ba.FilterFunc != nil || ba.ContextFilterFunc != nil, false, ba.ToolHints)
 	parent.AddCommand(cmd)
-	dataFuncRegistry.Store(cmd, execute)
+	if ba.ContextDataFunc != nil || ba.ContextFilterFunc != nil {
+		contextDataFuncRegistry.Store(cmd, ContextDataFunc(execute))
+	} else {
+		dataFuncRegistry.Store(cmd, func(flagMap map[string]string, args []string) (any, error) {
+			return execute(context.Background(), flagMap, args)
+		})
+	}
 	SetCommandResponseMeta(cmd, ResponseOpenAPIMeta{Type: ba.ResponseType})
 	if ba.LookupFunc != nil {
 		lookupFuncRegistry.Store(cmd, ba.LookupFunc)
@@ -1506,7 +1655,29 @@ func bindTypeFlags(cmd *cobra.Command, t reflect.Type) {
 	}
 }
 
+// bindTypeFlagsSkippingExisting is bindTypeFlags for a second struct bound onto
+// the same command, dropping fields whose flag name is already registered.
+// pflag panics rather than reports on a redefinition, so a bulk action whose
+// parameters happen to overlap its entity's filters would take the process down
+// at startup instead of at the call site that could fix it.
+func bindTypeFlagsSkippingExisting(cmd *cobra.Command, t reflect.Type) {
+	if t == nil {
+		return
+	}
+	fieldInfos, _ := flags.ParseStructFields(t)
+	for _, info := range fieldInfos {
+		if info.FlagName != "" && cmd.Flags().Lookup(info.FlagName) != nil {
+			continue
+		}
+		flags.BindFlag(cmd, info)
+	}
+}
+
 func buildFilterCompletionBinder[T any](filters []Filter[T]) func(cmd *cobra.Command) {
+	return buildFilterCompletionBinderWithOptions(filters, nil)
+}
+
+func buildFilterCompletionBinderWithOptions[T any](filters []Filter[T], prepare func(context.Context, []string, *T)) func(cmd *cobra.Command) {
 	if len(filters) == 0 {
 		return nil
 	}
@@ -1530,8 +1701,14 @@ func buildFilterCompletionBinder[T any](filters []Filter[T]) func(cmd *cobra.Com
 					flagMap[f.Name] = flagMapValue(f)
 				})
 
-				opts, err := resolveEntityOpts[T](flagMap, filters)
+				opts, err := buildOpts[T](flagMap)
 				if err != nil {
+					return nil, cobra.ShellCompDirectiveError
+				}
+				if prepare != nil {
+					prepare(cmd.Context(), args, &opts)
+				}
+				if _, err := applyEntityFilters(&opts, filters); err != nil {
 					return nil, cobra.ShellCompDirectiveError
 				}
 
@@ -1569,6 +1746,17 @@ func sanitizeCompletionDescription(value string) string {
 	value = strings.ReplaceAll(value, "\t", " ")
 	value = strings.ReplaceAll(value, "\n", " ")
 	return value
+}
+
+// BuildOpts creates an instance of T and populates it from a flag map, using
+// the same `flag:`/`default:` tags the CLI binding reads.
+//
+// It is exported as the companion to WithFlags: an action that declares typed
+// parameters is handed the raw map, and decoding it by hand would mean
+// repeating every flag name the struct already declares — which is exactly the
+// drift the typed flags exist to prevent.
+func BuildOpts[T any](flagMap map[string]string) (T, error) {
+	return buildOpts[T](flagMap)
 }
 
 // buildOpts creates an instance of T and populates it from a flag map.
@@ -1796,6 +1984,17 @@ func resolveLookup[T any](
 	if err != nil {
 		return nil, err
 	}
+	return resolveLookupOptions(ctx, filters, lookupMetadata, opts, searchKey, searchQuery)
+}
+
+func resolveLookupOptions[T any](
+	ctx context.Context,
+	filters []Filter[T],
+	lookupMetadata map[string]entityLookupMetadata,
+	opts T,
+	searchKey string,
+	searchQuery string,
+) (any, error) {
 
 	selected, err := applyEntityFilters(&opts, filters)
 	if err != nil {
