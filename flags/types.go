@@ -42,6 +42,11 @@ type FieldInfo struct {
 	Hidden       bool
 	IsStdin      bool
 	IsArgs       bool
+	// Enum is the field's closed set of accepted values, from an
+	// `enum:"a,b,c"` tag. It travels into the OpenAPI parameter and the
+	// published action schema, so a front end renders the real choices instead
+	// of hardcoding a list that drifts from the server's.
+	Enum []string
 }
 
 // durationValue implements pflag.Value for duration.Duration
