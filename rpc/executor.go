@@ -9,6 +9,7 @@ import (
 	"io"
 	"mime"
 	"net/http"
+	"net/url"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -158,9 +159,23 @@ func (e *CommandExecutor) findLookupOperationForMethod(method, path string) *RPC
 // matchTemplatePath checks if a concrete path matches a templated path pattern.
 // e.g., "/api/v1/policy/{id}" matches "/api/v1/policy/12345"
 // e.g., "/api/v1/policy/{id}/recalculate" matches "/api/v1/policy/12345/recalculate"
+// The ServeMux special forms are honored in the final segment: "{name...}"
+// captures one or more remaining segments and "{$}" matches only the exact
+// path ending in "/".
 func matchTemplatePath(template, concrete string) bool {
 	tParts := strings.Split(strings.Trim(template, "/"), "/")
 	cParts := strings.Split(strings.Trim(concrete, "/"), "/")
+	last := len(tParts) - 1
+	switch {
+	case strings.HasPrefix(tParts[last], "{") && strings.HasSuffix(tParts[last], "...}"):
+		return len(cParts) >= len(tParts) && templateSegmentsMatch(tParts[:last], cParts[:last])
+	case tParts[last] == "{$}":
+		return strings.HasSuffix(concrete, "/") && templateSegmentsMatch(tParts[:last], cParts)
+	}
+	return templateSegmentsMatch(tParts, cParts)
+}
+
+func templateSegmentsMatch(tParts, cParts []string) bool {
 	if len(tParts) != len(cParts) {
 		return false
 	}
@@ -177,7 +192,8 @@ func matchTemplatePath(template, concrete string) bool {
 
 // extractPathParams extracts parameter values from a concrete path using the template.
 // e.g., template="/api/v1/policy/{id}", path="/api/v1/policy/12345" → {"id": "12345"}
-func extractPathParams(template, path string) map[string]string {
+// A final "{name...}" captures the joined remaining segments; "{$}" binds nothing.
+func extractPathParams(template, path string) (map[string]string, error) {
 	result := make(map[string]string)
 	tParts := strings.Split(strings.Trim(template, "/"), "/")
 	pParts := strings.Split(strings.Trim(path, "/"), "/")
@@ -185,12 +201,30 @@ func extractPathParams(template, path string) map[string]string {
 		if i >= len(pParts) {
 			break
 		}
-		if strings.HasPrefix(t, "{") && strings.HasSuffix(t, "}") {
-			name := t[1 : len(t)-1]
-			result[name] = pParts[i]
+		if !strings.HasPrefix(t, "{") || !strings.HasSuffix(t, "}") {
+			continue
 		}
+		name := t[1 : len(t)-1]
+		if name == "$" {
+			continue
+		}
+		if base, multi := strings.CutSuffix(name, "..."); multi {
+			if i == len(tParts)-1 {
+				value, err := url.PathUnescape(strings.Join(pParts[i:], "/"))
+				if err != nil {
+					return nil, fmt.Errorf("decode path parameter %s: %w", base, err)
+				}
+				result[base] = value
+			}
+			break
+		}
+		value, err := url.PathUnescape(pParts[i])
+		if err != nil {
+			return nil, fmt.Errorf("decode path parameter %s: %w", name, err)
+		}
+		result[name] = value
 	}
-	return result
+	return result, nil
 }
 
 // ExtractRequestFromHTTP extracts execution parameters from HTTP request
@@ -217,7 +251,10 @@ func (e *CommandExecutor) ExtractRequestFromHTTP(r *http.Request, op *RPCOperati
 
 	// Extract path parameters from URL using the template.
 	// Path param values may be comma-delimited for bulk operations.
-	pathParams := extractPathParams(op.Path, r.URL.Path)
+	pathParams, err := extractPathParams(op.Path, r.URL.EscapedPath())
+	if err != nil {
+		return nil, err
+	}
 	for _, param := range op.Parameters {
 		if param.In == "path" {
 			if value, ok := pathParams[param.Name]; ok {

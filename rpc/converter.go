@@ -403,6 +403,7 @@ func (c *Converter) generateRESTPath(cmd *cobra.Command, cmdPath string) string 
 	// e.g., "policy bulk-suspend <id> [id...]" -> "/api/v1/policy/{id}/bulk-suspend"
 
 	parts := strings.Split(cmdPath, " ")
+	operationMeta := clicky.GetCommandOpenAPIMeta(cmd)
 
 	// Build path with prefix
 	pathParts := []string{c.config.PathPrefix}
@@ -410,7 +411,7 @@ func (c *Converter) generateRESTPath(cmd *cobra.Command, cmdPath string) string 
 	for i, part := range parts {
 		// Skip the last part if it's a CRUD operation
 		if i == len(parts)-1 {
-			if isCRUDOperation(part) {
+			if isCRUDOperation(part) && (operationMeta == nil || !operationMeta.SupportsFilterMode) {
 				partLower := strings.ToLower(part)
 				// get/delete/inspect always take an {id} path parameter
 				if partLower == "get" || partLower == "delete" || partLower == "inspect" {
@@ -425,7 +426,7 @@ func (c *Converter) generateRESTPath(cmd *cobra.Command, cmdPath string) string 
 		}
 
 		// Use resource names as-is without pluralization
-		if i < len(parts)-1 || !isCRUDOperation(part) {
+		if i < len(parts)-1 || !isCRUDOperation(part) || (operationMeta != nil && operationMeta.SupportsFilterMode) {
 			pathParts = append(pathParts, part)
 		}
 	}
@@ -442,7 +443,7 @@ func (c *Converter) generateRESTPath(cmd *cobra.Command, cmdPath string) string 
 	// inserting an {id} segment would make the no-id REST call (which the
 	// frontend issues) fall through to the entity's get-by-id route. Keep the
 	// flat /entity/action path for those.
-	if meta := clicky.GetCommandOpenAPIMeta(cmd); meta != nil && meta.OptionalID {
+	if operationMeta != nil && operationMeta.OptionalID {
 		return strings.Join(pathParts, "/")
 	}
 	// A multi-operand action (e.g. `diff <a> <b>`) compares two instances and

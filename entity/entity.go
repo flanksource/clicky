@@ -1577,6 +1577,7 @@ func generateBodyCommand(parent *cobra.Command, verb, short string, op EntityOpe
 }
 
 func generateBulkActionCommand(parent *cobra.Command, ba BulkActionInfo) {
+	supportsFilterMode := ba.FilterFunc != nil || ba.ContextFilterFunc != nil
 	execute := func(ctx context.Context, flagMap map[string]string, args []string) (any, error) {
 		if flagMap["filter"] != "" {
 			if ba.ContextFilterFunc != nil {
@@ -1592,10 +1593,18 @@ func generateBulkActionCommand(parent *cobra.Command, ba BulkActionInfo) {
 		return ba.DataFunc(flagMap, args)
 	}
 
+	use := fmt.Sprintf("%s <id> [id...]", ba.Name)
+	args := cobra.PositionalArgs(cobra.MinimumNArgs(1))
+	idParam := "id"
+	if supportsFilterMode {
+		use = fmt.Sprintf("%s [id...]", ba.Name)
+		args = cobra.ArbitraryArgs
+		idParam = ""
+	}
 	cmd := &cobra.Command{
-		Use:   fmt.Sprintf("%s [id...]", ba.Name),
+		Use:   use,
 		Short: ba.Short,
-		Args:  cobra.ArbitraryArgs,
+		Args:  args,
 		RunE: func(c *cobra.Command, args []string) error {
 			flagMap := make(map[string]string)
 			c.Flags().Visit(func(f *pflag.Flag) {
@@ -1617,7 +1626,7 @@ func generateBulkActionCommand(parent *cobra.Command, ba BulkActionInfo) {
 		},
 	}
 
-	if ba.FilterFunc != nil || ba.ContextFilterFunc != nil {
+	if supportsFilterMode {
 		bindTypeFlags(cmd, ba.ListType)
 		if ba.BindCompletions != nil {
 			ba.BindCompletions(cmd)
@@ -1629,7 +1638,7 @@ func generateBulkActionCommand(parent *cobra.Command, ba BulkActionInfo) {
 	// selector wins because it is the one the entity declared.
 	bindTypeFlagsSkippingExisting(cmd, ba.FlagsType)
 
-	annotateEntityOperationCommand(cmd, parent, "action", "", "collection", ba.Name, "", ba.LookupFunc != nil, ba.FilterFunc != nil || ba.ContextFilterFunc != nil, false, ba.ToolHints)
+	annotateEntityOperationCommand(cmd, parent, "action", "", "collection", ba.Name, idParam, ba.LookupFunc != nil, supportsFilterMode, false, ba.ToolHints)
 	parent.AddCommand(cmd)
 	if ba.ContextDataFunc != nil || ba.ContextFilterFunc != nil {
 		contextDataFuncRegistry.Store(cmd, ContextDataFunc(execute))

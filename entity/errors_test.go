@@ -37,8 +37,8 @@ var _ = Describe("StatusError", func() {
 			Expect(json.Unmarshal(w.Body.Bytes(), &body)).To(Succeed())
 			Expect(body.Code).To(Equal(code))
 			Expect(body.Message).To(Equal(message))
-			Expect(body.Trace).To(MatchRegexp(`^[0-9a-f]{32}$`))
-			Expect(w.Header().Get(ErrorTraceHeader)).To(Equal(body.Trace))
+			Expect(body.Trace).To(BeEmpty())
+			Expect(w.Header().Get(ErrorTraceHeader)).To(BeEmpty())
 		},
 		Entry("a stale cursor", http.StatusBadRequest, "cursor_stale", "the cursor no longer resolves"),
 		Entry("an unknown profile", http.StatusNotFound, "profile_not_found", `profile "invoices" not found`),
@@ -110,10 +110,9 @@ var _ = Describe("StatusError", func() {
 		GinkgoT().Setenv(HideErrorsEnv, "true")
 
 		w := httptest.NewRecorder()
-		// The package-level writer, not a configured server: a deployment that
-		// sets the variable expects every unclassified failure to go opaque, and
-		// this is the path the ones with no ServeConfig behind them take.
-		WriteError(w, errors.New("dial tcp 10.0.0.7:5432: connection refused"))
+		NewErrorWriter(ErrorOptions{}).Write(
+			context.Background(), w, errors.New("dial tcp 10.0.0.7:5432: connection refused"),
+		)
 
 		var body ErrorResponse
 		Expect(json.Unmarshal(w.Body.Bytes(), &body)).To(Succeed())
@@ -124,7 +123,9 @@ var _ = Describe("StatusError", func() {
 
 	It("reports unclassified details when HIDE_ERRORS is unset", func() {
 		w := httptest.NewRecorder()
-		WriteError(w, errors.New("dial tcp 10.0.0.7:5432: connection refused"))
+		NewErrorWriter(ErrorOptions{}).Write(
+			context.Background(), w, errors.New("dial tcp 10.0.0.7:5432: connection refused"),
+		)
 
 		var body ErrorResponse
 		Expect(json.Unmarshal(w.Body.Bytes(), &body)).To(Succeed())
@@ -291,6 +292,7 @@ var _ = Describe("StatusError", func() {
 		}
 		withoutStack := response
 		withoutStack.Stacktrace = ""
+		withoutStack.Truncated = true
 		capBody, err := json.Marshal(withoutStack)
 		Expect(err).ToNot(HaveOccurred())
 
