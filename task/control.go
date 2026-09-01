@@ -27,11 +27,42 @@ type StdinController interface {
 	WriteStdin([]byte) error
 }
 
+type groupStopController struct {
+	group *Group
+}
+
+func (c *groupStopController) Actions() []ControlAction {
+	switch c.group.Status() {
+	case StatusPending, StatusRunning:
+		return []ControlAction{ControlStop}
+	default:
+		return nil
+	}
+}
+
+func (c *groupStopController) Control(_ context.Context, action ControlAction) error {
+	if action != ControlStop || !actionAllowed(c.Actions(), action) {
+		return fmt.Errorf("run %q does not support %q", c.group.ID(), action)
+	}
+	c.group.Cancel()
+	return nil
+}
+
 func controllerActions(controller TaskController) []ControlAction {
 	if controller == nil {
 		return nil
 	}
 	return controller.Actions()
+}
+
+func controllerForGroup(group *Group) TaskController {
+	group.mu.RLock()
+	controller := group.controller
+	group.mu.RUnlock()
+	if controller != nil {
+		return controller
+	}
+	return &groupStopController{group: group}
 }
 
 func actionAllowed(actions []ControlAction, action ControlAction) bool {
@@ -63,9 +94,7 @@ func ControlRun(ctx context.Context, id string, action ControlAction) error {
 	if group == nil {
 		return fmt.Errorf("run %q not found", id)
 	}
-	group.mu.RLock()
-	controller := group.controller
-	group.mu.RUnlock()
+	controller := controllerForGroup(group)
 	if controller == nil || !actionAllowed(controller.Actions(), action) {
 		return fmt.Errorf("run %q does not support %q", id, action)
 	}

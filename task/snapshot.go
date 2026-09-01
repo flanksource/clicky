@@ -136,10 +136,7 @@ func SnapshotGroup(g *Group) TaskSnapshot {
 		Owner:   md.Owner,
 		Href:    md.Href,
 	}
-	g.mu.RLock()
-	controller := g.controller
-	g.mu.RUnlock()
-	snap.Controls = controllerActions(controller)
+	snap.Controls = controllerActions(controllerForGroup(g))
 	snap.Details = g.snapshotDetails()
 	if started := g.StartedAt(); !started.IsZero() {
 		snap.StartedAt = started.UTC().Format(time.RFC3339Nano)
