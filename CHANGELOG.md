@@ -5,6 +5,57 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.21.59](https://github.com/flanksource/clicky/compare/v1.21.58...v1.21.59) (2026-09-02)
+
+
+### ⚠ BREAKING CHANGES
+
+* **aichat:** CobraToolProviderOptions.Permission callback is removed and
+replaced with Policy and Strategies fields. ToolSet() now requires a non-nil
+context to scope request values.
+* **entity:** Remove automatic verb-based tool safety inference. Entity verbs (list/get/create/update/delete) no longer stamp ReadOnlyHint/DestructiveHint; consumers must supply explicit MCPToolHints for safety semantics.
+
+### ♻️ Code Refactoring
+
+* **aichat:** Move permissions to captain, carry whole operations ([e141c35](https://github.com/flanksource/clicky/commit/e141c356d1794851b9a4bf9f50c79c16fe8eda11))
+* **markdown:** split markdown rendering into focused modules ([7167cad](https://github.com/flanksource/clicky/commit/7167cad5b2341fdf25d7212f2abe1ff66fb34220))
+
+
+### ⚡ Performance Improvements
+
+* **task:** cache completed external run snapshots ([3e8ed60](https://github.com/flanksource/clicky/commit/3e8ed609852a4554a4d01b59d9344dbcc19477ff))
+
+
+### ✅ Tests
+
+* **cmd:** locate the example fixture without runtime.Caller ([2088167](https://github.com/flanksource/clicky/commit/2088167c7493aaa16fc4bd23fc18338e762944ff))
+
+
+### ✨ Features
+
+* **api:** add markdown dialect support with options propagation ([873c858](https://github.com/flanksource/clicky/commit/873c85815a8a7d70194240bce5d32b537059331b))
+* **api:** Add structured error responses with OpenTelemetry tracing ([afef807](https://github.com/flanksource/clicky/commit/afef8076a19893a2d30f9c246e94809a29129445))
+* **entity:** Add comprehensive error responses and action lookup support ([a0ab0a1](https://github.com/flanksource/clicky/commit/a0ab0a1759cba2a77418cc2ad928c0eb7495aa93))
+* **flags:** add enum tag support for closed-set flag values ([e4d0cc8](https://github.com/flanksource/clicky/commit/e4d0cc8ae1e64a8b41159ec36ec62f3c7a819834))
+* **task:** Add stop control to task groups without explicit controllers ([59c3e20](https://github.com/flanksource/clicky/commit/59c3e2048913b2411e8250f821c7ce0027cb3d27))
+
+
+### 🐛 Bug Fixes
+
+* **mcp:** honor XDG_CONFIG_HOME when locating the server registry ([ed69784](https://github.com/flanksource/clicky/commit/ed69784c7c81f7ff48cb0dfeac993044b98db1bf))
+* **rpc:** keep a classified error's status on the legacy surface ([43aea34](https://github.com/flanksource/clicky/commit/43aea340cbeefe4d78635cefd138d70d6b147f74))
+
+
+### 📦 Build System
+
+* **aichat:** pin captain v0.0.53 for the tool-strategy API ([0987235](https://github.com/flanksource/clicky/commit/0987235e11e69cb14589661d853cd40567dca3b6))
+* **examples:** refresh the entity demo's module pins ([fef09a2](https://github.com/flanksource/clicky/commit/fef09a2f785b7a7eba15db142780780d56622404))
+
+
+### 🔧 Maintenance
+
+* **release:** pin sub-modules to v1.21.58 [skip ci] ([03124e1](https://github.com/flanksource/clicky/commit/03124e1e3b1d7a56848a2c9d5d14c8e3362960eb))
+
 ## [1.21.58](https://github.com/flanksource/clicky/compare/v1.21.57...v1.21.58) (2026-09-02)
 
 
