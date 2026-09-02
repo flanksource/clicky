@@ -2,6 +2,7 @@ package rpc
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -39,9 +40,22 @@ func (s *SwaggerServer) executeOperation(r *http.Request, operation *RPCOperatio
 
 	data, metadata, err := s.executor.ExecuteCommand(operation, request)
 	if err != nil {
-		return data, metadata, http.StatusInternalServerError, err
+		return data, metadata, statusForError(err), err
 	}
 	return data, metadata, http.StatusOK, nil
+}
+
+// statusForError honors the status an error classified itself with. A handler
+// that rejected a malformed request with entity.NewStatusError(400, …) said 400,
+// and that is a fact about the request rather than about which error format the
+// server serves — the legacy envelope carries it in the status line just as the
+// structured one does. Only an unclassified failure is the server's own 500.
+func statusForError(err error) int {
+	var status *entity.StatusError
+	if errors.As(err, &status) {
+		return status.StatusCode()
+	}
+	return http.StatusInternalServerError
 }
 
 func (s *SwaggerServer) handleExecuteCommand(w http.ResponseWriter, r *http.Request) {
@@ -73,8 +87,10 @@ func (s *SwaggerServer) handleExecuteCommand(w http.ResponseWriter, r *http.Requ
 		}
 		if !hasLookup(operation) {
 			if s.structuredErrorResponses() {
-				s.writeStatusError(w, r, http.StatusNotFound, "lookup_not_found",
-					fmt.Errorf("No lookup found for %s %s", r.Method, r.URL.Path))
+				// The message is the legacy one verbatim, capital and all: the
+				// envelope changes the shape a client parses, not the sentence.
+				s.writeError(w, r, entity.NewStatusErrorf(http.StatusNotFound, "lookup_not_found",
+					"No lookup found for %s %s", r.Method, r.URL.Path))
 			} else {
 				http.Error(w, fmt.Sprintf("No lookup found for %s %s", r.Method, r.URL.Path), http.StatusNotFound)
 			}
@@ -85,8 +101,8 @@ func (s *SwaggerServer) handleExecuteCommand(w http.ResponseWriter, r *http.Requ
 	}
 	if operation == nil {
 		if s.structuredErrorResponses() {
-			s.writeStatusError(w, r, http.StatusNotFound, "operation_not_found",
-				fmt.Errorf("No operation found for %s %s", r.Method, r.URL.Path))
+			s.writeError(w, r, entity.NewStatusErrorf(http.StatusNotFound, "operation_not_found",
+				"No operation found for %s %s", r.Method, r.URL.Path))
 		} else {
 			http.Error(w, fmt.Sprintf("No operation found for %s %s", r.Method, r.URL.Path), http.StatusNotFound)
 		}
