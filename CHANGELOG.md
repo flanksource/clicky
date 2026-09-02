@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.21.58](https://github.com/flanksource/clicky/compare/v1.21.57...v1.21.58) (2026-09-02)
+
+
+### ✨ Features
+
+* **api:** add opt-in structured RPC error responses ([56c665d](https://github.com/flanksource/clicky/commit/56c665d2b7e3573b5260f84fbb82b744978aab2e))
+
+
+### 🔧 Maintenance
+
+* **release:** pin sub-modules to v1.21.57 [skip ci] ([d264e03](https://github.com/flanksource/clicky/commit/d264e03b75a10f1238bb480711a93d1f17406a29))
+
 ## [1.21.57](https://github.com/flanksource/clicky/compare/v1.21.56...v1.21.57) (2026-08-23)
 
 
