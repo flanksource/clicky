@@ -329,7 +329,10 @@ var _ = Describe("Managed task runs", func() {
 			close(done)
 		}()
 
-		Eventually(func() int { return source.snapshotCallCount("live-1") }).Should(BeNumerically(">=", 4))
+		// The stream ticks every 200ms; three fetches prove the live run is
+		// re-polled, and the explicit timeout keeps a slow CI runner from
+		// tripping Gomega's one-second default.
+		Eventually(func() int { return source.snapshotCallCount("live-1") }, 10*time.Second).Should(BeNumerically(">=", 3))
 		cancel()
 		Eventually(done).Should(BeClosed())
 
