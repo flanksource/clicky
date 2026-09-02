@@ -36,15 +36,17 @@ type ExecutorConfig struct {
 
 // ServeConfig holds configuration for the OpenAPI serve command
 type ServeConfig struct {
-	Host        string
-	Port        int
-	Title       string
-	Description string
-	Version     string
-	AutoRefresh bool
-	Open        bool
-	SkipHealth  bool            // Skip registering /health (caller provides their own)
-	Executor    *ExecutorConfig // Optional command execution configuration
+	Host                     string
+	Port                     int
+	Title                    string
+	Description              string
+	Version                  string
+	AutoRefresh              bool
+	Open                     bool
+	SkipHealth               bool            // Skip registering /health (caller provides their own)
+	StructuredErrorResponses bool            // Return traceable ErrorResponse envelopes instead of legacy error formats
+	HideErrorDetails         bool            // Hide unclassified details in structured error responses
+	Executor                 *ExecutorConfig // Optional command execution configuration
 }
 
 // SwaggerServer serves API reference documentation for the OpenAPI specification.
@@ -55,6 +57,7 @@ type SwaggerServer struct {
 	converterCfg *Config // Converter config used to build executor routes; reused when (re)generating the spec.
 	server       *http.Server
 	executor     *CommandExecutor // Optional command executor
+	errorWriter  *entity.ErrorWriter
 
 	// The spec is a pure function of rootCmd and converterCfg, both fixed at
 	// construction, so each rendering is generated at most once and reused. A
@@ -97,12 +100,16 @@ type TemplateData struct {
 
 // NewSwaggerServer creates a new OpenAPI documentation server
 func NewSwaggerServer(config *ServeConfig, rootCmd *cobra.Command, openAPIConfig *OpenAPIConfig) *SwaggerServer {
-	generator := NewOpenAPIGenerator(openAPIConfig)
+	baseGenerator := NewOpenAPIGenerator(openAPIConfig)
+	resolvedOpenAPIConfig := *baseGenerator.config
+	resolvedOpenAPIConfig.StructuredErrorResponses = config.StructuredErrorResponses
+	generator := NewOpenAPIGenerator(&resolvedOpenAPIConfig)
 
 	server := &SwaggerServer{
-		config:    config,
-		rootCmd:   rootCmd,
-		generator: generator,
+		config:      config,
+		rootCmd:     rootCmd,
+		generator:   generator,
+		errorWriter: entity.NewErrorWriter(entity.ErrorOptions{HideDetails: config.HideErrorDetails}),
 	}
 
 	// Initialize executor if enabled. Honor ExecutorConfig.PathPrefix so the
@@ -141,11 +148,11 @@ func (s *SwaggerServer) Executor() *CommandExecutor {
 // RegisterRoutes registers all API routes onto the provided mux.
 // This allows callers to compose the SwaggerServer routes with other handlers.
 func (s *SwaggerServer) RegisterRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("/api/openapi.json", s.handleOpenAPIJSON)
-	mux.HandleFunc("/api/openapi.yaml", s.handleOpenAPIYAML)
-	mux.HandleFunc("/api/entities", s.handleEntities)
+	mux.Handle("/api/openapi.json", s.tracedHandler("GET /api/openapi.json", http.HandlerFunc(s.handleOpenAPIJSON)))
+	mux.Handle("/api/openapi.yaml", s.tracedHandler("GET /api/openapi.yaml", http.HandlerFunc(s.handleOpenAPIYAML)))
+	mux.Handle("/api/entities", s.tracedHandler("GET /api/entities", http.HandlerFunc(s.handleEntities)))
 	if !s.config.SkipHealth {
-		mux.HandleFunc("/health", s.handleHealth)
+		mux.Handle("/health", s.tracedHandler("GET /health", http.HandlerFunc(s.handleHealth)))
 	}
 
 	if s.executor != nil {
@@ -157,24 +164,24 @@ func (s *SwaggerServer) RegisterRoutes(mux *http.ServeMux) {
 // that compose their own mux (and want to wrap or override this endpoint)
 // can re-mount it without going through RegisterRoutes.
 func (s *SwaggerServer) HandleOpenAPIJSON(w http.ResponseWriter, r *http.Request) {
-	s.handleOpenAPIJSON(w, r)
+	s.tracedHandler("GET /api/openapi.json", http.HandlerFunc(s.handleOpenAPIJSON)).ServeHTTP(w, r)
 }
 
 // HandleOpenAPIYAML serves the OpenAPI 3 spec as YAML. See HandleOpenAPIJSON.
 func (s *SwaggerServer) HandleOpenAPIYAML(w http.ResponseWriter, r *http.Request) {
-	s.handleOpenAPIYAML(w, r)
+	s.tracedHandler("GET /api/openapi.yaml", http.HandlerFunc(s.handleOpenAPIYAML)).ServeHTTP(w, r)
 }
 
 // HandleEntities serves the entity metadata endpoint. Exported so callers
 // composing their own mux can register it independently of RegisterRoutes.
 func (s *SwaggerServer) HandleEntities(w http.ResponseWriter, r *http.Request) {
-	s.handleEntities(w, r)
+	s.tracedHandler("GET /api/entities", http.HandlerFunc(s.handleEntities)).ServeHTTP(w, r)
 }
 
 // HandleHealth serves the liveness probe. Exported for the same reason as
 // HandleEntities.
 func (s *SwaggerServer) HandleHealth(w http.ResponseWriter, r *http.Request) {
-	s.handleHealth(w, r)
+	s.tracedHandler("GET /health", http.HandlerFunc(s.handleHealth)).ServeHTTP(w, r)
 }
 
 // ConverterConfig returns the converter Config used to build the executor's
@@ -410,7 +417,11 @@ func (s *SwaggerServer) serveSpec(w http.ResponseWriter, r *http.Request, format
 
 	doc, err := s.specDocument(r, format)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		if s.structuredErrorResponses() {
+			s.writeError(w, r, err)
+		} else {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
 		return
 	}
 
@@ -530,9 +541,10 @@ generated dynamically and reflects the current state of the CLI commands.`,
 
 			// Create OpenAPI config from serve config and defaults
 			openAPIConfig := &OpenAPIConfig{
-				Title:       serveConfig.Title,
-				Description: serveConfig.Description,
-				Version:     serveConfig.Version,
+				Title:                    serveConfig.Title,
+				Description:              serveConfig.Description,
+				Version:                  serveConfig.Version,
+				StructuredErrorResponses: serveConfig.StructuredErrorResponses,
 			}
 
 			// Apply defaults if provided
@@ -565,6 +577,8 @@ generated dynamically and reflects the current state of the CLI commands.`,
 	cmd.Flags().StringVar(&serveConfig.Version, "version", serveConfig.Version, "API version")
 	cmd.Flags().BoolVar(&serveConfig.AutoRefresh, "auto-refresh", serveConfig.AutoRefresh, "Enable auto-refresh of documentation")
 	cmd.Flags().BoolVar(&serveConfig.Open, "open", serveConfig.Open, "Automatically open browser")
+	cmd.Flags().BoolVar(&serveConfig.StructuredErrorResponses, "structured-errors", serveConfig.StructuredErrorResponses, "Return traceable structured API error responses")
+	cmd.Flags().BoolVar(&serveConfig.HideErrorDetails, "hide-error-details", serveConfig.HideErrorDetails, "Hide unclassified details in structured API error responses")
 
 	// Add executor flags
 	var enableExecutor bool
@@ -633,7 +647,7 @@ func (s *SwaggerServer) registerExecutionRoutes(mux *http.ServeMux) {
 		}
 
 		registered[dedupeKey] = opName
-		mux.HandleFunc(pattern, s.handleExecuteCommand)
+		mux.Handle(pattern, s.tracedHandler(pattern, http.HandlerFunc(s.handleExecuteCommand)))
 		routeCount++
 		return true
 	}
@@ -813,7 +827,12 @@ func (s *SwaggerServer) handleExecuteCommand(w http.ResponseWriter, r *http.Requ
 			op = s.executor.FindLookupOperation(r.Method, r.URL.Path)
 		}
 		if !hasLookup(op) {
-			http.Error(w, fmt.Sprintf("No lookup found for %s %s", r.Method, r.URL.Path), http.StatusNotFound)
+			if s.structuredErrorResponses() {
+				s.writeStatusError(w, r, http.StatusNotFound, "lookup_not_found",
+					fmt.Errorf("No lookup found for %s %s", r.Method, r.URL.Path))
+			} else {
+				http.Error(w, fmt.Sprintf("No lookup found for %s %s", r.Method, r.URL.Path), http.StatusNotFound)
+			}
 			return
 		}
 		s.handleLookupCommand(w, r, op)
@@ -821,12 +840,21 @@ func (s *SwaggerServer) handleExecuteCommand(w http.ResponseWriter, r *http.Requ
 	}
 
 	if op == nil {
-		http.Error(w, fmt.Sprintf("No operation found for %s %s", r.Method, r.URL.Path), http.StatusNotFound)
+		if s.structuredErrorResponses() {
+			s.writeStatusError(w, r, http.StatusNotFound, "operation_not_found",
+				fmt.Errorf("No operation found for %s %s", r.Method, r.URL.Path))
+		} else {
+			http.Error(w, fmt.Sprintf("No operation found for %s %s", r.Method, r.URL.Path), http.StatusNotFound)
+		}
 		return
 	}
 
 	// Execute command and get data + metadata
-	data, metadata, statusCode, _ := s.executeCommandCore(r)
+	data, metadata, statusCode, err := s.executeCommandCore(r)
+	if err != nil && s.structuredErrorResponses() {
+		s.writeOperationError(w, r, statusCode, err)
+		return
+	}
 	s.writeExecutionResult(w, r, data, metadata, statusCode)
 }
 
@@ -877,7 +905,11 @@ func hasLookup(op *RPCOperation) bool {
 func (s *SwaggerServer) handleLookupCommand(w http.ResponseWriter, r *http.Request, op *RPCOperation) {
 	req, err := s.executor.ExtractRequestFromHTTP(r, op)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to extract parameters: %v", err), http.StatusBadRequest)
+		if s.structuredErrorResponses() {
+			s.writeStatusError(w, r, http.StatusBadRequest, "invalid_parameters", fmt.Errorf("extract parameters: %w", err))
+		} else {
+			http.Error(w, fmt.Sprintf("Failed to extract parameters: %v", err), http.StatusBadRequest)
+		}
 		return
 	}
 
@@ -909,7 +941,31 @@ func (s *SwaggerServer) handleLookupCommand(w http.ResponseWriter, r *http.Reque
 		data, err = op.LookupFunc(req.Flags, req.Args)
 	}
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		if s.structuredErrorResponses() {
+			s.writeError(w, r, err)
+		} else {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+		}
+		return
+	}
+	s.writeLookupResponse(w, r, data)
+}
+
+func (s *SwaggerServer) writeLookupResponse(w http.ResponseWriter, r *http.Request, data any) {
+	if s.structuredErrorResponses() {
+		if strings.EqualFold(r.Method, http.MethodHead) {
+			w.Header().Set("Content-Type", "application/json+clicky")
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		body, err := json.Marshal(data)
+		if err != nil {
+			s.writeError(w, r, fmt.Errorf("encode lookup response: %w", err))
+			return
+		}
+		w.Header().Set("Content-Type", "application/json+clicky")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(append(body, '\n'))
 		return
 	}
 
@@ -945,6 +1001,10 @@ func (s *SwaggerServer) writeFormattedResponse(w http.ResponseWriter, r *http.Re
 		Limit:  opts.Limit,
 	}, data)
 	if err != nil {
+		if s.structuredErrorResponses() {
+			s.writeError(w, r, fmt.Errorf("format response: %w", err))
+			return
+		}
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 		w.WriteHeader(http.StatusInternalServerError)
 		fmt.Fprintf(w, "format error: %v", err) //nolint:errcheck
