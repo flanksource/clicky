@@ -22,7 +22,7 @@ require (
 	github.com/google/cel-go v0.31.0
 	github.com/google/uuid v1.6.0
 	github.com/itchyny/gojq v0.12.19
-	github.com/labstack/echo/v4 v4.15.2
+	github.com/labstack/echo/v4 v4.15.3
 	github.com/mark3labs/mcp-go v0.56.0
 	github.com/muesli/termenv v0.16.0
 	github.com/olekukonko/tablewriter v1.1.4
