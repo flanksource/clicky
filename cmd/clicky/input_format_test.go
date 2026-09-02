@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 )
@@ -126,13 +125,18 @@ func executeRoot(t *testing.T, args []string, stdin string) (string, string, err
 	return stdout.String(), stderr.String(), err
 }
 
+// kitchenSinkExamplePath locates the example relative to the package directory,
+// which is where `go test` runs. runtime.Caller would be the obvious way to ask
+// the same question and is the wrong one: under -trimpath it answers with a
+// module-relative path ("github.com/flanksource/clicky/cmd/clicky/..."), and
+// every fixture resolved from it then points at a file that does not exist.
 func kitchenSinkExamplePath(t *testing.T) string {
 	t.Helper()
-	_, currentFile, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("failed to locate command test file")
+	path, err := filepath.Abs(filepath.Join("..", "..", "examples", "kitchen-sink.md"))
+	if err != nil {
+		t.Fatalf("locate the kitchen-sink example: %v", err)
 	}
-	return filepath.Join(filepath.Dir(currentFile), "..", "..", "examples", "kitchen-sink.md")
+	return path
 }
 
 func assertNoInputParserProvenance(t *testing.T, out string) {
