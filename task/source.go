@@ -55,7 +55,12 @@ func mergeRunMetas(live, external []RunMeta) []RunMeta {
 	return merged
 }
 
-func snapshotsWithSource(ctx context.Context, source RunSource, ids ...string) []TaskSnapshot {
+// finishedSnapshots remembers the snapshots of external runs whose group has
+// reached a terminal status. A finished run never changes, so a stream that
+// polls every tick only needs to ask the source for it once.
+type finishedSnapshots map[string][]TaskSnapshot
+
+func snapshotsWithSource(ctx context.Context, source RunSource, finished finishedSnapshots, ids ...string) []TaskSnapshot {
 	live := SnapshotAll(ids...)
 	if source == nil {
 		return live
@@ -79,10 +84,27 @@ func snapshotsWithSource(ctx context.Context, source RunSource, ids ...string) [
 		if _, ok := seen[id]; ok {
 			continue
 		}
-		snapshots, err := source.Snapshot(ctx, id)
-		if err == nil {
+		if snapshots, ok := finished[id]; ok {
 			live = append(live, snapshots...)
+			continue
 		}
+		snapshots, err := source.Snapshot(ctx, id)
+		if err != nil {
+			continue
+		}
+		if len(snapshots) > 0 && finished != nil && !hasUnfinishedGroup(snapshots) {
+			finished[id] = snapshots
+		}
+		live = append(live, snapshots...)
 	}
 	return live
+}
+
+func hasUnfinishedGroup(snapshots []TaskSnapshot) bool {
+	for _, snapshot := range snapshots {
+		if snapshot.Type == "group" && (snapshot.Status == string(StatusRunning) || snapshot.Status == string(StatusPending)) {
+			return true
+		}
+	}
+	return false
 }

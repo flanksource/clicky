@@ -61,13 +61,14 @@ func SSEHandlerWithSource(source RunSource, taskIDs ...string) http.Handler {
 		defer ticker.Stop()
 		lastSnapshots := map[string]string{}
 		lastOutput := map[string]string{}
+		finished := finishedSnapshots{}
 
 		for {
 			select {
 			case <-r.Context().Done():
 				return
 			case <-ticker.C:
-				snapshots := snapshotsWithSource(r.Context(), source, ids...)
+				snapshots := snapshotsWithSource(r.Context(), source, finished, ids...)
 				allDone := true
 				anyEmitted := false
 
