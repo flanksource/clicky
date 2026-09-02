@@ -3,7 +3,7 @@ module github.com/flanksource/clicky/aichat
 go 1.26.1
 
 require (
-	github.com/flanksource/captain v0.0.39-0.20260823092324-30bb58f6ac4a
+	github.com/flanksource/captain v0.0.53
 	github.com/flanksource/clicky v1.21.58
 	github.com/onsi/ginkgo/v2 v2.32.1
 	github.com/onsi/gomega v1.42.1
@@ -120,7 +120,7 @@ require (
 	github.com/fergusstrange/embedded-postgres v1.34.0 // indirect
 	github.com/firebase/genkit/go v1.11.0 // indirect
 	github.com/flanksource/commons v1.57.0 // indirect
-	github.com/flanksource/commons-db v0.1.27 // indirect
+	github.com/flanksource/commons-db v0.1.28 // indirect
 	github.com/flanksource/gomplate/v3 v3.24.89 // indirect
 	github.com/flanksource/is-healthy v1.0.90 // indirect
 	github.com/flanksource/kubectl-neat v1.0.4 // indirect
