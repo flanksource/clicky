@@ -265,13 +265,14 @@ type OpenAPIGenerator struct {
 
 // OpenAPIConfig holds configuration for OpenAPI generation
 type OpenAPIConfig struct {
-	Title       string
-	Description string
-	Version     string
-	Servers     []OpenAPIServer
-	Contact     *OpenAPIContact
-	License     *OpenAPILicense
-	Tags        []OpenAPITag
+	Title                    string
+	Description              string
+	Version                  string
+	Servers                  []OpenAPIServer
+	Contact                  *OpenAPIContact
+	License                  *OpenAPILicense
+	Tags                     []OpenAPITag
+	StructuredErrorResponses bool
 }
 
 // NewOpenAPIGenerator creates a new OpenAPI generator
@@ -438,22 +439,36 @@ func (g *OpenAPIGenerator) convertOperationToOpenAPI(op RPCOperation) OpenAPIOpe
 		},
 	}
 
-	openAPIOp.Responses["400"] = OpenAPIResponse{
-		Description: "Bad Request",
-		Content: map[string]OpenAPIMediaType{
-			"application/json": {
-				Schema: g.executionResponseSchema(),
+	if g.config.StructuredErrorResponses {
+		for status, description := range structuredErrorResponseDescriptions {
+			openAPIOp.Responses[status] = OpenAPIResponse{
+				Description: description,
+				Headers:     structuredErrorResponseHeaders(),
+				Content: map[string]OpenAPIMediaType{
+					"application/json": {
+						Schema: g.structuredErrorResponseSchema(),
+					},
+				},
+			}
+		}
+	} else {
+		openAPIOp.Responses["400"] = OpenAPIResponse{
+			Description: "Bad Request",
+			Content: map[string]OpenAPIMediaType{
+				"application/json": {
+					Schema: g.executionResponseSchema(),
+				},
 			},
-		},
-	}
+		}
 
-	openAPIOp.Responses["500"] = OpenAPIResponse{
-		Description: "Internal Server Error",
-		Content: map[string]OpenAPIMediaType{
-			"application/json": {
-				Schema: g.executionResponseSchema(),
+		openAPIOp.Responses["500"] = OpenAPIResponse{
+			Description: "Internal Server Error",
+			Content: map[string]OpenAPIMediaType{
+				"application/json": {
+					Schema: g.executionResponseSchema(),
+				},
 			},
-		},
+		}
 	}
 
 	return openAPIOp
@@ -547,6 +562,30 @@ func paramRole(param RPCParameter, supportsLookup, isListOp bool) string {
 
 func (g *OpenAPIGenerator) executionResponseSchema() *OpenAPISchema {
 	return g.convertGoTypeToOpenAPI(reflect.TypeOf(ExecutionResponse{}))
+}
+
+func (g *OpenAPIGenerator) structuredErrorResponseSchema() *OpenAPISchema {
+	schema := g.convertGoTypeToOpenAPI(reflect.TypeOf(entity.ErrorResponse{}))
+	schema.Required = []string{"code", "message", "trace"}
+	return schema
+}
+
+var structuredErrorResponseDescriptions = map[string]string{
+	"400": "Bad Request",
+	"404": "Not Found",
+	"405": "Method Not Allowed",
+	"406": "Not Acceptable",
+	"500": "Internal Server Error",
+}
+
+func structuredErrorResponseHeaders() map[string]OpenAPIHeader {
+	return map[string]OpenAPIHeader{
+		entity.ErrorTraceHeader: {
+			Description: "Trace identifier shared by the response body, server log, and request span.",
+			Required:    true,
+			Schema:      &OpenAPISchema{Type: "string"},
+		},
+	}
 }
 
 func (g *OpenAPIGenerator) responseSchemaForOperation(op RPCOperation) *OpenAPISchema {

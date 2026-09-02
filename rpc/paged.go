@@ -8,8 +8,6 @@ package rpc
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -43,21 +41,21 @@ func (s *SwaggerServer) handlePagedCommand(w http.ResponseWriter, r *http.Reques
 
 	pageReq, err := entity.ParsePageRequest(r, entity.PageLimits{})
 	if err != nil {
-		entity.WriteError(w, err)
+		s.writeRPCError(w, r, err)
 		return
 	}
 	flags, err := s.requestFlags(r, op)
 	if err != nil {
-		entity.WriteError(w, err)
+		s.writeRPCError(w, r, err)
 		return
 	}
 	res, err := paged(r.Context(), pageReq, flags)
 	if err != nil {
-		entity.WriteError(w, err)
+		s.writeRPCError(w, r, err)
 		return
 	}
 	if res.Rows == nil {
-		entity.WriteError(w, entity.NewStatusError(http.StatusInternalServerError, "invalid_response",
+		s.writeRPCError(w, r, entity.NewStatusError(http.StatusInternalServerError, "invalid_response",
 			"the operation returned no rows to read"))
 		return
 	}
@@ -67,11 +65,11 @@ func (s *SwaggerServer) handlePagedCommand(w http.ResponseWriter, r *http.Reques
 	// a cursor or a connection that nothing else will release.
 	defer rows.Close() //nolint:errcheck
 	if err := rows.PeekErr(); err != nil {
-		entity.WriteError(w, entity.NewStatusErrorf(http.StatusInternalServerError, "query_failed", "%v", err))
+		s.writeRPCError(w, r, entity.NewStatusErrorf(http.StatusInternalServerError, "query_failed", "%v", err))
 		return
 	}
 	if err := streamableExport(pageReq.Format, res.Ceiling); err != nil {
-		entity.WriteError(w, err)
+		s.writeRPCError(w, r, err)
 		return
 	}
 
@@ -97,11 +95,11 @@ func (s *SwaggerServer) handlePagedCommand(w http.ResponseWriter, r *http.Reques
 	if entity.DeclaresTruncatedTrailer(pageReq, res) {
 		w.Header().Add("Trailer", streamErrorTrailer)
 	}
-	streamExport(w, r, rows, pageReq, res)
+	s.streamExport(w, r, rows, pageReq, res)
 }
 
 // streamExport writes the body and the answers that only reading it produces.
-func streamExport(w http.ResponseWriter, r *http.Request, rows *peekedRows, req entity.PageRequest, res entity.PageResponse) {
+func (s *SwaggerServer) streamExport(w http.ResponseWriter, r *http.Request, rows *peekedRows, req entity.PageRequest, res entity.PageResponse) {
 	trailers := entity.DeclaresTruncatedTrailer(req, res)
 	bounded := &boundedRows{RowIterator: rows, limit: res.Ceiling}
 	var source formatters.RowIterator = rows
@@ -125,7 +123,7 @@ func streamExport(w http.ResponseWriter, r *http.Request, rows *peekedRows, req 
 		// recorded only where it was declared; setting an undeclared trailer would
 		// be dropped on the wire and misread everywhere else as one that was sent.
 		if trailers {
-			w.Header().Set(streamErrorTrailer, err.Error())
+			w.Header().Set(streamErrorTrailer, s.clientErrorMessage(err))
 		}
 		panic(http.ErrAbortHandler)
 	}
@@ -353,15 +351,20 @@ func (s *SwaggerServer) handleDynamicFamily(w http.ResponseWriter, r *http.Reque
 	if !isFamilyReadMethod(r.Method) {
 		entity.SetCORSHeaders(w)
 		w.Header().Set("Allow", strings.Join(familyReadMethods, ", "))
-		entity.NewStatusErrorf(http.StatusMethodNotAllowed, "method_not_allowed",
-			"%s is not supported for %s instances", r.Method, family.Name).Write(w)
+		err := entity.NewStatusErrorf(http.StatusMethodNotAllowed, "method_not_allowed",
+			"%s is not supported for %s instances", r.Method, family.Name)
+		if s.structuredErrorResponses() {
+			s.writeError(w, r, err)
+		} else {
+			err.Write(w)
+		}
 		return
 	}
 
 	spec, err := family.Resolve(r.Context(), name)
 	if err != nil {
 		entity.SetCORSHeaders(w)
-		entity.WriteError(w, err)
+		s.writeRPCError(w, r, err)
 		return
 	}
 	op := familyOperation(family, spec, r.URL.Path)
@@ -377,7 +380,11 @@ func (s *SwaggerServer) handleDynamicFamily(w http.ResponseWriter, r *http.Reque
 		s.handlePagedCommand(w, r, op, paged, instanceName(spec, name))
 		return
 	}
-	data, metadata, statusCode, _ := s.executeOperation(r, op)
+	data, metadata, statusCode, err := s.executeOperation(r, op)
+	if err != nil && s.structuredErrorResponses() {
+		s.writeOperationError(w, r, statusCode, err)
+		return
+	}
 	s.writeExecutionResult(w, r, data, metadata, statusCode)
 }
 
@@ -388,7 +395,7 @@ func (s *SwaggerServer) handleDynamicFamily(w http.ResponseWriter, r *http.Reque
 func (s *SwaggerServer) handleDynamicFamilyLookup(w http.ResponseWriter, r *http.Request, spec entity.DynamicEntitySpec, op *RPCOperation) {
 	flags, err := s.requestFlags(r, op)
 	if err != nil {
-		entity.WriteError(w, err)
+		s.writeRPCError(w, r, err)
 		return
 	}
 	// Forwarded verbatim, as handleLookupCommand does: they are not declared
@@ -402,18 +409,10 @@ func (s *SwaggerServer) handleDynamicFamilyLookup(w http.ResponseWriter, r *http
 
 	data, err := entity.ResolveDynamicLookup(r.Context(), spec, flags)
 	if err != nil {
-		entity.WriteError(w, err)
+		s.writeRPCError(w, r, err)
 		return
 	}
-
-	w.Header().Set("Content-Type", "application/json+clicky")
-	w.WriteHeader(http.StatusOK)
-	if strings.EqualFold(r.Method, http.MethodHead) {
-		return
-	}
-	if err := json.NewEncoder(w).Encode(data); err != nil {
-		http.Error(w, fmt.Sprintf("failed to encode lookup response: %v", err), http.StatusInternalServerError)
-	}
+	s.writeLookupResponse(w, r, data)
 }
 
 // familyOperation adapts a resolved instance to the RPCOperation shape the rest
