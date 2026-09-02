@@ -247,12 +247,24 @@ type ServerRegistry struct {
 }
 
 // NewServerRegistry returns the registry namespaced to the host CLI name.
+//
+// XDG_CONFIG_HOME is honored before os.UserConfigDir on every platform, not
+// only where the standard library reads it. On macOS os.UserConfigDir answers
+// ~/Library/Application Support and ignores the variable outright, so a caller
+// that set it — a test isolating itself into a temp directory, a user keeping
+// one config tree across machines — silently got the real config instead.
 func NewServerRegistry(appName string) *ServerRegistry {
-	configDir, err := os.UserConfigDir()
-	if err != nil {
-		configDir = filepath.Join(os.Getenv("HOME"), ".config")
+	return newServerRegistryAt(appName, filepath.Join(userConfigDir(), appName, "mcp"))
+}
+
+func userConfigDir() string {
+	if dir := strings.TrimSpace(os.Getenv("XDG_CONFIG_HOME")); dir != "" {
+		return dir
 	}
-	return newServerRegistryAt(appName, filepath.Join(configDir, appName, "mcp"))
+	if dir, err := os.UserConfigDir(); err == nil {
+		return dir
+	}
+	return filepath.Join(os.Getenv("HOME"), ".config")
 }
 
 func newServerRegistryAt(appName, dir string) *ServerRegistry {
