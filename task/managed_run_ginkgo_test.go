@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"time"
 
 	commonscontext "github.com/flanksource/commons/context"
@@ -28,6 +29,15 @@ type recordingRunSource struct {
 	controlled     string
 	controlledTask string
 	points         []metrics.Point
+
+	mu            sync.Mutex
+	snapshotCalls map[string]int
+}
+
+func (s *recordingRunSource) snapshotCallCount(id string) int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.snapshotCalls[id]
 }
 
 func (s *recordingRunSource) Runs(_ context.Context, filter task.RunFilter) ([]task.RunMeta, error) {
@@ -41,6 +51,12 @@ func (s *recordingRunSource) Runs(_ context.Context, filter task.RunFilter) ([]t
 }
 
 func (s *recordingRunSource) Snapshot(_ context.Context, id string) ([]task.TaskSnapshot, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.snapshotCalls == nil {
+		s.snapshotCalls = map[string]int{}
+	}
+	s.snapshotCalls[id]++
 	return s.snapshots[id], nil
 }
 
@@ -290,5 +306,34 @@ var _ = Describe("Managed task runs", func() {
 		Expect(stderrIndex).To(BeNumerically(">", metadataIndex), body)
 		Expect(doneIndex).To(BeNumerically(">", stdoutIndex), body)
 		Expect(doneIndex).To(BeNumerically(">", stderrIndex), body)
+	})
+
+	It("fetches a finished external run's snapshot once per stream while re-polling live runs", func() {
+		source := &recordingRunSource{
+			runs: []task.RunMeta{
+				{ID: "live-1", Name: "live", Status: string(task.StatusRunning)},
+				{ID: "done-1", Name: "done", Status: string(task.StatusSuccess)},
+			},
+			snapshots: map[string][]task.TaskSnapshot{
+				"live-1": {{ID: "live", GroupID: "live-1", Type: "group", Status: string(task.StatusRunning)}},
+				"done-1": {{ID: "done", GroupID: "done-1", Type: "group", Status: string(task.StatusSuccess)}},
+			},
+		}
+		request := httptest.NewRequest(http.MethodGet, "/tasks/stream", nil)
+		ctx, cancel := context.WithCancel(request.Context())
+		request = request.WithContext(ctx)
+		response := httptest.NewRecorder()
+		done := make(chan struct{})
+		go func() {
+			task.SSEHandlerWithSource(source).ServeHTTP(response, request)
+			close(done)
+		}()
+
+		Eventually(func() int { return source.snapshotCallCount("live-1") }).Should(BeNumerically(">=", 4))
+		cancel()
+		Eventually(done).Should(BeClosed())
+
+		Expect(source.snapshotCallCount("done-1")).To(Equal(1), "a finished run's snapshot never changes, so one fetch per stream is enough")
+		Expect(response.Body.String()).To(ContainSubstring(`"groupId":"done-1"`))
 	})
 })
