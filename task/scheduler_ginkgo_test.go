@@ -3,6 +3,8 @@ package task
 import (
 	"context"
 	"fmt"
+	"os"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -217,6 +219,37 @@ var _ = Describe("Scheduler", func() {
 			}).Should(BeEquivalentTo(2))
 		})
 
+		It("records each deferred fire as itself and keeps the oldest queued", func() {
+			start := clock.Now()
+			backlog := newSchedule("backlog")
+			backlog.Overlap = OverlapQueue
+			Expect(sched.Add(ctx, backlog)).To(Succeed())
+
+			clock.Advance(time.Hour) // 10:00 — runs
+			sched.RunDue(ctx)
+			Eventually(runner.starts.Load).Should(BeEquivalentTo(1))
+
+			clock.Advance(time.Hour) // 11:00 — queued behind it
+			sched.RunDue(ctx)
+			clock.Advance(time.Hour) // 12:00 — deferred while 11:00 is still owed
+			sched.RunDue(ctx)
+
+			Eventually(func() []Fire { return store.firesFor("backlog") }).Should(HaveLen(3))
+			fires := store.firesFor("backlog")
+			Expect(fires[1].ScheduledFor).To(BeTemporally("==", start.Add(2*time.Hour)))
+			Expect(fires[2].ScheduledFor).To(BeTemporally("==", start.Add(3*time.Hour)),
+				"the second deferral is its own fire, not a replay of the queued one")
+
+			// The queued instant is the one still owed, so it is the one that runs.
+			runner.releaseAll()
+			Eventually(func() []Fire {
+				sched.RunDue(ctx)
+				return store.firesFor("backlog")
+			}).Should(HaveLen(4))
+			Expect(store.firesFor("backlog")[3].ScheduledFor).
+				To(BeTemporally("==", start.Add(2*time.Hour)))
+		})
+
 		It("cancels the previous run under the cancel-previous policy", func() {
 			replacing := newSchedule("replacer")
 			replacing.Overlap = OverlapCancelPrevious
@@ -229,6 +262,14 @@ var _ = Describe("Scheduler", func() {
 
 			clock.Advance(time.Hour)
 			sched.RunDue(ctx)
+
+			// TEMP: debug
+			time.Sleep(400 * time.Millisecond)
+			if runner.starts.Load() < 2 {
+				buf := make([]byte, 1<<20)
+				n := runtime.Stack(buf, true)
+				_ = os.WriteFile("../.tmp/stacks.txt", buf[:n], 0o644)
+			}
 
 			Eventually(runner.starts.Load).Should(BeEquivalentTo(2))
 			Eventually(func() string {

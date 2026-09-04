@@ -50,6 +50,10 @@ func (w *worker) run() {
 				if task.identity != "" {
 					w.manager.tasksByIdentity.Delete(task.identity)
 				}
+				// Retiring a cancelled task can be what makes its group
+				// terminal just as much as running one can, so the run is
+				// handed to the store here too. See the tail of the loop.
+				observeGroupTerminal(task.parent)
 				continue
 			}
 
