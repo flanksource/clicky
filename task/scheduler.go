@@ -58,9 +58,13 @@ type Scheduler struct {
 	mu      sync.Mutex
 	entries map[string]*scheduleEntry
 
-	stop     chan struct{}
-	done     chan struct{}
-	stopOnce sync.Once
+	// started and stopped make the lifecycle single-shot: exactly one loop is
+	// ever launched, and Stop is answerable before one exists.
+	started bool
+	stopped bool
+
+	stop chan struct{}
+	done chan struct{}
 }
 
 // scheduleEntry is one schedule's live state: the compiled spec, when it fires
@@ -70,11 +74,29 @@ type scheduleEntry struct {
 	cron     cronSchedule
 	next     time.Time
 
-	// running is the in-flight run's group, nil when idle. queued records a
-	// fire deferred under OverlapQueue, so at most one is ever pending — a
-	// backlog of identical reports helps nobody.
-	running *Group
-	queued  *time.Time
+	// running is the in-flight run's group, nil when idle. launching reserves
+	// that same slot for the window between the firing decision and the group
+	// existing, so two concurrent RunDue calls cannot both conclude the
+	// schedule is idle. queued records a fire deferred under OverlapQueue, so
+	// at most one is ever pending — a backlog of identical reports helps
+	// nobody.
+	running   *Group
+	launching bool
+	queued    *time.Time
+
+	// catchUp marks the queued instant as one missed while the process was
+	// down, which is a different fact about the run than "it waited its turn"
+	// and is reported as such.
+	catchUp bool
+}
+
+// busy reports whether the schedule already has a run in flight or on its way
+// there. Callers hold the scheduler's lock.
+func (e *scheduleEntry) busy() bool {
+	if e.launching {
+		return true
+	}
+	return e.running != nil && isRunning(e.running.Status())
 }
 
 // cronSchedule is the slice of robfig/cron the scheduler needs, named so the
@@ -125,7 +147,7 @@ func (s *Scheduler) Load(ctx context.Context) error {
 	}
 	var errs []error
 	for _, schedule := range schedules {
-		if err := s.Add(schedule); err != nil {
+		if err := s.Add(ctx, schedule); err != nil {
 			errs = append(errs, err)
 		}
 	}
@@ -135,10 +157,10 @@ func (s *Scheduler) Load(ctx context.Context) error {
 	return nil
 }
 
-// Add registers or replaces one schedule. The next fire is computed from now,
-// except that a schedule asking to catch up on a scheduled time missed while the
-// process was down fires immediately instead.
-func (s *Scheduler) Add(schedule Schedule) error {
+// Add registers or replaces one schedule and persists the definition. The next
+// fire is computed from now, except that a schedule asking to catch up on a
+// scheduled time missed while the process was down fires immediately instead.
+func (s *Scheduler) Add(ctx context.Context, schedule Schedule) error {
 	if err := schedule.Validate(); err != nil {
 		return err
 	}
@@ -157,28 +179,85 @@ func (s *Scheduler) Add(schedule Schedule) error {
 		// history says which scheduled time this made good on.
 		entry.next = now
 		entry.queued = &missed
+		entry.catchUp = true
 	} else {
 		entry.next = parsed.Next(now)
 	}
 
 	s.mu.Lock()
-	defer s.mu.Unlock()
-	// Replacing a schedule keeps the in-flight run: it belongs to the work, not
-	// to the definition that started it.
+	// Replacing a schedule updates the entry in place rather than swapping in a
+	// new one: the in-flight run and its launch reservation belong to the work,
+	// not to the definition that started it, and a stable pointer per name is
+	// what lets fire tell "replaced" apart from "removed".
 	if existing, ok := s.entries[schedule.Name]; ok {
-		entry.running = existing.running
+		existing.schedule = schedule
+		existing.cron = entry.cron
+		existing.next = entry.next
+		existing.queued = entry.queued
+		existing.catchUp = entry.catchUp
+	} else {
+		s.entries[schedule.Name] = entry
 	}
-	s.entries[schedule.Name] = entry
+	s.mu.Unlock()
+
+	// Persisted outside the lock — the store may block on IO — and only once
+	// the in-memory mutation has committed, so what is saved is what is live.
+	if err := s.saveSchedule(ctx, schedule.Name); err != nil {
+		return fmt.Errorf("schedule %q: save: %w", schedule.Name, err)
+	}
 	return nil
 }
 
-// Remove stops firing the named schedule. The in-flight run, if any, is left to
+// Remove stops firing the named schedule and deletes its stored definition, so
+// a restart does not resurrect it. The in-flight run, if any, is left to
 // finish — cancelling work because its schedule was deleted loses a result
 // nobody asked to throw away.
-func (s *Scheduler) Remove(name string) {
+func (s *Scheduler) Remove(ctx context.Context, name string) error {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	delete(s.entries, name)
+	s.mu.Unlock()
+
+	if s.store == nil {
+		return nil
+	}
+	// Deleted even when the entry was not in memory: a definition that failed
+	// to load is exactly the one an operator is trying to get rid of.
+	if err := s.store.DeleteSchedule(ctx, name); err != nil {
+		return fmt.Errorf("schedule %q: delete: %w", name, err)
+	}
+	return nil
+}
+
+// saveSchedule persists one definition together with the timing the scheduler
+// has just recomputed. The snapshot is taken under the lock and the store call
+// made outside it: the store may block on IO, and no firing decision may wait
+// behind that.
+func (s *Scheduler) saveSchedule(ctx context.Context, name string) error {
+	if s.store == nil {
+		return nil
+	}
+	s.mu.Lock()
+	entry, ok := s.entries[name]
+	var schedule Schedule
+	if ok {
+		schedule = entry.schedule
+		next := entry.next
+		schedule.NextRun = &next
+	}
+	s.mu.Unlock()
+	if !ok {
+		return nil
+	}
+	return s.store.SaveSchedule(ctx, schedule)
+}
+
+// persistTiming saves the schedule after a firing decision moved its NextRun or
+// LastRun. A failure here loses catch-up accuracy across a restart, not the run
+// itself, so it is reported and the fire continues.
+func (s *Scheduler) persistTiming(ctx context.Context, name string) {
+	if err := s.saveSchedule(ctx, name); err != nil {
+		logger.Warnf("schedule %s: save: %v", name, err)
+	}
 }
 
 // Schedules returns the current schedules, newest fire first.
@@ -199,7 +278,18 @@ func (s *Scheduler) Schedules() []Schedule {
 // Start runs the scheduler until ctx is done or Stop is called. It registers
 // itself as a managed background run so it is visible in the task UI without
 // occupying a worker or blocking Wait.
+//
+// Starting an already-started or already-stopped scheduler is a no-op: there is
+// exactly one loop, and it is the one thing allowed to close done.
 func (s *Scheduler) Start(ctx flanksourceContext.Context) {
+	s.mu.Lock()
+	if s.started || s.stopped {
+		s.mu.Unlock()
+		return
+	}
+	s.started = true
+	s.mu.Unlock()
+
 	run := StartManagedRun("scheduler", WithKind("scheduler"))
 	run.SetBackground(true)
 
@@ -222,10 +312,21 @@ func (s *Scheduler) Start(ctx flanksourceContext.Context) {
 	}()
 }
 
-// Stop ends the scheduler and waits for its loop to exit.
+// Stop ends the scheduler and waits for its loop to exit. Safe before Start and
+// safe to repeat: a scheduler that never started has no loop to wait for, and
+// one already stopped has nothing left to close.
 func (s *Scheduler) Stop() {
-	s.stopOnce.Do(func() { close(s.stop) })
-	<-s.done
+	s.mu.Lock()
+	started := s.started
+	if !s.stopped {
+		s.stopped = true
+		close(s.stop)
+	}
+	s.mu.Unlock()
+
+	if started {
+		<-s.done
+	}
 }
 
 // RunDue fires every schedule whose time has come. It is the whole scheduling
@@ -235,84 +336,113 @@ func (s *Scheduler) RunDue(ctx flanksourceContext.Context) {
 	now := s.now()
 
 	s.mu.Lock()
-	due := make([]*scheduleEntry, 0, len(s.entries))
-	for _, entry := range s.entries {
+	due := make([]string, 0, len(s.entries))
+	for name, entry := range s.entries {
 		if !entry.schedule.Enabled {
 			continue
 		}
-		if entry.running == nil && entry.queued != nil && entry.next.After(now) {
+		if !entry.busy() && entry.queued != nil && entry.next.After(now) {
 			// A queued fire whose turn came because the previous run ended.
-			due = append(due, entry)
+			due = append(due, name)
 			continue
 		}
 		if !entry.next.After(now) {
-			due = append(due, entry)
+			due = append(due, name)
 		}
 	}
 	s.mu.Unlock()
 
-	for _, entry := range due {
-		s.fire(ctx, entry, now)
+	for _, name := range due {
+		s.fire(ctx, name, now)
 	}
 }
 
 // fire advances one schedule past now and starts, defers, or skips the run
 // according to its overlap policy.
-func (s *Scheduler) fire(ctx flanksourceContext.Context, entry *scheduleEntry, now time.Time) {
+//
+// The entry is resolved again here rather than carried over from RunDue's scan:
+// a schedule removed in between must not run, and the decision and the launch
+// reservation that follows it have to be one atomic step, or two ticks racing
+// each other both find the schedule idle.
+func (s *Scheduler) fire(ctx flanksourceContext.Context, name string, now time.Time) {
 	s.mu.Lock()
-
-	scheduledFor := entry.next
-	if entry.queued != nil {
-		scheduledFor = *entry.queued
-		entry.queued = nil
+	entry, ok := s.entries[name]
+	if !ok {
+		s.mu.Unlock()
+		return
 	}
+
+	// due is the instant this tick is acting on. Anything already queued stays
+	// queued until it can actually start, so a fire that is itself deferred is
+	// recorded as the fire it was rather than replaying an older one.
+	due := entry.next
 	if !entry.next.After(now) {
 		entry.next = entry.cron.Next(now)
 	}
 
 	schedule := entry.schedule
-	running := entry.running
-	if running != nil && isRunning(running.Status()) {
-		policy := schedule.overlapPolicy()
-		switch policy {
+	if entry.busy() {
+		running := entry.running
+		runID := ""
+		if running != nil {
+			runID = running.ID()
+		}
+		switch schedule.overlapPolicy() {
 		case OverlapSkip:
 			s.mu.Unlock()
-			s.record(ctx, schedule.Name, Fire{
-				ScheduledFor: scheduledFor,
+			s.persistTiming(ctx, name)
+			s.record(ctx, name, Fire{
+				ScheduledFor: due,
 				At:           now,
 				Outcome:      FireSkipped,
-				RunID:        running.ID(),
+				RunID:        runID,
 				Reason:       "previous run still in progress",
 			})
 			return
 		case OverlapQueue:
-			queued := scheduledFor
-			entry.queued = &queued
+			// The oldest unrun instant is the one still owed, so it keeps the
+			// slot; this tick is recorded as skipped in its own right.
+			if entry.queued == nil {
+				queued := due
+				entry.queued = &queued
+			}
 			s.mu.Unlock()
-			s.record(ctx, schedule.Name, Fire{
-				ScheduledFor: scheduledFor,
+			s.persistTiming(ctx, name)
+			s.record(ctx, name, Fire{
+				ScheduledFor: due,
 				At:           now,
 				Outcome:      FireSkipped,
-				RunID:        running.ID(),
+				RunID:        runID,
 				Reason:       "queued behind the previous run",
 			})
 			return
 		case OverlapCancelPrevious:
-			running.Cancel()
+			if running != nil {
+				running.Cancel()
+			}
 		}
 	}
+
+	scheduledFor := due
+	outcome := FireStarted
+	if entry.queued != nil {
+		scheduledFor = *entry.queued
+		entry.queued = nil
+		if entry.catchUp {
+			outcome = FireCaughtUp
+			entry.catchUp = false
+		}
+	}
+	entry.launching = true
 	s.mu.Unlock()
 
-	outcome := FireStarted
-	if entry.queued == nil && scheduledFor.Before(now.Truncate(time.Minute)) {
-		outcome = FireCaughtUp
-	}
-	s.start(ctx, entry, schedule, scheduledFor, now, outcome)
+	s.start(ctx, name, entry, schedule, scheduledFor, now, outcome)
 }
 
 // start launches the run for one fire and records the outcome.
 func (s *Scheduler) start(
 	ctx flanksourceContext.Context,
+	name string,
 	entry *scheduleEntry,
 	schedule Schedule,
 	scheduledFor, now time.Time,
@@ -320,7 +450,10 @@ func (s *Scheduler) start(
 ) {
 	runner, ok := runnerFor(schedule.Kind)
 	if !ok {
-		s.record(ctx, schedule.Name, Fire{
+		s.mu.Lock()
+		entry.launching = false
+		s.mu.Unlock()
+		s.record(ctx, name, Fire{
 			ScheduledFor: scheduledFor, At: now, Outcome: FireFailed,
 			Error: fmt.Sprintf("no runner registered for kind %q", schedule.Kind),
 		})
@@ -340,23 +473,28 @@ func (s *Scheduler) start(
 
 	s.mu.Lock()
 	entry.running = group.Group
+	entry.launching = false
 	entry.schedule.LastRun = &now
 	s.mu.Unlock()
 
-	s.record(ctx, schedule.Name, Fire{
+	// The runner is a task in its own group rather than a bare goroutine, so a
+	// runner that fails before adding any child leaves a failed run instead of
+	// a group stuck pending and an error visible only in the log. The children
+	// it adds join the same group and are waited for below.
+	var options []Option
+	if schedule.Timeout > 0 {
+		options = append(options, WithTimeout(schedule.Timeout))
+	}
+	group.Add(schedule.Kind, func(runCtx flanksourceContext.Context, _ *Task) (any, error) {
+		return nil, runner(runCtx, schedule, group.Group)
+	}, options...)
+
+	s.persistTiming(ctx, name)
+	s.record(ctx, name, Fire{
 		ScheduledFor: scheduledFor, At: now, Outcome: outcome, RunID: group.ID(),
 	})
 
 	go func() {
-		runCtx := ctx
-		if schedule.Timeout > 0 {
-			var cancel context.CancelFunc
-			runCtx, cancel = ctx.WithTimeout(schedule.Timeout)
-			defer cancel()
-		}
-		if err := runner(runCtx, schedule, group.Group); err != nil {
-			logger.Warnf("schedule %s: %v", schedule.Name, err)
-		}
 		group.WaitFor()
 
 		s.mu.Lock()
