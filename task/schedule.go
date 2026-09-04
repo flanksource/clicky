@@ -80,6 +80,13 @@ var scheduleParser = cron.NewParser(
 	cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow | cron.Descriptor,
 )
 
+// minimumInterval is the finest cadence a schedule may ask for. The cron field
+// set stops at minutes, but "@every 5s" slips past that — and the scheduler
+// wakes on a coarse tick, so it would fire late and irregularly rather than
+// every five seconds. Refusing it where the schedule is configured beats
+// silently under-delivering it forever.
+const minimumInterval = time.Minute
+
 // Validate reports whether the schedule can actually be run, naming the field at
 // fault. A schedule that cannot fire is a configuration error worth refusing at
 // the point it is saved, not a run that silently never happens.
@@ -133,15 +140,27 @@ func (s Schedule) Parse() (cron.Schedule, error) {
 	if err != nil {
 		return nil, err
 	}
-	spec := s.Cron
-	// A TZ= prefix inside the spec would silently win over the field; make the
-	// two agree rather than letting the quieter one decide.
-	if !strings.HasPrefix(spec, "TZ=") && !strings.HasPrefix(spec, "CRON_TZ=") && location != time.Local {
+	spec := strings.TrimSpace(s.Cron)
+	// A TZ= prefix inside the spec silently wins over the field, so a schedule
+	// carrying both is one whose two answers disagree and whose owner cannot
+	// see which one won. Refuse it instead of picking for them.
+	inlineZone := strings.HasPrefix(spec, "TZ=") || strings.HasPrefix(spec, "CRON_TZ=")
+	if inlineZone && strings.TrimSpace(s.Timezone) != "" {
+		return nil, fmt.Errorf(
+			"schedule %q: cron %q already sets a timezone and timezone %q also does; set one of them",
+			s.Name, s.Cron, s.Timezone)
+	}
+	if !inlineZone && location != time.Local {
 		spec = "CRON_TZ=" + location.String() + " " + spec
 	}
 	parsed, err := scheduleParser.Parse(spec)
 	if err != nil {
 		return nil, fmt.Errorf("schedule %q: invalid cron %q: %w", s.Name, s.Cron, err)
+	}
+	if every, ok := parsed.(cron.ConstantDelaySchedule); ok && every.Delay < minimumInterval {
+		return nil, fmt.Errorf(
+			"schedule %q: invalid cron %q: fires every %s, and the scheduler cannot honour anything under %s",
+			s.Name, s.Cron, every.Delay, minimumInterval)
 	}
 	return parsed, nil
 }

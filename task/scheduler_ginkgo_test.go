@@ -117,28 +117,28 @@ var _ = Describe("Scheduler", func() {
 	}
 
 	It("rejects a schedule whose cron, timezone or policy is not usable", func() {
-		Expect(sched.Add(Schedule{Kind: kind, Cron: "@every 1h"})).
+		Expect(sched.Add(ctx, Schedule{Kind: kind, Cron: "@every 1h"})).
 			To(MatchError(ContainSubstring("name is required")))
 
 		bad := newSchedule("bad-cron")
 		bad.Cron = "not a cron"
-		Expect(sched.Add(bad)).To(MatchError(ContainSubstring("invalid cron")))
+		Expect(sched.Add(ctx, bad)).To(MatchError(ContainSubstring("invalid cron")))
 
 		badZone := newSchedule("bad-zone")
 		badZone.Timezone = "Mars/Olympus"
-		Expect(sched.Add(badZone)).To(MatchError(ContainSubstring("unknown timezone")))
+		Expect(sched.Add(ctx, badZone)).To(MatchError(ContainSubstring("unknown timezone")))
 
 		badOverlap := newSchedule("bad-overlap")
 		badOverlap.Overlap = "sometimes"
-		Expect(sched.Add(badOverlap)).To(MatchError(ContainSubstring("unknown overlap policy")))
+		Expect(sched.Add(ctx, badOverlap)).To(MatchError(ContainSubstring("unknown overlap policy")))
 
 		unknown := newSchedule("no-runner")
 		unknown.Kind = "never-registered"
-		Expect(sched.Add(unknown)).To(MatchError(ContainSubstring("no runner registered")))
+		Expect(sched.Add(ctx, unknown)).To(MatchError(ContainSubstring("no runner registered")))
 	})
 
 	It("fires when the scheduled time arrives, and not before", func() {
-		Expect(sched.Add(newSchedule("hourly"))).To(Succeed())
+		Expect(sched.Add(ctx, newSchedule("hourly"))).To(Succeed())
 
 		sched.RunDue(ctx)
 		Expect(runner.starts.Load()).To(BeZero(), "fired before its time")
@@ -155,7 +155,7 @@ var _ = Describe("Scheduler", func() {
 	It("does not fire a disabled schedule", func() {
 		disabled := newSchedule("paused")
 		disabled.Enabled = false
-		Expect(sched.Add(disabled)).To(Succeed())
+		Expect(sched.Add(ctx, disabled)).To(Succeed())
 
 		clock.Advance(2 * time.Hour)
 		sched.RunDue(ctx)
@@ -164,7 +164,7 @@ var _ = Describe("Scheduler", func() {
 	})
 
 	It("stamps the schedule name and kind on every run it starts", func() {
-		Expect(sched.Add(newSchedule("labelled"))).To(Succeed())
+		Expect(sched.Add(ctx, newSchedule("labelled"))).To(Succeed())
 		clock.Advance(time.Hour)
 		sched.RunDue(ctx)
 
@@ -179,7 +179,7 @@ var _ = Describe("Scheduler", func() {
 
 	Context("when a fire lands while the previous run is still going", func() {
 		It("skips it under the default policy, and records why", func() {
-			Expect(sched.Add(newSchedule("skipper"))).To(Succeed())
+			Expect(sched.Add(ctx, newSchedule("skipper"))).To(Succeed())
 
 			clock.Advance(time.Hour)
 			sched.RunDue(ctx)
@@ -198,7 +198,7 @@ var _ = Describe("Scheduler", func() {
 		It("runs it after the previous one under the queue policy", func() {
 			queued := newSchedule("queuer")
 			queued.Overlap = OverlapQueue
-			Expect(sched.Add(queued)).To(Succeed())
+			Expect(sched.Add(ctx, queued)).To(Succeed())
 
 			clock.Advance(time.Hour)
 			sched.RunDue(ctx)
@@ -220,7 +220,7 @@ var _ = Describe("Scheduler", func() {
 		It("cancels the previous run under the cancel-previous policy", func() {
 			replacing := newSchedule("replacer")
 			replacing.Overlap = OverlapCancelPrevious
-			Expect(sched.Add(replacing)).To(Succeed())
+			Expect(sched.Add(ctx, replacing)).To(Succeed())
 
 			clock.Advance(time.Hour)
 			sched.RunDue(ctx)
@@ -248,7 +248,7 @@ var _ = Describe("Scheduler", func() {
 			schedule := newSchedule("no-catchup")
 			schedule.NextRun = &missed
 
-			Expect(sched.Add(schedule)).To(Succeed())
+			Expect(sched.Add(ctx, schedule)).To(Succeed())
 			sched.RunDue(ctx)
 
 			Consistently(runner.starts.Load).Should(BeZero())
@@ -260,7 +260,7 @@ var _ = Describe("Scheduler", func() {
 			schedule.CatchUp = CatchUpOnce
 			schedule.NextRun = &missed
 
-			Expect(sched.Add(schedule)).To(Succeed())
+			Expect(sched.Add(ctx, schedule)).To(Succeed())
 			sched.RunDue(ctx)
 
 			Eventually(runner.starts.Load).Should(BeEquivalentTo(1))
@@ -295,13 +295,79 @@ var _ = Describe("Scheduler", func() {
 	})
 
 	It("stops firing a schedule that was removed", func() {
-		Expect(sched.Add(newSchedule("transient"))).To(Succeed())
-		sched.Remove("transient")
+		Expect(sched.Add(ctx, newSchedule("transient"))).To(Succeed())
+		Expect(sched.Remove(ctx, "transient")).To(Succeed())
 
 		clock.Advance(2 * time.Hour)
 		sched.RunDue(ctx)
 
 		Consistently(runner.starts.Load).Should(BeZero())
 		Expect(sched.Schedules()).To(BeEmpty())
+	})
+
+	Context("persisting the definitions it holds", func() {
+		It("saves an added schedule with the fire it has just computed", func() {
+			Expect(sched.Add(ctx, newSchedule("durable"))).To(Succeed())
+
+			stored := store.schedule("durable")
+			Expect(stored.Name).To(Equal("durable"))
+			Expect(stored.NextRun).ToNot(BeNil())
+			Expect(*stored.NextRun).To(BeTemporally("==", clock.Now().Add(time.Hour)))
+		})
+
+		It("advances the stored fire times as it fires", func() {
+			Expect(sched.Add(ctx, newSchedule("advancing"))).To(Succeed())
+
+			clock.Advance(time.Hour)
+			sched.RunDue(ctx)
+			Eventually(runner.starts.Load).Should(BeEquivalentTo(1))
+
+			stored := store.schedule("advancing")
+			Expect(stored.LastRun).ToNot(BeNil(), "a run that started is what LastRun means")
+			Expect(*stored.LastRun).To(BeTemporally("==", clock.Now()))
+			Expect(*stored.NextRun).To(BeTemporally("==", clock.Now().Add(time.Hour)))
+		})
+
+		It("deletes a removed schedule so a restart does not resurrect it", func() {
+			Expect(sched.Add(ctx, newSchedule("doomed"))).To(Succeed())
+			Expect(store.schedule("doomed").Name).To(Equal("doomed"))
+
+			Expect(sched.Remove(ctx, "doomed")).To(Succeed())
+			Expect(store.schedule("doomed").Name).To(BeEmpty())
+		})
+	})
+
+	Context("its start/stop lifecycle", func() {
+		It("returns from Stop when it was never started", func() {
+			done := make(chan struct{})
+			go func() {
+				defer close(done)
+				sched.Stop()
+			}()
+			Eventually(done).Should(BeClosed())
+		})
+
+		It("runs one loop however often it is started, and stops once", func() {
+			sched.Start(ctx)
+			sched.Start(ctx)
+
+			// A second loop would close the same done channel and panic; a
+			// clean Stop is the assertion that only one ever ran.
+			Expect(sched.Stop).ToNot(Panic())
+			Expect(sched.Stop).ToNot(Panic())
+		})
+	})
+
+	It("does not run a schedule removed between the due scan and the fire", func() {
+		Expect(sched.Add(ctx, newSchedule("vanishing"))).To(Succeed())
+		clock.Advance(time.Hour)
+
+		// fire resolves the entry itself, so removing it first is exactly the
+		// race RunDue would otherwise lose.
+		Expect(sched.Remove(ctx, "vanishing")).To(Succeed())
+		sched.fire(ctx, "vanishing", clock.Now())
+
+		Consistently(runner.starts.Load).Should(BeZero())
+		Expect(store.firesFor("vanishing")).To(BeEmpty())
 	})
 })

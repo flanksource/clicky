@@ -154,6 +154,13 @@ func (s *testStore) drain() {
 	}
 }
 
+// schedule returns the stored definition for one name, zero if there is none.
+func (s *testStore) schedule(name string) Schedule {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.schedules[name]
+}
+
 // firesFor returns the fires recorded for one schedule.
 func (s *testStore) firesFor(name string) []Fire {
 	s.mu.Lock()

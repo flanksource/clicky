@@ -88,10 +88,6 @@ func RunFromSnapshots(snapshots []TaskSnapshot) (RunRecord, bool) {
 	return RunRecord{}, false
 }
 
-// runWriteQueueSize bounds the pending run writes. A full queue drops the write
-// and says so: the alternative is blocking a task's completion on the store.
-const runWriteQueueSize = 256
-
 // runWrite is one pending persist. Snapshots is set when the caller already
 // holds them and the group is about to be evicted; otherwise the writer resolves
 // the id itself, off whatever lock the caller was under.
@@ -100,11 +96,98 @@ type runWrite struct {
 	snapshots []TaskSnapshot
 }
 
+// runQueue holds the pending writes for one installed store. Writes coalesce by
+// run id rather than queueing behind each other, so a store slower than run
+// completion falls behind by work and never by data: the newest snapshot of a
+// run supersedes the pending older one instead of being dropped for it.
+type runQueue struct {
+	mu      sync.Mutex
+	pending map[string]runWrite
+	order   []string
+	closed  bool
+
+	// wake carries at most one notification: the writer drains everything it
+	// finds each time it looks, so further wakeups would only spin it.
+	wake chan struct{}
+	done chan struct{}
+}
+
+func newRunQueue() *runQueue {
+	return &runQueue{
+		pending: map[string]runWrite{},
+		wake:    make(chan struct{}, 1),
+		done:    make(chan struct{}),
+	}
+}
+
+// add queues one write. It never blocks on the store: callers hold the manager
+// lock or a group lock, neither of which may wait on IO.
+func (q *runQueue) add(write runWrite) {
+	q.mu.Lock()
+	if q.closed {
+		q.mu.Unlock()
+		return
+	}
+	existing, queued := q.pending[write.id]
+	if !queued {
+		q.order = append(q.order, write.id)
+	} else if write.snapshots == nil {
+		// An id-only write resolves the group when the writer reaches it. Keep
+		// the snapshots an eviction already captured: after eviction there is
+		// no group left to resolve, and losing them loses the run.
+		write.snapshots = existing.snapshots
+	}
+	q.pending[write.id] = write
+	q.mu.Unlock()
+
+	select {
+	case q.wake <- struct{}{}:
+	default:
+	}
+}
+
+// take returns the write that has been pending longest.
+func (q *runQueue) take() (runWrite, bool) {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	for len(q.order) > 0 {
+		id := q.order[0]
+		q.order = q.order[1:]
+		write, ok := q.pending[id]
+		if !ok {
+			continue
+		}
+		delete(q.pending, id)
+		return write, true
+	}
+	return runWrite{}, false
+}
+
+// close stops the queue accepting work. It does not wait for the writer — the
+// caller does that on done, once it has released whatever lock it holds.
+func (q *runQueue) close() {
+	q.mu.Lock()
+	q.closed = true
+	q.mu.Unlock()
+
+	select {
+	case q.wake <- struct{}{}:
+	default:
+	}
+}
+
+// drained reports whether the queue is closed and empty, which is the only
+// condition under which the writer has nothing left to do.
+func (q *runQueue) drained() bool {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	return q.closed && len(q.order) == 0
+}
+
 var (
 	storeMu     sync.RWMutex
 	activeStore Store
-	writes      chan runWrite
-	writerDone  chan struct{}
+	activeQueue *runQueue
 )
 
 // SetStore installs the durable store and starts the background writer that
@@ -119,30 +202,29 @@ var (
 // installed store satisfies that interface and can be passed to them directly.
 func SetStore(ctx context.Context, store Store) {
 	storeMu.Lock()
-	previous := writerDone
-	if writes != nil {
-		close(writes)
-		writes = nil
-		writerDone = nil
+	previous := activeQueue
+	if previous != nil {
+		// Closed under the same lock enqueueRunWrite reads the queue under, so
+		// a concurrent write lands either in a queue that is still draining or
+		// in the new one — never in one nobody is left to serve.
+		previous.close()
 	}
 	activeStore = store
 
-	var queue chan runWrite
-	var done chan struct{}
+	var queue *runQueue
 	if store != nil {
-		queue = make(chan runWrite, runWriteQueueSize)
-		done = make(chan struct{})
-		writes, writerDone = queue, done
+		queue = newRunQueue()
 	}
+	activeQueue = queue
 	storeMu.Unlock()
 
 	// Outside the lock: the outgoing writer may still be in SaveRun, and
 	// holding storeMu across that would stall every task retiring behind it.
 	if previous != nil {
-		<-previous
+		<-previous.done
 	}
 	if store != nil {
-		go runWriter(ctx, store, queue, done)
+		go runWriter(ctx, store, queue)
 	}
 }
 
@@ -153,17 +235,34 @@ func CurrentStore() Store {
 	return activeStore
 }
 
-func runWriter(ctx context.Context, store Store, queue <-chan runWrite, done chan<- struct{}) {
-	defer close(done)
+// runWriter persists queued runs until the queue is closed or ctx is done.
+// Either way it first drains what it has already accepted: a queued write has
+// no later retry, and an evicted run's snapshots exist nowhere else once its
+// group is gone, so honouring the cancellation ahead of them loses runs the
+// queue never overflowed on.
+func runWriter(ctx context.Context, store Store, q *runQueue) {
+	defer close(q.done)
+
+	writeCtx := ctx
 	for {
-		select {
-		case <-ctx.Done():
-			return
-		case write, ok := <-queue:
+		for {
+			write, ok := q.take()
 			if !ok {
-				return
+				break
 			}
-			persistRun(ctx, store, write)
+			persistRun(writeCtx, store, write)
+		}
+		if q.drained() {
+			return
+		}
+		select {
+		case <-q.wake:
+		case <-ctx.Done():
+			// New work would have no writer left to serve it, and the writes
+			// already accepted cannot go out under a cancelled context, so the
+			// queue is closed and flushed under one carrying only its values.
+			q.close()
+			writeCtx = context.WithoutCancel(ctx)
 		}
 	}
 }
@@ -186,21 +285,17 @@ func persistRun(ctx context.Context, store Store, write runWrite) {
 	}
 }
 
-// enqueueRunWrite hands a run to the background writer. It never blocks: it is
-// called from GC and from the terminal transition, both of which hold locks the
-// store must not wait behind.
+// enqueueRunWrite hands a run to the background writer. It never blocks on the
+// store: it is called from GC and from the terminal transition, both of which
+// hold locks the store must not wait behind. The read lock is held across the
+// hand-off so the queue cannot be retired out from under it.
 func enqueueRunWrite(write runWrite) {
 	storeMu.RLock()
-	queue := writes
-	storeMu.RUnlock()
-	if queue == nil {
+	defer storeMu.RUnlock()
+	if activeQueue == nil {
 		return
 	}
-	select {
-	case queue <- write:
-	default:
-		logger.Warnf("task store: write queue full, dropping run %s", write.id)
-	}
+	activeQueue.add(write)
 }
 
 // persistTerminalRun is called the first time a group is observed terminal, so
