@@ -37,7 +37,7 @@ jobs:
           node-version: "22"
 
       - name: Gavel test
-        uses: flanksource/gavel@main
+        uses: flanksource/gavel@v0.0.54
         with:
           args: test --test-timeout 10m --timeout 20m
           comment-header: gavel-test
@@ -68,20 +68,13 @@ jobs:
         with:
           node-version: "22"
 
-      # The gavel action always injects `--show-passed`, which `gavel lint`
-      # rejects (only `gavel test` accepts it), so run the binary directly.
-      - name: Install gavel
-        run: |
-          mkdir -p "$HOME/.local/bin"
-          curl -fsSL "https://github.com/flanksource/gavel/releases/download/${GAVEL_VERSION}/gavel_linux_amd64.tar.gz" -o /tmp/gavel.tar.gz
-          tar -xzf /tmp/gavel.tar.gz -C /tmp
-          install -m 0755 /tmp/gavel "$HOME/.local/bin/gavel"
-          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-        env:
-          GAVEL_VERSION: v0.0.39
+      - name: Gavel test
+        uses: flanksource/gavel@v0.0.54
+        with:
+          args:  lint --no-progress --no-color
+          comment-header: gavel-lint
+          artifact-name: gavel-lint-results
 
-      - name: Gavel lint
-        run: gavel lint --no-progress --no-color
 
   openapi:
     name: OpenAPI Integration
