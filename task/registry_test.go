@@ -127,55 +127,82 @@ func TestGCRunsDropsExpiredFinishedRuns(t *testing.T) {
 	}
 }
 
-func TestOnBeforeGCCalledWithSnapshotBeforeEviction(t *testing.T) {
+func TestGCPersistsSnapshotBeforeEviction(t *testing.T) {
 	withTestGlobal(t)
+	store := installTestStore(t)
 
 	g := StartGroup[any]("gc-hook-run", WithKind("test"), WithConcurrency(1))
 	groupID := g.ID()
 	runGroupToCompletion(t, g, "step-a", "step-b")
 
+	// Completing the run persists it once, on the terminal transition. The
+	// eviction write is a second, separate one — the last chance to persist a
+	// run before the group it would be read from is gone.
+	if saved := store.await(t); saved.ID != groupID {
+		t.Fatalf("terminal save id = %q, want %q", saved.ID, groupID)
+	}
+
 	g.mu.Lock()
 	g.finishedAt = time.Now().Add(-2 * runRetention)
 	g.mu.Unlock()
 
-	var capturedID string
-	var capturedSnaps []TaskSnapshot
-	OnBeforeGC = func(id string, snaps []TaskSnapshot) {
-		capturedID = id
-		capturedSnaps = snaps
-	}
-	t.Cleanup(func() { OnBeforeGC = nil })
-
 	GCRuns()
 
-	if capturedID != groupID {
-		t.Fatalf("OnBeforeGC groupID = %q, want %q", capturedID, groupID)
+	saved := store.await(t)
+	if saved.ID != groupID {
+		t.Fatalf("eviction save id = %q, want %q", saved.ID, groupID)
 	}
-	if len(capturedSnaps) != 3 {
-		t.Fatalf("expected 3 snapshots (1 group + 2 tasks), got %d", len(capturedSnaps))
+	if len(saved.Snapshots) != 3 {
+		t.Fatalf("expected 3 snapshots (1 group + 2 tasks), got %d", len(saved.Snapshots))
 	}
-	if capturedSnaps[0].Type != "group" {
-		t.Fatalf("first snapshot should be group, got %q", capturedSnaps[0].Type)
+	if saved.Snapshots[0].Type != "group" {
+		t.Fatalf("first snapshot should be group, got %q", saved.Snapshots[0].Type)
 	}
-	if capturedSnaps[0].Total != 2 {
-		t.Fatalf("group snapshot Total = %d, want 2", capturedSnaps[0].Total)
+	if saved.Snapshots[0].Total != 2 {
+		t.Fatalf("group snapshot Total = %d, want 2", saved.Snapshots[0].Total)
 	}
 }
 
-func TestOnBeforeGCNotCalledForLiveRuns(t *testing.T) {
+func TestGCDoesNotEvictRunsWithinRetention(t *testing.T) {
 	withTestGlobal(t)
+	store := installTestStore(t)
 
 	g := StartGroup[any]("live-run", WithConcurrency(1))
 	runGroupToCompletion(t, g, "step")
-
-	called := false
-	OnBeforeGC = func(_ string, _ []TaskSnapshot) { called = true }
-	t.Cleanup(func() { OnBeforeGC = nil })
+	store.await(t) // the terminal save, which is not what this test is about
 
 	GCRuns()
 
-	if called {
-		t.Fatal("OnBeforeGC should not be called for runs within retention period")
+	if run, ok := store.tryAwait(); ok {
+		t.Fatalf("run %q was evicted while inside the retention period", run.ID)
+	}
+	if got := len(RunsRaw(RunFilter{})); got != 1 {
+		t.Fatalf("expected the run to be retained, have %d", got)
+	}
+}
+
+// A finished run is persisted as soon as it finishes, not ten minutes later when
+// GC gets to it — otherwise a restart inside the retention window loses it.
+func TestTerminalTransitionPersistsRunImmediately(t *testing.T) {
+	withTestGlobal(t)
+	store := installTestStore(t)
+
+	g := StartGroup[any]("terminal-run", WithKind("test"), WithConcurrency(1))
+	groupID := g.ID()
+	runGroupToCompletion(t, g, "only-step")
+
+	saved := store.await(t)
+	if saved.ID != groupID {
+		t.Fatalf("saved run id = %q, want %q", saved.ID, groupID)
+	}
+	if saved.Kind != "test" {
+		t.Fatalf("saved run kind = %q, want %q", saved.Kind, "test")
+	}
+	if saved.FinishedAt == "" {
+		t.Fatal("saved run has no FinishedAt")
+	}
+	if got := len(RunsRaw(RunFilter{})); got != 1 {
+		t.Fatalf("run should still be live in memory, have %d", got)
 	}
 }
 

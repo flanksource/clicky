@@ -10,13 +10,6 @@ import (
 // it from the global manager. Live runs are never GC'd.
 const runRetention = 10 * time.Minute
 
-// OnBeforeGC, if non-nil, is called with each group's full snapshot just before
-// GCRuns removes it from the in-memory manager. The callback receives the
-// group's stable ID and the full snapshot slice (group + child tasks). It is
-// called while global.mu is held, so it must not call back into the task
-// package.
-var OnBeforeGC func(groupID string, snapshots []TaskSnapshot)
-
 // RunMeta is the listing summary for one run (task group): identity, metadata,
 // status, timing, and child-task counts. It is what the generic task-manager
 // list view renders; drill-down uses SnapshotByID.
@@ -118,9 +111,10 @@ func SnapshotByID(id string) []TaskSnapshot {
 
 // GCRuns removes finished runs older than runRetention from the global manager.
 // A run is "finished" once it has a non-zero FinishedAt (recorded the first time
-// it is observed terminal). Live runs are retained regardless of age. If
-// OnBeforeGC is set, each evicted group's full snapshot is passed to it before
-// removal.
+// it is observed terminal). Live runs are retained regardless of age. When a
+// Store is installed, each evicted group's full snapshot is handed to the
+// background writer before removal — the last chance to persist it, since after
+// eviction there is no group left to resolve.
 func GCRuns() {
 	if global == nil {
 		return
@@ -133,9 +127,7 @@ func GCRuns() {
 		g.observeTerminal(g.Status(), now)
 		finished := g.FinishedAt()
 		if !finished.IsZero() && now.Sub(finished) > runRetention {
-			if OnBeforeGC != nil {
-				OnBeforeGC(g.ID(), snapshotGroupWithTasks(g))
-			}
+			persistEvictedRun(g.ID(), snapshotGroupWithTasks(g))
 			continue
 		}
 		kept = append(kept, g)

@@ -16,6 +16,7 @@ func (s *SwaggerServer) writeFormattedResponse(w http.ResponseWriter, r *http.Re
 	if paged, ok := data.(clicky.Paged); ok {
 		page := paged.PageMetadata()
 		w.Header().Set("X-Total-Count", strconv.FormatInt(page.Total, 10))
+		w.Header().Set("X-Total-Relation", "eq")
 		w.Header().Set("X-Page-Limit", strconv.Itoa(page.Limit))
 		w.Header().Set("X-Page-Offset", strconv.Itoa(page.Offset))
 		if shouldFormatPagedRows(options.Format) {

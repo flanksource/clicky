@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -102,7 +103,10 @@ func TestPopulateFromRequest_DefaultsApply(t *testing.T) {
 	}
 }
 
-func TestPopulateFromRequest_AtFileResolution(t *testing.T) {
+// An `@` value off the wire names a file on the *server*. Expanding it for a
+// field that never asked to read files is an arbitrary file read, so the
+// default is to pass the value through as the literal string it is.
+func TestPopulateFromRequest_AtFileIsLiteralWithoutOptIn(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "items.txt")
 	if err := os.WriteFile(path, []byte("alpha\nbeta\ngamma\n"), 0o600); err != nil {
@@ -111,8 +115,64 @@ func TestPopulateFromRequest_AtFileResolution(t *testing.T) {
 
 	var opts reqOpts
 	populate(t, reflect.ValueOf(&opts).Elem(), map[string]string{"slice": "@" + path}, nil)
+	if got, want := opts.Slice, []string{"@" + path}; !reflect.DeepEqual(got, want) {
+		t.Errorf("Slice = %v; want %v (an un-opted-in field must not read the server's disk)", got, want)
+	}
+
+	var scalar reqOpts
+	populate(t, reflect.ValueOf(&scalar).Elem(), map[string]string{"name": "@" + path}, nil)
+	if scalar.Name != "@"+path {
+		t.Errorf("Name = %q; want the literal %q", scalar.Name, "@"+path)
+	}
+}
+
+// rpcFileOpts opts in, which is what a field genuinely naming a server-side
+// document looks like.
+type rpcFileOpts struct {
+	Slice []string `flag:"slice" clicky:"rpc-file-read"`
+	Name  string   `flag:"name" clicky:"cli-file-read rpc-file-read"`
+}
+
+func TestPopulateFromRequest_AtFileResolvesWhenOptedIn(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "items.txt")
+	if err := os.WriteFile(path, []byte("alpha\nbeta\ngamma\n"), 0o600); err != nil {
+		t.Fatalf("write tmp file: %v", err)
+	}
+	fields, err := ParseStructFields(reflect.TypeOf(rpcFileOpts{}))
+	if err != nil {
+		t.Fatalf("ParseStructFields: %v", err)
+	}
+
+	var opts rpcFileOpts
+	if err := PopulateFromRequest(reflect.ValueOf(&opts).Elem(), fields,
+		map[string]string{"slice": "@" + path, "name": "@" + path}, nil); err != nil {
+		t.Fatalf("PopulateFromRequest: %v", err)
+	}
 	if got, want := opts.Slice, []string{"alpha", "beta", "gamma"}; !reflect.DeepEqual(got, want) {
-		t.Errorf("Slice = %v; want %v (file loading must be preserved)", got, want)
+		t.Errorf("Slice = %v; want %v", got, want)
+	}
+	if opts.Name != "alpha\nbeta\ngamma\n" {
+		t.Errorf("Name = %q; want the file contents", opts.Name)
+	}
+}
+
+// Opting in says "this field names a document", not "this field may read the
+// host's secrets".
+func TestPopulateFromRequest_OptInStillRefusesProtectedPaths(t *testing.T) {
+	fields, err := ParseStructFields(reflect.TypeOf(rpcFileOpts{}))
+	if err != nil {
+		t.Fatalf("ParseStructFields: %v", err)
+	}
+
+	var opts rpcFileOpts
+	err = PopulateFromRequest(reflect.ValueOf(&opts).Elem(), fields,
+		map[string]string{"name": "@/etc/passwd"}, nil)
+	if err == nil {
+		t.Fatal("expected /etc/passwd to be refused even with rpc-file-read")
+	}
+	if !strings.Contains(err.Error(), "refusing to read") {
+		t.Errorf("error = %v; want a refusal naming the protected path", err)
 	}
 }
 

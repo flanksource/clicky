@@ -2,6 +2,7 @@ package aichat
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
@@ -215,13 +216,40 @@ func (p *CobraToolProvider) handlerFor(op *rpc.RPCOperation, scope context.Conte
 		request.Context = scopedContext{Context: ctx, values: values}
 		data, response, err := p.executor.ExecuteCommand(op, request)
 		if err != nil {
-			return nil, fmt.Errorf("execute %s: %w", op.Name, err)
+			return nil, fmt.Errorf("execute %s: %w%s", op.Name, err, findings(data, response))
 		}
 		if response != nil && !response.Success {
 			return nil, fmt.Errorf("operation %s failed (exit %d): %s", op.Name, response.ExitCode, response.Error)
 		}
 		return data, nil
 	}
+}
+
+// maxFindingsBytes caps what a failure appends to its message. A validator's
+// diagnostics are a few hundred bytes; a listing that fails after producing a
+// page of rows is not a finding and must not become the error.
+const maxFindingsBytes = 8 << 10
+
+// findings renders what the command produced alongside its error, as a suffix
+// for the error message. A failed tool call reaches the model as a single
+// string, so a command that fails *by* reporting findings — a validator, a
+// linter, a check — loses all of them unless they travel in that string.
+//
+// The executor echoes its own ExecutionResponse in the data slot when the
+// command returned nothing of its own; that is bookkeeping, and appending it
+// would bury the message in a JSON envelope.
+func findings(data any, response *rpc.ExecutionResponse) string {
+	if data == nil || (response != nil && data == any(response)) {
+		return ""
+	}
+	body, err := json.Marshal(data)
+	if err != nil || len(body) == 0 || string(body) == "null" {
+		return ""
+	}
+	if len(body) > maxFindingsBytes {
+		return fmt.Sprintf(": %s… (%d bytes truncated)", body[:maxFindingsBytes], len(body)-maxFindingsBytes)
+	}
+	return ": " + string(body)
 }
 
 func toolableOperation(op *rpc.RPCOperation) bool {
@@ -291,6 +319,14 @@ func toExecutionRequest(input map[string]any, positional []string) *rpc.Executio
 			request.Args = append(request.Args, stringify(value))
 		}
 	}
+	// A command whose Use string names no positional parameter is projected with
+	// the converter's generic "args" array instead, and for such a tool that is
+	// the model's only argument slot. It has to land in Args: as a flag the
+	// command runs with no positional arguments and reports its own required
+	// argument as missing. The HTTP body path and the MCP server already split
+	// it out this way; this is the third caller.
+	request.Args = append(request.Args, stringifyArgs(input["args"])...)
+	positionalSet["args"] = true
 	keys := make([]string, 0, len(input))
 	for key := range input {
 		keys = append(keys, key)
@@ -302,6 +338,29 @@ func toExecutionRequest(input map[string]any, positional []string) *rpc.Executio
 		}
 	}
 	return request
+}
+
+// stringifyArgs renders the generic "args" slot as positional arguments. A
+// model sends the array the schema declares, but routinely sends a bare scalar
+// when there is one argument, so both are accepted.
+func stringifyArgs(value any) []string {
+	switch typed := value.(type) {
+	case nil:
+		return nil
+	case []any:
+		args := make([]string, 0, len(typed))
+		for _, item := range typed {
+			args = append(args, stringify(item))
+		}
+		return args
+	case []string:
+		return append([]string(nil), typed...)
+	default:
+		if text := stringify(value); text != "" {
+			return []string{text}
+		}
+		return nil
+	}
 }
 
 func stringify(value any) string {

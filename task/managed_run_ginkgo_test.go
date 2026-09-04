@@ -18,6 +18,46 @@ import (
 	"github.com/flanksource/clicky/task"
 )
 
+// streamRecorder is an http.ResponseWriter for the streaming handlers below. A
+// SSE handler runs in its own goroutine and keeps writing while the spec polls
+// what it has produced so far, and httptest.ResponseRecorder cannot be used that
+// way — its Body is a plain bytes.Buffer, so the handler's Write races the
+// assertion's Read. Every access here is serialised instead.
+type streamRecorder struct {
+	mu     sync.Mutex
+	body   bytes.Buffer
+	code   int
+	header http.Header
+}
+
+func newStreamRecorder() *streamRecorder {
+	return &streamRecorder{code: http.StatusOK, header: make(http.Header)}
+}
+
+func (r *streamRecorder) Header() http.Header { return r.header }
+
+func (r *streamRecorder) Write(p []byte) (int, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.body.Write(p)
+}
+
+func (r *streamRecorder) WriteHeader(code int) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.code = code
+}
+
+// Flush satisfies http.Flusher, which the SSE handlers require before they will
+// stream at all. There is nothing to flush: Write already appends to the buffer.
+func (r *streamRecorder) Flush() {}
+
+func (r *streamRecorder) String() string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return r.body.String()
+}
+
 type recordingController struct {
 	actions []task.ControlAction
 	called  task.ControlAction
@@ -176,15 +216,15 @@ var _ = Describe("Managed task runs", func() {
 		Expect(controller.called).To(Equal(task.ControlStop))
 
 		request = httptest.NewRequest(http.MethodGet, "/api/tasks/runs/stream", nil)
-		response = httptest.NewRecorder()
+		stream := newStreamRecorder()
 		ctx, cancel := context.WithCancel(request.Context())
 		request = request.WithContext(ctx)
 		done := make(chan struct{})
 		go func() {
-			mux.ServeHTTP(response, request)
+			mux.ServeHTTP(stream, request)
 			close(done)
 		}()
-		Eventually(response.Body.String).Should(ContainSubstring("event: runs"))
+		Eventually(stream.String).Should(ContainSubstring("event: runs"))
 		cancel()
 		Eventually(done).Should(BeClosed())
 	})
@@ -288,15 +328,15 @@ var _ = Describe("Managed task runs", func() {
 		Expect(response.Body.String()).To(ContainSubstring(`"value":42`))
 
 		request = httptest.NewRequest(http.MethodGet, "/api/tasks/stream?tasks=remote-1", nil)
-		response = httptest.NewRecorder()
+		stream := newStreamRecorder()
 		ctx, cancel := context.WithCancel(request.Context())
 		request = request.WithContext(ctx)
 		done := make(chan struct{})
 		go func() {
-			mux.ServeHTTP(response, request)
+			mux.ServeHTTP(stream, request)
 			close(done)
 		}()
-		Eventually(response.Body.String).Should(ContainSubstring("remote-1"))
+		Eventually(stream.String).Should(ContainSubstring("remote-1"))
 		cancel()
 		Eventually(done).Should(BeClosed())
 	})
@@ -349,7 +389,10 @@ var _ = Describe("Managed task runs", func() {
 			close(done)
 		}()
 
-		Eventually(func() int { return source.snapshotCallCount("live-1") }).Should(BeNumerically(">=", 4))
+		// The stream ticks every 200ms; three fetches prove the live run is
+		// re-polled, and the explicit timeout keeps a slow CI runner from
+		// tripping Gomega's one-second default.
+		Eventually(func() int { return source.snapshotCallCount("live-1") }, 10*time.Second).Should(BeNumerically(">=", 3))
 		cancel()
 		Eventually(done).Should(BeClosed())
 

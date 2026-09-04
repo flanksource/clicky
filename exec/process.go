@@ -92,6 +92,20 @@ func (p *Process) WithTimeout(timeout time.Duration) *Process {
 	return p
 }
 
+// WithCaptureLimit bounds each captured stdout and stderr snapshot to the
+// newest maxBytes. Stream and WithStdioPipe destinations still receive every
+// byte. Processes remain unbounded when this option is not used.
+func (p *Process) WithCaptureLimit(maxBytes int) *Process {
+	if maxBytes <= 0 {
+		panic("capture limit must be positive")
+	}
+	if p.captureOutput == nil {
+		p.captureOutput = NewExecLogger()
+	}
+	p.captureOutput.setCaptureLimit(maxBytes)
+	return p
+}
+
 func (p *Process) WithProcessGroup() *Process {
 	p.newProcessGroup = true
 	return p

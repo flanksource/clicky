@@ -19,6 +19,7 @@ func BindFlag(cmd *cobra.Command, info FieldInfo) *FlagValue {
 		Required:     info.Required,
 		IsStdin:      info.IsStdin,
 		IsArgs:       info.IsArgs,
+		CLIFileRead:  info.CLIFileRead,
 	}
 
 	// Bind flag based on type (skip flag registration if no flag name)

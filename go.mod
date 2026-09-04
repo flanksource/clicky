@@ -30,6 +30,7 @@ require (
 	github.com/onsi/gomega v1.42.1
 	github.com/playwright-community/playwright-go v0.5700.1
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2
+	github.com/robfig/cron/v3 v3.0.1
 	github.com/samber/lo v1.53.0
 	github.com/samber/oops v1.22.0
 	github.com/shirou/gopsutil/v3 v3.24.5
@@ -157,7 +158,6 @@ require (
 	github.com/richardlehane/msoleps v1.0.6 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/robertkrimen/otto v0.5.1 // indirect
-	github.com/robfig/cron/v3 v3.0.1 // indirect
 	github.com/rogpeppe/go-internal v1.14.1 // indirect
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3 // indirect
 	github.com/shoenig/go-m1cpu v0.1.7 // indirect

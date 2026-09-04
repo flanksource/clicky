@@ -62,7 +62,10 @@ func assignFieldFromRequest(fieldValue reflect.Value, info FieldInfo, raw string
 		if info.IsArgs && len(args) > 0 && !fromFlag {
 			val = args[0]
 		}
-		loaded, err := loadFromFileOrURL(val)
+		// The value came off the wire and this process is the server, so an
+		// `@` reference would read the *server's* disk on a caller's behalf.
+		// Off unless the field asked for it with clicky:"rpc-file-read".
+		loaded, err := loadFromFileOrURL(val, FileReadPolicy{Enabled: info.RPCFileRead, Remote: true})
 		if err != nil {
 			return err
 		}
@@ -144,7 +147,8 @@ func assignSliceFromRequest(fieldValue reflect.Value, info FieldInfo, raw string
 	switch elemKind {
 	case reflect.String:
 		if len(tokens) == 1 {
-			lines, err := loadLinesFromFileOrURL(tokens[0])
+			lines, err := loadLinesFromFileOrURL(tokens[0],
+				FileReadPolicy{Enabled: info.RPCFileRead, Remote: true})
 			if err != nil {
 				return err
 			}
