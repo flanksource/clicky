@@ -98,7 +98,7 @@ func (p *Process) StdoutReader() io.Reader {
 func (p *Process) clone() *Process {
 	var capture *ExecLogger
 	if p.captureOutput != nil {
-		capture = NewExecLogger().Tee(p.captureOutput.Stdout, p.captureOutput.Stderr)
+		capture = p.captureOutput.clone()
 	}
 	cloned := &Process{
 		Cwd:              p.Cwd,

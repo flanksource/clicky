@@ -141,16 +141,42 @@ func (g *Group) FinishedAt() time.Time {
 
 // observeTerminal records finishedAt the first time the group is seen in a
 // terminal status. Idempotent; safe to call on every snapshot.
+//
+// The zero-to-set transition is also the only completion signal the package
+// has, so it is where a finished run is handed to the store. The hand-off is a
+// non-blocking enqueue: this runs under g.mu and, via GCRuns, under the
+// manager lock too, neither of which may wait on IO.
 func (g *Group) observeTerminal(status Status, now time.Time) {
 	switch status {
 	case StatusRunning, StatusPending:
 		return
 	}
 	g.mu.Lock()
-	if g.finishedAt.IsZero() {
+	first := g.finishedAt.IsZero()
+	if first {
 		g.finishedAt = now
 	}
+	id := g.id
 	g.mu.Unlock()
+
+	if first {
+		persistTerminalRun(id)
+	}
+}
+
+// observeGroupTerminal records a group's completion if it has just become
+// terminal. Called by a worker as it retires a task, so the group's own status
+// is evaluated outside any lock the worker holds; nil and still-running groups
+// are no-ops.
+func observeGroupTerminal(g *Group) {
+	if g == nil {
+		return
+	}
+	status := g.Status()
+	if isRunning(status) {
+		return
+	}
+	g.observeTerminal(status, time.Now())
 }
 
 func (g *Group) GetTasks() []Taskable {
