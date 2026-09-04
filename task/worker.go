@@ -106,6 +106,13 @@ func (w *worker) run() {
 			// Signal done channel for compatibility
 			task.signalDone()
 
+			// Finishing the last task in a group is what makes the group
+			// terminal, and this is the only place that fact is known without
+			// something happening to snapshot it. Observing it here is what
+			// gives a run a durable record the moment it ends rather than
+			// whenever a UI next looks.
+			observeGroupTerminal(task.parent)
+
 			// Cleared only after all post-run bookkeeping so a wait that gates
 			// on foregroundWorkersActive never returns before identity cleanup
 			// and the done signal have landed.
