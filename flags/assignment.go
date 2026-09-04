@@ -48,7 +48,7 @@ func AssignFieldValue(structValue reflect.Value, fv *FlagValue, args []string, i
 			}
 		}
 
-		if loaded, err := loadFromFileOrURL(val); err != nil {
+		if loaded, err := loadFromFileOrURL(val, FileReadPolicy{Enabled: fv.CLIFileRead}); err != nil {
 			return fmt.Errorf("loading %s: %w", fv.FieldName, err)
 		} else {
 			fieldValue.SetString(loaded)
@@ -80,7 +80,7 @@ func AssignFieldValue(structValue reflect.Value, fv *FlagValue, args []string, i
 			}
 
 			if len(val) == 1 {
-				if lines, err := loadLinesFromFileOrURL(val[0]); err != nil {
+				if lines, err := loadLinesFromFileOrURL(val[0], FileReadPolicy{Enabled: fv.CLIFileRead}); err != nil {
 					return err
 				} else {
 					if err := assignValue(fieldValue, lines); err != nil {
@@ -148,12 +148,19 @@ func loadFromStdin() ([]string, error) {
 	return nil, nil
 }
 
-// loadFromFileOrURL loads content from a file or URL
-func loadFromFileOrURL(path string) (string, error) {
-	if !strings.HasPrefix(path, "@") {
-		return path, nil
-	}
-	path = strings.TrimPrefix(path, "@")
+// loadFromFileOrURL expands an `@file` or `@url` value into its contents.
+//
+// Expansion happens only when the field opted in via `clicky:"cli-file-read"` /
+// `clicky:"rpc-file-read"`; otherwise the value is returned verbatim, because
+// reading whatever a value names is a filesystem and network capability, not a
+// string conversion. See fileaccess.go.
+func loadFromFileOrURL(path string, policy FileReadPolicy) (string, error) {
+	return expandFileRef(path, policy, fetchFileOrURL)
+}
+
+// fetchFileOrURL performs the read. Callers reach it through expandFileRef,
+// which is what applies the opt-in and the protected-path rules.
+func fetchFileOrURL(path string) (string, error) {
 	if strings.HasPrefix(path, "http://") || strings.HasPrefix(path, "https://") {
 		resp, err := http.Get(path)
 		if err != nil {
@@ -196,18 +203,23 @@ func loadFromFileOrURL(path string) (string, error) {
 // For the :ColumnName forms, empty cells are skipped. The column split only
 // kicks in for .csv/.xls/.xlsx files so Windows paths like @C:/data.txt
 // still work as plain files.
-func loadLinesFromFileOrURL(raw string) ([]string, error) {
-	if !strings.HasPrefix(raw, "@") {
+// Expansion is gated on the field's opt-in, exactly as for a scalar flag: a
+// field that has not asked for file reads gets the value as a literal.
+func loadLinesFromFileOrURL(raw string, policy FileReadPolicy) ([]string, error) {
+	if !strings.HasPrefix(raw, "@") || !policy.Enabled {
 		// Not a file reference; caller will treat it as a single literal value.
 		return []string{raw}, nil
 	}
 
 	path, column := splitColumnSelector(strings.TrimPrefix(raw, "@"))
+	if err := checkFileRef(path, policy); err != nil {
+		return nil, err
+	}
 	if column != "" {
 		return loadColumnFromFile(path, column)
 	}
 
-	content, err := loadFromFileOrURL("@" + path)
+	content, err := fetchFileOrURL(path)
 	if err != nil {
 		return nil, err
 	}
@@ -252,7 +264,9 @@ func loadColumnFromFile(path, column string) ([]string, error) {
 }
 
 func loadColumnFromCSV(path, column string) ([]string, error) {
-	content, err := loadFromFileOrURL("@" + path)
+	// Reached only through loadLinesFromFileOrURL, which has already applied the
+	// opt-in and the protected-path rules to this path.
+	content, err := fetchFileOrURL(path)
 	if err != nil {
 		return nil, err
 	}
