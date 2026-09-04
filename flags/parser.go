@@ -64,6 +64,7 @@ func parseStructFieldsRecursive(structType reflect.Type, fieldPath []int, fields
 		}
 
 		// Extract flag metadata
+		cliFileRead, rpcFileRead := parseFileReadTag(field.Tag.Get("clicky"))
 		info := FieldInfo{
 			FieldName:    field.Name,
 			FieldPath:    currentPath,
@@ -76,6 +77,8 @@ func parseStructFieldsRecursive(structType reflect.Type, fieldPath []int, fields
 			Hidden:       field.Tag.Get("hidden") == "true",
 			IsStdin:      isStdin,
 			IsArgs:       isArgs,
+			CLIFileRead:  cliFileRead,
+			RPCFileRead:  rpcFileRead,
 			Enum:         splitEnumTag(field.Tag.Get("enum")),
 		}
 
@@ -99,6 +102,26 @@ func splitEnumTag(tag string) []string {
 		}
 	}
 	return values
+}
+
+// parseFileReadTag reads the `@file` opt-in tokens out of a clicky:"..." tag.
+//
+// The tag is shared with the schema vocabulary in rpc/openapi_reflect.go, which
+// is comma-separated; whitespace is accepted as a separator too so
+// `clicky:"cli-file-read rpc-file-read"` reads naturally. Tokens this package
+// does not recognise are left alone — they belong to the schema side.
+func parseFileReadTag(tag string) (cli, rpc bool) {
+	for _, part := range strings.FieldsFunc(tag, func(r rune) bool {
+		return r == ',' || r == ' ' || r == '\t'
+	}) {
+		switch strings.TrimSpace(part) {
+		case "cli-file-read":
+			cli = true
+		case "rpc-file-read":
+			rpc = true
+		}
+	}
+	return cli, rpc
 }
 
 // splitFlagTag splits a flag tag into its long name and optional single-char

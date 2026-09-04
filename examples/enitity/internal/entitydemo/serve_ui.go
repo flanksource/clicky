@@ -165,7 +165,13 @@ available and ` + "`pnpm install`" + ` already run in webapp/.`,
 	return cmd
 }
 
-func captainRuntimeProfile(context.Context) (capchat.RuntimeProfile, error) {
+func captainRuntimeProfile(_ context.Context, selection capchat.RuntimeProfileSelection) (capchat.RuntimeProfile, error) {
+	if selection.Ref != "" {
+		return capchat.RuntimeProfile{}, capchat.RequestError(
+			http.StatusBadRequest,
+			fmt.Sprintf("runtime profile %q is not available; the entity demo serves its default profile", selection.Ref),
+		)
+	}
 	defaults, err := aiflags.LoadDefaults()
 	if err != nil {
 		return capchat.RuntimeProfile{}, fmt.Errorf("load Captain AI defaults: %w", err)

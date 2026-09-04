@@ -10,6 +10,10 @@ import (
 	"github.com/xuri/excelize/v2"
 )
 
+// allowFileRead is the opt-in a field carries via clicky:"cli-file-read"; the
+// loader does nothing without it.
+var allowFileRead = FileReadPolicy{Enabled: true}
+
 func TestSplitColumnSelector(t *testing.T) {
 	cases := []struct {
 		name       string
@@ -68,7 +72,7 @@ func TestLoadLinesFromFileOrURL_PlainText(t *testing.T) {
 		t.Fatalf("write temp file: %v", err)
 	}
 
-	lines, err := loadLinesFromFileOrURL("@" + path)
+	lines, err := loadLinesFromFileOrURL("@"+path, allowFileRead)
 	if err != nil {
 		t.Fatalf("loadLinesFromFileOrURL: %v", err)
 	}
@@ -81,7 +85,7 @@ func TestLoadLinesFromFileOrURL_PlainText(t *testing.T) {
 func TestLoadLinesFromFileOrURL_LiteralValuePassthrough(t *testing.T) {
 	// A non-@ value should be returned as a single-element slice so the
 	// caller's len(val)==1 branch still fills the slice correctly.
-	lines, err := loadLinesFromFileOrURL("P12345")
+	lines, err := loadLinesFromFileOrURL("P12345", allowFileRead)
 	if err != nil {
 		t.Fatalf("loadLinesFromFileOrURL: %v", err)
 	}
@@ -99,7 +103,7 @@ func TestLoadLinesFromFileOrURL_CSVColumn(t *testing.T) {
 	}
 
 	// Named column
-	lines, err := loadLinesFromFileOrURL("@" + path + ":PolicyNumber")
+	lines, err := loadLinesFromFileOrURL("@"+path+":PolicyNumber", allowFileRead)
 	if err != nil {
 		t.Fatalf("loadLinesFromFileOrURL: %v", err)
 	}
@@ -111,7 +115,7 @@ func TestLoadLinesFromFileOrURL_CSVColumn(t *testing.T) {
 	}
 
 	// Case-insensitive column match
-	lines2, err := loadLinesFromFileOrURL("@" + path + ":policynumber")
+	lines2, err := loadLinesFromFileOrURL("@"+path+":policynumber", allowFileRead)
 	if err != nil {
 		t.Fatalf("case-insensitive: %v", err)
 	}
@@ -128,7 +132,7 @@ func TestLoadLinesFromFileOrURL_CSVMissingColumn(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err := loadLinesFromFileOrURL("@" + path + ":NotPresent")
+	_, err := loadLinesFromFileOrURL("@"+path+":NotPresent", allowFileRead)
 	if err == nil {
 		t.Fatal("expected error for missing column")
 	}
@@ -162,7 +166,7 @@ func TestLoadLinesFromFileOrURL_XLSXColumn(t *testing.T) {
 	}
 	_ = f.Close()
 
-	lines, err := loadLinesFromFileOrURL("@" + path + ":PolicyNumber")
+	lines, err := loadLinesFromFileOrURL("@"+path+":PolicyNumber", allowFileRead)
 	if err != nil {
 		t.Fatalf("loadLinesFromFileOrURL: %v", err)
 	}

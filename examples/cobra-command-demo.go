@@ -18,7 +18,7 @@ type ListUsersOptions struct {
 	Limit  int               `flag:"limit" help:"Maximum results to return" default:"50"`
 	Active bool              `flag:"active" help:"Only show active users" default:"true"`
 	Since  time.Time         `flag:"since" help:"Created since (supports now-7d)" default:"now-30d"`
-	Tags   []string          `flag:"tags" help:"Filter by tags (supports @file)" stdin:"true"`
+	Tags   []string          `flag:"tags" help:"Filter by tags (supports @file)" stdin:"true" clicky:"cli-file-read"`
 	MaxAge duration.Duration `flag:"max-age" help:"Maximum account age" default:"365d"`
 }
 

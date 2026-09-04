@@ -20,6 +20,7 @@ type FlagValue struct {
 	Required       bool
 	IsStdin        bool
 	IsArgs         bool
+	CLIFileRead    bool
 	StringPtr      *string
 	IntPtr         *int
 	BoolPtr        *bool
@@ -42,6 +43,13 @@ type FieldInfo struct {
 	Hidden       bool
 	IsStdin      bool
 	IsArgs       bool
+	// CLIFileRead and RPCFileRead opt the field into `@file`/`@url` expansion,
+	// from `clicky:"cli-file-read"` and `clicky:"rpc-file-read"`. They are
+	// separate because the two paths read from different machines: the CLI
+	// reads the operator's disk, the RPC handler reads the server's. See
+	// fileaccess.go.
+	CLIFileRead bool
+	RPCFileRead bool
 	// Enum is the field's closed set of accepted values, from an
 	// `enum:"a,b,c"` tag. It travels into the OpenAPI parameter and the
 	// published action schema, so a front end renders the real choices instead
