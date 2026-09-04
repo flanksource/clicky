@@ -240,6 +240,7 @@ func TestEntityPagedList_ResponseEnvelopeAndHeaders(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, rr.Code)
 	assert.Equal(t, "7", rr.Header().Get("X-Total-Count"))
+	assert.Equal(t, "eq", rr.Header().Get("X-Total-Relation"))
 	assert.Equal(t, "2", rr.Header().Get("X-Page-Limit"))
 	assert.Equal(t, "4", rr.Header().Get("X-Page-Offset"))
 
@@ -298,6 +299,7 @@ func TestEntityPagedList_ClickyJSONUnwrapsToTable(t *testing.T) {
 	require.Equal(t, http.StatusOK, rr.Code)
 	// Paging still travels via headers, never the clicky body.
 	assert.Equal(t, "7", rr.Header().Get("X-Total-Count"))
+	assert.Equal(t, "eq", rr.Header().Get("X-Total-Relation"))
 	assert.Equal(t, "2", rr.Header().Get("X-Page-Limit"))
 	assert.Equal(t, "4", rr.Header().Get("X-Page-Offset"))
 

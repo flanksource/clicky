@@ -90,15 +90,27 @@ func GetContextLookupFunc(cmd *cobra.Command) ContextLookupFunc {
 //   - short:"x" - short flag variant
 //   - required:"true" - mark flag as required
 //   - stdin:"true" - mark field as default for stdin input (only one field)
+//   - clicky:"cli-file-read" - allow @file/@url expansion on the CLI
+//   - clicky:"rpc-file-read" - allow it for values arriving over HTTP too
 //
-// Supports @ prefix for file/URL loading:
-//   - @file.txt - read from file
-//   - @https://... - fetch from URL
-//   - For slices: one value per line (skip empty lines and # comments)
-//   - For slices: @file.csv:ColumnName reads a named column from a CSV
-//     (first row is the header, empty cells are skipped)
-//   - For slices: @file.xlsx:ColumnName / @file.xls:ColumnName reads a named
-//     column from the first worksheet (case-insensitive header match)
+// Supports @ prefix for file/URL loading, but only on fields that opt in.
+// Expanding an @ value reads whatever it names on whichever machine does the
+// expanding — the operator's disk on the CLI, the *server's* disk for a value
+// off the wire — so it is a capability a field asks for, not a default. Without
+// the tag an @ value is passed through as the literal string it is, which is
+// also correct for content that legitimately starts with one (a Java
+// annotation, an email address, an npm scope). Protected paths and instance
+// metadata stay blocked even for a field that opted in; see flags/fileaccess.go.
+//
+//		Source string `flag:"source" clicky:"cli-file-read"`
+//
+//	  - @file.txt - read from file
+//	  - @https://... - fetch from URL
+//	  - For slices: one value per line (skip empty lines and # comments)
+//	  - For slices: @file.csv:ColumnName reads a named column from a CSV
+//	    (first row is the header, empty cells are skipped)
+//	  - For slices: @file.xlsx:ColumnName / @file.xls:ColumnName reads a named
+//	    column from the first worksheet (case-insensitive header match)
 //
 // Supported types:
 //   - string, int, bool
@@ -358,25 +370,24 @@ func addNamedCommand[T any, R any](
 			result, err = fn(optsValue.Interface().(T))
 		}
 		if err != nil {
-			// An error that carries a clicky rendering interface
-			// (Pretty/Textable/Tree*) is rendered through the same format
-			// pipeline as a success result — honouring --format — instead of
-			// being collapsed to its Error() line. The error is still
-			// returned so cobra exits non-zero.
-			if rich, ok := renderableError(err); ok {
-				if renderErr := RenderResult(rich); renderErr != nil {
-					return renderErr
-				}
-			} else {
-				logger.GetSlogLogger().WithSkipReportLevel(2).Errorf("Command %s failed: %v", name, err)
-			}
-			return err
+			return renderCommandError(name, err)
 		}
 
 		return RenderResult(result)
 	}
 
 	return cmd
+}
+
+func renderCommandError(name string, err error) error {
+	if rich, ok := renderableError(err); ok {
+		if renderErr := RenderResult(rich); renderErr != nil {
+			return renderErr
+		}
+	} else {
+		logger.GetSlogLogger().WithSkipReportLevel(2).Errorf("Command %s failed: %v", name, err)
+	}
+	return err
 }
 
 // isStdinAvailable checks if stdin has data available

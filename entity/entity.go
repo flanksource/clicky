@@ -1455,7 +1455,7 @@ func generateIDCommand(
 			}
 			result, err := runEntityOp(c, op, flagMap, args)
 			if err != nil {
-				return err
+				return renderCommandError(verb, err)
 			}
 			if result != nil {
 				return RenderResult(result)
