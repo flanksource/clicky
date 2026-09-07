@@ -1,9 +1,10 @@
 package flags
 
 import (
+	"context"
+	"errors"
 	"fmt"
-	"net"
-	"net/url"
+	"os"
 	"path/filepath"
 	"strings"
 )
@@ -23,9 +24,8 @@ import (
 // right answer for content that legitimately starts with one — a Java
 // annotation, an email address, an npm scope.
 //
-// Where expansion IS enabled, the paths and hosts below stay blocked. An
-// opt-in says "this field names a document", not "this field may read the
-// host's secrets".
+// Where expansion IS enabled, the paths below stay blocked. Request-supplied
+// URL destinations are constrained by commons/http's defensive client.
 
 // FileReadPolicy decides whether an `@` value may be expanded, and how strictly.
 type FileReadPolicy struct {
@@ -36,6 +36,7 @@ type FileReadPolicy struct {
 	// rules, because a server fetching a caller-supplied URL can reach hosts
 	// the caller cannot.
 	Remote bool
+	ctx    context.Context
 }
 
 // deniedPrefixes are directory trees that hold credentials, kernel state or
@@ -81,23 +82,65 @@ var deniedExtensions = []string{".pem", ".key", ".p12", ".pfx", ".jks", ".keysto
 
 // expandFileRef resolves an `@` value under the given policy. A value without
 // the prefix, or a field that has not opted in, comes back unchanged.
-func expandFileRef(value string, policy FileReadPolicy, load func(string) (string, error)) (string, error) {
+func expandFileRef(value string, policy FileReadPolicy, load func(string, FileReadPolicy) (string, error)) (string, error) {
 	if !strings.HasPrefix(value, "@") || !policy.Enabled {
 		return value, nil
 	}
-	ref := strings.TrimPrefix(value, "@")
-	if err := checkFileRef(ref, policy); err != nil {
+	ref, err := resolveFileRef(strings.TrimPrefix(value, "@"))
+	if err != nil {
 		return "", err
 	}
-	return load(ref)
+	return load(ref, policy)
 }
 
-// checkFileRef rejects a reference that names protected state.
-func checkFileRef(ref string, policy FileReadPolicy) error {
+func resolveFileRef(ref string) (string, error) {
 	if isURL(ref) {
-		return checkURL(ref, policy)
+		return ref, nil
 	}
-	return checkPath(ref)
+	absolute, err := filepath.Abs(ref)
+	if err != nil {
+		return "", fmt.Errorf("resolving %q: %w", ref, err)
+	}
+	canonical, err := filepath.EvalSymlinks(filepath.Clean(absolute))
+	if err != nil {
+		return "", fmt.Errorf("resolving symlinks for %q: %w", ref, err)
+	}
+	if err := checkPath(canonical); err != nil {
+		return "", err
+	}
+	return canonical, nil
+}
+
+func openValidatedFile(path string) (_ *os.File, err error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		if err != nil {
+			err = errors.Join(err, file.Close())
+		}
+	}()
+
+	canonical, err := filepath.EvalSymlinks(path)
+	if err != nil {
+		return nil, fmt.Errorf("revalidating %q after open: %w", path, err)
+	}
+	if err := checkPath(canonical); err != nil {
+		return nil, err
+	}
+	opened, err := file.Stat()
+	if err != nil {
+		return nil, fmt.Errorf("stat opened file %q: %w", path, err)
+	}
+	current, err := os.Stat(canonical)
+	if err != nil {
+		return nil, fmt.Errorf("stat validated file %q: %w", canonical, err)
+	}
+	if !os.SameFile(opened, current) {
+		return nil, fmt.Errorf("refusing to read %q: file changed while it was being validated", path)
+	}
+	return file, nil
 }
 
 func isURL(ref string) bool {
@@ -163,40 +206,4 @@ func checkPath(path string) error {
 func blockedPath(path, why string) error {
 	return fmt.Errorf("refusing to read %q: it is %s. "+
 		"@-expansion never reads credential stores, private keys or kernel state", path, why)
-}
-
-// checkURL blocks the addresses a caller should not be able to make someone
-// else's process reach: cloud instance metadata above all, which hands out
-// credentials to anything that asks from the right network.
-func checkURL(raw string, policy FileReadPolicy) error {
-	parsed, err := url.Parse(raw)
-	if err != nil {
-		return fmt.Errorf("parsing URL %q: %w", raw, err)
-	}
-	host := strings.ToLower(parsed.Hostname())
-
-	// Metadata endpoints are blocked on both paths: there is no legitimate
-	// reason to load a flag value from one, and it is the highest-value target.
-	if host == "metadata.google.internal" || host == "metadata" || strings.HasPrefix(host, "169.254.") {
-		return fmt.Errorf("refusing to fetch %q: instance metadata endpoints are never readable through @-expansion", raw)
-	}
-	if !policy.Remote {
-		return nil
-	}
-	// A server fetching on behalf of a caller must stay off the networks that
-	// caller cannot reach directly.
-	if host == "localhost" || strings.HasSuffix(host, ".localhost") || strings.HasSuffix(host, ".internal") {
-		return blockedHost(raw, host)
-	}
-	if ip := net.ParseIP(host); ip != nil {
-		if ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsUnspecified() {
-			return blockedHost(raw, host)
-		}
-	}
-	return nil
-}
-
-func blockedHost(raw, host string) error {
-	return fmt.Errorf("refusing to fetch %q: %s is on a loopback, private or internal network, "+
-		"which a request-supplied URL may not reach", raw, host)
 }

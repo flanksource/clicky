@@ -40,6 +40,13 @@ var _ = ginkgo.Describe("toExecutionRequest", func() {
 		gomega.Expect(request.Flags).To(gomega.Equal(map[string]string{"format": "json"}))
 	})
 
+	ginkgo.It("does not duplicate a path parameter named args", func() {
+		request := toExecutionRequest(map[string]any{"args": "first"}, []string{"args"})
+
+		gomega.Expect(request.Args).To(gomega.Equal([]string{"first"}))
+		gomega.Expect(request.Flags).NotTo(gomega.HaveKey("args"))
+	})
+
 	ginkgo.It("leaves every other key a flag", func() {
 		request := toExecutionRequest(map[string]any{"limit": 10, "trace": true}, nil)
 

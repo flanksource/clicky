@@ -2,6 +2,7 @@ package flags
 
 import (
 	"bytes"
+	"context"
 	"encoding/csv"
 	"fmt"
 	"io"
@@ -11,6 +12,7 @@ import (
 	"reflect"
 	"strings"
 
+	commonshttp "github.com/flanksource/commons/http"
 	"github.com/flanksource/commons/logger"
 	"github.com/xuri/excelize/v2"
 )
@@ -160,9 +162,23 @@ func loadFromFileOrURL(path string, policy FileReadPolicy) (string, error) {
 
 // fetchFileOrURL performs the read. Callers reach it through expandFileRef,
 // which is what applies the opt-in and the protected-path rules.
-func fetchFileOrURL(path string) (string, error) {
+func fetchFileOrURL(path string, policy FileReadPolicy) (string, error) {
 	if strings.HasPrefix(path, "http://") || strings.HasPrefix(path, "https://") {
-		resp, err := http.Get(path)
+		var resp *http.Response
+		var err error
+		if policy.Remote {
+			ctx := policy.ctx
+			if ctx == nil {
+				ctx = context.Background()
+			}
+			response, requestErr := commonshttp.NewDefensive().R(ctx).Get(path)
+			if response != nil {
+				resp = response.Response
+			}
+			err = requestErr
+		} else {
+			resp, err = http.Get(path)
+		}
 		if err != nil {
 			return "", err
 		}
@@ -183,7 +199,16 @@ func fetchFileOrURL(path string) (string, error) {
 		return string(data), nil
 	}
 
-	data, err := os.ReadFile(path)
+	file, err := openValidatedFile(path)
+	if err != nil {
+		return "", err
+	}
+	defer func() {
+		if err := file.Close(); err != nil {
+			logger.Errorf("failed to close file %s: %v", path, err)
+		}
+	}()
+	data, err := io.ReadAll(file)
 	if err != nil {
 		return "", err
 	}
@@ -212,14 +237,15 @@ func loadLinesFromFileOrURL(raw string, policy FileReadPolicy) ([]string, error)
 	}
 
 	path, column := splitColumnSelector(strings.TrimPrefix(raw, "@"))
-	if err := checkFileRef(path, policy); err != nil {
+	path, err := resolveFileRef(path)
+	if err != nil {
 		return nil, err
 	}
 	if column != "" {
-		return loadColumnFromFile(path, column)
+		return loadColumnFromFile(path, column, policy)
 	}
 
-	content, err := fetchFileOrURL(path)
+	content, err := fetchFileOrURL(path, policy)
 	if err != nil {
 		return nil, err
 	}
@@ -252,21 +278,21 @@ func splitColumnSelector(raw string) (string, string) {
 
 // loadColumnFromFile reads the named column from a CSV or Excel file and
 // returns the non-empty cell values in row order.
-func loadColumnFromFile(path, column string) ([]string, error) {
+func loadColumnFromFile(path, column string, policy FileReadPolicy) ([]string, error) {
 	ext := strings.ToLower(filepath.Ext(path))
 	switch ext {
 	case ".csv":
-		return loadColumnFromCSV(path, column)
+		return loadColumnFromCSV(path, column, policy)
 	case ".xls", ".xlsx":
 		return loadColumnFromExcel(path, column)
 	}
 	return nil, fmt.Errorf("unsupported file extension %q for column selector", ext)
 }
 
-func loadColumnFromCSV(path, column string) ([]string, error) {
+func loadColumnFromCSV(path, column string, policy FileReadPolicy) ([]string, error) {
 	// Reached only through loadLinesFromFileOrURL, which has already applied the
 	// opt-in and the protected-path rules to this path.
-	content, err := fetchFileOrURL(path)
+	content, err := fetchFileOrURL(path, policy)
 	if err != nil {
 		return nil, err
 	}
@@ -301,7 +327,17 @@ func loadColumnFromCSV(path, column string) ([]string, error) {
 }
 
 func loadColumnFromExcel(path, column string) ([]string, error) {
-	f, err := excelize.OpenFile(path)
+	file, err := openValidatedFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("opening %s: %w", path, err)
+	}
+	defer func() {
+		if err := file.Close(); err != nil {
+			logger.Errorf("failed to close file %s: %v", path, err)
+		}
+	}()
+
+	f, err := excelize.OpenReader(file)
 	if err != nil {
 		return nil, fmt.Errorf("opening %s: %w", path, err)
 	}

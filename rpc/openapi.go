@@ -647,6 +647,10 @@ func (g *OpenAPIGenerator) responseHeadersForOperation(op RPCOperation) map[stri
 			Description: "Total number of matching rows before paging.",
 			Schema:      integer,
 		},
+		"X-Total-Relation": {
+			Description: "Relation of X-Total-Count: eq means exact, gte means a lower bound, and unknown means unavailable.",
+			Schema:      &OpenAPISchema{Type: "string"},
+		},
 		"X-Page-Limit": {
 			Description: "Effective page limit applied to the response.",
 			Schema:      integer,

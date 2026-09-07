@@ -318,7 +318,7 @@ func addNamedCommand[T any, R any](
 	if fnCtx != nil {
 		contextDataFuncRegistry.Store(cmd, func(ctx context.Context, flagMap map[string]string, args []string) (any, error) {
 			optsValue := reflect.New(optsType).Elem()
-			if err := flags.PopulateFromRequest(optsValue, capturedFields, flagMap, args); err != nil {
+			if err := flags.PopulateFromRequest(optsValue, capturedFields, flagMap, args, flags.WithRequestContext(ctx)); err != nil {
 				return nil, err
 			}
 			return dataOrError(fnCtx(ctx, optsValue.Interface().(T)))
@@ -385,7 +385,9 @@ func renderCommandError(name string, err error) error {
 			return renderErr
 		}
 	} else {
-		logger.GetSlogLogger().WithSkipReportLevel(2).Errorf("Command %s failed: %v", name, err)
+		// The commons Logger interface provides both caller skipping and Errorf;
+		// its slog adapter does not.
+		logger.GetLogger().WithSkipReportLevel(2).Errorf("Command %s failed: %v", name, err)
 	}
 	return err
 }

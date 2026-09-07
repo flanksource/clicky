@@ -325,7 +325,9 @@ func toExecutionRequest(input map[string]any, positional []string) *rpc.Executio
 	// command runs with no positional arguments and reports its own required
 	// argument as missing. The HTTP body path and the MCP server already split
 	// it out this way; this is the third caller.
-	request.Args = append(request.Args, stringifyArgs(input["args"])...)
+	if !positionalSet["args"] {
+		request.Args = append(request.Args, stringifyArgs(input["args"])...)
+	}
 	positionalSet["args"] = true
 	keys := make([]string, 0, len(input))
 	for key := range input {

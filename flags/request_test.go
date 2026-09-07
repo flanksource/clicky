@@ -176,6 +176,32 @@ func TestPopulateFromRequest_OptInStillRefusesProtectedPaths(t *testing.T) {
 	}
 }
 
+func TestPopulateFromRequest_OptInRefusesSymlinkToProtectedPath(t *testing.T) {
+	dir := t.TempDir()
+	protectedDir := filepath.Join(dir, ".ssh")
+	if err := os.Mkdir(protectedDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	protected := filepath.Join(protectedDir, "config")
+	if err := os.WriteFile(protected, []byte("secret"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(dir, "document.txt")
+	if err := os.Symlink(protected, link); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	fields, err := ParseStructFields(reflect.TypeOf(rpcFileOpts{}))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var opts rpcFileOpts
+	err = PopulateFromRequest(reflect.ValueOf(&opts).Elem(), fields, map[string]string{"name": "@" + link}, nil)
+	if err == nil {
+		t.Fatal("expected rpc-file-read to refuse a symlink to a protected path")
+	}
+}
+
 // TestPopulateFromRequest_Concurrent fires the data-path under -race with
 // interleaved payloads. Every result must reflect only its own input — if
 // any goroutine sees another's tokens or scalar values, the race detector
