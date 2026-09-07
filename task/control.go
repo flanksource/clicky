@@ -12,6 +12,7 @@ const (
 	ControlStart   ControlAction = "start"
 	ControlStop    ControlAction = "stop"
 	ControlRestart ControlAction = "restart"
+	ControlDrain   ControlAction = "drain"
 )
 
 // TaskController performs the currently-supported lifecycle actions for a run

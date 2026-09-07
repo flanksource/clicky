@@ -50,6 +50,13 @@ func WithTaskTimeout(d time.Duration) Option {
 	}
 }
 
+// WithCancellationDrain makes cancellation waits block until the callback returns.
+func WithCancellationDrain() Option {
+	return func(t *Task) {
+		t.drainCancellation = true
+	}
+}
+
 // WithDependencies sets tasks that must complete before this task can start. A
 // dependency that failed cancels this task with "dependency failed"; a
 // dependency that was cancelled does not — this task waits for it to unwind and
@@ -75,6 +82,9 @@ func WithFunc(fn func(flanksourceContext.Context, *Task) error) Option {
 func withParent(g *Group) Option {
 	return func(t *Task) {
 		t.parent = g
+		if g != nil {
+			WithContext(g.Context())(t)
+		}
 	}
 }
 
