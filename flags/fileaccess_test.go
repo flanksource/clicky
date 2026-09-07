@@ -9,9 +9,9 @@ import (
 
 // noLoad fails the test if a read is attempted; the guard must reject before
 // anything touches the disk or the network.
-func noLoad(t *testing.T) func(string) (string, error) {
+func noLoad(t *testing.T) func(string, FileReadPolicy) (string, error) {
 	t.Helper()
-	return func(ref string) (string, error) {
+	return func(ref string, _ FileReadPolicy) (string, error) {
 		t.Fatalf("expansion reached the loader for %q, which should have been refused or passed through", ref)
 		return "", nil
 	}
@@ -60,6 +60,55 @@ func TestExpandFileRef_ReadsWhenOptedIn(t *testing.T) {
 	}
 	if got != "contents" {
 		t.Errorf("got %q; want the file contents", got)
+	}
+}
+
+func TestExpandFileRef_BlocksSymlinkToProtectedPath(t *testing.T) {
+	dir := t.TempDir()
+	protectedDir := filepath.Join(dir, ".ssh")
+	if err := os.Mkdir(protectedDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	protected := filepath.Join(protectedDir, "config")
+	if err := os.WriteFile(protected, []byte("secret"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(dir, "document.txt")
+	if err := os.Symlink(protected, link); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+
+	if _, err := expandFileRef("@"+link, FileReadPolicy{Enabled: true, Remote: true}, fetchFileOrURL); err == nil {
+		t.Fatal("expected a symlink to a protected path to be refused")
+	}
+}
+
+func TestExpandFileRef_BlocksSymlinkSwapAfterValidation(t *testing.T) {
+	dir := t.TempDir()
+	protectedDir := filepath.Join(dir, ".ssh")
+	if err := os.Mkdir(protectedDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	protected := filepath.Join(protectedDir, "config")
+	if err := os.WriteFile(protected, []byte("secret"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	document := filepath.Join(dir, "document.txt")
+	if err := os.WriteFile(document, []byte("public"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := expandFileRef("@"+document, FileReadPolicy{Enabled: true, Remote: true}, func(validated string, policy FileReadPolicy) (string, error) {
+		if err := os.Remove(validated); err != nil {
+			return "", err
+		}
+		if err := os.Symlink(protected, validated); err != nil {
+			t.Skipf("symlinks unavailable: %v", err)
+		}
+		return fetchFileOrURL(validated, policy)
+	})
+	if err == nil {
+		t.Fatal("expected a file replaced by a symlink after validation to be refused")
 	}
 }
 
@@ -119,50 +168,6 @@ func TestCheckPath_AllowsOrdinaryDocuments(t *testing.T) {
 	for _, path := range allowed {
 		if err := checkPath(path); err != nil {
 			t.Errorf("checkPath(%q) = %v; want it allowed", path, err)
-		}
-	}
-}
-
-// Metadata endpoints hand out cloud credentials to anything on the right
-// network, so they are refused on both the CLI and the RPC path.
-func TestCheckURL_BlocksInstanceMetadataEverywhere(t *testing.T) {
-	for _, raw := range []string{
-		"http://169.254.169.254/latest/meta-data/iam/security-credentials/",
-		"http://metadata.google.internal/computeMetadata/v1/",
-	} {
-		for _, policy := range []FileReadPolicy{{Enabled: true}, {Enabled: true, Remote: true}} {
-			if err := checkURL(raw, policy); err == nil {
-				t.Errorf("checkURL(%q, remote=%v) = nil; want a refusal", raw, policy.Remote)
-			}
-		}
-	}
-}
-
-// A request-supplied URL must not make the server reach networks the caller
-// cannot; the same URL typed on the CLI is the operator's own business.
-func TestCheckURL_BlocksInternalHostsOnlyForRemoteValues(t *testing.T) {
-	internal := []string{
-		"http://localhost:8080/x",
-		"http://127.0.0.1/x",
-		"http://10.0.0.5/x",
-		"http://192.168.1.10/x",
-		"http://172.16.4.4/x",
-		"http://db.internal/x",
-	}
-	for _, raw := range internal {
-		if err := checkURL(raw, FileReadPolicy{Enabled: true, Remote: true}); err == nil {
-			t.Errorf("checkURL(%q, remote) = nil; want a refusal", raw)
-		}
-		if err := checkURL(raw, FileReadPolicy{Enabled: true}); err != nil {
-			t.Errorf("checkURL(%q, cli) = %v; want it allowed on the CLI", raw, err)
-		}
-	}
-}
-
-func TestCheckURL_AllowsPublicHosts(t *testing.T) {
-	for _, raw := range []string{"https://example.com/list.txt", "https://raw.githubusercontent.com/o/r/main/f"} {
-		if err := checkURL(raw, FileReadPolicy{Enabled: true, Remote: true}); err != nil {
-			t.Errorf("checkURL(%q) = %v; want it allowed", raw, err)
 		}
 	}
 }

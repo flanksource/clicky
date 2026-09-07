@@ -1,6 +1,7 @@
 package flags
 
 import (
+	"context"
 	"encoding/csv"
 	"fmt"
 	"reflect"
@@ -9,6 +10,23 @@ import (
 
 	"github.com/flanksource/commons/duration"
 )
+
+type populateRequestOptions struct {
+	ctx context.Context
+}
+
+// RequestOption customizes request-scoped argument decoding.
+type RequestOption func(*populateRequestOptions)
+
+// WithRequestContext propagates request cancellation into file and URL expansion.
+func WithRequestContext(ctx context.Context) RequestOption {
+	if ctx == nil {
+		panic("flags: request context is required")
+	}
+	return func(options *populateRequestOptions) {
+		options.ctx = ctx
+	}
+}
 
 // PopulateFromRequest fills optsValue by parsing flagMap and args directly,
 // without touching any shared pflag pointer. This is the entry point used by
@@ -21,7 +39,11 @@ import (
 // Precedence per field: explicit flagMap[FlagName] → args (for the IsArgs
 // field) → DefaultValue → type zero value. Stdin is intentionally skipped on
 // this path — HTTP requests have no terminal.
-func PopulateFromRequest(optsValue reflect.Value, fields []FieldInfo, flagMap map[string]string, args []string) error {
+func PopulateFromRequest(optsValue reflect.Value, fields []FieldInfo, flagMap map[string]string, args []string, options ...RequestOption) error {
+	requestOptions := populateRequestOptions{ctx: context.Background()}
+	for _, option := range options {
+		option(&requestOptions)
+	}
 	for _, info := range fields {
 		fieldValue := GetFieldByPath(optsValue, info.FieldPath)
 		if !fieldValue.IsValid() || !fieldValue.CanSet() {
@@ -29,7 +51,7 @@ func PopulateFromRequest(optsValue reflect.Value, fields []FieldInfo, flagMap ma
 		}
 
 		raw, hasRaw, fromFlag := pickRawValue(info, flagMap)
-		if err := assignFieldFromRequest(fieldValue, info, raw, hasRaw, fromFlag, args); err != nil {
+		if err := assignFieldFromRequest(fieldValue, info, raw, hasRaw, fromFlag, args, requestOptions); err != nil {
 			return fmt.Errorf("field %s: %w", info.FieldName, err)
 		}
 	}
@@ -54,7 +76,7 @@ func pickRawValue(info FieldInfo, flagMap map[string]string) (raw string, hasRaw
 	return "", false, false
 }
 
-func assignFieldFromRequest(fieldValue reflect.Value, info FieldInfo, raw string, hasRaw, fromFlag bool, args []string) error {
+func assignFieldFromRequest(fieldValue reflect.Value, info FieldInfo, raw string, hasRaw, fromFlag bool, args []string, options populateRequestOptions) error {
 	switch info.FieldType.Kind() {
 	case reflect.String:
 		val := raw
@@ -65,7 +87,7 @@ func assignFieldFromRequest(fieldValue reflect.Value, info FieldInfo, raw string
 		// The value came off the wire and this process is the server, so an
 		// `@` reference would read the *server's* disk on a caller's behalf.
 		// Off unless the field asked for it with clicky:"rpc-file-read".
-		loaded, err := loadFromFileOrURL(val, FileReadPolicy{Enabled: info.RPCFileRead, Remote: true})
+		loaded, err := loadFromFileOrURL(val, FileReadPolicy{Enabled: info.RPCFileRead, Remote: true, ctx: options.ctx})
 		if err != nil {
 			return err
 		}
@@ -97,7 +119,7 @@ func assignFieldFromRequest(fieldValue reflect.Value, info FieldInfo, raw string
 		return nil
 
 	case reflect.Slice:
-		return assignSliceFromRequest(fieldValue, info, raw, hasRaw, fromFlag, args)
+		return assignSliceFromRequest(fieldValue, info, raw, hasRaw, fromFlag, args, options)
 
 	default:
 		switch info.FieldType.String() {
@@ -128,7 +150,7 @@ func assignFieldFromRequest(fieldValue reflect.Value, info FieldInfo, raw string
 	return nil
 }
 
-func assignSliceFromRequest(fieldValue reflect.Value, info FieldInfo, raw string, hasRaw, fromFlag bool, args []string) error {
+func assignSliceFromRequest(fieldValue reflect.Value, info FieldInfo, raw string, hasRaw, fromFlag bool, args []string, options populateRequestOptions) error {
 	elemKind := info.FieldType.Elem().Kind()
 
 	// Positional args override a default but not an explicit flag value.
@@ -148,7 +170,7 @@ func assignSliceFromRequest(fieldValue reflect.Value, info FieldInfo, raw string
 	case reflect.String:
 		if len(tokens) == 1 {
 			lines, err := loadLinesFromFileOrURL(tokens[0],
-				FileReadPolicy{Enabled: info.RPCFileRead, Remote: true})
+				FileReadPolicy{Enabled: info.RPCFileRead, Remote: true, ctx: options.ctx})
 			if err != nil {
 				return err
 			}
