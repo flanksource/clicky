@@ -165,7 +165,8 @@ available and ` + "`pnpm install`" + ` already run in webapp/.`,
 	return cmd
 }
 
-func captainRuntimeProfile(_ context.Context, selection capchat.RuntimeProfileSelection) (capchat.RuntimeProfile, error) {
+func captainRuntimeProfile(_ context.Context, options ...capchat.RuntimeProfileOption) (capchat.RuntimeProfile, error) {
+	selection := capchat.ApplyRuntimeProfileOptions(options...)
 	if selection.Ref != "" {
 		return capchat.RuntimeProfile{}, capchat.RequestError(
 			http.StatusBadRequest,
