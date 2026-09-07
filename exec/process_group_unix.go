@@ -44,15 +44,38 @@ func killTree(pid int, hasProcessGroup bool) error {
 		return nil
 	}
 	if hasProcessGroup {
+		// Stop the owner before enumerating descendants that started their own
+		// groups (for example a renderer's plugin and OpenSCAD processes).
+		if err := syscall.Kill(-pid, syscall.SIGSTOP); err != nil && !errors.Is(err, syscall.ESRCH) {
+			return err
+		}
+		var failures []error
+		nodes, err := collectDescendants(int32(pid))
+		if err != nil {
+			failures = append(failures, err)
+		}
+		for i := len(nodes) - 1; i >= 0; i-- {
+			child := int(nodes[i].pid)
+			if child == pid {
+				continue
+			}
+			target := child
+			if group, err := syscall.Getpgid(child); err == nil && group == child {
+				target = -child
+			}
+			if err := syscall.Kill(target, syscall.SIGKILL); err != nil && !errors.Is(err, syscall.ESRCH) {
+				failures = append(failures, err)
+			}
+		}
 		// Atomic: SIGKILL every process in the group. Negative pid means pgid.
 		if err := syscall.Kill(-pid, syscall.SIGKILL); err != nil {
 			if errors.Is(err, syscall.ESRCH) {
 				// Already gone — not an error.
-				return nil
+				return errors.Join(failures...)
 			}
 			return err
 		}
-		return nil
+		return errors.Join(failures...)
 	}
 	// Fallback: racy descendant walk via gopsutil. Kept minimal — callers
 	// should prefer WithProcessGroup() for reliable tree kills.

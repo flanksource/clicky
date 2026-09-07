@@ -64,8 +64,12 @@ func (c *supervisedTaskController) Actions() []task.ControlAction {
 	}
 	active := c.supervisor.loopActive
 	desired := c.supervisor.desired
+	boundTask := c.supervisor.boundTask
 	c.supervisor.mu.RUnlock()
 	if !latest {
+		return nil
+	}
+	if boundTask != nil && boundTask.Context().Err() != nil {
 		return nil
 	}
 	if active && desired {

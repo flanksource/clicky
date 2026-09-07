@@ -105,6 +105,9 @@ func pidAlive(pid int) bool {
 	if err != nil {
 		return false
 	}
+	if zombie, err := pidIsZombie(pid); err == nil && zombie {
+		return false
+	}
 	return proc.Signal(syscall.Signal(0)) == nil
 }
 

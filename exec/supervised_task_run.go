@@ -1,6 +1,8 @@
 package exec
 
 import (
+	"context"
+	"errors"
 	"fmt"
 
 	"github.com/flanksource/clicky/task"
@@ -48,6 +50,13 @@ func (p *Process) RunSupervisedAsTask(options RunSupervisedTaskOptions) task.Typ
 		}()
 		supervisor.Wait()
 		result := supervisor.Result()
+		if ctx.Err() != nil {
+			result.Error = context.Cause(ctx)
+			result.Status = "cancelled"
+			if errors.Is(result.Error, context.DeadlineExceeded) {
+				result.Status = "timeout"
+			}
+		}
 		return result, result.Error
 	}, options.Task...)
 }
