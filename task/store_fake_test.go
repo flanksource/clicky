@@ -17,11 +17,12 @@ const storeWriteTimeout = 5 * time.Second
 type testStore struct {
 	saves chan RunRecord
 
-	mu        sync.Mutex
-	runs      map[string]RunRecord
-	schedules map[string]Schedule
-	fires     map[string][]Fire
-	controls  []string
+	mu              sync.Mutex
+	runs            map[string]RunRecord
+	schedules       map[string]Schedule
+	fires           map[string][]Fire
+	controls        []string
+	saveScheduleErr error
 }
 
 func newTestStore() *testStore {
@@ -101,6 +102,9 @@ func (s *testStore) ListSchedules(context.Context) ([]Schedule, error) {
 func (s *testStore) SaveSchedule(_ context.Context, schedule Schedule) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.saveScheduleErr != nil {
+		return s.saveScheduleErr
+	}
 	s.schedules[schedule.Name] = schedule
 	return nil
 }

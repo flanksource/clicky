@@ -37,6 +37,7 @@ type Group struct {
 	controller      TaskController
 	detailsProvider func() any
 	frozenDetails   any
+	work            *WorkProgress
 }
 
 type TaskGroupOption func(group *Group)
@@ -224,7 +225,7 @@ func (g TypedGroup[T]) Add(name string, taskFunc func(flanksourceContext.Context
 	// worker could dequeue and run it ungated while parent is still nil. The
 	// withParent option is applied inside newTask, before enqueue; it is
 	// prepended so a caller-supplied option cannot override it.
-	return StartTask(name, taskFunc, append([]Option{WithGroup(g.Group)}, opts...)...)
+	return startTask(g.manager, name, taskFunc, append([]Option{WithGroup(g.Group)}, opts...)...)
 }
 
 // GetResults waits for all tasks in the group and returns typed results
@@ -360,15 +361,20 @@ func (g *TypedGroup[T]) WaitFor() *WaitResult {
 		}
 	}
 
-	// Now get the final results
-	_, err := g.GetResults()
-	if err != nil {
-		result.Error = err
-		return result
-	}
-
 	result.Status = g.Status()
 	result.Duration = g.Duration()
+	for _, item := range g.GetTasks() {
+		result.TaskCount++
+		switch item.GetTask().Status() {
+		case StatusSuccess, StatusPASS, StatusSKIP:
+			result.SuccessCount++
+		case StatusFailed, StatusFAIL, StatusERR:
+			result.FailureCount++
+		case StatusWarning:
+			result.WarningCount++
+		}
+	}
+	_, result.Error = g.GetResults()
 
 	// For plain render mode, force a final render
 	if g.manager != nil && g.manager.noProgress.Load() && !g.manager.noRender.Load() {

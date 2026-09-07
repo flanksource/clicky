@@ -42,10 +42,11 @@ func (w *worker) run() {
 			}
 
 			task.mu.Lock()
-			skip := task.status == StatusCancelled
+			skip := task.status == StatusCancelled || task.ctx.Err() != nil
 			task.mu.Unlock()
 			if skip {
-				task.completed.Store(true)
+				task.Cancel()
+				task.markCompleted()
 				task.signalDone()
 				if task.identity != "" {
 					w.manager.tasksByIdentity.Delete(task.identity)
@@ -87,7 +88,7 @@ func (w *worker) run() {
 				// what admits the next task, and a dependent that dequeues while
 				// this one is terminal but not yet completed is cancelled as
 				// "dependency failed".
-				defer task.completed.Store(true)
+				defer task.markCompleted()
 				defer func() {
 					if r := recover(); r != nil {
 						task.mu.Lock()
@@ -166,10 +167,15 @@ func (w *worker) checkDependencies(task *Task) bool {
 // executeTask runs a single task
 func (w *worker) executeTask(task *Task) {
 	task.mu.Lock()
+	if task.status == StatusCancelled || task.ctx.Err() != nil {
+		task.mu.Unlock()
+		task.Cancel()
+		return
+	}
 	task.startTime = time.Now()
+	task.status = StatusRunning
 	task.mu.Unlock()
-
-	task.SetStatus(StatusRunning)
+	task.dirty.Store(true)
 
 	// Apply task-specific timeout if specified
 	if task.taskTimeout > 0 {
@@ -229,7 +235,15 @@ func (w *worker) executeWithRetry(task *Task) {
 		// Execute the task function
 		err := task.runFunc(task.flanksourceCtx, task)
 
-		if task.status != StatusRunning {
+		task.mu.Lock()
+		status := task.status
+		cancelled := task.ctx.Err() != nil
+		task.mu.Unlock()
+		if status != StatusRunning {
+			return
+		}
+		if cancelled && err != nil {
+			task.Cancel()
 			return
 		}
 

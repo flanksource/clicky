@@ -24,19 +24,21 @@ type LogEntry struct {
 
 // TaskSnapshot is a JSON-serializable snapshot of a task or group's current state.
 type TaskSnapshot struct {
-	ID        string     `json:"id"`
-	Name      string     `json:"name"`
-	Type      string     `json:"type"`            // "task" or "group"
-	Group     string     `json:"group,omitempty"` // parent group name
-	Status    string     `json:"status"`
-	Duration  string     `json:"duration,omitempty"`
-	Error     string     `json:"error,omitempty"`
-	Message   string     `json:"message,omitempty"`   // latest log line
-	Logs      []LogEntry `json:"logs,omitempty"`      // all log entries
-	Total     int        `json:"total,omitempty"`     // group: total child tasks
-	Completed int        `json:"completed,omitempty"` // group: completed tasks
-	Failed    int        `json:"failed,omitempty"`    // group: failed tasks
-	Running   int        `json:"running,omitempty"`   // group: running tasks
+	ID        string        `json:"id"`
+	Name      string        `json:"name"`
+	Type      string        `json:"type"`            // "task" or "group"
+	Group     string        `json:"group,omitempty"` // parent group name
+	Status    string        `json:"status"`
+	Duration  string        `json:"duration,omitempty"`
+	Error     string        `json:"error,omitempty"`
+	Message   string        `json:"message,omitempty"`   // latest log line
+	Logs      []LogEntry    `json:"logs,omitempty"`      // all log entries
+	Total     int           `json:"total,omitempty"`     // group: total child tasks
+	Completed int           `json:"completed,omitempty"` // group: completed tasks
+	Failed    int           `json:"failed,omitempty"`    // group: failed tasks
+	Running   int           `json:"running,omitempty"`   // group: running tasks
+	Canceled  int           `json:"canceled,omitempty"`
+	Work      *WorkProgress `json:"work,omitempty"`
 
 	// Per-task fields (type == "task"). Description is the live stage label set
 	// via Task.SetDescription; Progress/MaxValue mirror Task.SetProgress so the UI
@@ -138,6 +140,7 @@ func SnapshotGroup(g *Group) TaskSnapshot {
 	}
 	snap.Controls = controllerActions(controllerForGroup(g))
 	snap.Details = g.snapshotDetails()
+	snap.Work = g.snapshotWork()
 	if started := g.StartedAt(); !started.IsZero() {
 		snap.StartedAt = started.UTC().Format(time.RFC3339Nano)
 	}
@@ -158,7 +161,9 @@ func SnapshotGroup(g *Group) TaskSnapshot {
 			snap.Failed++
 		case StatusRunning:
 			snap.Running++
-		case StatusPending, StatusWarning, StatusCancelled:
+		case StatusCancelled:
+			snap.Canceled++
+		case StatusPending, StatusWarning:
 			// counted in Total but not in other buckets
 		}
 	}

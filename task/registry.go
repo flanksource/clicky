@@ -26,6 +26,8 @@ type RunMeta struct {
 	Completed  int               `json:"completed"`
 	Failed     int               `json:"failed"`
 	Running    int               `json:"running"`
+	Canceled   int               `json:"canceled,omitempty"`
+	Work       *WorkProgress     `json:"work,omitempty"`
 	Href       string            `json:"href,omitempty"`
 	Controls   []ControlAction   `json:"controls,omitempty"`
 }
@@ -68,6 +70,8 @@ func RunMetaFromSnapshot(snap TaskSnapshot) RunMeta {
 		Completed:  snap.Completed,
 		Failed:     snap.Failed,
 		Running:    snap.Running,
+		Canceled:   snap.Canceled,
+		Work:       snap.Work,
 		Href:       snap.Href,
 		Controls:   snap.Controls,
 	}
@@ -127,7 +131,9 @@ func GCRuns() {
 		g.observeTerminal(g.Status(), now)
 		finished := g.FinishedAt()
 		if !finished.IsZero() && now.Sub(finished) > runRetention {
-			persistEvictedRun(g.ID(), snapshotGroupWithTasks(g))
+			runSnapshots := snapshotGroupWithTasks(g)
+			notifyBeforeGC(g.ID(), runSnapshots)
+			persistEvictedRun(g.ID(), runSnapshots)
 			continue
 		}
 		kept = append(kept, g)

@@ -3,8 +3,6 @@ package task
 import (
 	"context"
 	"fmt"
-	"os"
-	"runtime"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -28,6 +26,7 @@ type controlledRunner struct {
 	mu      sync.Mutex
 	release chan struct{}
 	starts  atomic.Int64
+	working atomic.Int64
 }
 
 func newControlledRunner() *controlledRunner {
@@ -41,10 +40,15 @@ func (r *controlledRunner) run(_ flanksourceContext.Context, _ Schedule, group *
 
 	r.starts.Add(1)
 	typed := TypedGroup[any]{Group: group}
-	typed.Add("work", func(_ flanksourceContext.Context, t *Task) (any, error) {
-		<-release
-		t.Success()
-		return nil, nil
+	typed.Add("work", func(ctx flanksourceContext.Context, t *Task) (any, error) {
+		r.working.Add(1)
+		select {
+		case <-release:
+			t.Success()
+			return nil, nil
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
 	})
 	return nil
 }
@@ -258,20 +262,13 @@ var _ = Describe("Scheduler", func() {
 			clock.Advance(time.Hour)
 			sched.RunDue(ctx)
 			Eventually(runner.starts.Load).Should(BeEquivalentTo(1))
+			Eventually(runner.working.Load).Should(BeEquivalentTo(1))
 			first := RunsRaw(RunFilter{Kind: kind})[0].ID
 
 			clock.Advance(time.Hour)
 			sched.RunDue(ctx)
 
-			// TEMP: debug
-			time.Sleep(400 * time.Millisecond)
-			if runner.starts.Load() < 2 {
-				buf := make([]byte, 1<<20)
-				n := runtime.Stack(buf, true)
-				_ = os.WriteFile("../.tmp/stacks.txt", buf[:n], 0o644)
-			}
-
-			Eventually(runner.starts.Load).Should(BeEquivalentTo(2))
+			Eventually(runner.starts.Load, storeWriteTimeout).Should(Equal(int64(2)))
 			Eventually(func() string {
 				for _, run := range RunsRaw(RunFilter{Kind: kind}) {
 					if run.ID == first {
@@ -376,6 +373,35 @@ var _ = Describe("Scheduler", func() {
 			Expect(sched.Remove(ctx, "doomed")).To(Succeed())
 			Expect(store.schedule("doomed").Name).To(BeEmpty())
 		})
+
+		It("does not keep a schedule active when its definition cannot be saved", func() {
+			store.saveScheduleErr = fmt.Errorf("store unavailable")
+
+			Expect(sched.Add(ctx, newSchedule("unsaved"))).To(MatchError(ContainSubstring("store unavailable")))
+			Expect(sched.Schedules()).To(BeEmpty())
+
+			clock.Advance(2 * time.Hour)
+			sched.RunDue(ctx)
+			Consistently(runner.starts.Load).Should(BeZero())
+		})
+	})
+
+	It("records a runner failure as a terminal group", func() {
+		failingKind := uniqueKind("failing")
+		RegisterRunner(failingKind, func(flanksourceContext.Context, Schedule, *Group) error {
+			return fmt.Errorf("runner failed before adding children")
+		})
+		schedule := newSchedule("failing-runner")
+		schedule.Kind = failingKind
+		Expect(sched.Add(ctx, schedule)).To(Succeed())
+
+		clock.Advance(time.Hour)
+		sched.RunDue(ctx)
+
+		Eventually(func() []RunMeta { return RunsRaw(RunFilter{Kind: failingKind}) }).Should(And(
+			HaveLen(1),
+			WithTransform(func(runs []RunMeta) string { return runs[0].Status }, Equal(string(StatusFailed))),
+		))
 	})
 
 	Context("its start/stop lifecycle", func() {

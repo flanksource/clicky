@@ -415,6 +415,7 @@ func (tm *Manager) newTask(name string, opts ...Option) *Task {
 		retryConfig:    tm.retryConfig,
 		retryCount:     0,
 		doneChan:       make(chan struct{}),
+		drainedChan:    make(chan struct{}),
 	}
 
 	for _, opt := range opts {
@@ -485,7 +486,11 @@ func (tm *Manager) Start(name string, opts ...Option) *Task {
 }
 
 func StartTask[T any](name string, taskFunc func(flanksourceContext.Context, *Task) (T, error), opts ...Option) TypedTask[T] {
-	t := global.newTask(name, opts...)
+	return startTask(global, name, taskFunc, opts...)
+}
+
+func startTask[T any](manager *Manager, name string, taskFunc func(flanksourceContext.Context, *Task) (T, error), opts ...Option) TypedTask[T] {
+	t := manager.newTask(name, opts...)
 	typed := TypedTask[T]{t}
 	attachTaskableToGroup(t, typed)
 	t.runFunc = func(ctx flanksourceContext.Context, task *Task) error {
@@ -499,7 +504,7 @@ func StartTask[T any](name string, taskFunc func(flanksourceContext.Context, *Ta
 		task.mu.Unlock()
 		return err
 	}
-	global.enqueue(t)
+	manager.enqueue(t)
 	return typed
 }
 
