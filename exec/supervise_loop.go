@@ -416,6 +416,12 @@ func (s *SupervisedProcess) promoteIfStarting(gen int, proc *Process) {
 // killGracefully sends SIGTERM to the process group, then escalates to SIGKILL
 // (KillTree) if it does not exit within the configured stop grace.
 func (s *SupervisedProcess) killGracefully(p *Process) {
+	if s.opts.ForceStop {
+		if err := p.KillTree(); err != nil {
+			log.Errorf("force stop %s: %v", s.Name(), err)
+		}
+		return
+	}
 	_ = terminateTree(p.Pid(), p.newProcessGroup)
 	deadline := time.Now().Add(s.opts.StopGrace)
 	for time.Now().Before(deadline) {

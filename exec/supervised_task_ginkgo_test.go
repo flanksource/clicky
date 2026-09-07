@@ -4,6 +4,7 @@ package exec
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -65,6 +66,25 @@ var _ = Describe("Supervised process task runs", func() {
 		Expect(err).To(HaveOccurred())
 		Expect(result.IsPending()).To(BeFalse())
 		Expect(result.Status).To(Equal("failed"))
+	})
+
+	It("preserves a caller-supplied retry policy", func() {
+		marker := filepath.Join(GinkgoT().TempDir(), "attempts")
+		handle := NewExec("sh", "-c", fmt.Sprintf("echo attempt >> %q; exit 1", marker)).WithProcessGroup().RunSupervisedAsTask(
+			RunSupervisedTaskOptions{
+				Name: "retry supervised process",
+				Task: []task.Option{task.WithRetryConfig(task.RetryConfig{
+					RetryableErrors: []string{""},
+					MaxRetries:      1,
+				})},
+			},
+		)
+
+		_, err := handle.GetResult()
+		Expect(err).To(HaveOccurred())
+		contents, err := os.ReadFile(marker)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(strings.Count(string(contents), "attempt")).To(Equal(2))
 	})
 
 	It("creates a separate, output-isolated task run for every automatic generation", func() {
