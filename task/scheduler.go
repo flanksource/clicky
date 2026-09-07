@@ -11,37 +11,6 @@ import (
 	"github.com/flanksource/commons/logger"
 )
 
-// Runner is the work behind a schedule. The group is already registered and
-// stamped with the schedule's kind and labels; the runner adds tasks to it.
-type Runner func(ctx flanksourceContext.Context, schedule Schedule, group *Group) error
-
-var (
-	runnersMu sync.RWMutex
-	runners   = map[string]Runner{}
-)
-
-// RegisterRunner registers the work for one schedule kind. Registering a kind
-// twice is a programming error and panics, matching the entity and provider
-// registries elsewhere: two runners for one kind means one of them never runs.
-func RegisterRunner(kind string, runner Runner) {
-	if kind == "" || runner == nil {
-		panic("task: RegisterRunner requires a kind and a runner")
-	}
-	runnersMu.Lock()
-	defer runnersMu.Unlock()
-	if _, exists := runners[kind]; exists {
-		panic(fmt.Sprintf("task: runner for kind %q already registered", kind))
-	}
-	runners[kind] = runner
-}
-
-func runnerFor(kind string) (Runner, bool) {
-	runnersMu.RLock()
-	defer runnersMu.RUnlock()
-	runner, ok := runners[kind]
-	return runner, ok
-}
-
 // schedulerTick is how often the scheduler wakes to compare wall time against
 // each schedule's next fire. Schedules resolve to at most one fire per minute,
 // so a coarser tick than this buys nothing and a finer one only burns wakeups.
@@ -160,6 +129,12 @@ func (s *Scheduler) Load(ctx context.Context) error {
 // Add registers or replaces one schedule and persists the definition. The next
 // fire is computed from now, except that a schedule asking to catch up on a
 // scheduled time missed while the process was down fires immediately instead.
+//
+// The definition is stored before the entry is installed, so an error means the
+// schedule is not registered and will not fire: a caller that saw Add fail never
+// has to wonder whether it left a live schedule behind. That also keeps Load's
+// error aggregate honest — a schedule reported as failed to load is one that is
+// genuinely absent from the scheduler.
 func (s *Scheduler) Add(ctx context.Context, schedule Schedule) error {
 	if err := schedule.Validate(); err != nil {
 		return err
@@ -184,6 +159,15 @@ func (s *Scheduler) Add(ctx context.Context, schedule Schedule) error {
 		entry.next = parsed.Next(now)
 	}
 
+	if s.store != nil {
+		stored := schedule
+		next := entry.next
+		stored.NextRun = &next
+		if err := s.store.SaveSchedule(ctx, stored); err != nil {
+			return fmt.Errorf("schedule %q: save: %w", schedule.Name, err)
+		}
+	}
+
 	s.mu.Lock()
 	// Replacing a schedule updates the entry in place rather than swapping in a
 	// new one: the in-flight run and its launch reservation belong to the work,
@@ -199,12 +183,6 @@ func (s *Scheduler) Add(ctx context.Context, schedule Schedule) error {
 		s.entries[schedule.Name] = entry
 	}
 	s.mu.Unlock()
-
-	// Persisted outside the lock — the store may block on IO — and only once
-	// the in-memory mutation has committed, so what is saved is what is live.
-	if err := s.saveSchedule(ctx, schedule.Name); err != nil {
-		return fmt.Errorf("schedule %q: save: %w", schedule.Name, err)
-	}
 	return nil
 }
 
@@ -521,18 +499,4 @@ func (s *Scheduler) record(ctx context.Context, name string, fire Fire) {
 
 func isRunning(status Status) bool {
 	return status == StatusRunning || status == StatusPending
-}
-
-func errsJoin(errs []error) error {
-	if len(errs) == 1 {
-		return errs[0]
-	}
-	message := ""
-	for i, err := range errs {
-		if i > 0 {
-			message += "; "
-		}
-		message += err.Error()
-	}
-	return fmt.Errorf("%s", message)
 }
