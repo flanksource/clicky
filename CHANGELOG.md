@@ -5,6 +5,54 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.21.60](https://github.com/flanksource/clicky/compare/v1.21.59...v1.21.60) (2026-09-08)
+
+
+### ⚠ BREAKING CHANGES
+
+* **task:** Scheduler Add and Remove now require a context and return errors.
+
+Claude-Session-Id: 1eadaa82-699a-44c2-8b63-f550033a6ffa
+* **flags:** Unannotated @file and @url values are now passed through literally.
+* **task:** remove the OnBeforeGC callback in favor of the Store interface
+
+### ♻️ Code Refactoring
+
+* **scheduler:** refactor schedule persistence and remove unused runner registry ([b1f3cd7](https://github.com/flanksource/clicky/commit/b1f3cd710c5df446df876862a2eddf39583e64c4))
+
+
+### ✨ Features
+
+* implement cancellation drain and work progress tracking ([b33eae6](https://github.com/flanksource/clicky/commit/b33eae6df1a77285a50a39c57f5d1bd9411fd405))
+* **api:** add opt-in file expansion and bounded process capture ([ccc5a7d](https://github.com/flanksource/clicky/commit/ccc5a7d293dcce13cbe7ab49ba7cba13035bdff9))
+* **exec:** Improve process tree termination and force-stop supervised processes ([d4bb829](https://github.com/flanksource/clicky/commit/d4bb82955f8344270060402ab7c2879d83130062)), closes [#123](https://github.com/flanksource/clicky/issues/123)
+* **task:** add durable run persistence and schedule orchestration ([2b24ad6](https://github.com/flanksource/clicky/commit/2b24ad632c97dc82b4a51d474240a29b66459d02))
+* **task:** add scheduling, durable run persistence, and bounded process capture ([f63cce4](https://github.com/flanksource/clicky/commit/f63cce4a27427eab144d68f59f769555497e703a))
+
+
+### 🐛 Bug Fixes
+
+* prevent duplicate args and improve file access security ([e5cb68b](https://github.com/flanksource/clicky/commit/e5cb68ba789b89c6c4833377e850e0132fe30b54))
+* **aichat:** preserve tool diagnostics and positional arguments ([0ae7e27](https://github.com/flanksource/clicky/commit/0ae7e27332332307cc9de2b47be87c30d6dfd563))
+* **task:** fix scheduler group completion and deferred fire tracking ([a6146af](https://github.com/flanksource/clicky/commit/a6146af2d3d11715490fe51aac00f1e7254d9cf7))
+* **task:** Harden scheduler persistence and lifecycle handling ([18d4601](https://github.com/flanksource/clicky/commit/18d460182dae5a5b8b51ce080ac9b1eced346e36))
+
+
+### 👷 CI/CD
+
+* **ci:** Pin Gavel workflow action to v0.0.54 ([290f1e1](https://github.com/flanksource/clicky/commit/290f1e16b8da8183c0784ffb99c96618de460fdc))
+
+
+### 🔧 Maintenance
+
+* update generated and lock files ([93d7925](https://github.com/flanksource/clicky/commit/93d7925fc2f380098b3c5f3423ef6b6243805f7d))
+* **release:** pin sub-modules to v1.21.59 [skip ci] ([e6d1876](https://github.com/flanksource/clicky/commit/e6d1876e5f08daba19a2fe46d78907d14b2da9c0))
+
+
+### security
+
+* **flags:** Gate file and URL expansion behind explicit field opt-ins ([738bac6](https://github.com/flanksource/clicky/commit/738bac6b0ead30ed01559397e4e28f936778696f))
+
 ## [1.21.59](https://github.com/flanksource/clicky/compare/v1.21.58...v1.21.59) (2026-09-02)
 
 
