@@ -276,8 +276,8 @@ github.com/firebase/genkit/go v1.11.0 h1:dmf219fDGP6IcKwPkJoTnXpcTEya7o5Bi+z5iP+
 github.com/firebase/genkit/go v1.11.0/go.mod h1:x9h3TsbMLiuK1hgbwnkUmKQ9bmTNPORHaqG9XQhI0K8=
 github.com/flanksource/captain v0.0.55 h1:6kvk7KcBGmE8CbgzMks0U7x2/GOC77Am9mo9SnLbuh8=
 github.com/flanksource/captain v0.0.55/go.mod h1:KFINteJIJOYAk+LQE20eUi4HhU0h7fgI3KeoK9yzHZI=
-github.com/flanksource/commons v1.57.0 h1:umfE3uYDQUqmTENRY4ckXMSpzt8aKSIAdV/4hOlDSt4=
-github.com/flanksource/commons v1.57.0/go.mod h1:EW+UzX6XMuVrJ1jcBlXrDvUT2bSkbM6lq+QjPOIDgOM=
+github.com/flanksource/commons v1.59.0 h1:RP3K/HtcqyCN4qfXGD51X1hneLpWC5SE6aQ0WtuMV0g=
+github.com/flanksource/commons v1.59.0/go.mod h1:DYc4OVPg4K1SXzKGEkinh28iSbcnmSC3QzJJK2UJZpw=
 github.com/flanksource/commons-db v0.1.31 h1:KnerFTgwqMrCWoRvRoTLQ5dMDTI/9uE6KIrlMiHfJM0=
 github.com/flanksource/commons-db v0.1.31/go.mod h1:5VhGqyp0p8bYDcHookfc5u/zs0nEgVYej5MZnW97Re0=
 github.com/flanksource/gomplate/v3 v3.24.89 h1:yDuHmOQU2rf35vMELRgzMJ3q3H4pFdL+9p3HbDfIpyE=
