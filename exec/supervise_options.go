@@ -16,6 +16,11 @@ type SuperviseOptions struct {
 	StopGrace time.Duration
 	// DetectPorts runs the lsof port-watch loop after each start.
 	DetectPorts bool
+	// CaptureLimit bounds the in-memory stdout/stderr each generation retains.
+	// Zero applies defaultCaptureLimit; negative keeps the capture unbounded.
+	// Only the snapshot buffer is bounded — Stream and WithStdioPipe
+	// destinations still receive every byte, so a tee'd log file stays complete.
+	CaptureLimit int
 	// OnStart, if set, is called before each (re)start (e.g. to write a log header).
 	OnStart func()
 	// OnStarted, if set, is called after each (re)start once the child is running

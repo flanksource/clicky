@@ -102,6 +102,13 @@ func (l *ExecLogger) setCaptureLimit(maxBytes int) {
 	l.stderr.setLimit(maxBytes)
 }
 
+// captureLimit reports the configured stdout cap, 0 when unbounded.
+func (l *ExecLogger) captureLimit() int {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.stdout.limit
+}
+
 func (l *ExecLogger) clone() *ExecLogger {
 	l.mu.Lock()
 	defer l.mu.Unlock()
