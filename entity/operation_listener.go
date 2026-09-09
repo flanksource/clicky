@@ -2,8 +2,6 @@ package entity
 
 import (
 	"context"
-	"errors"
-	"fmt"
 	"maps"
 	"slices"
 	"sync"
@@ -26,8 +24,9 @@ type OperationEvent struct {
 }
 
 // OperationListener observes completion synchronously, including failures.
-// Filter by entity/verb in the callback. Returning an error does not undo work.
-type OperationListener func(context.Context, OperationEvent) error
+// Callbacks own their failure handling and must not panic. Keep them fast:
+// their execution delays the caller, but cannot replace its result or error.
+type OperationListener func(context.Context, OperationEvent)
 
 var operationListeners struct {
 	sync.RWMutex
@@ -52,31 +51,6 @@ func RegisterOperationListener(listener OperationListener) func() {
 		operationListeners.entries = slices.DeleteFunc(operationListeners.entries, func(v *OperationListener) bool { return v == entry })
 		operationListeners.Unlock()
 	}
-}
-
-// OperationListenerError distinguishes observation failure from business
-// failure. Result and OperationError retain the operation outcome even when a
-// transport cannot return both data and an error. Never retry a mutation solely
-// because this error has a nil OperationError: the operation succeeded.
-type OperationListenerError struct {
-	Result         any
-	OperationError error
-	ListenerErrors []error
-}
-
-func (e *OperationListenerError) Error() string {
-	if e.OperationError != nil {
-		return fmt.Sprintf("operation failed: %v; operation listeners failed: %v", e.OperationError, errors.Join(e.ListenerErrors...))
-	}
-	return fmt.Sprintf("operation succeeded; operation listeners failed (operation was not rolled back): %v", errors.Join(e.ListenerErrors...))
-}
-
-// Unwrap preserves errors.Is/As for the operation and every listener failure.
-func (e *OperationListenerError) Unwrap() []error {
-	if e.OperationError == nil {
-		return slices.Clone(e.ListenerErrors)
-	}
-	return append([]error{e.OperationError}, e.ListenerErrors...)
 }
 
 type operationSurfaceKey struct{}
@@ -119,16 +93,10 @@ func observeDataFuncs(info EntityInfo, verb string, target bool, data *func(map[
 		start := time.Now()
 		result, err := execute(ctx, flags, args)
 		event.Result, event.Error, event.Duration = result, err, time.Since(start)
-		var failures []error
 		for _, listener := range listeners {
 			copy := event
 			copy.Parameters, copy.Args = maps.Clone(event.Parameters), slices.Clone(event.Args)
-			if failure := (*listener)(ctx, copy); failure != nil {
-				failures = append(failures, failure)
-			}
-		}
-		if len(failures) > 0 {
-			return result, &OperationListenerError{Result: result, OperationError: err, ListenerErrors: failures}
+			(*listener)(ctx, copy)
 		}
 		return result, err
 	}

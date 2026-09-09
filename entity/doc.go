@@ -23,27 +23,28 @@
 // Install listeners during application startup, even after entity registration
 // and CLI generation. Each subscription is independent, including duplicates:
 //
-//	stop := entity.RegisterOperationListener(func(ctx context.Context, event entity.OperationEvent) error {
+//	stop := entity.RegisterOperationListener(func(ctx context.Context, event entity.OperationEvent) {
 //		if event.Entity != "widgets" || event.Verb == "list" || event.Verb == "get" {
-//			return nil
+//			return
 //		}
-//		return record(ctx, entity.OperationSurfaceFromContext(ctx), event)
+//		if err := record(ctx, entity.OperationSurfaceFromContext(ctx), event); err != nil {
+//			logger.Errorf("recording operation event: %v", err)
+//		}
 //	})
 //	defer stop()
 //
 // Callbacks run synchronously in registration order after the operation returns.
-// All callbacks run even if one returns an error; they must not panic. The
-// context retains caller values and cancellation, including for legacy handlers.
+// They return no error: Clicky returns the operation's original result and error
+// unchanged. Subscribers own recording failures, logging, and any retries.
+// Callbacks must not panic; a panic interrupts delivery to later listeners.
+// The context retains caller values and cancellation, including for legacy handlers.
 // Generated CLI, HTTP, and aichat tool entry points label it cli, http, and mcp.
 // Listeners own parameter redaction and must treat the result as read-only.
 //
-// OperationListenerError retains Result, OperationError, and all ListenerErrors;
-// errors.Is/As can reach each underlying failure. A nil OperationError means
-// the business operation succeeded: listener failure does not roll it back and
-// is not a reason to retry a mutation. HTTP returns status 500 with code
-// operation_listener_failed, operation_succeeded, result, listener_error_count,
-// and a sanitized operation_error when applicable. Listener details stay in
-// server logs. CLI and tool errors state whether the operation succeeded.
+// Keep callbacks fast: synchronous delivery adds their latency to the caller.
+// Clicky provides no background queue or workers. A subscriber that hands off
+// work asynchronously owns data snapshots, context lifetime, backpressure,
+// and shutdown. Delivery is in-process notification, not durable delivery.
 //
 // Coverage starts at registered data functions, not parameter parsing or
 // authorization before dispatch. It includes CRUD variants, primary/custom
