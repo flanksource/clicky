@@ -3,6 +3,7 @@
 package exec
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -15,6 +16,14 @@ import (
 
 	"github.com/flanksource/clicky/task"
 )
+
+// agentMetadata stands in for the structured context a caller attaches to a
+// supervised process — the shape that a flat map[string]string could not carry.
+type agentMetadata struct {
+	Phase string   `json:"phase"`
+	Model string   `json:"model"`
+	Tools []string `json:"tools"`
+}
 
 var _ = Describe("Supervised process task runs", func() {
 	It("runs a supervised process inside a caller-owned task group", func() {
@@ -46,13 +55,21 @@ var _ = Describe("Supervised process task runs", func() {
 		handle := NewExec("touch", marker).WithoutShell().RunSupervisedAsTask(
 			RunSupervisedTaskOptions{
 				Name: "cancelled-before-start",
-				Task: []task.Option{task.WithTaskTimeout(time.Nanosecond)},
+				Task: []task.Option{
+					task.WithTaskTimeout(time.Nanosecond),
+					// Without this, cancellation signals waiters as soon as it
+					// happens rather than when the body returns, so GetResult can
+					// read the task before its function has stored an outcome — and
+					// report a cancelled run as an empty success. Asserting on a
+					// cancelled task's own result is only defined once it drains.
+					task.WithCancellationDrain(),
+				},
 			},
 		)
 
 		result, err := handle.GetResult()
 
-		Expect(err).To(HaveOccurred())
+		Expect(err).To(MatchError(context.DeadlineExceeded))
 		Expect(result.Status).To(Equal("cancelled"))
 		Expect(marker).ToNot(BeAnExistingFile())
 	})
@@ -153,7 +170,7 @@ var _ = Describe("Supervised process task runs", func() {
 		}, 5*time.Second).Should(Equal(string(task.StatusCancelled)))
 	})
 
-	It("re-evaluates caller annotations on every snapshot", func() {
+	It("re-evaluates caller metadata on every snapshot", func() {
 		phase := "generate"
 		group := task.StartGroup[ExecResult]("annotated agent")
 		handle := NewExec("sh", "-c", "sleep 0.3").WithProcessGroup().RunSupervisedAsTask(
@@ -162,8 +179,8 @@ var _ = Describe("Supervised process task runs", func() {
 				Supervise: SuperviseOptions{
 					Limits: ResourceLimits{Interval: 20 * time.Millisecond},
 					Task: SupervisedTaskOptions{
-						Annotations: func() map[string]string {
-							return map[string]string{"phase": phase, "model": "test-model"}
+						Metadata: func() any {
+							return agentMetadata{Phase: phase, Model: "test-model", Tools: []string{"read", "write"}}
 						},
 					},
 				},
@@ -172,7 +189,7 @@ var _ = Describe("Supervised process task runs", func() {
 		)
 		// The process task appears a moment after the group, so poll defensively
 		// rather than indexing into a list that is briefly one entry long.
-		annotations := func() map[string]string {
+		metadata := func() any {
 			snapshots := task.SnapshotByID(group.ID())
 			if len(snapshots) < 2 {
 				return nil
@@ -181,19 +198,30 @@ var _ = Describe("Supervised process task runs", func() {
 			if !ok {
 				return nil
 			}
-			return details.Annotations
+			return details.Metadata
 		}
+		generating := agentMetadata{Phase: "generate", Model: "test-model", Tools: []string{"read", "write"}}
 
-		Eventually(annotations, 5*time.Second).Should(HaveKeyWithValue("phase", "generate"))
-		Expect(annotations()).To(HaveKeyWithValue("model", "test-model"))
+		Eventually(metadata, 5*time.Second).Should(Equal(generating))
 		phase = "verify"
-		Expect(annotations()).To(HaveKeyWithValue("phase", "verify"))
+		Expect(metadata()).To(Equal(agentMetadata{Phase: "verify", Model: "test-model", Tools: []string{"read", "write"}}))
 
 		_, err := handle.GetResult()
 		Expect(err).ToNot(HaveOccurred())
 	})
 
-	It("omits annotations when the caller supplies none", func() {
+	It("serializes structured metadata as nested JSON rather than flattened strings", func() {
+		payload, err := json.Marshal(ProcessDetails{
+			Command:  "agent",
+			Metadata: agentMetadata{Phase: "verify", Model: "test-model", Tools: []string{"read"}},
+		})
+
+		Expect(err).ToNot(HaveOccurred())
+		Expect(string(payload)).To(ContainSubstring(
+			`"metadata":{"phase":"verify","model":"test-model","tools":["read"]}`))
+	})
+
+	It("omits metadata when the caller supplies none", func() {
 		group := task.StartGroup[ExecResult]("unannotated agent")
 		handle := NewExec("sh", "-c", "echo plain").WithProcessGroup().RunSupervisedAsTask(
 			RunSupervisedTaskOptions{
@@ -205,7 +233,7 @@ var _ = Describe("Supervised process task runs", func() {
 		_, err := handle.GetResult()
 
 		Expect(err).ToNot(HaveOccurred())
-		Expect(task.SnapshotByID(group.ID())[1].Details.(ProcessDetails).Annotations).To(BeNil())
+		Expect(task.SnapshotByID(group.ID())[1].Details.(ProcessDetails).Metadata).To(BeNil())
 	})
 
 	It("bounds the retained capture so a long-lived process cannot grow it without limit", func() {

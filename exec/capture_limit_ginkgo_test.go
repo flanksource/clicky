@@ -70,6 +70,41 @@ var _ = Describe("Process capture limits", func() {
 		Expect(result.Stdout).To(Equal("efgh"))
 	})
 
+	It("reports how many bytes a rollover has discarded", func() {
+		capture := NewExecLogger()
+		capture.setCaptureLimit(5)
+		writer := capture.GetStdoutWriter()
+
+		_, err := writer.Write([]byte("012"))
+		Expect(err).ToNot(HaveOccurred())
+		stdout, _ := capture.Tail()
+		Expect(stdout).To(Equal(StreamTail{Data: "012", Offset: 0}))
+
+		_, err = writer.Write([]byte("3456789"))
+		Expect(err).ToNot(HaveOccurred())
+
+		stdout, _ = capture.Tail()
+		Expect(stdout).To(Equal(StreamTail{Data: "56789", Offset: 5}))
+		Expect(stdout.End()).To(BeEquivalentTo(10), "every byte written is accounted for")
+	})
+
+	It("keeps the discarded count across a re-cap and clears it on reset", func() {
+		capture := NewExecLogger()
+		capture.setCaptureLimit(4)
+		_, err := capture.GetStdoutWriter().Write([]byte("0123456789"))
+		Expect(err).ToNot(HaveOccurred())
+
+		// Re-capping changes what is retained, not what the stream has carried.
+		capture.setCaptureLimit(2)
+		stdout, _ := capture.Tail()
+		Expect(stdout).To(Equal(StreamTail{Data: "89", Offset: 8}))
+
+		// A re-Run is a new stream, so its offsets start over.
+		capture.Reset()
+		stdout, _ = capture.Tail()
+		Expect(stdout).To(Equal(StreamTail{Data: "", Offset: 0}))
+	})
+
 	It("rejects non-positive limits", func() {
 		Expect(func() {
 			NewExec("true").WithCaptureLimit(0)

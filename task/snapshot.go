@@ -11,10 +11,16 @@ import (
 // and persisted snapshots.
 const SnapshotStreamLimit = 1 << 20
 
-// OutputSnapshot is the live output projected by an executing task.
+// OutputSnapshot is the live output projected by an executing task. Stdout and
+// Stderr are tails: a provider backed by a bounded buffer reports in
+// StdoutOffset/StderrOffset how many bytes it has already discarded, so a
+// consumer streaming the output can tell an append from a rollover rather than
+// inferring it by comparing the text it holds.
 type OutputSnapshot struct {
-	Stdout string `json:"stdout,omitempty"`
-	Stderr string `json:"stderr,omitempty"`
+	Stdout       string `json:"stdout,omitempty"`
+	Stderr       string `json:"stderr,omitempty"`
+	StdoutOffset int64  `json:"stdoutOffset,omitempty"`
+	StderrOffset int64  `json:"stderrOffset,omitempty"`
 }
 
 type LogEntry struct {
@@ -61,6 +67,8 @@ type TaskSnapshot struct {
 	Controls        []ControlAction   `json:"controls,omitempty"`
 	Stdout          string            `json:"stdout,omitempty"`
 	Stderr          string            `json:"stderr,omitempty"`
+	StdoutOffset    int64             `json:"stdoutOffset,omitempty"`
+	StderrOffset    int64             `json:"stderrOffset,omitempty"`
 	StdoutTruncated bool              `json:"stdoutTruncated,omitempty"`
 	StderrTruncated bool              `json:"stderrTruncated,omitempty"`
 	Details         any               `json:"details,omitempty"`
@@ -102,8 +110,8 @@ func SnapshotTask(t *Task, group *Group) TaskSnapshot {
 		}
 	}
 	output := t.snapshotOutput()
-	snap.Stdout, snap.StdoutTruncated = streamTail(output.Stdout)
-	snap.Stderr, snap.StderrTruncated = streamTail(output.Stderr)
+	snap.Stdout, snap.StdoutOffset, snap.StdoutTruncated = streamTail(output.Stdout, output.StdoutOffset)
+	snap.Stderr, snap.StderrOffset, snap.StderrTruncated = streamTail(output.Stderr, output.StderrOffset)
 	snap.Details = t.snapshotDetails()
 	t.mu.Lock()
 	controller := t.controller
@@ -112,11 +120,16 @@ func SnapshotTask(t *Task, group *Group) TaskSnapshot {
 	return snap
 }
 
-func streamTail(value string) (string, bool) {
-	if len(value) <= SnapshotStreamLimit {
-		return value, false
+// streamTail bounds a stream view to SnapshotStreamLimit, advancing offset by
+// whatever it drops so the returned offset still names where the first byte
+// sits in the whole stream. Truncation is exactly "something was dropped",
+// whether by this cap or by the bounded buffer that produced value.
+func streamTail(value string, offset int64) (string, int64, bool) {
+	if len(value) > SnapshotStreamLimit {
+		dropped := len(value) - SnapshotStreamLimit
+		value, offset = value[dropped:], offset+int64(dropped)
 	}
-	return value[len(value)-SnapshotStreamLimit:], true
+	return value, offset, offset > 0
 }
 
 // SnapshotGroup creates a TaskSnapshot from a Group with aggregate child stats.
