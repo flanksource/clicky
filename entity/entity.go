@@ -1063,11 +1063,13 @@ func RegisterEntity[T EntityItem, ListOpts any, R any](e Entity[T, ListOpts, R])
 			}
 			adminInfo.Actions = append(adminInfo.Actions, action.actionInfo())
 		}
+		observeEntity(&adminInfo)
 		entityRegistryMu.Lock()
 		entityRegistry = append(entityRegistry, adminInfo)
 		entityRegistryMu.Unlock()
 	}
 
+	observeEntity(&info)
 	entityRegistryMu.Lock()
 	entityRegistry = append(entityRegistry, info)
 	entityRegistryMu.Unlock()
@@ -1333,7 +1335,7 @@ func runEntityOp(c *cobra.Command, op EntityOperation, flagMap map[string]string
 		err    error
 	)
 	if op.ContextDataFunc != nil {
-		result, err = op.ContextDataFunc(c.Context(), flagMap, args)
+		result, err = op.ContextDataFunc(ContextWithOperationSurface(c.Context(), "cli"), flagMap, args)
 	} else {
 		result, err = op.DataFunc(flagMap, args)
 	}
@@ -1611,7 +1613,7 @@ func generateBulkActionCommand(parent *cobra.Command, ba BulkActionInfo) {
 			}
 
 			// Use filter mode if --filter flag is set and FilterFunc exists
-			result, err := execute(c.Context(), flagMap, args)
+			result, err := execute(ContextWithOperationSurface(c.Context(), "cli"), flagMap, args)
 			if err != nil {
 				return err
 			}
@@ -1638,11 +1640,10 @@ func generateBulkActionCommand(parent *cobra.Command, ba BulkActionInfo) {
 	parent.AddCommand(cmd)
 	if ba.ContextDataFunc != nil || ba.ContextFilterFunc != nil {
 		contextDataFuncRegistry.Store(cmd, ContextDataFunc(execute))
-	} else {
-		dataFuncRegistry.Store(cmd, func(flagMap map[string]string, args []string) (any, error) {
-			return execute(context.Background(), flagMap, args)
-		})
 	}
+	dataFuncRegistry.Store(cmd, func(flagMap map[string]string, args []string) (any, error) {
+		return execute(context.Background(), flagMap, args)
+	})
 	SetCommandResponseMeta(cmd, ResponseOpenAPIMeta{Type: ba.ResponseType})
 	if ba.LookupFunc != nil {
 		lookupFuncRegistry.Store(cmd, ba.LookupFunc)

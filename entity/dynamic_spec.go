@@ -116,6 +116,7 @@ func RegisterDynamicEntity(spec DynamicEntitySpec) {
 		})
 	}
 
+	observeEntity(&info)
 	entityRegistryMu.Lock()
 	entityRegistry = append(entityRegistry, info)
 	entityRegistryMu.Unlock()

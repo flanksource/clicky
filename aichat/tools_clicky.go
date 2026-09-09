@@ -213,7 +213,7 @@ func (p *CobraToolProvider) handlerFor(op *rpc.RPCOperation, scope context.Conte
 	values := context.WithoutCancel(scope)
 	return func(ctx context.Context, input map[string]any) (any, error) {
 		request := toExecutionRequest(input, positional)
-		request.Context = scopedContext{Context: ctx, values: values}
+		request.Context = entity.ContextWithOperationSurface(scopedContext{Context: ctx, values: values}, "mcp")
 		data, response, err := p.executor.ExecuteCommand(op, request)
 		if err != nil {
 			return nil, fmt.Errorf("execute %s: %w%s", op.Name, err, findings(data, response))

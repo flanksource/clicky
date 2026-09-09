@@ -44,7 +44,7 @@ func hasRunField(lit *ast.CompositeLit) bool {
 	return false
 }
 
-// checkHTTPHandlerRegistration (error) flags direct route registration on a
+// checkHTTPHandlerRegistration (warning) flags direct route registration on a
 // net/http mux (http.HandleFunc / http.Handle / (*http.ServeMux).HandleFunc /
 // .Handle). Routes in a clicky app should come from registered entities served
 // through the rpc layer, not from raw handlers that collide with the
@@ -62,7 +62,7 @@ func checkHTTPHandlerRegistration(pass *analysis.Pass, call *ast.CallExpr) {
 	if !ok || fn.Pkg() == nil || fn.Pkg().Path() != netHTTPPkgPath {
 		return
 	}
-	report(pass, SeverityError, call.Pos(),
+	report(pass, SeverityWarning, call.Pos(),
 		"avoid registering net/http handlers directly; expose data via "+
 			"clicky.NewEntity(...).Register() and serve it through the rpc layer")
 }

@@ -113,6 +113,30 @@ func (s *SwaggerServer) handleExecuteCommand(w http.ResponseWriter, r *http.Requ
 	// response; the legacy one reports it inside the execution envelope, which
 	// is the body every existing client parses.
 	data, metadata, statusCode, err := s.executeCommandCore(r)
+	var listenerError *entity.OperationListenerError
+	if errors.As(err, &listenerError) {
+		// Observation failure is not evidence that a mutation failed. Preserve
+		// its result and explicit outcome on both HTTP error formats, without
+		// exposing listener errors that may contain storage credentials.
+		logger.Errorf("operation listeners failed: %v", listenerError)
+		body := map[string]any{
+			"code":                 "operation_listener_failed",
+			"message":              "operation listeners failed; listener failure does not roll back the operation",
+			"operation_succeeded":  listenerError.OperationError == nil,
+			"listener_error_count": len(listenerError.ListenerErrors),
+			"result":               listenerError.Result,
+		}
+		if listenerError.OperationError != nil {
+			body["operation_error"] = s.errorResponseWriter().SafeMessage(listenerError.OperationError)
+			if s.config.HideErrorDetails {
+				body["operation_error"] = entity.InternalErrorMessage
+			}
+		}
+		metadata.Error = body["message"].(string)
+		metadata.DataIsStructured = true
+		s.writeExecutionResult(w, r, body, metadata, http.StatusInternalServerError)
+		return
+	}
 	if err != nil && s.structuredErrorResponses() {
 		s.writeOperationError(w, r, statusCode, err)
 		return
