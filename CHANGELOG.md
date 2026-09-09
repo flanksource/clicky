@@ -5,6 +5,23 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.21.61](https://github.com/flanksource/clicky/compare/v1.21.60...v1.21.61) (2026-09-09)
+
+
+### ⚠ BREAKING CHANGES
+
+* **exec:** OutputSnapshot now includes StdoutOffset and StderrOffset fields; ProcessDetails.Annotations renamed to Metadata with any-type support; SupervisedTaskOptions.Annotations renamed to Metadata.
+
+### ✨ Features
+
+* **exec:** Add process output capture limits and snapshot annotations ([8730efd](https://github.com/flanksource/clicky/commit/8730efd92d6a0d9d394d609b199c6f0840becd36))
+* **exec:** Track absolute stream positions for output continuity across restarts ([cbff964](https://github.com/flanksource/clicky/commit/cbff964499de602879f6b6057c1544d094cfe61d))
+
+
+### 🔧 Maintenance
+
+* **release:** pin sub-modules to v1.21.60 [skip ci] ([17beb03](https://github.com/flanksource/clicky/commit/17beb0328d62f5ca66c9ba128287c4a9d48be00b))
+
 ## [1.21.60](https://github.com/flanksource/clicky/compare/v1.21.59...v1.21.60) (2026-09-08)
 
 
