@@ -35,11 +35,13 @@
 //
 // Callbacks run synchronously in registration order after the operation returns.
 // They return no error: Clicky returns the operation's original result and error
-// unchanged. Subscribers own recording failures, logging, and any retries.
+// without replacing them. Subscribers own recording failures, logging, and retries.
 // Callbacks must not panic; a panic interrupts delivery to later listeners.
 // The context retains caller values and cancellation, including for legacy handlers.
 // Generated CLI, HTTP, and aichat tool entry points label it cli, http, and mcp.
-// Listeners own parameter redaction and must treat the result as read-only.
+// Listeners own parameter redaction. Result is borrowed, not cloned or made
+// immutable: listeners must not mutate it or any data reachable through it.
+// Mutation would affect both the caller and subsequent listeners.
 //
 // Keep callbacks fast: synchronous delivery adds their latency to the caller.
 // Clicky provides no background queue or workers. A subscriber that hands off
