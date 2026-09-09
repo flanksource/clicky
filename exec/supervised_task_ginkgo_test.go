@@ -3,6 +3,7 @@
 package exec
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -150,5 +151,96 @@ var _ = Describe("Supervised process task runs", func() {
 		Eventually(func() string {
 			return task.SnapshotByID(latest.ID)[0].Status
 		}, 5*time.Second).Should(Equal(string(task.StatusCancelled)))
+	})
+
+	It("re-evaluates caller annotations on every snapshot", func() {
+		phase := "generate"
+		group := task.StartGroup[ExecResult]("annotated agent")
+		handle := NewExec("sh", "-c", "sleep 0.3").WithProcessGroup().RunSupervisedAsTask(
+			RunSupervisedTaskOptions{
+				Name: "annotated",
+				Supervise: SuperviseOptions{
+					Limits: ResourceLimits{Interval: 20 * time.Millisecond},
+					Task: SupervisedTaskOptions{
+						Annotations: func() map[string]string {
+							return map[string]string{"phase": phase, "model": "test-model"}
+						},
+					},
+				},
+				Task: []task.Option{task.WithGroup(group.Group)},
+			},
+		)
+		// The process task appears a moment after the group, so poll defensively
+		// rather than indexing into a list that is briefly one entry long.
+		annotations := func() map[string]string {
+			snapshots := task.SnapshotByID(group.ID())
+			if len(snapshots) < 2 {
+				return nil
+			}
+			details, ok := snapshots[1].Details.(ProcessDetails)
+			if !ok {
+				return nil
+			}
+			return details.Annotations
+		}
+
+		Eventually(annotations, 5*time.Second).Should(HaveKeyWithValue("phase", "generate"))
+		Expect(annotations()).To(HaveKeyWithValue("model", "test-model"))
+		phase = "verify"
+		Expect(annotations()).To(HaveKeyWithValue("phase", "verify"))
+
+		_, err := handle.GetResult()
+		Expect(err).ToNot(HaveOccurred())
+	})
+
+	It("omits annotations when the caller supplies none", func() {
+		group := task.StartGroup[ExecResult]("unannotated agent")
+		handle := NewExec("sh", "-c", "echo plain").WithProcessGroup().RunSupervisedAsTask(
+			RunSupervisedTaskOptions{
+				Name: "unannotated",
+				Task: []task.Option{task.WithGroup(group.Group)},
+			},
+		)
+
+		_, err := handle.GetResult()
+
+		Expect(err).ToNot(HaveOccurred())
+		Expect(task.SnapshotByID(group.ID())[1].Details.(ProcessDetails).Annotations).To(BeNil())
+	})
+
+	It("bounds the retained capture so a long-lived process cannot grow it without limit", func() {
+		// 4 KiB per line keeps the write count low while overflowing the cap.
+		line := strings.Repeat("y", 4095)
+		supervisor := NewExec("sh", "-c", fmt.Sprintf("for i in $(seq 1 40); do echo %s; done; echo TAIL-MARKER", line)).
+			WithProcessGroup().
+			Supervise(SuperviseOptions{
+				CaptureLimit: 8192,
+				Limits:       ResourceLimits{Interval: 20 * time.Millisecond},
+			})
+		supervisor.Start()
+
+		Eventually(func() string { return supervisor.Result().Stdout }, 5*time.Second).Should(HaveSuffix("TAIL-MARKER\n"))
+		Expect(len(supervisor.Result().Stdout)).To(BeNumerically("<=", 8192))
+	})
+})
+
+var _ = Describe("Supervised process resource limits", func() {
+	It("serializes limits in camelCase with a human-readable interval", func() {
+		payload, err := json.Marshal(ResourceLimits{
+			MaxRSSBytes:    1024,
+			MaxCPUPercent:  85,
+			CPUSampleCount: 4,
+			Interval:       2 * time.Second,
+		})
+
+		Expect(err).ToNot(HaveOccurred())
+		Expect(string(payload)).To(Equal(`{"maxRssBytes":1024,"maxCpuPercent":85,"cpuSampleCount":4,"interval":"2s"}`))
+	})
+
+	It("omits every unset limit", func() {
+		payload, err := json.Marshal(ResourceLimits{})
+
+		Expect(err).ToNot(HaveOccurred())
+		Expect(string(payload)).To(Equal("{}"))
 	})
 })

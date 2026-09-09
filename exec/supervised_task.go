@@ -27,6 +27,12 @@ type SupervisedTaskOptions struct {
 	// across turns is the canonical case. Leave it false when the process IS the
 	// work and a wait should drain it. See task.Task.SetBackground.
 	Background bool
+	// Annotations contributes caller-owned context to every process snapshot —
+	// the run a supervised agent is working, the model it uses, the phase it is
+	// in. It is evaluated once per snapshot, so the values may change while the
+	// process runs; Labels, fixed at run creation, cannot. Keep the callback
+	// cheap and non-blocking: it runs on the snapshot path.
+	Annotations func() map[string]string
 	// OnFinish runs after a generation freezes its terminal task snapshot.
 	OnFinish func(runID string) error
 }
@@ -49,6 +55,9 @@ type ProcessDetails struct {
 	Peak          ResourceSnapshot  `json:"peak"`
 	Metrics       map[string]string `json:"metrics"`
 	Tree          []ProcessSample   `json:"tree,omitempty"`
+	// Annotations is the caller-supplied context for this snapshot, from
+	// SupervisedTaskOptions.Annotations. Nil when the caller supplied none.
+	Annotations map[string]string `json:"annotations,omitempty"`
 }
 
 type supervisedTaskController struct {
@@ -203,8 +212,16 @@ func (s *SupervisedProcess) processDetails(runID string, proc *Process) ProcessD
 			"openFiles": task.MetricID(runID, "open-files"),
 		},
 	}
+	annotations := s.opts.Task.Annotations
 	s.mu.RUnlock()
 	details.PID = proc.Pid()
+	// Evaluated outside the lock: the callback is caller code and must not be
+	// able to deadlock the supervisor by reaching back into it.
+	if annotations != nil {
+		if values := annotations(); len(values) > 0 {
+			details.Annotations = values
+		}
+	}
 	return details
 }
 

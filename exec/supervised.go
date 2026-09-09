@@ -1,6 +1,7 @@
 package exec
 
 import (
+	"encoding/json"
 	"strings"
 	"sync"
 	"time"
@@ -13,6 +14,9 @@ import (
 const (
 	defaultSampleInterval = 2 * time.Second
 	defaultCPUSampleCount = 18 // ~36s over-limit at the 2s default before a CPU kill
+	// defaultCaptureLimit matches task.SnapshotStreamLimit: the snapshot tail
+	// discards everything older anyway, so retaining more only costs memory.
+	defaultCaptureLimit = task.SnapshotStreamLimit
 )
 
 // ResourceSnapshot is a point-in-time measurement of a supervised process and
@@ -45,15 +49,30 @@ type ProcessSample struct {
 // tree is killed (KillTree) and SupervisedProcess.Killed reports true.
 type ResourceLimits struct {
 	// MaxRSSBytes kills the process the first sample its tree RSS exceeds this.
-	MaxRSSBytes uint64
+	MaxRSSBytes uint64 `json:"maxRssBytes,omitempty"`
 	// MaxCPUPercent kills the process after CPUSampleCount consecutive samples
 	// above this aggregate CPU percentage (transient spikes are tolerated).
-	MaxCPUPercent float64
+	MaxCPUPercent float64 `json:"maxCpuPercent,omitempty"`
 	// CPUSampleCount is the consecutive over-limit CPU samples tolerated before
 	// a kill. Defaults to defaultCPUSampleCount.
-	CPUSampleCount int
+	CPUSampleCount int `json:"cpuSampleCount,omitempty"`
 	// Interval is the sampling cadence. Defaults to defaultSampleInterval.
-	Interval time.Duration
+	Interval time.Duration `json:"-"`
+}
+
+// MarshalJSON emits Interval as a duration string ("2s") rather than the raw
+// nanosecond count a time.Duration would otherwise produce, so the limits block
+// reads the same way in a dashboard as it does in configuration.
+func (l ResourceLimits) MarshalJSON() ([]byte, error) {
+	type limits ResourceLimits
+	payload := struct {
+		limits
+		Interval string `json:"interval,omitempty"`
+	}{limits: limits(l)}
+	if l.Interval > 0 {
+		payload.Interval = l.Interval.String()
+	}
+	return json.Marshal(payload)
 }
 
 // enabled reports whether any runaway limit is configured.
@@ -134,6 +153,17 @@ func (p *Process) Supervise(opts SuperviseOptions) *SupervisedProcess {
 	}
 	if opts.RestartPolicy == "" {
 		opts.RestartPolicy = RestartNo
+	}
+	// A long-lived supervised process accumulates output for as long as it runs,
+	// and the whole buffer is re-read on every snapshot. Bound it at the same
+	// size the snapshot tail keeps, so capping costs no information the API
+	// would have served anyway. Callers opt out with a negative CaptureLimit,
+	// and an explicit WithCaptureLimit on the template always wins.
+	if opts.CaptureLimit == 0 && (p.captureOutput == nil || p.captureOutput.captureLimit() == 0) {
+		opts.CaptureLimit = defaultCaptureLimit
+	}
+	if opts.CaptureLimit > 0 {
+		p = p.WithCaptureLimit(opts.CaptureLimit)
 	}
 	return &SupervisedProcess{
 		template: p,
