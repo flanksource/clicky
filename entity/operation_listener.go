@@ -9,7 +9,7 @@ import (
 )
 
 // OperationEvent describes one completed registered operation. Parameters are
-// raw transport values, not resolved model identifiers. Result is read-only.
+// raw transport values, not resolved model identifiers.
 // Duration excludes listeners; Error is only the operation's error.
 type OperationEvent struct {
 	Entity     string
@@ -18,14 +18,18 @@ type OperationEvent struct {
 	TargetID   string
 	Parameters map[string]string
 	Args       []string
-	Result     any
-	Error      error
-	Duration   time.Duration
+	// Result is borrowed from the operation, not cloned or made immutable.
+	// Listeners must not mutate it or any data reachable through it: those
+	// changes would be visible to the caller and subsequent listeners.
+	Result   any
+	Error    error
+	Duration time.Duration
 }
 
 // OperationListener observes completion synchronously, including failures.
 // Callbacks own their failure handling and must not panic. Keep them fast:
-// their execution delays the caller, but cannot replace its result or error.
+// their execution delays the caller. Clicky returns the original result and
+// error; listeners must respect the borrowed Result contract above.
 type OperationListener func(context.Context, OperationEvent)
 
 var operationListeners struct {
@@ -106,6 +110,8 @@ func observeDataFuncs(info EntityInfo, verb string, target bool, data *func(map[
 	}
 }
 
+// observeEntity wraps registration-owned handlers once so every generated
+// transport uses the same notification boundary.
 func observeEntity(info *EntityInfo) {
 	for i := range info.Operations {
 		op := &info.Operations[i]
