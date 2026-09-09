@@ -115,10 +115,11 @@ type Process struct {
 
 	// wantStdioPipe, when true, connects the child's stdin to a writable pipe
 	// (Stdin) and its stdout to a readable pipe (StdoutReader) for bidirectional
-	// line-protocol traffic (e.g. JSON-RPC). The child's stdout BYPASSES
-	// captureOutput so a long-lived server's output does not accumulate
-	// unboundedly in memory; stderr stays captured (bounded). stdin/stdoutR are
-	// the parent-side ends, published under mu once Run() has started the child.
+	// line-protocol traffic (e.g. JSON-RPC). The pipe is tee'd into captureOutput
+	// on the way past, so the transport is still readable as output; a long-lived
+	// server does not accumulate unboundedly because Supervise applies a default
+	// WithCaptureLimit, not because the capture is skipped. stdin/stdoutR are the
+	// parent-side ends, published under mu once Run() has started the child.
 	wantStdioPipe bool
 	input         io.Reader
 	stdin         io.WriteCloser

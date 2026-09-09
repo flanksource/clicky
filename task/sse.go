@@ -60,7 +60,9 @@ func SSEHandlerWithSource(source RunSource, taskIDs ...string) http.Handler {
 		ticker := time.NewTicker(200 * time.Millisecond)
 		defer ticker.Stop()
 		lastSnapshots := map[string]string{}
-		lastOutput := map[string]string{}
+		// lastOutput holds, per stream, the absolute offset one past the last byte
+		// this connection has sent — the client's end position, not its length.
+		lastOutput := map[string]int64{}
 		finished := finishedSnapshots{}
 
 		for {
@@ -78,7 +80,8 @@ func SSEHandlerWithSource(source RunSource, taskIDs ...string) http.Handler {
 							allDone = false
 						}
 					}
-					stdout, stderr := snap.Stdout, snap.Stderr
+					stdout := StreamView{Data: snap.Stdout, Offset: snap.StdoutOffset, Truncated: snap.StdoutTruncated}
+					stderr := StreamView{Data: snap.Stderr, Offset: snap.StderrOffset, Truncated: snap.StderrTruncated}
 					if snap.Type == "task" {
 						snap.Stdout = ""
 						snap.Stderr = ""
@@ -94,10 +97,10 @@ func SSEHandlerWithSource(source RunSource, taskIDs ...string) http.Handler {
 						anyEmitted = true
 					}
 					if snap.Type == "task" {
-						if emitOutputDelta(w, snap, "stdout", stdout, snap.StdoutTruncated, lastOutput) {
+						if emitOutputDelta(w, snap, "stdout", stdout, lastOutput) {
 							anyEmitted = true
 						}
-						if emitOutputDelta(w, snap, "stderr", stderr, snap.StderrTruncated, lastOutput) {
+						if emitOutputDelta(w, snap, "stderr", stderr, lastOutput) {
 							anyEmitted = true
 						}
 					}
@@ -122,39 +125,67 @@ func SSEHandlerWithSource(source RunSource, taskIDs ...string) http.Handler {
 	})
 }
 
+// StreamView is one snapshot's view of a task stream: the retained tail, the
+// absolute offset of its first byte, and whether anything was dropped ahead of
+// it.
+type StreamView struct {
+	Data      string
+	Offset    int64
+	Truncated bool
+}
+
+func (v StreamView) end() int64 { return v.Offset + int64(len(v.Data)) }
+
+// outputDelta is one frame of a task's stream. Offset is an ABSOLUTE position
+// in that stream, not a length: on an append it is where Data belongs, and on a
+// reset it is where the retained tail now starts. A client that has fallen
+// behind the retained window gets Reset so it discards what it can no longer
+// continue from.
 type outputDelta struct {
 	ID        string `json:"id"`
 	GroupID   string `json:"groupId,omitempty"`
 	Stream    string `json:"stream"`
 	Data      string `json:"data"`
-	Offset    int    `json:"offset"`
+	Offset    int64  `json:"offset"`
 	Reset     bool   `json:"reset,omitempty"`
 	Truncated bool   `json:"truncated,omitempty"`
 }
 
+// emitOutputDelta sends what the client has not seen of one stream, deciding
+// append-vs-reset from stream offsets. Comparing text instead — asking whether
+// the new tail extends the old one — degenerates the moment a bounded buffer
+// rolls over: the tail becomes a sliding window that is never again a prefix
+// extension, so every poll would resend the whole retained buffer.
 func emitOutputDelta(
 	w http.ResponseWriter,
 	snapshot TaskSnapshot,
 	stream string,
-	current string,
-	truncated bool,
-	last map[string]string,
+	view StreamView,
+	sent map[string]int64,
 ) bool {
 	key := snapshot.GroupID + ":" + snapshot.ID + ":" + stream
-	previous := last[key]
-	if current == previous {
-		return false
-	}
+	end := view.end()
+	have, seen := sent[key]
 	delta := outputDelta{
 		ID: snapshot.ID, GroupID: snapshot.GroupID, Stream: stream,
-		Data: current, Reset: true, Truncated: truncated,
+		Truncated: view.Truncated,
 	}
-	if strings.HasPrefix(current, previous) {
-		delta.Data = current[len(previous):]
-		delta.Offset = len(previous)
-		delta.Reset = false
+	switch {
+	case seen && have == end:
+		return false
+	case !seen && view.Data == "":
+		// A task that has produced nothing yet has nothing to reset the client to.
+		sent[key] = end
+		return false
+	case seen && have >= view.Offset && have <= end:
+		delta.Data = view.Data[have-view.Offset:]
+		delta.Offset = have
+	default:
+		delta.Data = view.Data
+		delta.Offset = view.Offset
+		delta.Reset = true
 	}
-	last[key] = current
+	sent[key] = end
 	data, err := json.Marshal(delta)
 	if err != nil {
 		return false

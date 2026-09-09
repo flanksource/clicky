@@ -137,6 +137,10 @@ type SupervisedProcess struct {
 	taskRun   *task.ManagedRun
 	boundTask *task.Task
 	result    *ExecResult
+	// history is the output the task snapshot reads. Every generation tees into
+	// it, so the stream a viewer follows survives a restart that replaces the
+	// child (and its own, freshly-empty, capture). It has its own mutex.
+	history *ExecLogger
 }
 
 // Supervise turns a configured Process into a SupervisedProcess using it as the
@@ -162,14 +166,26 @@ func (p *Process) Supervise(opts SuperviseOptions) *SupervisedProcess {
 	if opts.CaptureLimit == 0 && (p.captureOutput == nil || p.captureOutput.captureLimit() == 0) {
 		opts.CaptureLimit = defaultCaptureLimit
 	}
+	history := NewExecLogger()
 	if opts.CaptureLimit > 0 {
 		p = p.WithCaptureLimit(opts.CaptureLimit)
+		history.setCaptureLimit(opts.CaptureLimit)
 	}
+	// Each generation runs a fresh clone whose own capture starts empty, so a
+	// task reading the child directly would blank its output on every restart.
+	// Tee into a supervisor-owned ring instead: ExecLogger.clone carries tee
+	// destinations forward, so every future generation writes into this same
+	// continuous stream while Run's Reset only clears the clone's own copy.
+	if p.captureOutput == nil {
+		p.captureOutput = NewExecLogger()
+	}
+	p.captureOutput.teeAlso(history.GetStdoutWriter(), history.GetStderrWriter())
 	return &SupervisedProcess{
 		template: p,
 		opts:     opts,
 		status:   StatusStopped,
 		handles:  map[int32]*gops.Process{},
+		history:  history,
 	}
 }
 

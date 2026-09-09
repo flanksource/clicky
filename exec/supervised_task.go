@@ -27,12 +27,13 @@ type SupervisedTaskOptions struct {
 	// across turns is the canonical case. Leave it false when the process IS the
 	// work and a wait should drain it. See task.Task.SetBackground.
 	Background bool
-	// Annotations contributes caller-owned context to every process snapshot —
-	// the run a supervised agent is working, the model it uses, the phase it is
-	// in. It is evaluated once per snapshot, so the values may change while the
-	// process runs; Labels, fixed at run creation, cannot. Keep the callback
-	// cheap and non-blocking: it runs on the snapshot path.
-	Annotations func() map[string]string
+	// Metadata contributes caller-owned context to every process snapshot — the
+	// run a supervised agent is working, the model it uses, the phase it is in.
+	// It is evaluated once per snapshot, so the values may change while the
+	// process runs; Labels, fixed at run creation, cannot. Any JSON-serializable
+	// value is accepted, so structured context need not be flattened to strings.
+	// Keep the callback cheap and non-blocking: it runs on the snapshot path.
+	Metadata func() any
 	// OnFinish runs after a generation freezes its terminal task snapshot.
 	OnFinish func(runID string) error
 }
@@ -55,9 +56,10 @@ type ProcessDetails struct {
 	Peak          ResourceSnapshot  `json:"peak"`
 	Metrics       map[string]string `json:"metrics"`
 	Tree          []ProcessSample   `json:"tree,omitempty"`
-	// Annotations is the caller-supplied context for this snapshot, from
-	// SupervisedTaskOptions.Annotations. Nil when the caller supplied none.
-	Annotations map[string]string `json:"annotations,omitempty"`
+	// Metadata is the caller-supplied context for this snapshot, from
+	// SupervisedTaskOptions.Metadata — any JSON-serializable value. Nil when the
+	// caller supplied no callback, or when the callback itself returned nil.
+	Metadata any `json:"metadata,omitempty"`
 }
 
 type supervisedTaskController struct {
@@ -116,17 +118,22 @@ func (s *SupervisedProcess) beginTaskGeneration(proc *Process) *task.ManagedRun 
 	boundTask := s.boundTask
 	s.mu.RUnlock()
 	if boundTask != nil {
+		// One task spans every generation here, so its output carries across the
+		// restart and only gains a marker saying where the boundary was.
 		runID := boundTask.ID()
 		boundTask.SetBackground(s.opts.Task.Background)
 		boundTask.SetController(&supervisedTaskController{supervisor: s, runID: runID})
-		boundTask.SetOutputProvider(func() task.OutputSnapshot {
-			return task.OutputSnapshot{Stdout: proc.GetStdout(), Stderr: proc.GetStderr()}
-		})
+		s.markGeneration()
+		boundTask.SetOutputProvider(s.outputSnapshot)
 		boundTask.SetDetailsProvider(func() any { return s.processDetails(runID, proc) })
 		s.resetTaskMetrics()
 		return nil
 	}
 
+	// Every generation gets its own run and its own output tab, so this one
+	// starts clean. The run being replaced kept a copy of its own output when
+	// finishTaskGeneration froze its providers.
+	s.history.Reset()
 	runID := uuid.NewString()
 	name := s.opts.Task.Name
 	if name == "" {
@@ -155,9 +162,7 @@ func (s *SupervisedProcess) beginTaskGeneration(proc *Process) *task.ManagedRun 
 		href = "/tasks/{id}"
 	}
 	run.SetHref(strings.ReplaceAll(href, "{id}", runID))
-	run.SetOutputProvider(func() task.OutputSnapshot {
-		return task.OutputSnapshot{Stdout: proc.GetStdout(), Stderr: proc.GetStderr()}
-	})
+	run.SetOutputProvider(s.outputSnapshot)
 	run.SetDetailsProvider(func() any { return s.processDetails(runID, proc) })
 
 	s.resetTaskMetrics()
@@ -165,6 +170,50 @@ func (s *SupervisedProcess) beginTaskGeneration(proc *Process) *task.ManagedRun 
 	s.taskRun = run
 	s.mu.Unlock()
 	return run
+}
+
+// outputSnapshot projects the supervisor's retained output onto the task. The
+// offsets say how much the ring has already discarded, which is what lets a
+// streaming client append rather than redraw the whole pane every poll.
+func (s *SupervisedProcess) outputSnapshot() task.OutputSnapshot {
+	stdout, stderr := s.history.Tail()
+	return task.OutputSnapshot{
+		Stdout:       stdout.Data,
+		Stderr:       stderr.Data,
+		StdoutOffset: stdout.Offset,
+		StderrOffset: stderr.Offset,
+	}
+}
+
+// markGeneration separates one generation's output from the next in a task that
+// spans both, so a reader can see where the process was replaced instead of
+// finding two runs' output silently concatenated. The marker is written to the
+// supervisor's ring only — never to the child's own capture, its ExecResult, or
+// a destination the caller tee'd with Stream — and only to a stream that has
+// something to separate, so a process that never wrote to stderr does not grow
+// a stderr pane containing nothing but markers.
+func (s *SupervisedProcess) markGeneration() {
+	stdout, stderr := s.history.Tail()
+	if stdout.Data == "" && stderr.Data == "" {
+		return
+	}
+	s.mu.RLock()
+	exitCode := s.exitCode
+	s.mu.RUnlock()
+	// A negative code is a signal, not an exit status — the usual case here,
+	// since a restart terminates the previous generation. Reporting it as
+	// "exit -1" would name something the process never did.
+	reason := "restarted"
+	if exitCode != nil && *exitCode >= 0 {
+		reason = fmt.Sprintf("restarted after exit %d", *exitCode)
+	}
+	marker := []byte(fmt.Sprintf("\n── %s ──\n", reason))
+	if stdout.Data != "" {
+		_, _ = s.history.GetStdoutWriter().Write(marker)
+	}
+	if stderr.Data != "" {
+		_, _ = s.history.GetStderrWriter().Write(marker)
+	}
 }
 
 func (s *SupervisedProcess) resetTaskMetrics() {
@@ -212,15 +261,15 @@ func (s *SupervisedProcess) processDetails(runID string, proc *Process) ProcessD
 			"openFiles": task.MetricID(runID, "open-files"),
 		},
 	}
-	annotations := s.opts.Task.Annotations
+	metadata := s.opts.Task.Metadata
 	s.mu.RUnlock()
 	details.PID = proc.Pid()
 	// Evaluated outside the lock: the callback is caller code and must not be
-	// able to deadlock the supervisor by reaching back into it.
-	if annotations != nil {
-		if values := annotations(); len(values) > 0 {
-			details.Annotations = values
-		}
+	// able to deadlock the supervisor by reaching back into it. Whatever it
+	// returns is carried as-is — an empty-but-present value stays present, so a
+	// viewer sees the block go quiet rather than disappear between snapshots.
+	if metadata != nil {
+		details.Metadata = metadata()
 	}
 	return details
 }
