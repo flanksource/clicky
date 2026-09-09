@@ -14,6 +14,8 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+
+	"github.com/flanksource/clicky/entity"
 )
 
 // CommandExecutor handles dynamic execution of Cobra commands via HTTP requests
@@ -246,7 +248,7 @@ func (e *CommandExecutor) ExtractRequestFromHTTP(r *http.Request, op *RPCOperati
 
 	req := &ExecutionRequest{
 		Flags:   make(map[string]string),
-		Context: ContextWithRequest(r.Context(), r),
+		Context: ContextWithRequest(entity.ContextWithOperationSurface(r.Context(), "http"), r),
 	}
 
 	// Extract path parameters from URL using the template.
