@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.21.62](https://github.com/flanksource/clicky/compare/v1.21.61...v1.21.62) (2026-09-10)
+
+
+### ♻️ Code Refactoring
+
+* **entity:** keep operation listeners passive ([0e796c3](https://github.com/flanksource/clicky/commit/0e796c374f131b3184bcdf590751e8ed33b2091a))
+
+
+### ✨ Features
+
+* **entity:** observe operations through additive listeners ([05a5e56](https://github.com/flanksource/clicky/commit/05a5e5651fd65fd1b9be89e87ed0489db98bc007))
+
+
+### 📚 Documentation
+
+* **entity:** clarify borrowed listener results ([3d02975](https://github.com/flanksource/clicky/commit/3d02975e3f0352bbc3475a2158c0ebb091245361))
+
+
+### 📦 Build System
+
+* **examples:** align entity demo with aichat's Clicky pin ([b84024e](https://github.com/flanksource/clicky/commit/b84024e7a360e66c1d7d96345887d1006a74c3b2))
+
+
+### 🔧 Maintenance
+
+* **release:** pin sub-modules to v1.21.61 [skip ci] ([fd00ce9](https://github.com/flanksource/clicky/commit/fd00ce9b509475aea68da451e406ab44e7d69f0f))
+
 ## [1.21.61](https://github.com/flanksource/clicky/compare/v1.21.60...v1.21.61) (2026-09-09)
 
 
