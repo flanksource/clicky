@@ -10,6 +10,18 @@ import (
 	"time"
 )
 
+// isolateConfigHome points NewServerRegistry at a per-test directory on every
+// platform. os.UserConfigDir only reads XDG_CONFIG_HOME on unix-like systems;
+// on darwin it derives ~/Library/Application Support from HOME, so setting only
+// XDG_CONFIG_HOME leaks registry, cache, and OAuth state into the real user
+// config directory and makes later runs fail on stale state.
+func isolateConfigHome(t *testing.T) {
+	t.Helper()
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+}
+
 func TestServerConfigValidate(t *testing.T) {
 	tests := []struct {
 		name string
