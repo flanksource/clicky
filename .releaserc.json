@@ -57,13 +57,13 @@
     [
       "@semantic-release/exec",
       {
-        "prepareCmd": "echo ${nextRelease.version} > VERSION"
+        "prepareCmd": "echo ${nextRelease.version} > VERSION && bash .github/scripts/submodules.sh pin ${nextRelease.version}"
       }
     ],
     [
       "@semantic-release/git",
       {
-        "assets": ["CHANGELOG.md", "VERSION"],
+        "assets": ["CHANGELOG.md", "VERSION", "*/go.mod", "examples/*/go.mod"],
         "message": "chore(release): ${nextRelease.version} [skip ci]\n\n${nextRelease.notes}"
       }
     ],
