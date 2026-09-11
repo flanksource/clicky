@@ -25,8 +25,13 @@ type DynamicFilter struct {
 	// MaxLookupOptions, which is also the ceiling.
 	Limit int
 	// Options returns the head set (query == "") or search matches, plus the true
-	// total behind the head. Required.
+	// total behind the head. Required unless CountedOptions is set.
+	//
+	// Deprecated: Use CountedOptions for count-aware lookup results.
 	Options func(ctx context.Context, flags map[string]string, query string, limit int) (map[string]api.Textable, int, error)
+	// CountedOptions is the count-capable alternative to Options. When set, lookup
+	// resolution prefers it and carries its per-value counts to the response.
+	CountedOptions func(ctx context.Context, flags map[string]string, query string, limit int) (FilterOptions, error)
 	// Selected labels the currently-selected value(s) of this filter's key.
 	// Optional; nil means "no selection rendering".
 	Selected func(ctx context.Context, flags map[string]string) (map[string]api.Textable, error)
@@ -73,8 +78,8 @@ func RegisterDynamicEntity(spec DynamicEntitySpec) {
 		panic("clicky.RegisterDynamicEntity: spec.List must not be nil")
 	}
 	for _, f := range spec.Filters {
-		if f.Options == nil {
-			panic("clicky.RegisterDynamicEntity: DynamicFilter " + f.Key + " has no Options func")
+		if f.Options == nil && f.CountedOptions == nil {
+			panic("clicky.RegisterDynamicEntity: DynamicFilter " + f.Key + " has no option resolver")
 		}
 	}
 
@@ -167,8 +172,15 @@ func resolveDynamicLookup(ctx context.Context, filters []DynamicFilter, flagMap 
 			TimeEnabled: df.TimeEnabled,
 			Limit:       df.Limit,
 			Selected:    selected,
-			Options: func(query string, limit int) (map[string]api.Textable, int, error) {
-				return df.Options(ctx, flagMap, query, limit)
+			Options: func(query string, limit int) (FilterOptions, error) {
+				if df.CountedOptions != nil {
+					return df.CountedOptions(ctx, flagMap, query, limit)
+				}
+				options, total, err := df.Options(ctx, flagMap, query, limit)
+				if err != nil {
+					return FilterOptions{}, err
+				}
+				return FilterOptions{Options: options, Total: total}, nil
 			},
 		})
 	}

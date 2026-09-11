@@ -41,24 +41,24 @@ var _ = Describe("StaticOptions source", func() {
 		"team/core":     api.Text{Content: "Core"},
 	}
 
-	It("returns all options with the true total for an empty query", func() {
-		opts, total, err := StaticOptions(options).Options(FilterContext{}, "", 0)
+	It("returns all options with the true total and no counts for an empty query", func() {
+		result, total, err := StaticOptions(options).Options(FilterContext{}, "", 0)
 		Expect(err).ToNot(HaveOccurred())
+		Expect(result).To(Equal(options))
 		Expect(total).To(Equal(2))
-		Expect(opts).To(HaveLen(2))
 	})
 
 	It("narrows by case-insensitive substring over key and label", func() {
-		opts, _, err := StaticOptions(options).Options(FilterContext{}, "plat", 0)
+		result, _, err := StaticOptions(options).Options(FilterContext{}, "plat", 0)
 		Expect(err).ToNot(HaveOccurred())
-		Expect(opts).To(HaveKey("team/platform"))
-		Expect(opts).ToNot(HaveKey("team/core"))
+		Expect(result).To(HaveKey("team/platform"))
+		Expect(result).ToNot(HaveKey("team/core"))
 	})
 
 	It("caps the head set at the limit", func() {
-		opts, total, err := StaticOptions(options).Options(FilterContext{}, "", 1)
+		result, total, err := StaticOptions(options).Options(FilterContext{}, "", 1)
 		Expect(err).ToNot(HaveOccurred())
-		Expect(opts).To(HaveLen(1))
+		Expect(result).To(HaveLen(1))
 		Expect(total).To(Equal(2), "total reflects the full set, not the capped page")
 	})
 
@@ -71,25 +71,50 @@ var _ = Describe("StaticOptions source", func() {
 })
 
 var _ = Describe("FuncOptions source", func() {
+	all := map[string]api.Textable{"a": api.Text{Content: "Apple"}, "b": api.Text{Content: "Banana"}}
 	source := FuncOptions(func(_ FilterContext, query string, _ int) (map[string]api.Textable, int, error) {
-		all := map[string]api.Textable{"a": api.Text{Content: "Apple"}, "b": api.Text{Content: "Banana"}}
 		if query == "ban" {
 			return map[string]api.Textable{"b": all["b"]}, 1, nil
 		}
 		return all, len(all), nil
 	})
 
-	It("delegates option resolution to the function", func() {
-		opts, total, err := source.Options(FilterContext{}, "ban", 5)
+	It("keeps the released callback and result signature", func() {
+		result, total, err := source.Options(FilterContext{}, "ban", 5)
 		Expect(err).ToNot(HaveOccurred())
+		Expect(result).To(Equal(map[string]api.Textable{"b": all["b"]}))
 		Expect(total).To(Equal(1))
-		Expect(opts).To(HaveKey("b"))
 	})
 
 	It("resolves selected labels via the head set", func() {
 		sel, err := source.Resolve(FilterContext{}, []string{"a"})
 		Expect(err).ToNot(HaveOccurred())
 		Expect(sel["a"].(api.Text).Content).To(Equal("Apple"))
+	})
+})
+
+var _ = Describe("CountedOptions source", func() {
+	want := FilterOptions{
+		Options: map[string]api.Textable{"a": api.Text{Content: "Apple"}},
+		Counts:  map[string]int{"a": 4},
+		Total:   1,
+	}
+	source := CountedOptions(func(FilterContext, string, int) (FilterOptions, error) {
+		return want, nil
+	})
+
+	It("keeps the FilterSource projection", func() {
+		options, total, err := source.Options(FilterContext{}, "", 5)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(FilterOptions{Options: options, Total: total}).To(Equal(FilterOptions{Options: want.Options, Total: want.Total}))
+	})
+
+	It("exposes the count-capable result", func() {
+		counted, ok := source.(CountedFilterSource)
+		Expect(ok).To(BeTrue())
+		result, err := counted.CountedOptions(FilterContext{}, "", 5)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(result).To(Equal(want))
 	})
 })
 
@@ -107,9 +132,9 @@ var _ = Describe("Declarative filter specs", func() {
 		})
 
 		f := MustGetFilter("fruit")
-		opts, _, err := f.Source.Options(FilterContext{}, "", 0)
+		result, _, err := f.Source.Options(FilterContext{}, "", 0)
 		Expect(err).ToNot(HaveOccurred())
-		Expect(opts).To(HaveKey("a"))
+		Expect(result).To(HaveKey("a"))
 	})
 
 	It("round-trips a Go filter to its declarative spec", func() {
