@@ -119,6 +119,9 @@ func (b *DynamicEntityBuilder) buildFilters(ps *parsedSchema) ([]DynamicFilter, 
 			Options: func(ctx context.Context, flags map[string]string, query string, limit int) (map[string]api.Textable, int, error) {
 				return source.Options(FilterContext{Context: ctx, Key: key, Params: flags}, query, limit)
 			},
+			CountedOptions: func(ctx context.Context, flags map[string]string, query string, limit int) (FilterOptions, error) {
+				return filterSourceOptions(source, FilterContext{Context: ctx, Key: key, Params: flags}, query, limit)
+			},
 			Selected: func(ctx context.Context, flags map[string]string) (map[string]api.Textable, error) {
 				values := filterValuesWithoutModes(splitValues(flags[key]))
 				if len(values) == 0 {

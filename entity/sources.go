@@ -31,6 +31,8 @@ func (s staticSource) Resolve(_ FilterContext, values []string) (map[string]api.
 // FuncOptions is a FilterSource backed by a user-supplied function — the general
 // escape hatch for DB-backed or computed options with server-side search. The
 // function owns query matching and the limit cap.
+//
+// Deprecated: Use CountedOptions for count-aware lookup results.
 func FuncOptions(fn func(fc FilterContext, query string, limit int) (map[string]api.Textable, int, error)) FilterSource {
 	if fn == nil {
 		panic("entity.FuncOptions: fn must not be nil")
@@ -49,11 +51,41 @@ func (s funcSource) Options(fc FilterContext, query string, limit int) (map[stri
 func (s funcSource) Resolve(fc FilterContext, values []string) (map[string]api.Textable, error) {
 	// Without a get-by-id, label each selected value by matching it against the
 	// head option set; unknown values echo back as plain text.
-	options, _, err := s.fn(fc, "", 0)
+	head, _, err := s.fn(fc, "", 0)
 	if err != nil {
 		return nil, err
 	}
-	return pickValues(options, values), nil
+	return pickValues(head, values), nil
+}
+
+// CountedOptions constructs a source that returns per-value row counts while
+// retaining the released FilterSource interface for existing consumers.
+func CountedOptions(fn func(fc FilterContext, query string, limit int) (FilterOptions, error)) FilterSource {
+	if fn == nil {
+		panic("entity.CountedOptions: fn must not be nil")
+	}
+	return countedSource{fn: fn}
+}
+
+type countedSource struct {
+	fn func(fc FilterContext, query string, limit int) (FilterOptions, error)
+}
+
+func (s countedSource) Options(fc FilterContext, query string, limit int) (map[string]api.Textable, int, error) {
+	result, err := s.CountedOptions(fc, query, limit)
+	return result.Options, result.Total, err
+}
+
+func (s countedSource) CountedOptions(fc FilterContext, query string, limit int) (FilterOptions, error) {
+	return s.fn(fc, query, limit)
+}
+
+func (s countedSource) Resolve(fc FilterContext, values []string) (map[string]api.Textable, error) {
+	head, err := s.CountedOptions(fc, "", 0)
+	if err != nil {
+		return nil, err
+	}
+	return pickValues(head.Options, values), nil
 }
 
 // EntityOptions is a FilterSource that resolves its options from another

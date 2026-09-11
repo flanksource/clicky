@@ -7,8 +7,12 @@ type entityLookupResponse struct {
 }
 
 type entityLookupFilter struct {
-	Label    string                `json:"label,omitempty"`
-	Options  map[string]clickyNode `json:"options,omitempty"`
+	Label   string                `json:"label,omitempty"`
+	Options map[string]clickyNode `json:"options,omitempty"`
+	// Counts maps an option value — the same keys as Options — to the number of
+	// rows holding it. It is omitted when the filter's source does not count, and
+	// a value it has no count for is absent rather than zero.
+	Counts   map[string]int        `json:"counts,omitempty"`
 	Selected map[string]clickyNode `json:"selected,omitempty"`
 	Multi    bool                  `json:"multi,omitempty"`
 	Type     string                `json:"type,omitempty"`
