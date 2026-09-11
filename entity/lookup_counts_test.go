@@ -150,4 +150,22 @@ var _ = Describe("Lookup facet counts", func() {
 		Expect(err).To(MatchError(And(ContainSubstring("filter.status"), ContainSubstring("archived"))))
 		Expect(response.Filters).To(BeEmpty())
 	})
+
+	// A negative tally cannot be a number of rows, so a source that reports one
+	// is signalling through the count channel (a sentinel, or a subtraction that
+	// underflowed) rather than counting.
+	It("refuses a negative count", func() {
+		response, err := resolveDynamicLookup(context.Background(), []DynamicFilter{{
+			Key: "filter.status", Searchable: true,
+			CountedOptions: func(context.Context, map[string]string, string, int) (FilterOptions, error) {
+				return FilterOptions{
+					Options: map[string]api.Textable{"open": api.Text{Content: "open"}},
+					Counts:  map[string]int{"open": -1},
+					Total:   1,
+				}, nil
+			},
+		}}, map[string]string{})
+		Expect(err).To(MatchError(And(ContainSubstring("filter.status"), ContainSubstring("-1"))))
+		Expect(response.Filters).To(BeEmpty())
+	})
 })
