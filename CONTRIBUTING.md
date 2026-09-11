@@ -12,8 +12,7 @@ library in your own application, see [CLAUDE.md](CLAUDE.md) and [README.md](READ
   `go get`/version bump.
 - The tree contains **6 separate Go modules**, each with its own `go.mod`:
   `.` (root), `valkey/`, `aichat/`, `examples/`, `examples/uber_demo/`, `examples/enitity/`.
-  The `examples/*` modules are `//go:build ignore` demos that are tidied and tested separately —
-  keep their `go.mod` tidy or CI's Test job fails.
+  `examples/` holds `//go:build ignore` demos; `examples/uber_demo/` and `examples/enitity/` are standalone demo modules. All of them are tidied and tested separately — keep their `go.mod` tidy or CI's Test job fails.
 
 ## Commands
 
@@ -77,6 +76,7 @@ embedded `task/ui/dist/taskui.js` bundle on pushes to main.
   pointing at a commit predating an API breaks `GOWORK=off` (Docker/CI) builds with
   `undefined: clickyvalkey.X` even though a local `go.work` checkout compiles. Cut a real `valkey/vX`
   tag at the commit that has the API, then `GOWORK=off go get github.com/flanksource/clicky/valkey@vX`.
+- `nested-module-release` — the release commit itself pins every nested module that requires clicky to the new version (`.releaserc.json` prepare → `bash .github/scripts/submodules.sh pin <version>`, which fails the release if a pinned module goes untidy), and the `release-submodules` job tags `aichat/vX`/`valkey/vX` on that same commit as `vX` — never on the branch tip, and never by moving an existing tag. `examples/*` modules take the pin but are never tagged, so never hand-bump an example's clicky pin. `@semantic-release/git` force-adds every modified or untracked file matching its `assets`, so keep those globs depth-limited (`*/go.mod`, `examples/*/go.mod`); `**/go.mod` would sweep in an ignored `node_modules` go.mod. `bash .github/scripts/submodules.sh tags <current-version>` is a read-only check of the committed pins.
 - `tree-multiline-label-gutter` — lipgloss prefixes *every* physical line of a multi-line `TreeNode`
   label with the `│   ` gutter, so blank/ANSI-only separator lines render as empty `│`-gutter rows.
   Normalize labels in `api/meta.go normalizeTreeLabel` (drop blank lines, ANSI-aware strip) — not in
