@@ -328,6 +328,11 @@ func (l liftedFilter[Outer, Inner]) OptionsWithQueryAndContext(ctx context.Conte
 	return options, len(options)
 }
 
+func (l liftedFilter[Outer, Inner]) lookupOptions(ctx context.Context, opts Outer, query string, limit int) (FilterOptions, error) {
+	inner := *l.project(&opts)
+	return typedFilterOptions(ctx, l.inner, inner, filterIsSearchable(l.inner), query, limit)
+}
+
 // EntityAction is the type-erased registration surface for custom entity
 // actions. Use Action or ActionWithFlags to construct values.
 type EntityAction interface {
@@ -1867,112 +1872,6 @@ func buildLookupFuncWithContext[T any](filters []Filter[T]) func(ctx context.Con
 // the reserved search params, resolves opts + selected values, then fills each
 // filter's option set — preferring the context-aware Options methods when the
 // filter implements them, otherwise the plain Options/OptionsWithQuery.
-// boundFilter is a type-agnostic, already-resolved filter descriptor that
-// resolveLookupCore renders into the lookup response. Both the typed entity path
-// (resolveLookup) and the dynamic entity path (buildDynamicLookup) produce a
-// slice of these, so the response shape is built in exactly one place.
-type boundFilter struct {
-	Key        string
-	Label      string
-	Type       string
-	Multi      bool
-	Searchable bool
-	// TimeEnabled offers a clock on a range control; nil leaves the choice to the
-	// control type.
-	TimeEnabled *bool
-	Selected    map[string]api.Textable
-	// Limit caps this filter's option set. Zero takes lookupOptionsLimit, which
-	// is also the ceiling — a filter cannot ask for a larger head than the
-	// response is willing to carry.
-	Limit int
-	// Options returns the head set (query == "") or search matches, plus the true
-	// total behind the head. A non-positive limit means "no cap".
-	Options func(query string, limit int) (map[string]api.Textable, int, error)
-}
-
-// limit is the option cap for one filter: its own when it declares a smaller
-// one, the package ceiling otherwise.
-func (f boundFilter) limit() int {
-	if f.Limit > 0 && f.Limit < lookupOptionsLimit {
-		return f.Limit
-	}
-	return lookupOptionsLimit
-}
-
-// searchTarget reports which filter a targeted search names, or -1 when the
-// request is a plain head request over all of them.
-//
-// A search asks about one filter. Answering it by re-enumerating every other
-// filter's head set costs one backend round trip per filter per keystroke, and
-// the client reads only the filter it asked about — so the rest is work nobody
-// receives.
-func searchTarget[T any](filters []T, describe func(T) (key string, searchable bool), searchKey, searchQuery string) int {
-	if searchKey == "" || searchQuery == "" {
-		return -1
-	}
-	for i, filter := range filters {
-		if key, searchable := describe(filter); searchable && key == searchKey {
-			return i
-		}
-	}
-	return -1
-}
-
-func describeBoundFilter(f boundFilter) (string, bool) { return f.Key, f.Searchable }
-
-// resolveLookupCore renders bound filters into the lookup response, applying the
-// searchable head/search/total logic uniformly. It is the single place the
-// lookup wire shape is built, shared by the typed and dynamic entity paths.
-func resolveLookupCore(filters []boundFilter, searchKey, searchQuery string) (entityLookupResponse, error) {
-	if target := searchTarget(filters, describeBoundFilter, searchKey, searchQuery); target >= 0 {
-		filters = filters[target : target+1]
-	}
-	response := entityLookupResponse{
-		Filters: make(map[string]entityLookupFilter, len(filters)),
-	}
-	for _, f := range filters {
-		entry := entityLookupFilter{
-			Label:       f.Label,
-			Selected:    toClickyNodeMap(f.Selected),
-			Multi:       f.Multi,
-			Type:        f.Type,
-			TimeEnabled: f.TimeEnabled,
-		}
-		switch {
-		case f.Searchable && searchKey == f.Key && searchQuery != "":
-			// Targeted server-side search: matches for this filter only, and how
-			// many there are behind the cap. A search can overflow just as a head
-			// set can — reporting the total is what stops a clipped result being
-			// rendered as the whole answer.
-			options, total, err := f.Options(searchQuery, f.limit())
-			if err != nil {
-				return entityLookupResponse{}, err
-			}
-			entry.Options = toClickyNodeMap(options)
-			entry.Total = total
-			entry.Truncated = total > len(options)
-		case f.Searchable:
-			// Head request: first N options plus the true distinct total so
-			// the UI can show "… and N more" and decide whether to search.
-			options, total, err := f.Options("", f.limit())
-			if err != nil {
-				return entityLookupResponse{}, err
-			}
-			entry.Options = toClickyNodeMap(options)
-			entry.Total = total
-			entry.Truncated = total > len(options)
-		default:
-			options, _, err := f.Options("", 0)
-			if err != nil {
-				return entityLookupResponse{}, err
-			}
-			entry.Options = toClickyNodeMap(options)
-		}
-		response.Filters[f.Key] = entry
-	}
-	return response, nil
-}
-
 func resolveLookup[T any](
 	ctx context.Context,
 	filters []Filter[T],
@@ -2029,18 +1928,32 @@ func resolveLookupOptions[T any](
 			Searchable: searchable,
 			Limit:      limit,
 			Selected:   selected[f.Key()],
-			Options: func(query string, limit int) (map[string]api.Textable, int, error) {
-				if searchable {
-					options, total := filterOptionsWithQuery(ctx, f, opts, query, limit)
-					return options, total, nil
-				}
-				options := filterOptions(ctx, f, opts)
-				return options, len(options), nil
+			Options: func(query string, limit int) (FilterOptions, error) {
+				return typedFilterOptions(ctx, f, opts, searchable, query, limit)
 			},
 		})
 	}
 
 	return resolveLookupCore(bound, searchKey, searchQuery)
+}
+
+// typedFilterOptions answers one typed filter's lookup. A named filter attached
+// with Use answers from its source, so the source's counts and errors reach the
+// response; every other typed filter only has a map of options to give.
+type filterOptionsProvider[T any] interface {
+	lookupOptions(ctx context.Context, opts T, query string, limit int) (FilterOptions, error)
+}
+
+func typedFilterOptions[T any](ctx context.Context, filter Filter[T], opts T, searchable bool, query string, limit int) (FilterOptions, error) {
+	if provider, ok := filter.(filterOptionsProvider[T]); ok {
+		return provider.lookupOptions(ctx, opts, query, limit)
+	}
+	if searchable {
+		options, total := filterOptionsWithQuery(ctx, filter, opts, query, limit)
+		return FilterOptions{Options: options, Total: total}, nil
+	}
+	options := filterOptions(ctx, filter, opts)
+	return FilterOptions{Options: options, Total: len(options)}, nil
 }
 
 // filterIsSearchable reports whether filter exposes a head/search option set,

@@ -68,8 +68,9 @@ func (a *attachedFilter[ListOpts]) Lookup(opts *ListOpts) (map[string]api.Textab
 }
 
 // Options resolves the full option set. The plain (error-less) Filter interface
-// forces a best-effort result here; the searchable/context variants the root
-// prefers for web lookups surface errors and the request context.
+// forces a best-effort result here; the entity lookup does not come through
+// these methods but asks the source directly (lookupOptions), so its errors and
+// counts reach the response.
 func (a *attachedFilter[ListOpts]) Options(opts ListOpts) map[string]api.Textable {
 	options, _, _ := a.nf.Source.Options(a.context(context.TODO(), &opts), "", 0)
 	return options
@@ -88,6 +89,12 @@ func (a *attachedFilter[ListOpts]) OptionsWithContext(ctx context.Context, opts 
 func (a *attachedFilter[ListOpts]) OptionsWithQueryAndContext(ctx context.Context, opts ListOpts, query string, limit int) (map[string]api.Textable, int) {
 	options, total, _ := a.nf.Source.Options(a.context(ctx, &opts), query, limit)
 	return options, total
+}
+
+// lookupOptions is the entity lookup's way in: the source's whole answer,
+// counts included, and its error rather than an empty set.
+func (a *attachedFilter[ListOpts]) lookupOptions(ctx context.Context, opts ListOpts, query string, limit int) (FilterOptions, error) {
+	return filterSourceOptions(a.nf.Source, a.context(ctx, &opts), query, limit)
 }
 
 func (a *attachedFilter[ListOpts]) context(ctx context.Context, opts *ListOpts) FilterContext {
