@@ -5,6 +5,28 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.21.63](https://github.com/flanksource/clicky/compare/v1.21.62...v1.21.63) (2026-09-11)
+
+
+### ✨ Features
+
+* add per-value row counts to entity lookup responses ([899977d](https://github.com/flanksource/clicky/commit/899977d2cf203f240a823a995195c4cf63cd910d))
+
+
+### 🐛 Bug Fixes
+
+* Reject negative counts in lookup filter validation ([551d7aa](https://github.com/flanksource/clicky/commit/551d7aa652d4b97b694250971671486159a91173))
+
+
+### 📦 Build System
+
+* **ci:** Add submodule pinning to release workflow ([cd803ff](https://github.com/flanksource/clicky/commit/cd803ff8b7b96f50dcc9d503dea6c478573f6aa2))
+
+
+### 🔧 Maintenance
+
+* **release:** pin sub-modules to v1.21.62 [skip ci] ([9d9b9e3](https://github.com/flanksource/clicky/commit/9d9b9e3ecf73b96142610070d1d4475e5722d0d4))
+
 ## [1.21.62](https://github.com/flanksource/clicky/compare/v1.21.61...v1.21.62) (2026-09-10)
 
 
