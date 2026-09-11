@@ -108,10 +108,15 @@ func lookupEntry(f boundFilter, searchKey, searchQuery string) (entityLookupFilt
 	}
 	// The counts are read by option value, so one keyed by a value the filter
 	// does not offer has nowhere to render: only a source that mixed up its keys
-	// produces one.
-	for value := range result.Counts {
+	// produces one. A negative tally is not a row count either — it can only come
+	// from a sentinel or an underflowed subtraction — and forwarding it would
+	// render the bad value to the reader as if it were real.
+	for value, count := range result.Counts {
 		if _, offered := result.Options[value]; !offered {
 			return entityLookupFilter{}, fmt.Errorf("filter %q counted %q, which is not among the options it offered", f.Key, value)
+		}
+		if count < 0 {
+			return entityLookupFilter{}, fmt.Errorf("filter %q counted %d rows for %q, which is not a row count", f.Key, count, value)
 		}
 	}
 	entry := entityLookupFilter{
