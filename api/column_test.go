@@ -80,6 +80,20 @@ func (r presentedCellRow) Row() map[string]any {
 	}
 }
 
+type structuredCellRow struct{ SQL string }
+
+func (structuredCellRow) Columns() []ColumnDef {
+	return []ColumnDef{
+		Column("sql").Label("Statement").FilterKey("filter.sql").MinWidthPixels(360).MaxWidthPixels(720).Build(),
+	}
+}
+
+func (r structuredCellRow) Row() map[string]any {
+	return map[string]any{
+		"sql": TableCell{Value: CodeBlock("text/x-sql", r.SQL), FilterValue: r.SQL},
+	}
+}
+
 var _ = Describe("Column", func() {
 	Describe("ColumnBuilder", func() {
 		It("creates a column with just a name", func() {
@@ -149,6 +163,19 @@ var _ = Describe("Column", func() {
 	})
 
 	Describe("NewTableFrom", func() {
+		It("preserves a structured code cell as the table cell root", func() {
+			const statement = "SELECT * FROM Activity WHERE ActivityStatusCode = '01'"
+			table := NewTableFrom([]structuredCellRow{{SQL: statement}})
+
+			code, ok := table.Rows[0]["sql"].Textable.(Code)
+			Expect(ok).To(BeTrue())
+			Expect(code.Language).To(Equal("sql"))
+			Expect(code.Content).To(Equal(statement))
+			Expect(table.Rows[0]["sql"].FilterValue).To(Equal(statement))
+			Expect(table.Columns[0].MinWidth).To(Equal(360))
+			Expect(table.Columns[0].MaxWidth).To(Equal(720))
+		})
+
 		It("emits a schema-less empty table for an empty interface-typed slice", func() {
 			table := NewTableFrom([]TableProvider(nil))
 

@@ -692,14 +692,18 @@ func newTableFromProviders(items []TableProvider, rowType reflect.Type) TextTabl
 			// _id, and raw values backing client-side filters). They are absent
 			// from table.Columns, so they never render as a visible cell — and
 			// display styling therefore only applies to visible columns.
-			text := Text{}.Add(ColumnTextable(col, val))
+			textable := ColumnTextable(col, val)
 			if !col.Hidden {
-				text = text.Styles(col.Style)
+				styles := []string{col.Style}
 				if col.MaxWidth > 0 {
-					text = text.Styles(fmt.Sprintf("max-w-[%dch]", col.MaxWidth), "truncate")
+					styles = append(styles, fmt.Sprintf("max-w-[%dch]", col.MaxWidth), "truncate")
+				}
+				switch textable.(type) {
+				case Text, *Text:
+					textable = Text{}.Add(textable).Styles(styles...)
 				}
 			}
-			cell := TypedValue{Textable: text}
+			cell := TypedValue{Textable: textable}
 			// Filterable cells and hidden primitive metadata keep their raw scalar
 			// independently from the rendered representation.
 			if col.FilterKey != "" {
