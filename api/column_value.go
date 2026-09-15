@@ -28,6 +28,9 @@ func IsStructuredColumnType(columnType string) bool {
 // intentionally presentation-only: callers that emit JSON/YAML should retain
 // the original raw value instead of replacing it with this representation.
 func ColumnTextable(column ColumnDef, value any) Textable {
+	if presented, ok := value.(Textable); ok {
+		return presented
+	}
 	switch column.Type {
 	case ColumnTypeKeyValue, ColumnTypeKeyValues:
 		if pairs, ok := normalizeKeyValuePairs(value); ok {

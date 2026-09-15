@@ -8,19 +8,21 @@ import (
 // ColumnDef defines a table column's schema and display properties.
 // Order is determined by array position when returned from TableProvider.Columns().
 type ColumnDef struct {
-	Name          string
-	Label         string
-	Kind          string
-	Style         string
-	HeaderStyle   string
-	Type          string
-	Format        string
-	Unit          string
-	FilterKey     string
-	SortKey       string
-	FormatOptions map[string]string
-	MaxWidth      int
-	Hidden        bool
+	Name           string
+	Label          string
+	Kind           string
+	Style          string
+	HeaderStyle    string
+	Type           string
+	Format         string
+	Unit           string
+	FilterKey      string
+	SortKey        string
+	FormatOptions  map[string]string
+	MaxWidth       int
+	MinWidthPixels int
+	MaxWidthPixels int
+	Hidden         bool
 }
 
 // DisplayLabel returns Label if set, otherwise prettifies Name.
@@ -113,6 +115,18 @@ func (b *ColumnBuilder) MaxWidth(width int) *ColumnBuilder {
 	return b
 }
 
+// MinWidthPixels sets the minimum browser table-column width in pixels.
+func (b *ColumnBuilder) MinWidthPixels(width int) *ColumnBuilder {
+	b.col.MinWidthPixels = width
+	return b
+}
+
+// MaxWidthPixels sets the maximum browser table-column width in pixels.
+func (b *ColumnBuilder) MaxWidthPixels(width int) *ColumnBuilder {
+	b.col.MaxWidthPixels = width
+	return b
+}
+
 // Hidden marks the column as hidden from display.
 func (b *ColumnBuilder) Hidden() *ColumnBuilder {
 	b.col.Hidden = true
@@ -133,6 +147,14 @@ type TableProvider interface {
 	// Row returns the raw data for this item as a map of column name to value.
 	// Values are rendered using Text{}.Add(value).
 	Row() map[string]any
+}
+
+// TableCell separates a cell's rendered value from the raw scalar used by
+// filtering and sorting. Use it when presentation changes the value's shape,
+// such as a styled human duration whose filter value must remain milliseconds.
+type TableCell struct {
+	Value       any
+	FilterValue any
 }
 
 // DetailProvider is an optional interface for TableProvider types that supply
@@ -170,6 +192,8 @@ func NewEmptyTable(columns []ColumnDef) TextTable {
 			Unit:          col.Unit,
 			FilterKey:     col.FilterKey,
 			SortKey:       col.SortKey,
+			MinWidth:      col.MinWidthPixels,
+			MaxWidth:      col.MaxWidthPixels,
 			FormatOptions: col.FormatOptions,
 		})
 	}

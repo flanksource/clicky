@@ -38,12 +38,13 @@ func (e mockEmployee) Row() map[string]any {
 	}
 }
 
-// hiddenColumnRow pairs a filterable hidden column with a non-filterable one so
-// the two halves of the hidden-cell contract can be asserted in one table.
 type hiddenColumnRow struct {
 	Name     string
 	Tenant   string
 	Internal string
+	Count    int64
+	Enabled  bool
+	Items    []string
 }
 
 func (hiddenColumnRow) Columns() []ColumnDef {
@@ -51,11 +52,32 @@ func (hiddenColumnRow) Columns() []ColumnDef {
 		Column("name").Build(),
 		Column("tenant").Hidden().FilterKey("filter.tenant").Build(),
 		Column("internal").Hidden().Build(),
+		Column("count").Hidden().Build(),
+		Column("enabled").Hidden().Build(),
+		Column("items").Hidden().Build(),
 	}
 }
 
 func (r hiddenColumnRow) Row() map[string]any {
-	return map[string]any{"name": r.Name, "tenant": r.Tenant, "internal": r.Internal}
+	return map[string]any{
+		"name": r.Name, "tenant": r.Tenant, "internal": r.Internal,
+		"count": r.Count, "enabled": r.Enabled, "items": r.Items,
+	}
+}
+
+type presentedCellRow struct{ Duration float64 }
+
+func (presentedCellRow) Columns() []ColumnDef {
+	return []ColumnDef{Column("duration").FilterKey("filter.duration").Build()}
+}
+
+func (r presentedCellRow) Row() map[string]any {
+	return map[string]any{
+		"duration": TableCell{
+			Value:       Text{Content: "125ms", Style: "text-red-500"},
+			FilterValue: r.Duration,
+		},
+	}
 }
 
 var _ = Describe("Column", func() {
@@ -76,6 +98,8 @@ var _ = Describe("Column", func() {
 				Format("currency").
 				FormatOption("symbol", "€").
 				MaxWidth(15).
+				MinWidthPixels(360).
+				MaxWidthPixels(720).
 				Build()
 
 			Expect(col.Name).To(Equal("salary"))
@@ -86,6 +110,8 @@ var _ = Describe("Column", func() {
 			Expect(col.Format).To(Equal("currency"))
 			Expect(col.FormatOptions).To(HaveKeyWithValue("symbol", "€"))
 			Expect(col.MaxWidth).To(Equal(15))
+			Expect(col.MinWidthPixels).To(Equal(360))
+			Expect(col.MaxWidthPixels).To(Equal(720))
 			Expect(col.Hidden).To(BeFalse())
 		})
 
@@ -117,6 +143,11 @@ var _ = Describe("Column", func() {
 		Expect(column.FilterKey).To(Equal("filter.status"))
 	})
 
+	It("keeps an explicitly presented textable ahead of scalar type formatting", func() {
+		presented := CodeBlock("text/x-sql", "SELECT 1")
+		Expect(ColumnTextable(ColumnDef{Type: FieldTypeString}, presented)).To(Equal(presented))
+	})
+
 	Describe("NewTableFrom", func() {
 		It("emits a schema-less empty table for an empty interface-typed slice", func() {
 			table := NewTableFrom([]TableProvider(nil))
@@ -134,18 +165,34 @@ var _ = Describe("Column", func() {
 			Expect(table.Rows[0]["name"].String()).To(Equal("Alice"))
 		})
 
-		It("carries hidden cells as row metadata and keeps the raw value of filterable ones", func() {
-			table := NewTableFrom([]hiddenColumnRow{{Name: "web", Tenant: "acme", Internal: "meta"}})
+		It("carries hidden primitive cells as typed row metadata", func() {
+			table := NewTableFrom([]hiddenColumnRow{{
+				Name: "web", Tenant: "acme", Internal: "meta", Items: []string{"one"},
+			}})
 
 			// Hidden columns are row metadata, never visible columns.
 			Expect(table.FieldNames).To(Equal([]string{"name"}))
 			Expect(table.Rows[0]["tenant"].String()).To(Equal("acme"))
 			Expect(table.Rows[0]["internal"].String()).To(Equal("meta"))
 
-			// Only a filterable cell retains its raw scalar for filtering.
-			Expect(table.Rows[0]["tenant"].FilterValue).To(Equal("acme"))
-			Expect(table.Rows[0]["internal"].FilterValue).To(BeNil())
-			Expect(table.Rows[0]["name"].FilterValue).To(BeNil())
+			Expect(map[string]any{
+				"tenant":   table.Rows[0]["tenant"].FilterValue,
+				"internal": table.Rows[0]["internal"].FilterValue,
+				"count":    table.Rows[0]["count"].FilterValue,
+				"enabled":  table.Rows[0]["enabled"].FilterValue,
+				"items":    table.Rows[0]["items"].FilterValue,
+				"name":     table.Rows[0]["name"].FilterValue,
+			}).To(Equal(map[string]any{
+				"tenant": "acme", "internal": "meta", "count": int64(0),
+				"enabled": false, "items": nil, "name": nil,
+			}))
+		})
+
+		It("renders a presented cell while retaining its independent raw filter value", func() {
+			table := NewTableFrom([]presentedCellRow{{Duration: 125.0}})
+
+			Expect(table.Rows[0]["duration"].String()).To(Equal("125ms"))
+			Expect(table.Rows[0]["duration"].FilterValue).To(Equal(125.0))
 		})
 
 		It("emits header-only table (schema, no rows) from empty slice", func() {

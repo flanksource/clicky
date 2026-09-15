@@ -357,7 +357,8 @@ func encodeSpec(spec *OpenAPISpec, format specFormat) (*specDocument, error) {
 // true when it is read — which is the point of registering a family at all.
 func (s *SwaggerServer) specDocument(r *http.Request, format specFormat) (*specDocument, error) {
 	families := entity.GetDynamicEntityFamilies()
-	if len(families) == 0 {
+	extensions := s.generator.config.RequestExtensions
+	if len(families) == 0 && len(extensions) == 0 {
 		return s.renderSpec(format)
 	}
 
@@ -365,7 +366,12 @@ func (s *SwaggerServer) specDocument(r *http.Request, format specFormat) (*specD
 	if err != nil {
 		return nil, err
 	}
-	spec := cloneSpecForFamilies(base)
+	spec := cloneSpecForRequest(base)
+	for _, extend := range extensions {
+		if err := extend(r.Context(), spec); err != nil {
+			return nil, fmt.Errorf("extend OpenAPI spec: %w", err)
+		}
+	}
 	if err := s.addFamilyPaths(r.Context(), spec, families); err != nil {
 		return nil, err
 	}
@@ -389,19 +395,26 @@ func (s *SwaggerServer) baseSpec() (*OpenAPISpec, error) {
 	return spec, nil
 }
 
-// cloneSpecForFamilies copies exactly what addFamilyPaths writes to — the path
-// map and the surface list — so a request's instances never reach the cached
-// base. Everything else is shared: nothing on this path mutates it.
-func cloneSpecForFamilies(base *OpenAPISpec) *OpenAPISpec {
+// cloneSpecForRequest copies what a request may write to — each path's method
+// map, the surface list and the filter components — so neither a request
+// extension nor a family instance reaches the cached base, or the generator's
+// components map the base shares. Operations and schemas stay shared: they are
+// replaced, never mutated in place.
+func cloneSpecForRequest(base *OpenAPISpec) *OpenAPISpec {
 	spec := *base
-	spec.Paths = maps.Clone(base.Paths)
-	if spec.Paths == nil {
-		spec.Paths = make(map[string]OpenAPIPath)
+	spec.Paths = make(map[string]OpenAPIPath, len(base.Paths))
+	for path, methods := range base.Paths {
+		spec.Paths[path] = maps.Clone(methods)
 	}
 	if base.Clicky != nil {
 		meta := *base.Clicky
 		meta.Surfaces = slices.Clone(base.Clicky.Surfaces)
 		spec.Clicky = &meta
+	}
+	if base.Components != nil {
+		components := *base.Components
+		components.ClickyFilters = maps.Clone(base.Components.ClickyFilters)
+		spec.Components = &components
 	}
 	return &spec
 }

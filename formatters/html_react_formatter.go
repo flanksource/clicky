@@ -75,6 +75,8 @@ type ClickyColumn struct {
 	Unit      string      `json:"unit,omitempty"`
 	FilterKey string      `json:"filterKey,omitempty"`
 	SortKey   string      `json:"sortKey,omitempty"`
+	MinWidth  int         `json:"minWidth,omitempty"`
+	MaxWidth  int         `json:"maxWidth,omitempty"`
 	Header    *ClickyNode `json:"header,omitempty"`
 	Align     string      `json:"align,omitempty"`
 }
@@ -520,6 +522,8 @@ func convertTable(table *api.TextTable) ClickyNode {
 				column.Unit = table.Columns[i].Unit
 				column.FilterKey = table.Columns[i].FilterKey
 				column.SortKey = table.Columns[i].SortKey
+				column.MinWidth = table.Columns[i].MinWidth
+				column.MaxWidth = table.Columns[i].MaxWidth
 				column.Align = alignFromStyle(table.Columns[i].Style)
 			}
 			if column.Label == "" {
@@ -548,6 +552,8 @@ func convertTable(table *api.TextTable) ClickyNode {
 				Unit:      columnDef.Unit,
 				FilterKey: columnDef.FilterKey,
 				SortKey:   columnDef.SortKey,
+				MinWidth:  columnDef.MinWidth,
+				MaxWidth:  columnDef.MaxWidth,
 				Align:     alignFromStyle(columnDef.Style),
 			}
 			if column.Label == "" {
@@ -578,7 +584,9 @@ func convertTable(table *api.TextTable) ClickyNode {
 			if _, exists := rowNode.Cells[cellName]; exists {
 				continue
 			}
-			rowNode.Cells[cellName] = compactNode(convertTypedValue(&cell, nil))
+			cellNode := convertTypedValue(&cell, nil)
+			cellNode.FilterValue = cell.FilterValue
+			rowNode.Cells[cellName] = compactNode(cellNode)
 		}
 
 		if rowIndex < len(table.RowDetail) && table.RowDetail[rowIndex] != nil {

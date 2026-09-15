@@ -121,7 +121,7 @@ func familyOperation(family entity.DynamicEntityFamily, spec entity.DynamicEntit
 		Name: family.Name + " " + name, Description: spec.Title, Path: path, Method: http.MethodGet,
 		ContextDataFunc: spec.List, ResponseArray: true,
 		Clicky: &entity.ClickyOperationMeta{
-			SurfaceID: family.Name + "/" + name, Entity: name, Parent: parent, Verb: "list",
+			SurfaceID: family.Name + "/" + name, Entity: name, Parent: parent, Verb: "list", Scope: "collection",
 			Icon: spec.Icon, Path: spec.Path, Title: spec.Title, SupportsLookup: len(spec.Filters) > 0,
 		},
 	}
@@ -171,8 +171,11 @@ func (s *SwaggerServer) addFamilyPaths(ctx context.Context, spec *OpenAPISpec, f
 			if spec.Paths == nil {
 				spec.Paths = make(map[string]OpenAPIPath, len(instances))
 			}
-			spec.Paths[path] = OpenAPIPath{"get": s.generator.convertOperationToOpenAPI(*operation)}
+			// The surface names the operation's surface key, and conversion only
+			// emits the operation's x-clicky meta once that key is set, so the
+			// surface has to be appended first.
 			spec.Clicky = appendFamilySurface(spec.Clicky, operation.Clicky, instance)
+			spec.Paths[path] = OpenAPIPath{"get": s.generator.convertOperationToOpenAPI(*operation)}
 		}
 	}
 	return nil

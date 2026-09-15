@@ -420,8 +420,8 @@ type FieldMeta struct {
 
 type TypedValue struct {
 	Textable Textable
-	// FilterValue preserves a filterable table cell's raw scalar independently
-	// from its formatted Textable representation.
+	// FilterValue preserves a table cell's raw scalar independently from its
+	// formatted Textable representation for filters and hidden row metadata.
 	FilterValue any
 	Slice       *TextList
 	Map         *TextMap
@@ -683,6 +683,11 @@ func newTableFromProviders(items []TableProvider, rowType reflect.Type) TextTabl
 				}
 				continue
 			}
+			filterValue := val
+			if presented, ok := val.(TableCell); ok {
+				val = presented.Value
+				filterValue = presented.FilterValue
+			}
 			// Hidden columns ride along as row metadata (row identity such as
 			// _id, and raw values backing client-side filters). They are absent
 			// from table.Columns, so they never render as a visible cell — and
@@ -695,10 +700,18 @@ func newTableFromProviders(items []TableProvider, rowType reflect.Type) TextTabl
 				}
 			}
 			cell := TypedValue{Textable: text}
-			// A filterable cell keeps its raw scalar so filtering compares
-			// against the value, not its rendered representation.
+			// Filterable cells and hidden primitive metadata keep their raw scalar
+			// independently from the rendered representation.
 			if col.FilterKey != "" {
-				cell.FilterValue = val
+				cell.FilterValue = filterValue
+			} else if col.Hidden && filterValue != nil {
+				switch reflect.TypeOf(filterValue).Kind() {
+				case reflect.Bool,
+					reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+					reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64,
+					reflect.Float32, reflect.Float64, reflect.String:
+					cell.FilterValue = filterValue
+				}
 			}
 			row[col.Name] = cell
 		}
