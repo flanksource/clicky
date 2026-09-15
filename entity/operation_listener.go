@@ -6,6 +6,9 @@ import (
 	"slices"
 	"sync"
 	"time"
+
+	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
 // OperationEvent describes one completed registered operation. Parameters are
@@ -70,6 +73,76 @@ func OperationSurfaceFromContext(ctx context.Context) string {
 	return surface
 }
 
+// notifyOperation runs one operation and delivers a single event to every
+// listener subscribed when it started. The caller's result and error are
+// returned unchanged. build is consulted only once a subscriber exists, so an
+// unobserved operation allocates nothing.
+func notifyOperation(ctx context.Context, build func() OperationEvent, run func() (any, error)) (any, error) {
+	operationListeners.RLock()
+	listeners := slices.Clone(operationListeners.entries)
+	operationListeners.RUnlock()
+	if len(listeners) == 0 {
+		return run()
+	}
+	event := build()
+	start := time.Now()
+	result, err := run()
+	event.Result, event.Error, event.Duration = result, err, time.Since(start)
+	for _, listener := range listeners {
+		copy := event
+		copy.Parameters, copy.Args = maps.Clone(event.Parameters), slices.Clone(event.Args)
+		(*listener)(ctx, copy)
+	}
+	return result, err
+}
+
+// CommandIdentity names a command the way the operation seam names it.
+// Annotations name it when the command was projected onto an entity surface;
+// otherwise its group names the entity and its leaf names the verb, and a
+// top-level command names itself instead of borrowing the application's own
+// name. It is exported so a host application observing a command clicky did not
+// generate describes it identically, keeping one trail legible.
+func CommandIdentity(cmd *cobra.Command) (entityName, verb string) {
+	entityName, verb = cmd.Name(), cmd.Name()
+	if parent := cmd.Parent(); parent != nil && parent.Parent() != nil {
+		entityName = parent.Name()
+	}
+	if annotated := cmd.Annotations[annotationClickyEntityName]; annotated != "" {
+		entityName = annotated
+	}
+	if annotated := cmd.Annotations[annotationClickyOperationAction]; annotated != "" {
+		verb = annotated
+	}
+	return entityName, verb
+}
+
+// commandOperationEvent describes one invocation of a command generated from an
+// opts struct rather than from an entity registration.
+func commandOperationEvent(cmd *cobra.Command, flags map[string]string, args []string) OperationEvent {
+	entityName, verb := CommandIdentity(cmd)
+	return OperationEvent{Entity: entityName, Verb: verb, Parameters: maps.Clone(flags), Args: slices.Clone(args)}
+}
+
+// observeGeneratedCommand wraps one invocation of a generated command's
+// handler. Both the CLI RunE and the registered transport closure call it, each
+// with its own argument population, so an invocation is observed exactly once
+// whichever entry point dispatched it.
+func observeGeneratedCommand(ctx context.Context, cmd *cobra.Command, flags map[string]string, args []string, run func() (any, error)) (any, error) {
+	return notifyOperation(ctx, func() OperationEvent {
+		return commandOperationEvent(cmd, flags, args)
+	}, run)
+}
+
+// changedFlagMap renders the flags cobra actually parsed, matching the flag map
+// the transport closures receive so both surfaces report the same parameters.
+func changedFlagMap(cmd *cobra.Command) map[string]string {
+	flagMap := map[string]string{}
+	cmd.Flags().Visit(func(f *pflag.Flag) {
+		flagMap[f.Name] = flagMapValue(f)
+	})
+	return flagMap
+}
+
 // observeDataFuncs wraps only registration-owned closures, never transport
 // dispatch. Both entry points share one observed invocation; legacy handlers
 // get a context-aware adapter so their listeners retain the caller's context.
@@ -84,25 +157,15 @@ func observeDataFuncs(info EntityInfo, verb string, target bool, data *func(map[
 		}
 	}
 	observed := func(ctx context.Context, flags map[string]string, args []string) (any, error) {
-		operationListeners.RLock()
-		listeners := slices.Clone(operationListeners.entries)
-		operationListeners.RUnlock()
-		if len(listeners) == 0 {
+		return notifyOperation(ctx, func() OperationEvent {
+			event := OperationEvent{Entity: info.Name, Verb: verb, Admin: info.IsAdmin, Parameters: maps.Clone(flags), Args: slices.Clone(args)}
+			if target {
+				event.TargetID, _ = entityIDFrom(flags, args)
+			}
+			return event
+		}, func() (any, error) {
 			return execute(ctx, flags, args)
-		}
-		event := OperationEvent{Entity: info.Name, Verb: verb, Admin: info.IsAdmin, Parameters: maps.Clone(flags), Args: slices.Clone(args)}
-		if target {
-			event.TargetID, _ = entityIDFrom(flags, args)
-		}
-		start := time.Now()
-		result, err := execute(ctx, flags, args)
-		event.Result, event.Error, event.Duration = result, err, time.Since(start)
-		for _, listener := range listeners {
-			copy := event
-			copy.Parameters, copy.Args = maps.Clone(event.Parameters), slices.Clone(event.Args)
-			(*listener)(ctx, copy)
-		}
-		return result, err
+		})
 	}
 	*contextual = observed
 	*data = func(flags map[string]string, args []string) (any, error) {

@@ -317,58 +317,71 @@ func addNamedCommand[T any, R any](
 	capturedFields := append([]flags.FieldInfo(nil), fieldInfos...)
 	if fnCtx != nil {
 		contextDataFuncRegistry.Store(cmd, func(ctx context.Context, flagMap map[string]string, args []string) (any, error) {
-			optsValue := reflect.New(optsType).Elem()
-			if err := flags.PopulateFromRequest(optsValue, capturedFields, flagMap, args, flags.WithRequestContext(ctx)); err != nil {
-				return nil, err
-			}
-			return dataOrError(fnCtx(ctx, optsValue.Interface().(T)))
+			return observeGeneratedCommand(ctx, cmd, flagMap, args, func() (any, error) {
+				optsValue := reflect.New(optsType).Elem()
+				if err := flags.PopulateFromRequest(optsValue, capturedFields, flagMap, args, flags.WithRequestContext(ctx)); err != nil {
+					return nil, err
+				}
+				return dataOrError(fnCtx(ctx, optsValue.Interface().(T)))
+			})
 		})
 	} else {
 		dataFuncRegistry.Store(cmd, func(flagMap map[string]string, args []string) (any, error) {
-			optsValue := reflect.New(optsType).Elem()
-			if err := flags.PopulateFromRequest(optsValue, capturedFields, flagMap, args); err != nil {
-				return nil, err
-			}
-			return dataOrError(fn(optsValue.Interface().(T)))
+			return observeGeneratedCommand(context.Background(), cmd, flagMap, args, func() (any, error) {
+				optsValue := reflect.New(optsType).Elem()
+				if err := flags.PopulateFromRequest(optsValue, capturedFields, flagMap, args); err != nil {
+					return nil, err
+				}
+				return dataOrError(fn(optsValue.Interface().(T)))
+			})
 		})
 	}
 
 	// Set RunE function
 	cmd.RunE = func(c *cobra.Command, args []string) error {
-		// Create new instance of opts
-		optsValue := reflect.New(optsType).Elem()
-
-		// First pass: Find the field with args:"true"
-		var argsFieldValue *flags.FlagValue
-		for _, fv := range flagValues {
-			if fv.IsArgs {
-				argsFieldValue = fv
-				break
-			}
+		// The CLI is one surface of this command; the registered closure above
+		// serves the others. Marking it here — rather than in every host
+		// application's root command — keeps a listener's view of the surface
+		// correct without the host knowing the seam exists. A dispatcher that
+		// already named the surface keeps it.
+		ctx := c.Context()
+		if OperationSurfaceFromContext(ctx) == "" {
+			ctx = ContextWithOperationSurface(ctx, "cli")
 		}
 
-		// Process flags and populate struct
-		for _, fv := range flagValues {
-			// Only pass args to the field with args:"true", pass nil to all others
-			argsToPass := []string(nil)
-			if fv.IsArgs && argsFieldValue == fv {
-				argsToPass = args
+		result, err := observeGeneratedCommand(ctx, cmd, changedFlagMap(c), args, func() (any, error) {
+			// Create new instance of opts
+			optsValue := reflect.New(optsType).Elem()
+
+			// First pass: Find the field with args:"true"
+			var argsFieldValue *flags.FlagValue
+			for _, fv := range flagValues {
+				if fv.IsArgs {
+					argsFieldValue = fv
+					break
+				}
 			}
 
-			if err := flags.AssignFieldValue(optsValue, fv, argsToPass, isStdinAvailable()); err != nil {
-				return err
-			}
-		}
+			// Process flags and populate struct
+			for _, fv := range flagValues {
+				// Only pass args to the field with args:"true", pass nil to all others
+				argsToPass := []string(nil)
+				if fv.IsArgs && argsFieldValue == fv {
+					argsToPass = args
+				}
 
-		// Call the function, preferring the context-aware variant (fed the
-		// command's context so the closure sees cmd.Context()).
-		var result R
-		var err error
-		if fnCtx != nil {
-			result, err = fnCtx(c.Context(), optsValue.Interface().(T))
-		} else {
-			result, err = fn(optsValue.Interface().(T))
-		}
+				if err := flags.AssignFieldValue(optsValue, fv, argsToPass, isStdinAvailable()); err != nil {
+					return nil, err
+				}
+			}
+
+			// Call the function, preferring the context-aware variant (fed the
+			// command's context so the closure sees cmd.Context()).
+			if fnCtx != nil {
+				return dataOrError(fnCtx(ctx, optsValue.Interface().(T)))
+			}
+			return dataOrError(fn(optsValue.Interface().(T)))
+		})
 		if err != nil {
 			return renderCommandError(name, err)
 		}
