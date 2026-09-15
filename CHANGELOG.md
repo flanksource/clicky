@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.21.64](https://github.com/flanksource/clicky/compare/v1.21.63...v1.21.64) (2026-09-15)
+
+
+### ✨ Features
+
+* Add operation scheduling support with cron suggestions ([0661c20](https://github.com/flanksource/clicky/commit/0661c204e8a3240e6d1553ec507159e33f4fdc07))
+* **api:** Add pixel-based column width and TableCell value/filter separation ([2e7f49f](https://github.com/flanksource/clicky/commit/2e7f49ff0a323c34886e511492cf5d419efc78bc))
+* **cache:** add MGet method for efficient multi-key reads ([e6b52fe](https://github.com/flanksource/clicky/commit/e6b52fe2da4a4172f27098e193075978e5edcc1c))
+
 ## [1.21.63](https://github.com/flanksource/clicky/compare/v1.21.62...v1.21.63) (2026-09-11)
 
 
