@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/flanksource/clicky/api"
@@ -221,6 +222,138 @@ func TestDynamicFamily_SpecDescribesTheInstancesThatExistNow(t *testing.T) {
 	assert.Equal(t, "Profile daily", found.Title)
 	assert.Equal(t, "reporting", found.Parent)
 	assert.Equal(t, "database", found.Icon)
+
+	// A surface is matched to its operations through the operation's own
+	// x-clicky meta; without it an OperationCatalog for the surface finds no
+	// list operation and renders the empty endpoint list.
+	operation := spec.Paths["/api/v1/profile/daily"]["get"]
+	require.NotNil(t, operation.Clicky, "the instance's operation names its surface")
+	// A catalog takes a surface's list operation to be its verb-list,
+	// collection-scoped one; anything less renders as a bare endpoint link.
+	assert.Equal(t, [3]string{"daily", "list", "collection"},
+		[3]string{operation.Clicky.Surface, operation.Clicky.Verb, operation.Clicky.Scope})
+}
+
+// A consumer that hand-writes paths the command tree cannot describe (multipart
+// uploads, settings routes) used to render its own static document to add them,
+// and that document silently dropped every family instance. Extensions have to
+// ride the served document, so the two coexist.
+func TestDynamicFamily_SpecKeepsTheConsumersExtensions(t *testing.T) {
+	const handWritten = "/api/v1/settings/logging"
+	server := NewSwaggerServer(
+		&ServeConfig{Version: "1.0.0", Executor: &ExecutorConfig{Enabled: true, PathPrefix: "/api/v1"}},
+		createTestRootCommand(),
+		&OpenAPIConfig{Title: "Test API", Version: "1.0.0", Extensions: []func(*OpenAPISpec){
+			func(spec *OpenAPISpec) {
+				spec.Paths[handWritten] = OpenAPIPath{"get": OpenAPIOperation{OperationID: "loggingSettings"}}
+			},
+		}},
+	)
+	registerTestFamily(t, profileFamily("daily"))
+
+	for _, format := range []struct {
+		name  string
+		serve func(http.ResponseWriter, *http.Request)
+	}{
+		{"exported handler", server.HandleOpenAPIJSON},
+		{"cached rendering", func(w http.ResponseWriter, r *http.Request) {
+			server.serveSpec(w, r, specFormatJSON, "application/json")
+		}},
+	} {
+		rec := httptest.NewRecorder()
+		format.serve(rec, httptest.NewRequest("GET", "/api/openapi.json", nil))
+
+		var spec OpenAPISpec
+		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &spec), format.name)
+		assert.Equal(t, []bool{true, true}, []bool{
+			spec.Paths[handWritten] != nil,
+			spec.Paths["/api/v1/profile/daily"] != nil,
+		}, "%s: the extension path and the family instance both appear", format.name)
+	}
+}
+
+type requestMarker struct{}
+
+// A family can only describe an instance by its filters, but the store behind
+// it may know the whole contract — declared params, paging, sort. A request
+// extension describes what exists as the request is served, and the path it
+// writes is the one the document keeps.
+func TestDynamicFamily_RequestExtensionsDescribeInstancesAheadOfTheFamily(t *testing.T) {
+	const path = "/api/v1/profile/daily"
+	server := NewSwaggerServer(
+		&ServeConfig{Version: "1.0.0", Executor: &ExecutorConfig{Enabled: true, PathPrefix: "/api/v1"}},
+		createTestRootCommand(),
+		&OpenAPIConfig{Title: "Test API", Version: "1.0.0", RequestExtensions: []func(context.Context, *OpenAPISpec) error{
+			func(ctx context.Context, spec *OpenAPISpec) error {
+				request := ctx.Value(requestMarker{}).(string)
+				spec.Paths[path] = OpenAPIPath{"get": OpenAPIOperation{
+					Parameters: []OpenAPIParameter{{Name: "stream", In: "query"}, {Name: "limit", In: "query"}},
+					Clicky:     &ClickyOperationMeta{Surface: "daily", Verb: "list", Scope: "collection"},
+				}}
+				if spec.Clicky == nil {
+					spec.Clicky = &ClickySpecMeta{}
+				}
+				spec.Clicky.Surfaces = append(spec.Clicky.Surfaces, ClickySurface{Key: "daily", Entity: "daily"})
+				if spec.Components == nil {
+					spec.Components = &OpenAPIComponents{}
+				}
+				if spec.Components.ClickyFilters == nil {
+					spec.Components.ClickyFilters = map[string]entity.FilterSpec{}
+				}
+				spec.Components.ClickyFilters["filter-"+request] = entity.FilterSpec{Name: "filter-" + request}
+				return nil
+			},
+		}},
+	)
+	registerTestFamily(t, profileFamily("daily"))
+
+	serve := func(request string) OpenAPISpec {
+		rec := httptest.NewRecorder()
+		req := httptest.NewRequest("GET", "/api/openapi.json", nil)
+		server.HandleOpenAPIJSON(rec, req.WithContext(context.WithValue(req.Context(), requestMarker{}, request)))
+		require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+		var spec OpenAPISpec
+		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &spec))
+		return spec
+	}
+	serve("first")
+	spec := serve("second")
+
+	var parameters []string
+	for _, parameter := range spec.Paths[path]["get"].Parameters {
+		parameters = append(parameters, parameter.Name)
+	}
+	var surfaces, filters []string
+	for _, surface := range spec.Clicky.Surfaces {
+		if surface.Key == "daily" {
+			surfaces = append(surfaces, surface.Key)
+		}
+	}
+	for name := range spec.Components.ClickyFilters {
+		filters = append(filters, name)
+	}
+	assert.Equal(t, map[string][]string{
+		"parameters": {"stream", "limit"},
+		"surfaces":   {"daily"},
+		"filters":    {"filter-second"},
+	}, map[string][]string{"parameters": parameters, "surfaces": surfaces, "filters": filters},
+		"the extension's description wins the path once, and one request's writes never reach the next")
+}
+
+func TestDynamicFamily_RequestExtensionFailureFailsTheDocument(t *testing.T) {
+	server := NewSwaggerServer(
+		&ServeConfig{Version: "1.0.0", Executor: &ExecutorConfig{Enabled: true, PathPrefix: "/api/v1"}},
+		createTestRootCommand(),
+		&OpenAPIConfig{Title: "Test API", Version: "1.0.0", RequestExtensions: []func(context.Context, *OpenAPISpec) error{
+			func(context.Context, *OpenAPISpec) error { return errors.New("profile store unavailable") },
+		}},
+	)
+
+	rec := httptest.NewRecorder()
+	server.HandleOpenAPIJSON(rec, httptest.NewRequest("GET", "/api/openapi.json", nil))
+
+	assert.Equal(t, []any{http.StatusInternalServerError, true},
+		[]any{rec.Code, strings.Contains(rec.Body.String(), "profile store unavailable")})
 }
 
 // A family must not swallow a path that is not one of its instances.

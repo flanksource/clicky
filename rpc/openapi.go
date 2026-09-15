@@ -1,6 +1,7 @@
 package rpc
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"reflect"
@@ -273,6 +274,17 @@ type OpenAPIConfig struct {
 	License                  *OpenAPILicense
 	Tags                     []OpenAPITag
 	StructuredErrorResponses bool
+	// Extensions add what the command tree cannot describe — hand-written paths
+	// such as multipart uploads — to every generated document. They run before
+	// dynamic entity families are layered on, so a consumer never has to render
+	// its own document (which would drop the families) to include them.
+	Extensions []func(*OpenAPISpec)
+	// RequestExtensions describe what exists only as a request is served — a
+	// store-backed surface whose instances change while the server runs. Each
+	// runs on that request's copy of the document, before dynamic entity family
+	// instances are added, so a path it describes is not re-described by a
+	// family. An error fails the document rather than omitting the surface.
+	RequestExtensions []func(context.Context, *OpenAPISpec) error
 }
 
 // NewOpenAPIGenerator creates a new OpenAPI generator
@@ -339,6 +351,10 @@ func (g *OpenAPIGenerator) GenerateFromService(service *RPCService) *OpenAPISpec
 	// Add components if any schemas or reusable filter definitions were generated
 	if len(g.components.Schemas) > 0 || len(g.components.ClickyFilters) > 0 {
 		spec.Components = g.components
+	}
+
+	for _, extend := range g.config.Extensions {
+		extend(spec)
 	}
 
 	return spec

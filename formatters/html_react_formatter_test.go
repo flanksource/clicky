@@ -184,7 +184,7 @@ func TestHTMLReactConvertTable(t *testing.T) {
 		},
 		Columns: []api.PrettyField{
 			{Name: "Name", Label: "Name"},
-			{Name: "Status", Label: "Status", Kind: "status", Type: api.ColumnTypeKeyValue, FilterKey: "filter.status", SortKey: "status"},
+			{Name: "Status", Label: "Status", Kind: "status", Type: api.ColumnTypeKeyValue, FilterKey: "filter.status", SortKey: "status", MinWidth: 360, MaxWidth: 720},
 		},
 		Rows: []api.TableRow{
 			{
@@ -221,6 +221,9 @@ func TestHTMLReactConvertTable(t *testing.T) {
 	if node.Columns[1].SortKey != "status" {
 		t.Fatalf("expected sort key to survive clicky conversion, got %#v", node.Columns[1])
 	}
+	if node.Columns[1].MinWidth != 360 || node.Columns[1].MaxWidth != 720 {
+		t.Fatalf("expected pixel widths to survive clicky conversion, got %#v", node.Columns[1])
+	}
 	if len(node.Rows) != 2 {
 		t.Fatalf("expected 2 rows, got %d", len(node.Rows))
 	}
@@ -235,6 +238,26 @@ func TestHTMLReactConvertTable(t *testing.T) {
 	}
 	if node.Rows[0].Detail == nil || node.Rows[0].Detail.Kind != "code" {
 		t.Fatalf("expected row detail code node, got %#v", node.Rows[0].Detail)
+	}
+}
+
+func TestHTMLReactHiddenCellRetainsRawScalar(t *testing.T) {
+	table := &api.TextTable{
+		Headers:    api.TextList{api.Text{Content: "Name"}},
+		FieldNames: []string{"name"},
+		Rows: []api.TableRow{{
+			"name":          {Textable: api.Text{Content: "worker"}},
+			"physicalReads": {Textable: api.Text{Content: "128"}, FilterValue: int64(128)},
+		}},
+	}
+
+	node := convertTable(table)
+	physicalReads, ok := node.Rows[0].Cells["physicalReads"]
+	if !ok {
+		t.Fatal("hidden physicalReads cell is missing")
+	}
+	if physicalReads.FilterValue != int64(128) {
+		t.Fatalf("hidden physicalReads filter value = %#v, want int64(128)", physicalReads.FilterValue)
 	}
 }
 
