@@ -201,6 +201,25 @@ var _ = Describe("Scheduler", func() {
 		Expect(RunsRaw(RunFilter{Labels: map[string]string{"activity": "compact"}})).To(HaveLen(1))
 	})
 
+	It("uses an instance-scoped runner without changing the global registry", func() {
+		localStarts := atomic.Int64{}
+		localKind := uniqueKind("local")
+		localScheduler := NewScheduler(SchedulerOptions{Now: clock.Now})
+		localScheduler.RegisterRunner(localKind, func(_ flanksourceContext.Context, _ Schedule, _ *Group) error {
+			localStarts.Add(1)
+			return nil
+		})
+
+		group, err := localScheduler.RunNow(ctx, Schedule{Name: "local-run", Kind: localKind})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(group).NotTo(BeNil())
+		Eventually(localStarts.Load).Should(BeEquivalentTo(1))
+
+		other := NewScheduler(SchedulerOptions{Now: clock.Now})
+		_, err = other.RunNow(ctx, Schedule{Name: "missing-local-runner", Kind: localKind})
+		Expect(err).To(MatchError(ContainSubstring("no runner registered")))
+	})
+
 	It("enables and pauses a schedule without replacing its definition", func() {
 		disabled := newSchedule("toggle")
 		disabled.Enabled = false

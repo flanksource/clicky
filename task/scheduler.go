@@ -24,6 +24,9 @@ type Scheduler struct {
 	now   func() time.Time
 	tick  time.Duration
 
+	runnersMu sync.RWMutex
+	runners   map[string]Runner
+
 	mu      sync.Mutex
 	entries map[string]*scheduleEntry
 
@@ -92,6 +95,7 @@ func NewScheduler(options SchedulerOptions) *Scheduler {
 		entries: map[string]*scheduleEntry{},
 		stop:    make(chan struct{}),
 		done:    make(chan struct{}),
+		runners: map[string]Runner{},
 	}
 	if s.now == nil {
 		s.now = time.Now
@@ -100,6 +104,32 @@ func NewScheduler(options SchedulerOptions) *Scheduler {
 		s.tick = schedulerTick
 	}
 	return s
+}
+
+// RegisterRunner installs work owned by this scheduler instance. Instance
+// runners keep independently configured services from sharing process-global
+// execution state while the package-level registry remains available to CLI
+// programs that deliberately use it.
+func (s *Scheduler) RegisterRunner(kind string, runner Runner) {
+	if kind == "" || runner == nil {
+		panic("task: RegisterRunner requires a kind and a runner")
+	}
+	s.runnersMu.Lock()
+	defer s.runnersMu.Unlock()
+	if _, exists := s.runners[kind]; exists {
+		panic(fmt.Sprintf("task: runner for kind %q already registered", kind))
+	}
+	s.runners[kind] = runner
+}
+
+func (s *Scheduler) runnerFor(kind string) (Runner, bool) {
+	s.runnersMu.RLock()
+	runner, ok := s.runners[kind]
+	s.runnersMu.RUnlock()
+	if ok {
+		return runner, true
+	}
+	return runnerFor(kind)
 }
 
 // Load reads the persisted schedules into the scheduler, replacing whatever it
@@ -139,7 +169,7 @@ func (s *Scheduler) Add(ctx context.Context, schedule Schedule) error {
 	if err := schedule.Validate(); err != nil {
 		return err
 	}
-	if _, ok := runnerFor(schedule.Kind); !ok {
+	if _, ok := s.runnerFor(schedule.Kind); !ok {
 		return fmt.Errorf("schedule %q: no runner registered for kind %q", schedule.Name, schedule.Kind)
 	}
 	parsed, err := schedule.Parse()
@@ -287,7 +317,7 @@ func (s *Scheduler) RunNow(ctx flanksourceContext.Context, schedule Schedule) (*
 	if schedule.Timeout < 0 {
 		return nil, fmt.Errorf("run %q: timeout must not be negative", schedule.Name)
 	}
-	if _, ok := runnerFor(schedule.Kind); !ok {
+	if _, ok := s.runnerFor(schedule.Kind); !ok {
 		return nil, fmt.Errorf("run %q: no runner registered for kind %q", schedule.Name, schedule.Kind)
 	}
 	now := s.now()
@@ -515,7 +545,7 @@ func (s *Scheduler) start(
 	outcome FireOutcome,
 	extraLabels map[string]string,
 ) (*Group, error) {
-	runner, ok := runnerFor(schedule.Kind)
+	runner, ok := s.runnerFor(schedule.Kind)
 	if !ok {
 		if entry != nil {
 			s.mu.Lock()

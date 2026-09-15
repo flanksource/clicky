@@ -674,6 +674,9 @@ func TestOpenAPIGenerator_OptionalIDActionPath(t *testing.T) {
 		WithAction(clicky.Action("overview", func(string, map[string]string) (openAPIPauseResult, error) {
 			return openAPIPauseResult{}, nil
 		}).WithMethod("GET").WithOptionalID()).
+		WithAction(clicky.Action("refresh", func(string, map[string]string) (openAPIPauseResult, error) {
+			return openAPIPauseResult{}, nil
+		}).WithOptionalID()).
 		WithAction(clicky.Action("restart", func(string, map[string]string) (openAPIRestartResult, error) {
 			return openAPIRestartResult{Restarted: true}, nil
 		})).
@@ -696,6 +699,19 @@ func TestOpenAPIGenerator_OptionalIDActionPath(t *testing.T) {
 	require.NotNil(t, overview.Clicky)
 	assert.Equal(t, "collection", overview.Clicky.Scope,
 		"an action invocable without an entity id must be discoverable as a collection action")
+	assert.Empty(t, overview.Clicky.IDParam,
+		"an optional-id collection action must not advertise an entity id")
+	assert.NotContains(t, getParameterNames(overview.Parameters), "id",
+		"an optional-id collection action must not expose a phantom id parameter")
+	assert.Nil(t, overview.RequestBody)
+
+	refresh := spec.Paths["/api/v1/"+entityName+"/refresh"]["post"]
+	assert.NotContains(t, getParameterNames(refresh.Parameters), "id",
+		"a POST optional-id collection action must not expose a phantom id parameter")
+	require.NotNil(t, refresh.RequestBody)
+	require.NotNil(t, refresh.RequestBody.Content["application/json"].Schema)
+	assert.Empty(t, refresh.RequestBody.Content["application/json"].Schema.Properties,
+		"a no-argument optional-id collection action must expose an empty request schema")
 
 	assert.Contains(t, spec.Paths, "/api/v1/"+entityName+"/{id}/restart",
 		"a regular action without WithOptionalID keeps its {id} segment")

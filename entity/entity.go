@@ -469,8 +469,10 @@ func (a *ActionSpec[R]) WithToolHints(hints MCPToolHints) *ActionSpec[R] {
 
 // WithSchedule opts this action into operation scheduling. Suggestions are
 // shown in editors but do not create persisted schedules.
-func (a *ActionSpec[R]) WithSchedule(suggestions ...ScheduleSuggestion) *ActionSpec[R] {
-	a.schedule = &OperationScheduleMeta{Suggestions: append([]ScheduleSuggestion(nil), suggestions...)}
+func (a *ActionSpec[R]) WithSchedule(meta OperationScheduleMeta) *ActionSpec[R] {
+	copy := meta
+	copy.Suggestions = append([]ScheduleSuggestion(nil), meta.Suggestions...)
+	a.schedule = &copy
 	return a
 }
 

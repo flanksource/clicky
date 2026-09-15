@@ -27,6 +27,7 @@ func NewConverter(config *Config) *Converter {
 // ConvertCommand converts a single Cobra command to an RPC operation
 func (c *Converter) ConvertCommand(cmd *cobra.Command) (*RPCOperation, error) {
 	cmdPath := getCommandPath(cmd)
+	commandMeta := clicky.GetCommandOpenAPIMeta(cmd)
 
 	// Build input schema from flags
 	schema := Schema{
@@ -40,7 +41,7 @@ func (c *Converter) ConvertCommand(cmd *cobra.Command) (*RPCOperation, error) {
 	// Add positional arguments
 	// Extract parameter name from Use field if available
 	positionalParamName := ""
-	if cmd.Args != nil {
+	if cmd.Args != nil && (commandMeta == nil || !commandMeta.OptionalID) {
 		positionalParamName = extractParameterName(cmd.Use)
 		if positionalParamName != "" {
 			// Add named path parameter for single positional arg
@@ -176,7 +177,7 @@ func (c *Converter) ConvertCommand(cmd *cobra.Command) (*RPCOperation, error) {
 	operation.Clicky = &ClickyOperationMeta{
 		Command: strings.ReplaceAll(cmdPath, " ", "/"),
 	}
-	if meta := clicky.GetCommandOpenAPIMeta(cmd); meta != nil {
+	if meta := commandMeta; meta != nil {
 		operation.Clicky.SurfaceID = clickySurfaceID(meta.Entity, meta.Parent, meta.Admin)
 		operation.Clicky.Entity = meta.Entity
 		operation.Clicky.Parent = meta.Parent
@@ -192,7 +193,9 @@ func (c *Converter) ConvertCommand(cmd *cobra.Command) (*RPCOperation, error) {
 			operation.Clicky.Scope = "collection"
 		}
 		operation.Clicky.ActionName = meta.ActionName
-		operation.Clicky.IDParam = meta.IDParam
+		if !meta.OptionalID {
+			operation.Clicky.IDParam = meta.IDParam
+		}
 		operation.Clicky.SupportsLookup = meta.SupportsLookup
 		operation.Clicky.SupportsFilterMode = meta.SupportsFilterMode
 		operation.Clicky.Schedule = meta.Schedule
