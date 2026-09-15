@@ -8,15 +8,14 @@ import (
 	"github.com/flanksource/commons/logger"
 )
 
-// Store is the durable half of the task manager. It extends RunSource — which
+// RunStore is the durable half of the task manager. It extends RunSource — which
 // already answers reads for runs this process no longer holds in memory — with
-// the writes that put them there, and with the schedule definitions the
-// scheduler replays after a restart.
+// the writes that put them there.
 //
 // Every method is called from a background goroutine, never from a task's own
 // goroutine and never while the manager holds a lock, so an implementation may
 // block on IO. It must not call back into the task package.
-type Store interface {
+type RunStore interface {
 	RunSource
 
 	// SaveRun persists one run: the group snapshot followed by its child task
@@ -24,7 +23,12 @@ type Store interface {
 	// the run is still in memory when GC evicts it, so it must be idempotent —
 	// the newest snapshot for a given id wins.
 	SaveRun(ctx context.Context, groupID string, snapshots []TaskSnapshot) error
+}
 
+// ScheduleStore persists recurring definitions and their firing history. It is
+// separate from RunStore so applications can keep schedules in a database while
+// retaining runs in a cache, or install only the capability they need.
+type ScheduleStore interface {
 	ListSchedules(ctx context.Context) ([]Schedule, error)
 	SaveSchedule(ctx context.Context, schedule Schedule) error
 	DeleteSchedule(ctx context.Context, name string) error
@@ -33,6 +37,13 @@ type Store interface {
 	// was deliberately not started. A skipped fire is a fact about the schedule
 	// worth keeping, not an absence of one.
 	RecordFire(ctx context.Context, name string, fire Fire) error
+}
+
+// Store is the full task persistence contract for applications that keep runs
+// and schedules together.
+type Store interface {
+	RunStore
+	ScheduleStore
 }
 
 // FireOutcome is what the scheduler decided to do at a scheduled time.
@@ -49,6 +60,9 @@ const (
 	FireCaughtUp FireOutcome = "caught-up"
 	// FireFailed means the run could not be started at all.
 	FireFailed FireOutcome = "failed"
+	// FireManual means an operator explicitly triggered the schedule outside its
+	// cron cadence.
+	FireManual FireOutcome = "manual"
 )
 
 // Fire is one entry in a schedule's firing history.
@@ -186,7 +200,7 @@ func (q *runQueue) drained() bool {
 
 var (
 	storeMu     sync.RWMutex
-	activeStore Store
+	activeStore RunStore
 	activeQueue *runQueue
 )
 
@@ -200,7 +214,7 @@ var (
 //
 // Reads still go through the *WithSource handlers, which take a RunSource; the
 // installed store satisfies that interface and can be passed to them directly.
-func SetStore(ctx context.Context, store Store) {
+func SetStore(ctx context.Context, store RunStore) {
 	storeMu.Lock()
 	previous := activeQueue
 	if previous != nil {
@@ -229,7 +243,7 @@ func SetStore(ctx context.Context, store Store) {
 }
 
 // CurrentStore returns the installed store, or nil.
-func CurrentStore() Store {
+func CurrentStore() RunStore {
 	storeMu.RLock()
 	defer storeMu.RUnlock()
 	return activeStore
@@ -240,7 +254,7 @@ func CurrentStore() Store {
 // no later retry, and an evicted run's snapshots exist nowhere else once its
 // group is gone, so honouring the cancellation ahead of them loses runs the
 // queue never overflowed on.
-func runWriter(ctx context.Context, store Store, q *runQueue) {
+func runWriter(ctx context.Context, store RunStore, q *runQueue) {
 	defer close(q.done)
 
 	writeCtx := ctx
@@ -267,7 +281,7 @@ func runWriter(ctx context.Context, store Store, q *runQueue) {
 	}
 }
 
-func persistRun(ctx context.Context, store Store, write runWrite) {
+func persistRun(ctx context.Context, store RunStore, write runWrite) {
 	snapshots := write.snapshots
 	if snapshots == nil {
 		// Resolved here rather than at enqueue time so the caller — which may

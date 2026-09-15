@@ -62,27 +62,41 @@ type ClickySurface struct {
 // extension. SurfaceID/Aliases are internal-only fields used while building
 // the final surface list.
 type ClickyOperationMeta struct {
-	SurfaceID          string        `json:"-"`
-	Command            string        `json:"command,omitempty"`
-	Surface            string        `json:"surface,omitempty"`
-	Entity             string        `json:"-"`
-	Parent             string        `json:"-"`
-	Aliases            []string      `json:"-"`
-	Admin              bool          `json:"-"`
-	Icon               string        `json:"-"`
-	Path               string        `json:"-"`
-	Title              string        `json:"-"`
-	Verb               string        `json:"verb,omitempty"`
-	Scope              string        `json:"scope,omitempty"`
-	ActionName         string        `json:"actionName,omitempty"`
-	IDParam            string        `json:"idParam,omitempty"`
-	SupportsLookup     bool          `json:"supportsLookup,omitempty"`
-	SupportsFilterMode bool          `json:"supportsFilterMode,omitempty"`
-	Group              string        `json:"group,omitempty"`
-	ToolHints          MCPToolHints  `json:"-"`
-	OpenAPIToolHints   *MCPToolHints `json:"toolHints,omitempty"`
-	Export             *ExportMeta   `json:"export,omitempty"`
-	Order              int           `json:"-"`
+	SurfaceID          string                 `json:"-"`
+	Command            string                 `json:"command,omitempty"`
+	Surface            string                 `json:"surface,omitempty"`
+	Entity             string                 `json:"-"`
+	Parent             string                 `json:"-"`
+	Aliases            []string               `json:"-"`
+	Admin              bool                   `json:"-"`
+	Icon               string                 `json:"-"`
+	Path               string                 `json:"-"`
+	Title              string                 `json:"-"`
+	Verb               string                 `json:"verb,omitempty"`
+	Scope              string                 `json:"scope,omitempty"`
+	ActionName         string                 `json:"actionName,omitempty"`
+	IDParam            string                 `json:"idParam,omitempty"`
+	SupportsLookup     bool                   `json:"supportsLookup,omitempty"`
+	SupportsFilterMode bool                   `json:"supportsFilterMode,omitempty"`
+	Group              string                 `json:"group,omitempty"`
+	ToolHints          MCPToolHints           `json:"-"`
+	OpenAPIToolHints   *MCPToolHints          `json:"toolHints,omitempty"`
+	Export             *ExportMeta            `json:"export,omitempty"`
+	Schedule           *OperationScheduleMeta `json:"schedule,omitempty"`
+	Order              int                    `json:"-"`
+}
+
+// OperationScheduleMeta opts an operation into recurring scheduling surfaces.
+// Suggestions are conveniences for editors, not schedules created by default.
+type OperationScheduleMeta struct {
+	Suggestions []ScheduleSuggestion `json:"suggestions,omitempty"`
+}
+
+// ScheduleSuggestion is a named cron expression presented by schedule editors.
+type ScheduleSuggestion struct {
+	Label       string `json:"label"`
+	Cron        string `json:"cron"`
+	Description string `json:"description,omitempty"`
 }
 
 // ExportMeta advertises the representations and scopes an operation can
