@@ -20,7 +20,7 @@ const schedulerTick = 10 * time.Second
 // work of its own: the run is a Group, so it is visible, filterable and
 // controllable through exactly the same API as anything else the manager runs.
 type Scheduler struct {
-	store Store
+	store ScheduleStore
 	now   func() time.Time
 	tick  time.Duration
 
@@ -77,7 +77,7 @@ type cronSchedule interface {
 // SchedulerOptions configure a Scheduler. Now and Tick exist for tests; both
 // have working defaults.
 type SchedulerOptions struct {
-	Store Store
+	Store ScheduleStore
 	Now   func() time.Time
 	Tick  time.Duration
 }
@@ -186,24 +186,112 @@ func (s *Scheduler) Add(ctx context.Context, schedule Schedule) error {
 	return nil
 }
 
-// Remove stops firing the named schedule and deletes its stored definition, so
-// a restart does not resurrect it. The in-flight run, if any, is left to
-// finish — cancelling work because its schedule was deleted loses a result
-// nobody asked to throw away.
-func (s *Scheduler) Remove(ctx context.Context, name string) error {
+// Delete removes the stored definition before unregistering it, so a failed
+// delete cannot leave a schedule live only until the next restart. The in-flight
+// run, if any, is left to finish.
+func (s *Scheduler) Delete(ctx context.Context, name string) error {
+	if s.store != nil {
+		if err := s.store.DeleteSchedule(ctx, name); err != nil {
+			return fmt.Errorf("schedule %q: delete: %w", name, err)
+		}
+	}
+	s.Unregister(name)
+	return nil
+}
+
+// Unregister stops future fires without deleting the stored definition. It is
+// useful when another service owns the definition row but delegates timing and
+// execution to Scheduler.
+func (s *Scheduler) Unregister(name string) {
 	s.mu.Lock()
 	delete(s.entries, name)
 	s.mu.Unlock()
+}
 
-	if s.store == nil {
-		return nil
+// SetEnabled pauses or resumes a schedule without replacing its definition.
+// Resuming computes the next fire from now; time spent deliberately paused is
+// not downtime and therefore never becomes catch-up work.
+func (s *Scheduler) SetEnabled(ctx context.Context, name string, enabled bool) (Schedule, error) {
+	s.mu.Lock()
+	entry, ok := s.entries[name]
+	if !ok {
+		s.mu.Unlock()
+		return Schedule{}, fmt.Errorf("schedule %q: not registered", name)
 	}
-	// Deleted even when the entry was not in memory: a definition that failed
-	// to load is exactly the one an operator is trying to get rid of.
-	if err := s.store.DeleteSchedule(ctx, name); err != nil {
-		return fmt.Errorf("schedule %q: delete: %w", name, err)
+	schedule := entry.schedule
+	next := entry.next
+	if enabled && !schedule.Enabled {
+		next = entry.cron.Next(s.now())
 	}
-	return nil
+	schedule.Enabled = enabled
+	schedule.NextRun = &next
+	s.mu.Unlock()
+
+	if s.store != nil {
+		if err := s.store.SaveSchedule(ctx, schedule); err != nil {
+			return Schedule{}, fmt.Errorf("schedule %q: save: %w", name, err)
+		}
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	current, ok := s.entries[name]
+	if !ok || current != entry {
+		return Schedule{}, fmt.Errorf("schedule %q: changed while updating", name)
+	}
+	current.schedule.Enabled = enabled
+	current.next = next
+	current.queued = nil
+	current.catchUp = false
+	return schedule, nil
+}
+
+// Trigger starts one registered schedule immediately, including a disabled one.
+// A manual run uses the same registered runner, timeout, labels and tracked task
+// group as a cron fire, but does not advance the next cron instant.
+func (s *Scheduler) Trigger(ctx flanksourceContext.Context, name string) (*Group, error) {
+	now := s.now()
+	s.mu.Lock()
+	entry, ok := s.entries[name]
+	if !ok {
+		s.mu.Unlock()
+		return nil, fmt.Errorf("schedule %q: not registered", name)
+	}
+	if entry.busy() {
+		running := entry.running
+		if entry.schedule.overlapPolicy() != OverlapCancelPrevious {
+			s.mu.Unlock()
+			return nil, fmt.Errorf("schedule %q: previous run still in progress", name)
+		}
+		if running != nil {
+			running.Cancel()
+		}
+	}
+	entry.launching = true
+	schedule := entry.schedule
+	s.mu.Unlock()
+
+	return s.start(ctx, name, entry, schedule, now, now, FireManual, map[string]string{"trigger": "manual"})
+}
+
+// RunNow starts an unregistered schedule-shaped operation. Cron and Enabled are
+// intentionally ignored; the method exists for activities that support manual
+// execution before an operator creates a recurring definition.
+func (s *Scheduler) RunNow(ctx flanksourceContext.Context, schedule Schedule) (*Group, error) {
+	if schedule.Name == "" {
+		return nil, fmt.Errorf("run name is required")
+	}
+	if schedule.Kind == "" {
+		return nil, fmt.Errorf("run %q: kind is required", schedule.Name)
+	}
+	if schedule.Timeout < 0 {
+		return nil, fmt.Errorf("run %q: timeout must not be negative", schedule.Name)
+	}
+	if _, ok := runnerFor(schedule.Kind); !ok {
+		return nil, fmt.Errorf("run %q: no runner registered for kind %q", schedule.Name, schedule.Kind)
+	}
+	now := s.now()
+	return s.start(ctx, "", nil, schedule, now, now, FireManual, map[string]string{"trigger": "manual"})
 }
 
 // saveSchedule persists one definition together with the timing the scheduler
@@ -414,7 +502,7 @@ func (s *Scheduler) fire(ctx flanksourceContext.Context, name string, now time.T
 	entry.launching = true
 	s.mu.Unlock()
 
-	s.start(ctx, name, entry, schedule, scheduledFor, now, outcome)
+	_, _ = s.start(ctx, name, entry, schedule, scheduledFor, now, outcome, nil)
 }
 
 // start launches the run for one fire and records the outcome.
@@ -425,35 +513,48 @@ func (s *Scheduler) start(
 	schedule Schedule,
 	scheduledFor, now time.Time,
 	outcome FireOutcome,
-) {
+	extraLabels map[string]string,
+) (*Group, error) {
 	runner, ok := runnerFor(schedule.Kind)
 	if !ok {
-		s.mu.Lock()
-		entry.launching = false
-		s.mu.Unlock()
+		if entry != nil {
+			s.mu.Lock()
+			entry.launching = false
+			s.mu.Unlock()
+		}
+		err := fmt.Errorf("no runner registered for kind %q", schedule.Kind)
 		s.record(ctx, name, Fire{
 			ScheduledFor: scheduledFor, At: now, Outcome: FireFailed,
-			Error: fmt.Sprintf("no runner registered for kind %q", schedule.Kind),
+			Error: err.Error(),
 		})
-		return
+		return nil, err
 	}
 
 	labels := map[string]string{"schedule": schedule.Name}
 	for k, v := range schedule.Labels {
 		labels[k] = v
 	}
+	for k, v := range extraLabels {
+		labels[k] = v
+	}
 
-	group := StartGroup[any](schedule.Name,
+	title := schedule.Title
+	if title == "" {
+		title = schedule.Name
+	}
+	group := StartGroup[any](title,
 		WithKind(schedule.Kind),
 		WithLabels(labels),
 		WithOwner(schedule.Owner),
 	)
 
-	s.mu.Lock()
-	entry.running = group.Group
-	entry.launching = false
-	entry.schedule.LastRun = &now
-	s.mu.Unlock()
+	if entry != nil {
+		s.mu.Lock()
+		entry.running = group.Group
+		entry.launching = false
+		entry.schedule.LastRun = &now
+		s.mu.Unlock()
+	}
 
 	// The runner is a task in its own group rather than a bare goroutine, so a
 	// runner that fails before adding any child leaves a failed run instead of
@@ -467,25 +568,30 @@ func (s *Scheduler) start(
 		return nil, runner(runCtx, schedule, group.Group)
 	}, options...)
 
-	s.persistTiming(ctx, name)
-	s.record(ctx, name, Fire{
-		ScheduledFor: scheduledFor, At: now, Outcome: outcome, RunID: group.ID(),
-	})
+	if name != "" {
+		s.persistTiming(ctx, name)
+		s.record(ctx, name, Fire{
+			ScheduledFor: scheduledFor, At: now, Outcome: outcome, RunID: group.ID(),
+		})
+	}
 
 	go func() {
 		group.WaitFor()
 
-		s.mu.Lock()
-		if entry.running == group.Group {
-			entry.running = nil
+		if entry != nil {
+			s.mu.Lock()
+			if entry.running == group.Group {
+				entry.running = nil
+			}
+			// A queued fire runs as soon as the slot frees, rather than waiting for
+			// the next scheduled time it already missed.
+			if entry.queued != nil {
+				entry.next = s.now()
+			}
+			s.mu.Unlock()
 		}
-		// A queued fire runs as soon as the slot frees, rather than waiting for
-		// the next scheduled time it already missed.
-		if entry.queued != nil {
-			entry.next = s.now()
-		}
-		s.mu.Unlock()
 	}()
+	return group.Group, nil
 }
 
 func (s *Scheduler) record(ctx context.Context, name string, fire Fire) {

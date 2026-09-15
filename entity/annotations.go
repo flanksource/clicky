@@ -1,6 +1,8 @@
 package entity
 
 import (
+	"encoding/json"
+	"fmt"
 	"strconv"
 	"strings"
 
@@ -23,6 +25,7 @@ const (
 	annotationClickySupportsLookup     = "clicky/supports-lookup"
 	annotationClickySupportsFilterMode = "clicky/supports-filter-mode"
 	annotationClickyOptionalID         = "clicky/operation-optional-id"
+	annotationClickyOperationSchedule  = "clicky/operation-schedule"
 	annotationClickyToolGroup          = "clicky/tool-group"
 	annotationClickyToolTitle          = "clicky/tool-title"
 	annotationClickyToolIcon           = "clicky/tool-icon"
@@ -112,6 +115,7 @@ type CommandOpenAPIMeta struct {
 	// as one unit.
 	ToolGroup string
 	ToolHints MCPToolHints
+	Schedule  *OperationScheduleMeta
 }
 
 func GetCommandOpenAPIMeta(cmd *cobra.Command) *CommandOpenAPIMeta {
@@ -163,12 +167,28 @@ func GetCommandOpenAPIMeta(cmd *cobra.Command) *CommandOpenAPIMeta {
 		ToolGroup:          toolHints.Group,
 		ToolHints:          toolHints,
 	}
+	if encoded := cmd.Annotations[annotationClickyOperationSchedule]; encoded != "" {
+		meta.Schedule = &OperationScheduleMeta{}
+		if err := json.Unmarshal([]byte(encoded), meta.Schedule); err != nil {
+			panic(fmt.Sprintf("command %q has invalid scheduling metadata: %v", cmd.CommandPath(), err))
+		}
+	}
 
-	if meta.Entity == "" && meta.ToolHints.isZero() {
+	if meta.Entity == "" && meta.ToolHints.isZero() && meta.Schedule == nil {
 		return nil
 	}
 
 	return meta
+}
+
+// AnnotateSchedule marks a Cobra command as schedulable and carries editor
+// suggestions into its OpenAPI x-clicky metadata.
+func AnnotateSchedule(cmd *cobra.Command, meta OperationScheduleMeta) {
+	encoded, err := json.Marshal(meta)
+	if err != nil {
+		panic(fmt.Sprintf("marshal scheduling metadata for command %q: %v", cmd.CommandPath(), err))
+	}
+	setCommandAnnotation(cmd, annotationClickyOperationSchedule, string(encoded))
 }
 
 func annotateEntityCommand(cmd *cobra.Command, entity EntityInfo) {

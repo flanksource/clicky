@@ -195,6 +195,7 @@ func (c *Converter) ConvertCommand(cmd *cobra.Command) (*RPCOperation, error) {
 		operation.Clicky.IDParam = meta.IDParam
 		operation.Clicky.SupportsLookup = meta.SupportsLookup
 		operation.Clicky.SupportsFilterMode = meta.SupportsFilterMode
+		operation.Clicky.Schedule = meta.Schedule
 		hints := meta.ToolHints
 		if hints.Group == "" {
 			hints.Group = meta.ToolGroup

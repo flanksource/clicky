@@ -52,6 +52,9 @@ func generatePrimaryAction(entityCmd *cobra.Command, action ActionInfo) {
 		bindTypeFlags(entityCmd, action.FlagsType)
 	}
 	annotateEntityOperationCommand(entityCmd, entityCmd, "action", action.Method, "collection", action.Name, "", false, false, true, action.ToolHints)
+	if action.Schedule != nil {
+		AnnotateSchedule(entityCmd, *action.Schedule)
+	}
 	storeEntityDataFuncs(entityCmd, op)
 	SetCommandResponseMeta(entityCmd, ResponseOpenAPIMeta{Type: action.ResponseType})
 }

@@ -169,14 +169,63 @@ var _ = Describe("Scheduler", func() {
 		Consistently(runner.starts.Load).Should(BeZero())
 	})
 
+	It("runs a disabled schedule immediately and records a manual fire", func() {
+		disabled := newSchedule("run-now")
+		disabled.Enabled = false
+		Expect(sched.Add(ctx, disabled)).To(Succeed())
+
+		group, err := sched.Trigger(ctx, "run-now")
+		Expect(err).NotTo(HaveOccurred())
+		Expect(group).NotTo(BeNil())
+
+		Eventually(runner.starts.Load).Should(BeEquivalentTo(1))
+		Eventually(func() []Fire { return store.firesFor("run-now") }).Should(HaveLen(1))
+		fire := store.firesFor("run-now")[0]
+		Expect(fire.Outcome).To(Equal(FireManual))
+		Expect(fire.RunID).To(Equal(group.ID()))
+		Expect(RunsRaw(RunFilter{Labels: map[string]string{"trigger": "manual"}})).To(HaveLen(1))
+	})
+
+	It("runs an operation immediately before it has a recurring definition", func() {
+		group, err := sched.RunNow(ctx, Schedule{
+			Name: "one-off", Title: "One-off work", Kind: kind,
+			Labels: map[string]string{"activity": "compact"},
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(group).NotTo(BeNil())
+
+		Eventually(runner.starts.Load).Should(BeEquivalentTo(1))
+		Expect(sched.Schedules()).To(BeEmpty())
+		Expect(store.schedule("one-off").Name).To(BeEmpty())
+		Expect(store.firesFor("one-off")).To(BeEmpty())
+		Expect(RunsRaw(RunFilter{Labels: map[string]string{"activity": "compact"}})).To(HaveLen(1))
+	})
+
+	It("enables and pauses a schedule without replacing its definition", func() {
+		disabled := newSchedule("toggle")
+		disabled.Enabled = false
+		Expect(sched.Add(ctx, disabled)).To(Succeed())
+
+		updated, err := sched.SetEnabled(ctx, "toggle", true)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(updated.Enabled).To(BeTrue())
+		Expect(store.schedule("toggle").Enabled).To(BeTrue())
+
+		clock.Advance(time.Hour)
+		sched.RunDue(ctx)
+		Eventually(runner.starts.Load).Should(BeEquivalentTo(1))
+	})
+
 	It("stamps the schedule name and kind on every run it starts", func() {
-		Expect(sched.Add(ctx, newSchedule("labelled"))).To(Succeed())
+		schedule := newSchedule("labelled")
+		schedule.Title = "Readable scheduled work"
+		Expect(sched.Add(ctx, schedule)).To(Succeed())
 		clock.Advance(time.Hour)
 		sched.RunDue(ctx)
 
 		Eventually(func() []RunMeta { return RunsRaw(RunFilter{Kind: kind}) }).Should(HaveLen(1))
 		run := RunsRaw(RunFilter{Kind: kind})[0]
-		Expect(run.Name).To(Equal("labelled"))
+		Expect(run.Name).To(Equal("Readable scheduled work"))
 		Expect(run.Labels).To(HaveKeyWithValue("schedule", "labelled"))
 
 		// The label is what a per-schedule run history filters on.
@@ -332,9 +381,9 @@ var _ = Describe("Scheduler", func() {
 		Expect(names).To(ConsistOf("good"), "a broken schedule must not stop a good one loading")
 	})
 
-	It("stops firing a schedule that was removed", func() {
+	It("stops firing a schedule that was deleted", func() {
 		Expect(sched.Add(ctx, newSchedule("transient"))).To(Succeed())
-		Expect(sched.Remove(ctx, "transient")).To(Succeed())
+		Expect(sched.Delete(ctx, "transient")).To(Succeed())
 
 		clock.Advance(2 * time.Hour)
 		sched.RunDue(ctx)
@@ -366,11 +415,11 @@ var _ = Describe("Scheduler", func() {
 			Expect(*stored.NextRun).To(BeTemporally("==", clock.Now().Add(time.Hour)))
 		})
 
-		It("deletes a removed schedule so a restart does not resurrect it", func() {
+		It("deletes a schedule so a restart does not resurrect it", func() {
 			Expect(sched.Add(ctx, newSchedule("doomed"))).To(Succeed())
 			Expect(store.schedule("doomed").Name).To(Equal("doomed"))
 
-			Expect(sched.Remove(ctx, "doomed")).To(Succeed())
+			Expect(sched.Delete(ctx, "doomed")).To(Succeed())
 			Expect(store.schedule("doomed").Name).To(BeEmpty())
 		})
 
@@ -383,6 +432,16 @@ var _ = Describe("Scheduler", func() {
 			clock.Advance(2 * time.Hour)
 			sched.RunDue(ctx)
 			Consistently(runner.starts.Load).Should(BeZero())
+		})
+
+		It("keeps a schedule active when its stored definition cannot be deleted", func() {
+			Expect(sched.Add(ctx, newSchedule("still-durable"))).To(Succeed())
+			store.deleteScheduleErr = fmt.Errorf("store unavailable")
+
+			Expect(sched.Delete(ctx, "still-durable")).To(MatchError(ContainSubstring("store unavailable")))
+			clock.Advance(time.Hour)
+			sched.RunDue(ctx)
+			Eventually(runner.starts.Load).Should(BeEquivalentTo(1))
 		})
 	})
 
@@ -425,16 +484,30 @@ var _ = Describe("Scheduler", func() {
 		})
 	})
 
-	It("does not run a schedule removed between the due scan and the fire", func() {
+	It("does not run a schedule unregistered between the due scan and the fire", func() {
 		Expect(sched.Add(ctx, newSchedule("vanishing"))).To(Succeed())
 		clock.Advance(time.Hour)
 
 		// fire resolves the entry itself, so removing it first is exactly the
 		// race RunDue would otherwise lose.
-		Expect(sched.Remove(ctx, "vanishing")).To(Succeed())
+		sched.Unregister("vanishing")
 		sched.fire(ctx, "vanishing", clock.Now())
 
 		Consistently(runner.starts.Load).Should(BeZero())
 		Expect(store.firesFor("vanishing")).To(BeEmpty())
+	})
+
+	It("previews future fire times in the schedule timezone", func() {
+		schedule := newSchedule("preview")
+		schedule.Cron = "0 9 * * *"
+		schedule.Timezone = "Africa/Johannesburg"
+
+		times, err := schedule.NextRuns(clock.Now(), 3)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(times).To(Equal([]time.Time{
+			time.Date(2026, time.March, 2, 7, 0, 0, 0, time.UTC),
+			time.Date(2026, time.March, 3, 7, 0, 0, 0, time.UTC),
+			time.Date(2026, time.March, 4, 7, 0, 0, 0, time.UTC),
+		}))
 	})
 })

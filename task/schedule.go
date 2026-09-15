@@ -1,6 +1,7 @@
 package task
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -45,13 +46,15 @@ const (
 // the function for that kind with RegisterRunner — the task package knows how to
 // keep time, not what the work means.
 type Schedule struct {
-	Name string `json:"name"`
+	Name  string `json:"name"`
+	Title string `json:"title,omitempty"`
 
 	// Kind selects the registered runner and is stamped on every run, so a
 	// listing can filter to one schedule's kind of work.
-	Kind   string            `json:"kind"`
-	Labels map[string]string `json:"labels,omitempty"`
-	Owner  string            `json:"owner,omitempty"`
+	Kind    string            `json:"kind"`
+	Labels  map[string]string `json:"labels,omitempty"`
+	Owner   string            `json:"owner,omitempty"`
+	Payload json.RawMessage   `json:"payload,omitempty"`
 
 	// Cron is a robfig/cron spec, including the descriptor forms ("@hourly",
 	// "@every 5m"). Seconds are not accepted; the smallest unit is a minute.
@@ -163,6 +166,25 @@ func (s Schedule) Parse() (cron.Schedule, error) {
 			s.Name, s.Cron, every.Delay, minimumInterval)
 	}
 	return parsed, nil
+}
+
+// NextRuns returns the next count fire times after the supplied instant. It uses
+// the same parser and timezone handling as Scheduler, so a configuration screen
+// can preview the exact cadence that will be installed.
+func (s Schedule) NextRuns(after time.Time, count int) ([]time.Time, error) {
+	if count < 1 || count > 100 {
+		return nil, fmt.Errorf("schedule %q: preview count must be between 1 and 100", s.Name)
+	}
+	parsed, err := s.Parse()
+	if err != nil {
+		return nil, err
+	}
+	runs := make([]time.Time, count)
+	for i := range runs {
+		after = parsed.Next(after)
+		runs[i] = after
+	}
+	return runs, nil
 }
 
 // overlapPolicy returns the effective policy, resolving the empty default.

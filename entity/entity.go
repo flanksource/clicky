@@ -110,6 +110,7 @@ type EntityOperation struct {
 	ResponsePaged     bool
 	ResponseEntityID  bool
 	Sort              *SortSpec
+	Schedule          *OperationScheduleMeta
 }
 
 // ActionInfo is the type-erased representation of a single-entity action.
@@ -140,6 +141,7 @@ type ActionInfo struct {
 	// means the action inherits the entity's group.
 	ToolGroup string
 	ToolHints MCPToolHints
+	Schedule  *OperationScheduleMeta
 }
 
 // BulkActionInfo is the type-erased representation of a bulk action.
@@ -352,6 +354,7 @@ type ActionSpec[R any] struct {
 	optionalID        bool
 	toolGroup         string
 	toolHints         MCPToolHints
+	schedule          *OperationScheduleMeta
 }
 
 // dataOrError type-erases a typed handler result, dropping the value when the
@@ -464,6 +467,13 @@ func (a *ActionSpec[R]) WithToolHints(hints MCPToolHints) *ActionSpec[R] {
 	return a
 }
 
+// WithSchedule opts this action into operation scheduling. Suggestions are
+// shown in editors but do not create persisted schedules.
+func (a *ActionSpec[R]) WithSchedule(suggestions ...ScheduleSuggestion) *ActionSpec[R] {
+	a.schedule = &OperationScheduleMeta{Suggestions: append([]ScheduleSuggestion(nil), suggestions...)}
+	return a
+}
+
 func (a *ActionSpec[R]) actionID(flagMap map[string]string, args []string) (string, error) {
 	id := flagMap["id"]
 	if id == "" && len(args) > 0 {
@@ -485,6 +495,7 @@ func (a *ActionSpec[R]) actionInfo() ActionInfo {
 		OptionalID:        a.optionalID,
 		ToolGroup:         a.toolGroup,
 		ToolHints:         a.toolHints,
+		Schedule:          a.schedule,
 		LookupFunc:        a.lookupFunc,
 		ContextLookupFunc: a.contextLookupFunc,
 		BindCompletions:   a.bindCompletions,
@@ -1210,6 +1221,7 @@ func generateEntityCLI(parent *cobra.Command, entity EntityInfo) {
 			BindCompletions:   action.BindCompletions,
 			FlagsType:         action.FlagsType,
 			ResponseType:      action.ResponseType,
+			Schedule:          action.Schedule,
 		}, entity.ValidArgs, "action", "", scope, action.Name, "id", action.LookupFunc != nil || action.ContextLookupFunc != nil, false, action.OptionalID, action.ToolHints)
 	}
 
@@ -1486,6 +1498,9 @@ func generateIDCommand(
 		method = op.Method
 	}
 	annotateEntityOperationCommand(cmd, parent, metaVerb, method, scope, actionName, idParam, supportsLookup, supportsFilterMode, optionalID, toolHints)
+	if op.Schedule != nil {
+		AnnotateSchedule(cmd, *op.Schedule)
+	}
 	parent.AddCommand(cmd)
 	storeEntityDataFuncs(cmd, op)
 	if op.LookupFunc != nil {
