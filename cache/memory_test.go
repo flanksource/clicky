@@ -3,6 +3,7 @@ package cache_test
 import (
 	"context"
 	"errors"
+	"slices"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -58,6 +59,48 @@ var _ = Describe("In-memory cache.Store", func() {
 			Expect(store.Del(ctx, "k")).To(Succeed())
 			_, err := store.Get(ctx, "k")
 			Expect(errors.Is(err, cache.ErrKeyNotFound)).To(BeTrue())
+		})
+	})
+
+	Describe("MGet", func() {
+		It("yields values the reader can change without changing the store", func() {
+			Expect(store.Set(ctx, "k", []byte("hello"), 0)).To(Succeed())
+			for entry, err := range store.MGet(ctx, slices.Values([]string{"k"})) {
+				Expect(err).NotTo(HaveOccurred())
+				entry.Value[0] = 'J'
+			}
+			got, err := store.Get(ctx, "k")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(got).To(Equal([]byte("hello")))
+		})
+
+		// A reader commonly writes back what it read; a store still locked while
+		// the loop body runs would deadlock on that write.
+		It("lets the reader use the store between entries", func() {
+			Expect(store.Set(ctx, "a", []byte("1"), 0)).To(Succeed())
+			Expect(store.Set(ctx, "b", []byte("2"), 0)).To(Succeed())
+			done := make(chan []string)
+			go func() {
+				defer GinkgoRecover()
+				var seen []string
+				for entry, err := range store.MGet(ctx, slices.Values([]string{"a", "b"})) {
+					Expect(err).NotTo(HaveOccurred())
+					Expect(store.Set(ctx, entry.Key+"-seen", entry.Value, 0)).To(Succeed())
+					seen = append(seen, entry.Key)
+				}
+				done <- seen
+			}()
+
+			Eventually(done, time.Second).Should(Receive(Equal([]string{"a", "b"})))
+		})
+
+		It("reports an expired key as not found", func() {
+			Expect(store.Set(ctx, "k", []byte("v"), 10*time.Millisecond)).To(Succeed())
+			time.Sleep(20 * time.Millisecond)
+			for entry, err := range store.MGet(ctx, slices.Values([]string{"k"})) {
+				Expect(err).NotTo(HaveOccurred())
+				Expect(entry).To(Equal(cache.Entry{Key: "k"}))
+			}
 		})
 	})
 
