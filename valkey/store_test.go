@@ -3,6 +3,9 @@ package valkey_test
 import (
 	"context"
 	"errors"
+	"fmt"
+	"iter"
+	"slices"
 	"time"
 
 	"github.com/alicebob/miniredis/v2"
@@ -171,6 +174,108 @@ var _ = Describe("Domain stores over cache.Store", func() {
 	}
 })
 
+// mgetEntry is one MGet yield, flattened so a whole read compares in one
+// assertion.
+type mgetEntry struct {
+	Key   string
+	Value string
+	Found bool
+	Err   error
+}
+
+func collectMGet(entries iter.Seq2[cache.Entry, error]) []mgetEntry {
+	var out []mgetEntry
+	for entry, err := range entries {
+		out = append(out, mgetEntry{Key: entry.Key, Value: string(entry.Value), Found: entry.Found, Err: err})
+	}
+	return out
+}
+
+// counted yields keys and counts how many the reader pulled.
+func counted(keys []string, pulled *int) iter.Seq[string] {
+	return func(yield func(string) bool) {
+		for _, key := range keys {
+			*pulled++
+			if !yield(key) {
+				return
+			}
+		}
+	}
+}
+
+var _ = Describe("cache.Store MGet", func() {
+	for _, name := range []string{"memory", "valkey"} {
+		Context(name+" backend", func() {
+			var (
+				ctx context.Context
+				kv  cache.Store
+			)
+
+			BeforeEach(func() {
+				ctx = context.Background()
+				switch name {
+				case "memory":
+					kv = cache.NewMemory()
+				case "valkey":
+					client, mr := newClient()
+					DeferCleanup(func() { client.Close(); mr.Close() })
+					kv = valkey.NewStore(client)
+				}
+			})
+
+			It("yields every key in the order asked, a key holding no value as not found", func() {
+				Expect(kv.Set(ctx, "a", []byte("1"), 0)).To(Succeed())
+				Expect(kv.Set(ctx, "c", []byte("3"), 0)).To(Succeed())
+				Expect(kv.ZAdd(ctx, "z", 1, "member")).To(Succeed())
+
+				Expect(collectMGet(kv.MGet(ctx, slices.Values([]string{"a", "b", "z", "c", "a"})))).To(Equal([]mgetEntry{
+					{Key: "a", Value: "1", Found: true},
+					{Key: "b"},
+					{Key: "z"},
+					{Key: "c", Value: "3", Found: true},
+					{Key: "a", Value: "1", Found: true},
+				}))
+			})
+
+			It("reads a key set larger than one round trip in order", func() {
+				var keys []string
+				var expected []mgetEntry
+				for n := range 250 {
+					key := fmt.Sprintf("key-%03d", n)
+					keys = append(keys, key)
+					if n%7 == 0 {
+						expected = append(expected, mgetEntry{Key: key})
+						continue
+					}
+					Expect(kv.Set(ctx, key, []byte(fmt.Sprint(n)), 0)).To(Succeed())
+					expected = append(expected, mgetEntry{Key: key, Value: fmt.Sprint(n), Found: true})
+				}
+
+				Expect(collectMGet(kv.MGet(ctx, slices.Values(keys)))).To(Equal(expected))
+			})
+
+			It("stops pulling keys once the reader stops", func() {
+				keys := make([]string, 250)
+				for n := range keys {
+					keys[n] = fmt.Sprintf("key-%03d", n)
+				}
+				pulled := 0
+				for entry, err := range kv.MGet(ctx, counted(keys, &pulled)) {
+					Expect(err).NotTo(HaveOccurred())
+					Expect(entry.Key).To(Equal("key-000"))
+					break
+				}
+
+				Expect(pulled).To(BeNumerically("<", len(keys)))
+			})
+
+			It("yields nothing for no keys", func() {
+				Expect(collectMGet(kv.MGet(ctx, slices.Values([]string(nil))))).To(BeEmpty())
+			})
+		})
+	}
+})
+
 // These specs are valkey-specific: they reach into miniredis to confirm the
 // adapter renders the wire commands (TTL, nil) the way the in-memory backend's
 // semantics imply.
@@ -194,6 +299,40 @@ var _ = Describe("valkey.NewStore adapter", func() {
 	It("maps a missing key to cache.ErrKeyNotFound", func() {
 		_, err := kv.Get(context.Background(), "nope")
 		Expect(errors.Is(err, cache.ErrKeyNotFound)).To(BeTrue())
+	})
+
+	It("yields an MGet read failure once, and nothing after it", func() {
+		mr.Close()
+		entries := collectMGet(kv.MGet(context.Background(), slices.Values([]string{"a", "b"})))
+
+		Expect(entries).To(HaveLen(1))
+		Expect(entries[0].Err).To(HaveOccurred())
+		Expect(entries[0].Key).To(BeEmpty())
+	})
+
+	// miniredis answers CLUSTER SLOTS, so newClient is a cluster client that
+	// reads keys of different slots separately; a standalone server reads a
+	// batch in one MGET. The server is its own and the client holds one
+	// connection, so neither another client nor a lazily opened connection's
+	// handshake reaches the count.
+	It("reads a batch of keys in one MGET round trip on a standalone server", func() {
+		ctx := context.Background()
+		server, err := miniredis.Run()
+		Expect(err).NotTo(HaveOccurred())
+		DeferCleanup(server.Close)
+		single, err := valkeygo.NewClient(valkeygo.ClientOption{
+			InitAddress: []string{server.Addr()}, DisableCache: true, ForceSingleClient: true, PipelineMultiplex: -1,
+		})
+		Expect(err).NotTo(HaveOccurred())
+		DeferCleanup(single.Close)
+		standalone := valkey.NewStore(single)
+		Expect(standalone.Set(ctx, "a", []byte("1"), 0)).To(Succeed())
+		before := server.CommandCount()
+		Expect(collectMGet(standalone.MGet(ctx, slices.Values([]string{"a", "b", "c"})))).To(Equal([]mgetEntry{
+			{Key: "a", Value: "1", Found: true}, {Key: "b"}, {Key: "c"},
+		}))
+
+		Expect(server.CommandCount() - before).To(Equal(1))
 	})
 
 	It("sets a ttl that miniredis observes", func() {

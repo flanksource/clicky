@@ -2,6 +2,7 @@ package cache
 
 import (
 	"context"
+	"iter"
 	"sort"
 	"sync"
 	"time"
@@ -73,6 +74,31 @@ func (m *memory) Get(_ context.Context, key string) ([]byte, error) {
 		return nil, ErrKeyNotFound
 	}
 	return append([]byte(nil), v...), nil
+}
+
+// MGet reads one key at a time and releases the store before yielding, so a
+// reader may write to the store between entries.
+func (m *memory) MGet(_ context.Context, keys iter.Seq[string]) iter.Seq2[Entry, error] {
+	return func(yield func(Entry, error) bool) {
+		for key := range keys {
+			if !yield(m.entry(key), nil) {
+				return
+			}
+		}
+	}
+}
+
+func (m *memory) entry(key string) Entry {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.dropIfExpired(key) {
+		return Entry{Key: key}
+	}
+	v, ok := m.strings[key]
+	if !ok {
+		return Entry{Key: key}
+	}
+	return Entry{Key: key, Value: append([]byte(nil), v...), Found: true}
 }
 
 func (m *memory) Del(_ context.Context, key string) error {

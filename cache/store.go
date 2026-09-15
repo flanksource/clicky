@@ -2,6 +2,7 @@ package cache
 
 import (
 	"context"
+	"iter"
 	"strconv"
 	"time"
 )
@@ -25,6 +26,13 @@ type Store interface {
 	// must be distinguishable from a genuine miss — callers prune index entries
 	// only on ErrKeyNotFound.
 	Get(ctx context.Context, key string) ([]byte, error)
+	// MGet reads keys in the order keys yields them and yields an Entry for
+	// each: its value, or Found false when the key is absent, expired or holds
+	// no string. A backend may read several keys per round trip, so a caller
+	// reading many keys holds one batch at a time rather than all of them.
+	// Any other failure is yielded once, with a zero Entry, and ends the
+	// iteration. When the caller stops, no further keys are pulled or read.
+	MGet(ctx context.Context, keys iter.Seq[string]) iter.Seq2[Entry, error]
 	// Del removes key (of any type). Removing a missing key is not an error.
 	Del(ctx context.Context, key string) error
 	// Expire sets a ttl on an existing key of any type; it does not change the
@@ -49,6 +57,14 @@ type Store interface {
 	// ranked by score low→high; negative indices count from the end. Trimming a
 	// sorted set to its newest N members is ZRemRangeByRank(key, 0, -(N+1)).
 	ZRemRangeByRank(ctx context.Context, key string, start, stop int64) error
+}
+
+// Entry is one key an MGet read: its value, or Found false when the store
+// holds no string value at the key.
+type Entry struct {
+	Key   string
+	Value []byte
+	Found bool
 }
 
 // Bound is one endpoint of a sorted-set score range. It models Redis's three

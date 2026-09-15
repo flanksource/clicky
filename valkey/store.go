@@ -11,6 +11,8 @@ package valkey
 
 import (
 	"context"
+	"fmt"
+	"iter"
 	"time"
 
 	"github.com/valkey-io/valkey-go"
@@ -18,9 +20,16 @@ import (
 	"github.com/flanksource/clicky/cache"
 )
 
-// opTimeout caps any single round-trip so a store operation never stalls the
-// caller. Mirrors the timeout the cache browser applies to its single-key ops.
-const opTimeout = 250 * time.Millisecond
+const (
+	// opTimeout caps any single round-trip so a store operation never stalls
+	// the caller. Mirrors the timeout the cache browser applies to its
+	// single-key ops.
+	opTimeout = 250 * time.Millisecond
+
+	// mgetBatch is how many keys one MGet round trip reads. It keeps a batch of
+	// large values well inside opTimeout, and bounds what a reader holds.
+	mgetBatch = 100
+)
 
 type kvStore struct {
 	client    valkey.Client
@@ -62,6 +71,62 @@ func (s *kvStore) Get(ctx context.Context, key string) ([]byte, error) {
 		return nil, err
 	}
 	return data, nil
+}
+
+// MGet pulls up to mgetBatch keys at a time and reads each batch in one round
+// trip — one MGET, or one per hash slot on a cluster — before yielding it.
+func (s *kvStore) MGet(ctx context.Context, keys iter.Seq[string]) iter.Seq2[cache.Entry, error] {
+	return func(yield func(cache.Entry, error) bool) {
+		batch := make([]string, 0, mgetBatch)
+		flush := func() bool {
+			entries, err := s.mget(ctx, batch)
+			batch = batch[:0]
+			if err != nil {
+				yield(cache.Entry{}, err)
+				return false
+			}
+			for _, entry := range entries {
+				if !yield(entry, nil) {
+					return false
+				}
+			}
+			return true
+		}
+		for key := range keys {
+			if batch = append(batch, key); len(batch) == mgetBatch && !flush() {
+				return
+			}
+		}
+		if len(batch) > 0 {
+			flush()
+		}
+	}
+}
+
+func (s *kvStore) mget(ctx context.Context, keys []string) ([]cache.Entry, error) {
+	ctx, cancel := s.ctx(ctx)
+	defer cancel()
+	replies, err := valkey.MGet(s.client, ctx, keys)
+	if err != nil {
+		return nil, fmt.Errorf("mget %d keys: %w", len(keys), err)
+	}
+	entries := make([]cache.Entry, len(keys))
+	for index, key := range keys {
+		reply, ok := replies[key]
+		if !ok {
+			return nil, fmt.Errorf("mget: no reply for key %q", key)
+		}
+		value, err := reply.AsBytes()
+		switch {
+		case valkey.IsValkeyNil(err):
+			entries[index] = cache.Entry{Key: key}
+		case err != nil:
+			return nil, fmt.Errorf("mget %q: %w", key, err)
+		default:
+			entries[index] = cache.Entry{Key: key, Value: value, Found: true}
+		}
+	}
+	return entries, nil
 }
 
 func (s *kvStore) Del(ctx context.Context, key string) error {
