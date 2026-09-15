@@ -1,6 +1,9 @@
 package entity
 
-import "reflect"
+import (
+	"reflect"
+	"time"
+)
 
 // DataFunc is a function that returns structured data directly, bypassing stdout
 // capture. Used by commands registered via AddCommand to provide data to the HTTP
@@ -90,6 +93,7 @@ type ClickyOperationMeta struct {
 // Suggestions are conveniences for editors, not schedules created by default.
 type OperationScheduleMeta struct {
 	Suggestions []ScheduleSuggestion `json:"suggestions,omitempty"`
+	Timeout     time.Duration        `json:"timeout,omitempty"`
 }
 
 // ScheduleSuggestion is a named cron expression presented by schedule editors.

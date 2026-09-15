@@ -27,31 +27,33 @@ func init() {
 
 // --- non-generic type aliases ---
 type (
-	EntityItem          = entity.EntityItem
-	EntityInfo          = entity.EntityInfo
-	EntityOperation     = entity.EntityOperation
-	ActionInfo          = entity.ActionInfo
-	BulkActionInfo      = entity.BulkActionInfo
-	ActionFlags         = entity.ActionFlags
-	EntityAction        = entity.EntityAction
-	EntityBulkAction    = entity.EntityBulkAction
-	CommandOpenAPIMeta  = entity.CommandOpenAPIMeta
-	ResponseOpenAPIMeta = entity.ResponseOpenAPIMeta
-	MCPToolHints        = entity.MCPToolHints
-	ToolPermission      = entity.ToolPermission
-	DynamicFilter       = entity.DynamicFilter
-	DynamicEntitySpec   = entity.DynamicEntitySpec
-	ContextDataFunc     = entity.ContextDataFunc
-	ContextLookupFunc   = entity.ContextLookupFunc
-	MultiFilter         = entity.MultiFilter
-	PageInfo            = entity.PageInfo
-	Paged               = entity.Paged
-	Name                = entity.Name
-	Help                = entity.Help
-	SortDirection       = entity.SortDirection
-	SortOptions         = entity.SortOptions
-	SortCarrier         = entity.SortCarrier
-	SortSpec            = entity.SortSpec
+	EntityItem            = entity.EntityItem
+	EntityInfo            = entity.EntityInfo
+	EntityOperation       = entity.EntityOperation
+	ActionInfo            = entity.ActionInfo
+	BulkActionInfo        = entity.BulkActionInfo
+	ActionFlags           = entity.ActionFlags
+	EntityAction          = entity.EntityAction
+	EntityBulkAction      = entity.EntityBulkAction
+	CommandOpenAPIMeta    = entity.CommandOpenAPIMeta
+	ResponseOpenAPIMeta   = entity.ResponseOpenAPIMeta
+	MCPToolHints          = entity.MCPToolHints
+	ToolPermission        = entity.ToolPermission
+	DynamicFilter         = entity.DynamicFilter
+	DynamicEntitySpec     = entity.DynamicEntitySpec
+	ContextDataFunc       = entity.ContextDataFunc
+	ContextLookupFunc     = entity.ContextLookupFunc
+	MultiFilter           = entity.MultiFilter
+	PageInfo              = entity.PageInfo
+	Paged                 = entity.Paged
+	Name                  = entity.Name
+	Help                  = entity.Help
+	SortDirection         = entity.SortDirection
+	SortOptions           = entity.SortOptions
+	SortCarrier           = entity.SortCarrier
+	SortSpec              = entity.SortSpec
+	OperationScheduleMeta = entity.OperationScheduleMeta
+	ScheduleSuggestion    = entity.ScheduleSuggestion
 )
 
 // --- generic type aliases (Go 1.24+; go.mod is 1.26.1) ---
@@ -85,6 +87,7 @@ var (
 	GetCommandResponseMeta = entity.GetCommandResponseMeta
 	SetCommandResponseMeta = entity.SetCommandResponseMeta
 	AnnotateTool           = entity.AnnotateTool
+	AnnotateSchedule       = entity.AnnotateSchedule
 	MarkLocalOnly          = entity.MarkLocalOnly
 	IsLocalOnly            = entity.IsLocalOnly
 )
@@ -133,6 +136,10 @@ func ActionWithContext[R any](name string, fn func(ctx context.Context, id strin
 
 func ActionWithFlagsAndContext[R any](name string, flags entity.ActionFlags, fn func(ctx context.Context, id string, flags map[string]string) (R, error)) *entity.ActionSpec[R] {
 	return entity.ActionWithFlagsAndContext(name, flags, fn)
+}
+
+func TypedActionWithContext[Opts entity.ActionFlags, R any](name string, opts Opts, fn func(context.Context, string, Opts) (R, error)) *entity.ActionSpec[R] {
+	return entity.TypedActionWithContext(name, opts, fn)
 }
 
 func BulkAction[R any](name string, fn func(ids []string, flags map[string]string) (R, error)) *entity.BulkActionSpec[R] {
