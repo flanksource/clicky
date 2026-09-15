@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.21.65](https://github.com/flanksource/clicky/compare/v1.21.64...v1.21.65) (2026-09-15)
+
+
+### ✨ Features
+
+* add operation scheduling infrastructure with context isolation ([f268a76](https://github.com/flanksource/clicky/commit/f268a76b5c184a8811ff85224da3ce20458c5ef4))
+* **api:** Preserve structured code cells and their styling in table rendering ([670e406](https://github.com/flanksource/clicky/commit/670e406c4d156165cc3fe6c68e0ecc3883c2738a))
+* **entity:** observe generated commands with operation listeners ([e80315e](https://github.com/flanksource/clicky/commit/e80315e63108ad8ad461cb6cb5681d722903dd73))
+
 ## [1.21.64](https://github.com/flanksource/clicky/compare/v1.21.63...v1.21.64) (2026-09-15)
 
 
