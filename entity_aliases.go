@@ -79,6 +79,7 @@ var (
 	RegisterSubCommandFn   = entity.RegisterSubCommandFn
 	GetDataFunc            = entity.GetDataFunc
 	GetContextDataFunc     = entity.GetContextDataFunc
+	CommandIdentity        = entity.CommandIdentity
 	GetLookupFunc          = entity.GetLookupFunc
 	GetContextLookupFunc   = entity.GetContextLookupFunc
 	GetCommandOpenAPIMeta  = entity.GetCommandOpenAPIMeta
