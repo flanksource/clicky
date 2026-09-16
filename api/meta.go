@@ -684,9 +684,11 @@ func newTableFromProviders(items []TableProvider, rowType reflect.Type) TextTabl
 				continue
 			}
 			filterValue := val
+			presentedCell := false
 			if presented, ok := val.(TableCell); ok {
 				val = presented.Value
 				filterValue = presented.FilterValue
+				presentedCell = true
 			}
 			// Hidden columns ride along as row metadata (row identity such as
 			// _id, and raw values backing client-side filters). They are absent
@@ -704,18 +706,15 @@ func newTableFromProviders(items []TableProvider, rowType reflect.Type) TextTabl
 				}
 			}
 			cell := TypedValue{Textable: textable}
-			// Filterable cells and hidden primitive metadata keep their raw scalar
-			// independently from the rendered representation.
-			if col.FilterKey != "" {
+			// Filterable cells keep their raw value. Explicitly presented cells and
+			// hidden metadata keep only a primitive one: a presented count of 0
+			// renders as empty text, so its display cannot stand in for the value.
+			if instant, ok := columnInstant(col, filterValue); ok {
+				cell.FilterValue = instant
+			} else if col.FilterKey != "" {
 				cell.FilterValue = filterValue
-			} else if col.Hidden && filterValue != nil {
-				switch reflect.TypeOf(filterValue).Kind() {
-				case reflect.Bool,
-					reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
-					reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64,
-					reflect.Float32, reflect.Float64, reflect.String:
-					cell.FilterValue = filterValue
-				}
+			} else if (col.Hidden || presentedCell) && isScalarFilterValue(filterValue) {
+				cell.FilterValue = filterValue
 			}
 			row[col.Name] = cell
 		}
@@ -730,6 +729,20 @@ func newTableFromProviders(items []TableProvider, rowType reflect.Type) TextTabl
 		table.RowDetail = nil
 	}
 	return table
+}
+
+func isScalarFilterValue(value any) bool {
+	if value == nil {
+		return false
+	}
+	switch reflect.TypeOf(value).Kind() {
+	case reflect.Bool,
+		reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64,
+		reflect.Float32, reflect.Float64, reflect.String:
+		return true
+	}
+	return false
 }
 
 // zeroTableProvider returns a usable zero TableProvider for an element type so

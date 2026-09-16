@@ -23,6 +23,7 @@ const (
 	FormatList     = "list"
 	FormatDate     = "date"
 	FormatFloat    = "float"
+	FormatInteger  = "integer"
 	FormatMarkdown = "markdown"
 	FormatJSON     = "json"
 	FormatYAML     = "yaml"
