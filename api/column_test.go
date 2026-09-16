@@ -80,6 +80,30 @@ func (r presentedCellRow) Row() map[string]any {
 	}
 }
 
+type presentedCounterRow struct{ PhysicalReads int64 }
+
+func (presentedCounterRow) Columns() []ColumnDef {
+	return []ColumnDef{Column("physicalReads").Build()}
+}
+
+func (r presentedCounterRow) Row() map[string]any {
+	return map[string]any{
+		"physicalReads": TableCell{Value: Text{}, FilterValue: r.PhysicalReads},
+	}
+}
+
+type presentedStructuredValueRow struct{ Tables []string }
+
+func (presentedStructuredValueRow) Columns() []ColumnDef {
+	return []ColumnDef{Column("tables").Build()}
+}
+
+func (r presentedStructuredValueRow) Row() map[string]any {
+	return map[string]any{
+		"tables": TableCell{Value: Text{Content: "2 tables"}, FilterValue: r.Tables},
+	}
+}
+
 type structuredCellRow struct{ SQL string }
 
 func (structuredCellRow) Columns() []ColumnDef {
@@ -174,6 +198,23 @@ var _ = Describe("Column", func() {
 			Expect(table.Rows[0]["sql"].FilterValue).To(Equal(statement))
 			Expect(table.Columns[0].MinWidth).To(Equal(360))
 			Expect(table.Columns[0].MaxWidth).To(Equal(720))
+		})
+
+		DescribeTable("keeps the raw scalar of an explicitly presented cell on a visible column without a filter key",
+			func(reads int64) {
+				table := NewTableFrom([]presentedCounterRow{{PhysicalReads: reads}})
+
+				Expect(table.Rows[0]["physicalReads"].FilterValue).To(Equal(reads))
+			},
+			Entry("zero, whose display text is empty", int64(0)),
+			Entry("a count whose display text is abbreviated", int64(1234)),
+		)
+
+		It("drops a non-scalar raw value of a presented cell on a column without a filter key", func() {
+			table := NewTableFrom([]presentedStructuredValueRow{{Tables: []string{"AsActivity", "AsPolicy"}}})
+
+			Expect(table.Rows[0]["tables"].String()).To(Equal("2 tables"))
+			Expect(table.Rows[0]["tables"].FilterValue).To(BeNil())
 		})
 
 		It("emits a schema-less empty table for an empty interface-typed slice", func() {
