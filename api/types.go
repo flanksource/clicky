@@ -687,6 +687,9 @@ func (v FieldValue) createText() Textable {
 		case FieldTypeFloat:
 			content = v.formatFloat()
 			style = "text-purple-600" // Purple for numbers
+		case FormatInteger:
+			content = formatIntegerValue(v.Value)
+			style = "text-purple-600"
 		case FieldTypeDuration:
 			content = v.formatDuration()
 			style = "text-orange-600" // Orange for durations

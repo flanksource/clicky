@@ -3,6 +3,8 @@ package api
 import (
 	"fmt"
 	"math"
+	"reflect"
+	"strconv"
 	"strings"
 
 	"golang.org/x/text/language"
@@ -13,7 +15,27 @@ var columnNumberPrinter = message.NewPrinter(language.AmericanEnglish)
 
 // ColumnFormatValues returns the formats supported by schema-driven columns.
 func ColumnFormatValues() []string {
-	return []string{FormatDate, FormatFloat, FieldTypeDuration, FieldTypeBytes, FormatCurrency}
+	return []string{FormatDate, FormatFloat, FormatInteger, FieldTypeDuration, FieldTypeBytes, FormatCurrency}
+}
+
+// formatIntegerValue renders a whole number without decimals whatever numeric
+// type decoded it: JSON and a sqlite NUMERIC column both yield a float64. A
+// value with a fraction keeps it, and a non-number shows as it is.
+func formatIntegerValue(value any) string {
+	switch reflected := reflect.ValueOf(value); reflected.Kind() {
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return strconv.FormatInt(reflected.Int(), 10)
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		return strconv.FormatUint(reflected.Uint(), 10)
+	}
+	number := (FieldValue{Value: value}).Float()
+	if number == nil {
+		return fmt.Sprintf("%v", value)
+	}
+	if math.Trunc(*number) == *number && math.Abs(*number) < 1<<53 {
+		return strconv.FormatInt(int64(*number), 10)
+	}
+	return strconv.FormatFloat(*number, 'f', -1, 64)
 }
 
 // ColumnUnitValues returns the Grafana-compatible units supported by columns.
