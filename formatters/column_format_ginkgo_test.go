@@ -6,6 +6,7 @@ import (
 	"encoding/csv"
 	"encoding/json"
 	"strings"
+	"time"
 
 	"github.com/flanksource/clicky/api"
 	. "github.com/onsi/ginkgo/v2"
@@ -28,7 +29,60 @@ func (r percentageTableRow) Row() map[string]any {
 	return map[string]any{"ratio": r.Ratio}
 }
 
+type capturedEventRow struct {
+	At        any
+	SessionID any
+}
+
+func (capturedEventRow) Columns() []api.ColumnDef {
+	return []api.ColumnDef{
+		{Name: "timestamp", Kind: "timestamp", Type: "datetime", Format: api.FormatDate},
+		{Name: "sessionId", Type: "number", Format: api.FormatInteger},
+	}
+}
+
+func (r capturedEventRow) Row() map[string]any {
+	return map[string]any{"timestamp": r.At, "sessionId": r.SessionID}
+}
+
+func clickyCells(row capturedEventRow) map[string]ClickyNode {
+	output, err := (&ClickyJSONFormatter{}).Format(api.NewTableFrom([]capturedEventRow{row}), FormatOptions{})
+	Expect(err).NotTo(HaveOccurred())
+	var document ClickyDocument
+	Expect(json.Unmarshal([]byte(output), &document)).To(Succeed())
+	Expect(document.Node.Rows).To(HaveLen(1))
+	return document.Node.Rows[0].Cells
+}
+
 var _ = Describe("Column format serialization", func() {
+	const capturedAt = "2026-09-15T15:55:01.132Z"
+	instant := time.Date(2026, time.September, 15, 15, 55, 1, 132_000_000, time.UTC)
+	eastOfUTC := time.FixedZone("UTC+3", 3*60*60)
+
+	DescribeTable("a time cell without a filter key carries its instant with its zone",
+		func(at any, expected string) {
+			cell := clickyCells(capturedEventRow{At: at, SessionID: 73})["timestamp"]
+
+			Expect(cell.FilterValue).To(Equal(expected))
+		},
+		Entry("a UTC time.Time", instant, capturedAt),
+		Entry("a *time.Time", &instant, capturedAt),
+		Entry("a time.Time in a zone east of UTC", instant.In(eastOfUTC), "2026-09-15T18:55:01.132+03:00"),
+		Entry("an RFC3339 string read back from an index", capturedAt, capturedAt),
+	)
+
+	It("leaves a zone-less time string without an instant rather than guessing its zone", func() {
+		cell := clickyCells(capturedEventRow{At: "2026-09-15 15:55:01", SessionID: 73})["timestamp"]
+
+		Expect(cell.FilterValue).To(BeNil())
+	})
+
+	It("renders an integer column decoded as a float64 as an integer", func() {
+		cell := clickyCells(capturedEventRow{At: instant, SessionID: float64(1234567)})["sessionId"]
+
+		Expect(cell.Plain).To(Equal("1234567"))
+	})
+
 	It("includes raw filter values while keeping rendered cells formatted", func() {
 		table := api.NewTableFrom([]percentageTableRow{{Ratio: 0.42}})
 

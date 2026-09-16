@@ -26,7 +26,7 @@ type Group struct {
 	id              string     // stable unique id; distinct from name for registry drill-down
 	Items           []Taskable // Can contain Tasks or nested Groups
 	startTime       time.Time
-	finishedAt      time.Time // set lazily the first time the group is observed terminal
+	finishedAt      time.Time // set lazily when the group is observed terminal; cleared when work is added
 	metadata        GroupMetadata
 	manager         *Manager
 	ctx             context.Context
@@ -141,7 +141,8 @@ func (g *Group) FinishedAt() time.Time {
 }
 
 // observeTerminal records finishedAt the first time the group is seen in a
-// terminal status. Idempotent; safe to call on every snapshot.
+// terminal status since it was started or last given new work. Idempotent; safe
+// to call on every snapshot.
 //
 // The zero-to-set transition is also the only completion signal the package
 // has, so it is where a finished run is handed to the store. The hand-off is a

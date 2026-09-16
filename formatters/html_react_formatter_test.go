@@ -261,6 +261,37 @@ func TestHTMLReactHiddenCellRetainsRawScalar(t *testing.T) {
 	}
 }
 
+type presentedReadsRow struct{ PhysicalReads int64 }
+
+func (presentedReadsRow) Columns() []api.ColumnDef {
+	return []api.ColumnDef{api.Column("physicalReads").Build()}
+}
+
+func (r presentedReadsRow) Row() map[string]any {
+	return map[string]any{
+		"physicalReads": api.TableCell{Value: api.Text{}, FilterValue: r.PhysicalReads},
+	}
+}
+
+// A presented counter of 0 renders as empty text; the serialized cell must
+// still carry the number so a row-detail adapter never parses display text.
+func TestHTMLReactPresentedZeroCounterSerializesRawValue(t *testing.T) {
+	table := api.NewTableFrom([]presentedReadsRow{{PhysicalReads: 0}})
+	node := convertTable(&table)
+
+	encoded, err := json.Marshal(node.Rows[0].Cells["physicalReads"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	var cell map[string]any
+	if err := json.Unmarshal(encoded, &cell); err != nil {
+		t.Fatal(err)
+	}
+	if value, ok := cell["filterValue"]; !ok || value != float64(0) {
+		t.Fatalf("serialized physicalReads cell = %s, want filterValue 0", encoded)
+	}
+}
+
 // A table node used to carry a full box-drawing render of itself in Plain,
 // which nothing reads: the renderer takes columns and rows, and the terminal
 // view is fetched separately as text/plain. On a wide table that copy was a

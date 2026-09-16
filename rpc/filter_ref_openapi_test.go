@@ -47,6 +47,7 @@ func TestOpenAPIEmitsNamedFilterRefAndLookup(t *testing.T) {
 	entity.RegisterFilter(entity.NamedFilter{
 		Name:   "ref-users",
 		Label:  "Owner",
+		Unit:   "team",
 		Source: entity.StaticOptions(map[string]api.Textable{"u1": api.Text{Content: "Alice"}}),
 	})
 
@@ -71,6 +72,7 @@ func TestOpenAPIEmitsNamedFilterRefAndLookup(t *testing.T) {
 	require.Contains(t, spec.Components.ClickyFilters, "ref-users")
 	def := spec.Components.ClickyFilters["ref-users"]
 	assert.Equal(t, "Owner", def.Label)
+	assert.Equal(t, "team", def.Unit)
 	assert.Equal(t, entity.SourceStatic, def.Source.Kind)
 	assert.Equal(t, "Alice", def.Source.Options["u1"])
 
