@@ -545,6 +545,9 @@ func attachTaskableToGroup(t *Task, item Taskable) {
 		}
 	}
 	t.parent.Items = append(t.parent.Items, item)
+	// New work reopens a group that had already finished, so its next terminal
+	// observation is a new completion: persisted again, and aged for GC from then.
+	t.parent.finishedAt = time.Time{}
 	if t.parent.startTime.IsZero() || t.startTime.Before(t.parent.startTime) {
 		t.parent.startTime = t.startTime
 	}
