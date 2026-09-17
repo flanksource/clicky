@@ -32,7 +32,7 @@ func WithTimeout(timeout time.Duration) WrapperOption {
 // from starting, and cancellation during execution terminates the process
 // while Run() reaps it exactly once.
 func WithContext(ctx context.Context) WrapperOption {
-	return wrapperOptionFunc(func(p *Process) { p.ctx = ctx })
+	return wrapperOptionFunc(func(p *Process) { p.WithContext(ctx) })
 }
 
 func WithTee(stdout, stderr io.Writer) WrapperOption {
