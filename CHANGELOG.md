@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.21.66](https://github.com/flanksource/clicky/compare/v1.21.65...v1.21.66) (2026-09-17)
+
+
+### ✨ Features
+
+* **exec:** add fluent process context ([a6c348e](https://github.com/flanksource/clicky/commit/a6c348eeac841a26f019cfe52c868f30485f2f5b))
+
 ## [1.21.65](https://github.com/flanksource/clicky/compare/v1.21.64...v1.21.65) (2026-09-15)
 
 
