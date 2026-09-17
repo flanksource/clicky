@@ -54,6 +54,11 @@ func (a *attachedFilter[ListOpts]) FilterName() string { return a.nf.Name }
 // inferred bool/number/date/multi-filter type in place).
 func (a *attachedFilter[ListOpts]) LookupType() string { return a.nf.Type }
 
+// LookupUnit returns the unit declared by the reusable filter definition.
+func (a *attachedFilter[ListOpts]) LookupUnit() string { return a.nf.Unit }
+
+func (a *attachedFilter[ListOpts]) LookupDefaultOperator() string { return a.nf.DefaultOperator }
+
 // LookupLimit returns the filter's own option cap, or zero to take the default.
 func (a *attachedFilter[ListOpts]) LookupLimit() int { return a.nf.Limit }
 

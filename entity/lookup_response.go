@@ -12,10 +12,12 @@ type entityLookupFilter struct {
 	// Counts maps an option value — the same keys as Options — to the number of
 	// rows holding it. It is omitted when the filter's source does not count, and
 	// a value it has no count for is absent rather than zero.
-	Counts   map[string]int        `json:"counts,omitempty"`
-	Selected map[string]clickyNode `json:"selected,omitempty"`
-	Multi    bool                  `json:"multi,omitempty"`
-	Type     string                `json:"type,omitempty"`
+	Counts          map[string]int        `json:"counts,omitempty"`
+	Selected        map[string]clickyNode `json:"selected,omitempty"`
+	Multi           bool                  `json:"multi,omitempty"`
+	Type            string                `json:"type,omitempty"`
+	Unit            string                `json:"unit,omitempty"`
+	DefaultOperator string                `json:"defaultOperator,omitempty"`
 	// TimeEnabled offers a clock on a range control. Absent leaves the browser to
 	// decide from Type alone, which is what every control that is not a range does.
 	TimeEnabled *bool `json:"timeEnabled,omitempty"`

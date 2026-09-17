@@ -20,6 +20,9 @@ func RegisterFilter(f NamedFilter) {
 	if f.Source == nil {
 		panic(fmt.Sprintf("entity.RegisterFilter: filter %q has no Source", f.Name))
 	}
+	if err := validateDefaultOperator(f.controlType(), f.DefaultOperator); err != nil {
+		panic(fmt.Sprintf("entity.RegisterFilter: filter %q: %v", f.Name, err))
+	}
 
 	filterRegistryMu.Lock()
 	defer filterRegistryMu.Unlock()
