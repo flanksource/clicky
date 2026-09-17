@@ -15,6 +15,7 @@ import (
 type ExecTaskDetails struct {
 	Command  string        `json:"command"`
 	Args     []string      `json:"args,omitempty"`
+	Cwd      string        `json:"cwd,omitempty"`
 	PID      int           `json:"pid,omitempty"`
 	Status   string        `json:"status"`
 	ExitCode int           `json:"exitCode"`
@@ -65,6 +66,7 @@ func bindProcessTask(ctx flanksourceContext.Context, t *task.Task, p *Process) f
 		return ExecTaskDetails{
 			Command:  result.Command,
 			Args:     append([]string(nil), result.Args...),
+			Cwd:      p.Cwd,
 			PID:      result.PID,
 			Status:   result.Status,
 			ExitCode: result.ExitCode,
