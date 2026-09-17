@@ -12,7 +12,7 @@ import (
 // describing about it is how precise its operands are.
 func rangeFilter(key string, timeEnabled *bool) DynamicFilter {
 	return DynamicFilter{
-		Key: key, Label: key, Type: "from", TimeEnabled: timeEnabled,
+		Key: key, Label: key, Type: "from", Unit: "ms", TimeEnabled: timeEnabled,
 		Options: func(context.Context, map[string]string, string, int) (map[string]api.Textable, int, error) {
 			return nil, 0, nil
 		},
@@ -64,7 +64,21 @@ func TestLookupCarriesTheClockAFilterDeclares(t *testing.T) {
 	if got := wire["day"]["timeEnabled"]; got != false {
 		t.Errorf("day serialized timeEnabled=%v, want false", got)
 	}
+	if got := wire["instant"]["unit"]; got != "ms" {
+		t.Errorf("instant serialized unit=%v, want ms", got)
+	}
 	if _, present := wire["unspecified"]["timeEnabled"]; present {
 		t.Errorf("unspecified serialized a timeEnabled it never declared: %v", wire["unspecified"])
+	}
+}
+
+func TestDynamicLookupCarriesDefaultOperator(t *testing.T) {
+	filter := DynamicFilter{
+		Key: "elapsed", Label: "Elapsed", Type: "duration", Unit: "ms", DefaultOperator: ">",
+		Options: func(context.Context, map[string]string, string, int) (map[string]api.Textable, int, error) { return nil, 0, nil },
+	}
+	response := resolveFilters(t, map[string]string{}, filter)
+	if got := response.Filters["elapsed"].DefaultOperator; got != ">" {
+		t.Fatalf("duration default operator = %q, want >", got)
 	}
 }

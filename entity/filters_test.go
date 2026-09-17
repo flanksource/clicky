@@ -147,6 +147,10 @@ func (amountEntityFilter) Options(opts entityFilterTestOpts) map[string]api.Text
 
 func (amountEntityFilter) LookupType() string { return "number" }
 
+func (amountEntityFilter) LookupUnit() string { return "USD" }
+
+func (amountEntityFilter) LookupDefaultOperator() string { return ">" }
+
 type activeEntityFilter struct{}
 
 func (activeEntityFilter) Key() string   { return "active" }
@@ -276,6 +280,12 @@ func TestLiftedFiltersPreserveTypedLookupOverrides(t *testing.T) {
 
 	if lookup.Filters["amount"].Type != "number" {
 		t.Fatalf("expected lifted typed filter to preserve type override, got %#v", lookup.Filters["amount"])
+	}
+	if lookup.Filters["amount"].Unit != "USD" {
+		t.Fatalf("expected lifted filter to preserve unit metadata, got %#v", lookup.Filters["amount"])
+	}
+	if lookup.Filters["amount"].DefaultOperator != ">" {
+		t.Fatalf("expected lifted filter to preserve default operator, got %#v", lookup.Filters["amount"])
 	}
 	if lookup.Filters["active"].Type != "bool" {
 		t.Fatalf("expected lifted untyped filter to keep inferred bool type, got %#v", lookup.Filters["active"])

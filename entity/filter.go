@@ -86,8 +86,13 @@ type NamedFilter struct {
 	// Label is the human-facing control label. Defaults to Name when empty.
 	Label string
 	// Type is the UI control type: "select" (default), "multi-select", "date",
-	// "from", or "to".
+	// "number", "duration", "from", or "to".
 	Type string
+	// Unit names the values presented by numeric and duration controls. It is
+	// metadata only: parsing and conversion remain the backend's responsibility.
+	Unit string
+	// DefaultOperator applies to bare number or duration operands in the UI.
+	DefaultOperator string
 	// Multi reports whether the control accepts multiple selections.
 	Multi bool
 	// Limit caps the option set this filter enumerates in one shot. Zero takes
