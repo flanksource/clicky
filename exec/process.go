@@ -1,6 +1,7 @@
 package exec
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -89,6 +90,14 @@ func (p *Process) WithLogger(log logger.Logger) *Process {
 
 func (p *Process) WithTimeout(timeout time.Duration) *Process {
 	p.Timeout = timeout
+	return p
+}
+
+// WithContext binds synchronous execution to ctx without creating a task.
+// Cancellation prevents an unstarted command from launching or stops the
+// running process while Run remains its sole reaper.
+func (p *Process) WithContext(ctx context.Context) *Process {
+	p.ctx = ctx
 	return p
 }
 
