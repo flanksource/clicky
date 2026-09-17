@@ -27,6 +27,20 @@ var _ = Describe("Exec task details", func() {
 		Expect(snapshots[1].Details).ToNot(BeNil())
 	})
 
+	It("reports the working directory beside the command so it can be replayed", func() {
+		workDir := GinkgoT().TempDir()
+		group := task.StartGroup[ExecResult]("commit", task.WithKind("gavel-commit"))
+		handle := NewExec("true", "--flag").WithoutShell().WithCwd(workDir).RunAsTask("replayable", task.WithGroup(group.Group))
+
+		_, err := handle.GetResult()
+		Expect(err).ToNot(HaveOccurred())
+
+		details := task.SnapshotByID(group.ID())[1].Details.(ExecTaskDetails)
+		Expect(details.Command).To(Equal("true"))
+		Expect(details.Args).To(Equal([]string{"--flag"}))
+		Expect(details.Cwd).To(Equal(workDir))
+	})
+
 	It("propagates task cancellation to the subprocess tree", func() {
 		process := NewExec("sleep 30").WithProcessGroup()
 		handle := process.StartAsTask("long command")
