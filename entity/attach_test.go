@@ -55,6 +55,7 @@ var _ = Describe("Use/As typed adapter", func() {
 		resetFilterRegistry()
 		RegisterFilter(NamedFilter{
 			Name:   "users",
+			Unit:   "team",
 			Source: StaticOptions(map[string]api.Textable{"u1": api.Text{Content: "Alice"}, "u2": api.Text{Content: "Bob"}}),
 		})
 	})
@@ -87,6 +88,10 @@ var _ = Describe("Use/As typed adapter", func() {
 
 	It("leaves LookupType empty so field inference stands for a plain select", func() {
 		Expect(Use[attachTaskOpts]("users").As("owner").LookupType()).To(BeEmpty())
+	})
+
+	It("carries unit metadata through an attached named filter", func() {
+		Expect(Use[attachTaskOpts]("users").As("owner").LookupUnit()).To(Equal("team"))
 	})
 
 	It("panics when the referenced filter is not registered", func() {

@@ -141,13 +141,36 @@ var _ = Describe("Declarative filter specs", func() {
 		f := NamedFilter{
 			Name:   "fruit",
 			Label:  "Fruit",
+			Unit:   "kg",
 			Source: StaticOptions(map[string]api.Textable{"a": api.Text{Content: "Apple"}}),
 		}
 		spec := f.Spec()
 		Expect(spec.Name).To(Equal("fruit"))
 		Expect(spec.Type).To(Equal("select"), "single-select is the default control type")
+		Expect(spec.Unit).To(Equal("kg"))
 		Expect(spec.Source.Kind).To(Equal(SourceStatic))
 		Expect(spec.Source.Options).To(HaveKeyWithValue("a", "Apple"))
+
+		roundTripped, err := FilterFromSpec(spec)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(roundTripped.Unit).To(Equal("kg"))
+	})
+
+	It("round-trips the default numeric comparison operator", func() {
+		filter := NamedFilter{Name: "size", Type: "number", Unit: "KB", DefaultOperator: ">", Source: StaticOptions(nil)}
+		got, err := FilterFromSpec(filter.Spec())
+		Expect(err).ToNot(HaveOccurred())
+		Expect(got.DefaultOperator).To(Equal(">"))
+	})
+
+	It("rejects default operators on non-bounded filters and unsupported operators", func() {
+		for _, spec := range []FilterSpec{
+			{Name: "state", Type: "select", DefaultOperator: ">", Source: FilterSourceSpec{Kind: SourceStatic}},
+			{Name: "size", Type: "number", DefaultOperator: "=", Source: FilterSourceSpec{Kind: SourceStatic}},
+		} {
+			_, err := FilterFromSpec(spec)
+			Expect(err).To(HaveOccurred())
+		}
 	})
 
 	It("rejects a spec with an unconstructible source kind", func() {

@@ -18,11 +18,13 @@ const (
 // shape emitted for OpenAPI (NamedFilter.Spec), so a Go-defined filter and a
 // declaratively-defined one are indistinguishable to clients.
 type FilterSpec struct {
-	Name   string           `json:"name" yaml:"name"`
-	Label  string           `json:"label,omitempty" yaml:"label,omitempty"`
-	Type   string           `json:"type,omitempty" yaml:"type,omitempty"`
-	Multi  bool             `json:"multi,omitempty" yaml:"multi,omitempty"`
-	Source FilterSourceSpec `json:"source" yaml:"source"`
+	Name            string           `json:"name" yaml:"name"`
+	Label           string           `json:"label,omitempty" yaml:"label,omitempty"`
+	Type            string           `json:"type,omitempty" yaml:"type,omitempty"`
+	Unit            string           `json:"unit,omitempty" yaml:"unit,omitempty"`
+	DefaultOperator string           `json:"defaultOperator,omitempty" yaml:"defaultOperator,omitempty"`
+	Multi           bool             `json:"multi,omitempty" yaml:"multi,omitempty"`
+	Source          FilterSourceSpec `json:"source" yaml:"source"`
 }
 
 // FilterSourceSpec is the declarative description of where a filter's options
@@ -36,11 +38,29 @@ type FilterSourceSpec struct {
 	Entity string `json:"entity,omitempty" yaml:"entity,omitempty"`
 }
 
+func validateDefaultOperator(filterType, operator string) error {
+	if operator == "" {
+		return nil
+	}
+	if filterType != "number" && filterType != "duration" {
+		return fmt.Errorf("default operator requires a number or duration filter, got %q", filterType)
+	}
+	switch operator {
+	case ">", ">=", "<", "<=":
+		return nil
+	default:
+		return fmt.Errorf("invalid default operator %q", operator)
+	}
+}
+
 // FilterFromSpec builds (but does not register) a NamedFilter from a declarative
 // spec, validating the source kind.
 func FilterFromSpec(s FilterSpec) (NamedFilter, error) {
 	if s.Name == "" {
 		return NamedFilter{}, fmt.Errorf("filter spec: name must not be empty")
+	}
+	if err := validateDefaultOperator(s.Type, s.DefaultOperator); err != nil {
+		return NamedFilter{}, fmt.Errorf("filter spec %q: %w", s.Name, err)
 	}
 
 	var source FilterSource
@@ -63,11 +83,13 @@ func FilterFromSpec(s FilterSpec) (NamedFilter, error) {
 	}
 
 	return NamedFilter{
-		Name:   s.Name,
-		Label:  s.Label,
-		Type:   s.Type,
-		Multi:  s.Multi,
-		Source: source,
+		Name:            s.Name,
+		Label:           s.Label,
+		Type:            s.Type,
+		Unit:            s.Unit,
+		DefaultOperator: s.DefaultOperator,
+		Multi:           s.Multi,
+		Source:          source,
 	}, nil
 }
 
@@ -86,11 +108,13 @@ func RegisterFilterSpec(s FilterSpec) {
 // options are resolved server-side via the lookup endpoint).
 func (f NamedFilter) Spec() FilterSpec {
 	return FilterSpec{
-		Name:   f.Name,
-		Label:  f.Label,
-		Type:   f.controlType(),
-		Multi:  f.Multi,
-		Source: sourceSpec(f.Source),
+		Name:            f.Name,
+		Label:           f.Label,
+		Type:            f.controlType(),
+		Unit:            f.Unit,
+		DefaultOperator: f.DefaultOperator,
+		Multi:           f.Multi,
+		Source:          sourceSpec(f.Source),
 	}
 }
 

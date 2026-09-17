@@ -11,11 +11,13 @@ import (
 // (resolveLookup) and the dynamic entity path (buildDynamicLookup) produce a
 // slice of these, so the response shape is built in exactly one place.
 type boundFilter struct {
-	Key        string
-	Label      string
-	Type       string
-	Multi      bool
-	Searchable bool
+	Key             string
+	Label           string
+	Type            string
+	Unit            string
+	DefaultOperator string
+	Multi           bool
+	Searchable      bool
 	// TimeEnabled offers a clock on a range control; nil leaves the choice to the
 	// control type.
 	TimeEnabled *bool
@@ -120,13 +122,15 @@ func lookupEntry(f boundFilter, searchKey, searchQuery string) (entityLookupFilt
 		}
 	}
 	entry := entityLookupFilter{
-		Label:       f.Label,
-		Options:     toClickyNodeMap(result.Options),
-		Counts:      result.Counts,
-		Selected:    toClickyNodeMap(f.Selected),
-		Multi:       f.Multi,
-		Type:        f.Type,
-		TimeEnabled: f.TimeEnabled,
+		Label:           f.Label,
+		Options:         toClickyNodeMap(result.Options),
+		Counts:          result.Counts,
+		Selected:        toClickyNodeMap(f.Selected),
+		Multi:           f.Multi,
+		Type:            f.Type,
+		Unit:            f.Unit,
+		DefaultOperator: f.DefaultOperator,
+		TimeEnabled:     f.TimeEnabled,
 	}
 	if f.Searchable {
 		// A search can overflow its cap just as a head set can — reporting the

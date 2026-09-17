@@ -196,6 +196,17 @@ type TypedFilter[ListOpts any] interface {
 	LookupType() string
 }
 
+// UnitFilter is an OPTIONAL extension a Filter may implement when the numeric
+// value shown by its control has a declared unit. It is unparameterized because
+// the unit is presentation metadata, independent of the options type.
+type UnitFilter interface {
+	LookupUnit() string
+}
+
+type DefaultOperatorFilter interface {
+	LookupDefaultOperator() string
+}
+
 // LimitedFilter is an OPTIONAL extension a Filter may implement to cap its own
 // option set below the package ceiling. It is unparameterized because the cap is
 // a property of the filter's cardinality, not of the entity it is attached to.
@@ -287,6 +298,20 @@ func (l liftedFilter[Outer, Inner]) Options(opts Outer) map[string]api.Textable 
 func (l liftedFilter[Outer, Inner]) LookupType() string {
 	if typed, ok := l.inner.(TypedFilter[Inner]); ok {
 		return typed.LookupType()
+	}
+	return ""
+}
+
+func (l liftedFilter[Outer, Inner]) LookupUnit() string {
+	if unit, ok := l.inner.(UnitFilter); ok {
+		return unit.LookupUnit()
+	}
+	return ""
+}
+
+func (l liftedFilter[Outer, Inner]) LookupDefaultOperator() string {
+	if filter, ok := l.inner.(DefaultOperatorFilter); ok {
+		return filter.LookupDefaultOperator()
 	}
 	return ""
 }
@@ -1931,6 +1956,15 @@ func resolveLookupOptions[T any](
 				meta.Type = lookupType
 			}
 		}
+		if unit, ok := filter.(UnitFilter); ok {
+			meta.Unit = unit.LookupUnit()
+		}
+		if operator, ok := filter.(DefaultOperatorFilter); ok {
+			meta.DefaultOperator = operator.LookupDefaultOperator()
+		}
+		if err := validateDefaultOperator(meta.Type, meta.DefaultOperator); err != nil {
+			return nil, fmt.Errorf("filter %q: %w", filter.Key(), err)
+		}
 		f := filter
 		searchable := filterIsSearchable(f)
 		limit := 0
@@ -1938,13 +1972,15 @@ func resolveLookupOptions[T any](
 			limit = limited.LookupLimit()
 		}
 		bound = append(bound, boundFilter{
-			Key:        f.Key(),
-			Label:      f.Label(),
-			Type:       meta.Type,
-			Multi:      meta.Multi,
-			Searchable: searchable,
-			Limit:      limit,
-			Selected:   selected[f.Key()],
+			Key:             f.Key(),
+			Label:           f.Label(),
+			Type:            meta.Type,
+			Unit:            meta.Unit,
+			DefaultOperator: meta.DefaultOperator,
+			Multi:           meta.Multi,
+			Searchable:      searchable,
+			Limit:           limit,
+			Selected:        selected[f.Key()],
 			Options: func(query string, limit int) (FilterOptions, error) {
 				return typedFilterOptions(ctx, f, opts, searchable, query, limit)
 			},
@@ -2006,8 +2042,10 @@ func filterOptionsWithQuery[T any](ctx context.Context, filter Filter[T], opts T
 }
 
 type entityLookupMetadata struct {
-	Multi bool
-	Type  string
+	Multi           bool
+	Type            string
+	Unit            string
+	DefaultOperator string
 }
 
 func buildLookupMetadata[T any]() map[string]entityLookupMetadata {
