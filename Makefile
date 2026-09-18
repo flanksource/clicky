@@ -44,6 +44,14 @@ pkgsite: $(PKGSITE) ## Download pkgsite locally if necessary.
 $(PKGSITE): $(LOCALBIN)
 	test -s $(PKGSITE) || GOBIN=$(LOCALBIN) go install golang.org/x/pkgsite/cmd/pkgsite@$(PKGSITE_VERSION)
 
+# Astro/Starlight guide site under docs/site (entities, filters, lookups, actions).
+.PHONY: docs-site docs-site-build
+docs-site:
+	cd docs/site && pnpm install --frozen-lockfile && pnpm dev
+
+docs-site-build:
+	cd docs/site && pnpm install --frozen-lockfile && pnpm build
+
 # Build the task-ui frontend bundle (Preact + Vite → single IIFE)
 task-ui:
 	cd task/ui && npm ci && npm run build

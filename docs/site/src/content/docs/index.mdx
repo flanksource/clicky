@@ -1,0 +1,45 @@
+---
+title: clicky
+description: One Go registration becomes a CLI, a REST/OpenAPI API, a web explorer and a set of MCP tools.
+template: splash
+hero:
+  tagline: Declare a resource once in Go. clicky generates the CLI subcommands, the HTTP routes, the OpenAPI spec, the filter bar and the AI tools from that one declaration.
+  actions:
+    - text: Getting started
+      link: getting-started/
+      icon: right-arrow
+    - text: Entity model
+      link: entities/overview/
+      variant: minimal
+---
+
+import { Card, CardGrid } from '@astrojs/starlight/components';
+
+<CardGrid>
+  <Card title="Pretty printing" icon="document">
+    Render structs, slices, text, tables and trees to the terminal, Markdown, HTML, JSON and more from one value. [Read more](/pretty/overview/)
+  </Card>
+  <Card title="Entities" icon="puzzle">
+    A typed resource (`T`, `ListOpts`, `R`) with list, get, create, update and delete handlers. It is registered once with `clicky.NewEntity(...).Register()`. [Read more](/entities/overview/)
+  </Card>
+  <Card title="Filters & lookups" icon="magnifier">
+    Filters turn raw flag values into what your backend expects. They also label the current selection and feed dropdowns, type-ahead search and shell completion. [Read more](/filters/overview/)
+  </Card>
+  <Card title="Actions & bulk actions" icon="rocket">
+    Verbs on one row (`restart <id>`), on the collection, or on many rows, chosen by ID or by filter. [Read more](/entities/actions/)
+  </Card>
+  <Card title="Request context" icon="setting">
+    Every handler has a `...WithContext` form. It receives `cmd.Context()` on the CLI and `r.Context()` over HTTP, so it can use per-request state. [Read more](/runtime/context/)
+  </Card>
+</CardGrid>
+
+## What gets generated
+
+| From one `NewEntity` registration | You get |
+| --- | --- |
+| `List` + `ListOpts` flags | `app widgets [--flags]`, `GET /api/v1/widgets`, a filterable table in clicky-ui |
+| `Get` | `app widgets get <id>`, `GET /api/v1/widgets/{id}` |
+| `Create` / `Update` / `Delete` | `create key=value…`, `update <id> key=value…`, `delete <id>` plus the matching `POST`/`PUT`/`DELETE` routes |
+| `Filters` | typed flags, shell completion, a `?__lookup=filters` endpoint that drives the UI filter bar |
+| `WithAction` / `WithBulkAction` | `app widgets restart <id>`, `POST /api/v1/widgets/{id}/restart`, selection-toolbar buttons |
+| Tool hints | MCP tool annotations, approval defaults and grouping for AI clients |

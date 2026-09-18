@@ -94,6 +94,9 @@ clicky
 !examples/enitity/webapp/dist/
 !examples/enitity/webapp/dist/index.html
 !.golangci.yaml
+!docs/site/package.json
+!docs/site/pnpm-lock.yaml
+!docs/site/tsconfig.json
 .playwright-mcp/
 *-demo
 formatters/.playwright-mcp/
