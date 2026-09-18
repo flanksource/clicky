@@ -1,0 +1,14 @@
+/*
+ * Widen the reading column so a 1920px viewport is used end to end:
+ * 18.75rem sidebar + 78rem content + 18.75rem table of contents + padding ≈ 120rem.
+ * Narrower viewports are unaffected — --sl-content-width is a max-width.
+ */
+:root {
+  --sl-content-width: 78rem;
+}
+
+/* Wide tables should scroll inside the column rather than overflow it. */
+.sl-markdown-content table {
+  display: block;
+  overflow-x: auto;
+}
