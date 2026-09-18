@@ -111,11 +111,13 @@ func (b *DynamicEntityBuilder) buildFilters(ps *parsedSchema) ([]DynamicFilter, 
 			label = nf.label()
 		}
 		filters = append(filters, DynamicFilter{
-			Key:        key,
-			Label:      label,
-			Type:       nf.Type,
-			Multi:      nf.Multi || multi,
-			Searchable: true,
+			Key:             key,
+			Label:           label,
+			Type:            nf.Type,
+			Unit:            nf.Unit,
+			DefaultOperator: nf.DefaultOperator,
+			Multi:           nf.Multi || multi,
+			Searchable:      true,
 			Options: func(ctx context.Context, flags map[string]string, query string, limit int) (map[string]api.Textable, int, error) {
 				return source.Options(FilterContext{Context: ctx, Key: key, Params: flags}, query, limit)
 			},

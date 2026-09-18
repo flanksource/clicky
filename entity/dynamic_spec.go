@@ -2,6 +2,7 @@ package entity
 
 import (
 	"context"
+	"fmt"
 	"reflect"
 
 	"github.com/flanksource/clicky/api"
@@ -12,11 +13,13 @@ import (
 // the entity package from a reusable named filter — so the type-agnostic filter
 // logic stays out of this package while reusing the shared lookup builder.
 type DynamicFilter struct {
-	Key        string
-	Label      string
-	Type       string
-	Multi      bool
-	Searchable bool
+	Key             string
+	Label           string
+	Type            string
+	Unit            string
+	DefaultOperator string
+	Multi           bool
+	Searchable      bool
 	// TimeEnabled offers a clock on a range control whose operands would
 	// otherwise be read as whole days. Nil leaves the choice to the control type,
 	// which is the right answer wherever the type already says which it is.
@@ -154,6 +157,9 @@ func resolveDynamicLookup(ctx context.Context, filters []DynamicFilter, flagMap 
 
 	bound := make([]boundFilter, 0, len(filters))
 	for _, df := range filters {
+		if err := validateDefaultOperator(df.Type, df.DefaultOperator); err != nil {
+			return entityLookupResponse{}, fmt.Errorf("filter %q: %w", df.Key, err)
+		}
 		df := df
 		var selected map[string]api.Textable
 		if df.Selected != nil {
@@ -164,14 +170,16 @@ func resolveDynamicLookup(ctx context.Context, filters []DynamicFilter, flagMap 
 			}
 		}
 		bound = append(bound, boundFilter{
-			Key:         df.Key,
-			Label:       df.Label,
-			Type:        df.Type,
-			Multi:       df.Multi,
-			Searchable:  df.Searchable,
-			TimeEnabled: df.TimeEnabled,
-			Limit:       df.Limit,
-			Selected:    selected,
+			Key:             df.Key,
+			Label:           df.Label,
+			Type:            df.Type,
+			Unit:            df.Unit,
+			DefaultOperator: df.DefaultOperator,
+			Multi:           df.Multi,
+			Searchable:      df.Searchable,
+			TimeEnabled:     df.TimeEnabled,
+			Limit:           df.Limit,
+			Selected:        selected,
 			Options: func(query string, limit int) (FilterOptions, error) {
 				if df.CountedOptions != nil {
 					return df.CountedOptions(ctx, flagMap, query, limit)

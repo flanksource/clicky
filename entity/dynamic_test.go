@@ -77,6 +77,7 @@ var _ = Describe("Dynamic entity registration", func() {
 		RegisterFilter(NamedFilter{
 			Name:  "dyn-status",
 			Label: "Status",
+			Unit:  "state",
 			Source: StaticOptions(map[string]api.Textable{
 				"open":   api.Text{Content: "Open"},
 				"closed": api.Text{Content: "Closed"},
@@ -121,6 +122,7 @@ var _ = Describe("Dynamic entity registration", func() {
 		Expect(string(lookupJSON)).To(ContainSubstring("Open"))
 		Expect(string(lookupJSON)).To(ContainSubstring("Closed"))
 		Expect(string(lookupJSON)).To(ContainSubstring(`"filter.status"`))
+		Expect(string(lookupJSON)).To(ContainSubstring(`"unit":"state"`))
 	})
 
 	It("propagates named-filter lookup failures", func() {

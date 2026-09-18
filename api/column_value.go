@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 )
 
 const (
@@ -47,6 +48,32 @@ func ColumnTextable(column ColumnDef, value any) Textable {
 		return formatted
 	}
 	return convertToTextable(value)
+}
+
+// columnInstant is the RFC3339 instant a time cell holds. A time's display text
+// drops its zone, so a client parsing that text would place a UTC time in its
+// own zone; the instant is what it parses instead. A string counts only on a
+// date column and only when it carries its zone: a zone-less one is not guessed.
+func columnInstant(column ColumnDef, value any) (string, bool) {
+	switch typed := value.(type) {
+	case time.Time:
+		return typed.Format(time.RFC3339Nano), !typed.IsZero()
+	case *time.Time:
+		if typed == nil {
+			return "", false
+		}
+		return columnInstant(column, *typed)
+	case string:
+		if column.Format != FormatDate {
+			return "", false
+		}
+		parsed, err := time.Parse(time.RFC3339Nano, typed)
+		if err != nil {
+			return "", false
+		}
+		return parsed.Format(time.RFC3339Nano), true
+	}
+	return "", false
 }
 
 // ColumnString returns the deterministic presentation value used by text

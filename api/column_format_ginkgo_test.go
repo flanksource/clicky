@@ -25,11 +25,23 @@ var _ = Describe("Column formatting", func() {
 	)
 
 	It("publishes the canonical profile format and unit values", func() {
-		Expect(ColumnFormatValues()).To(Equal([]string{"date", "float", "duration", "bytes", "currency"}))
+		Expect(ColumnFormatValues()).To(Equal([]string{"date", "float", "integer", "duration", "bytes", "currency"}))
 		Expect(ColumnUnitValues()).To(Equal([]string{
 			"none", "short", "percent", "percentunit", "bytes", "decbytes", "Bps", "binBps", "ms", "s",
 		}))
 	})
+
+	DescribeTable("formats an integer column without decimals, whatever numeric type decoded it",
+		func(value any, expected string) {
+			column := Column("sessionId").Type("number").Format(FormatInteger).Build()
+			Expect(ColumnTextable(column, value).String()).To(Equal(expected))
+		},
+		Entry("an int from a typed row", 73, "73"),
+		Entry("an int64 read from a sqlite INTEGER", int64(73), "73"),
+		Entry("a float64 decoded from JSON or a sqlite NUMERIC", float64(73), "73"),
+		Entry("a large count keeps every digit", float64(1234567), "1234567"),
+		Entry("a non-integral value still shows its fraction", 2.5, "2.5"),
+	)
 
 	It("applies Unit after Format", func() {
 		column := Column("ratio").Type("number").Format(FormatCurrency).Unit(ColumnUnitPercentUnit).Build()

@@ -13,6 +13,9 @@ const (
 	ControlStop    ControlAction = "stop"
 	ControlRestart ControlAction = "restart"
 	ControlDrain   ControlAction = "drain"
+	// ControlRetry re-runs the failed work of a finished run. The owner may
+	// start that work as a new run rather than reviving the finished one.
+	ControlRetry ControlAction = "retry"
 )
 
 // TaskController performs the currently-supported lifecycle actions for a run
