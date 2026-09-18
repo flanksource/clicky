@@ -5,6 +5,27 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.21.67](https://github.com/flanksource/clicky/compare/v1.21.66...v1.21.67) (2026-09-18)
+
+
+### ✅ Tests
+
+* add formatters and task tests for zero values and group reopening ([bb6e896](https://github.com/flanksource/clicky/commit/bb6e8967646dc1c70bc17c04bccb660ba39c905d))
+
+
+### ✨ Features
+
+* Add working directory field to exec task details ([b997495](https://github.com/flanksource/clicky/commit/b997495bfe026273b5e470d205e4cdca7856cd30))
+* **api:** add FormatInteger column format for whole number rendering ([a2c7267](https://github.com/flanksource/clicky/commit/a2c7267bd2d77db7e44706a64ad64f7dda9936ce))
+* **docs:** add Astro Starlight documentation site ([ceb4d0c](https://github.com/flanksource/clicky/commit/ceb4d0c8455c095ed6c881764322535a4be48392))
+* **entity:** Add unit and default operator metadata to filters ([aa6de16](https://github.com/flanksource/clicky/commit/aa6de162e6a3ce98aa0c2cb45880a49202e9459b))
+* **flags:** add file reference handler for @file/[@url](https://github.com/url) syntax ([81d159b](https://github.com/flanksource/clicky/commit/81d159ba25ca5031d21c4c18df2bb6e42812889c))
+
+
+### 👷 CI/CD
+
+* **docs:** build and publish docs site to GitHub Pages ([15b0752](https://github.com/flanksource/clicky/commit/15b07527e450ff5b4764eb887de39cf7689f6e7a))
+
 ## [1.21.66](https://github.com/flanksource/clicky/compare/v1.21.65...v1.21.66) (2026-09-17)
 
 
