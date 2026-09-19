@@ -3,6 +3,7 @@ package api
 import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	. "github.com/onsi/gomega/gstruct"
 )
 
 // mockEmployee is a test type implementing TableProvider
@@ -104,6 +105,20 @@ func (r presentedStructuredValueRow) Row() map[string]any {
 	}
 }
 
+type defaultHiddenRow struct{ Session, Host, ID string }
+
+func (defaultHiddenRow) Columns() []ColumnDef {
+	return []ColumnDef{
+		Column("sessionId").Build(),
+		Column("clientHost").Label("Host").DefaultHidden().Build(),
+		Column("_id").Hidden().Build(),
+	}
+}
+
+func (r defaultHiddenRow) Row() map[string]any {
+	return map[string]any{"sessionId": r.Session, "clientHost": r.Host, "_id": r.ID}
+}
+
 type structuredCellRow struct{ SQL string }
 
 func (structuredCellRow) Columns() []ColumnDef {
@@ -187,6 +202,29 @@ var _ = Describe("Column", func() {
 	})
 
 	Describe("NewTableFrom", func() {
+		DescribeTable("keeps a DefaultHidden column in the schema, flagged, while a Hidden one is dropped",
+			func(rows []defaultHiddenRow) {
+				table := NewTableFrom(rows)
+
+				Expect(table.FieldNames).To(Equal([]string{"sessionId", "clientHost"}))
+				Expect(table.Columns).To(HaveLen(2))
+				Expect(table.Columns[0].DefaultHidden).To(BeFalse())
+				Expect(table.Columns[1]).To(MatchFields(IgnoreExtras, Fields{
+					"Name":          Equal("clientHost"),
+					"Label":         Equal("Host"),
+					"DefaultHidden": BeTrue(),
+				}))
+			},
+			Entry("with rows", []defaultHiddenRow{{Session: "53", Host: "azure-app-1", ID: "e1"}}),
+			Entry("with zero rows", []defaultHiddenRow{}),
+		)
+
+		It("carries a DefaultHidden column's cell like any visible column", func() {
+			table := NewTableFrom([]defaultHiddenRow{{Session: "53", Host: "azure-app-1", ID: "e1"}})
+
+			Expect(table.Rows[0]["clientHost"].Textable.String()).To(Equal("azure-app-1"))
+		})
+
 		It("preserves a structured code cell as the table cell root", func() {
 			const statement = "SELECT * FROM Activity WHERE ActivityStatusCode = '01'"
 			table := NewTableFrom([]structuredCellRow{{SQL: statement}})
