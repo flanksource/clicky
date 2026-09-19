@@ -67,18 +67,19 @@ type ClickyField struct {
 }
 
 type ClickyColumn struct {
-	Name      string      `json:"name"`
-	Label     string      `json:"label,omitempty"`
-	Kind      string      `json:"kind,omitempty"`
-	Type      string      `json:"type,omitempty"`
-	Format    string      `json:"format,omitempty"`
-	Unit      string      `json:"unit,omitempty"`
-	FilterKey string      `json:"filterKey,omitempty"`
-	SortKey   string      `json:"sortKey,omitempty"`
-	MinWidth  int         `json:"minWidth,omitempty"`
-	MaxWidth  int         `json:"maxWidth,omitempty"`
-	Header    *ClickyNode `json:"header,omitempty"`
-	Align     string      `json:"align,omitempty"`
+	Name          string      `json:"name"`
+	Label         string      `json:"label,omitempty"`
+	Kind          string      `json:"kind,omitempty"`
+	Type          string      `json:"type,omitempty"`
+	Format        string      `json:"format,omitempty"`
+	Unit          string      `json:"unit,omitempty"`
+	FilterKey     string      `json:"filterKey,omitempty"`
+	SortKey       string      `json:"sortKey,omitempty"`
+	MinWidth      int         `json:"minWidth,omitempty"`
+	MaxWidth      int         `json:"maxWidth,omitempty"`
+	Header        *ClickyNode `json:"header,omitempty"`
+	Align         string      `json:"align,omitempty"`
+	DefaultHidden bool        `json:"defaultHidden,omitempty"`
 }
 
 type ClickyRow struct {
@@ -524,6 +525,7 @@ func convertTable(table *api.TextTable) ClickyNode {
 				column.SortKey = table.Columns[i].SortKey
 				column.MinWidth = table.Columns[i].MinWidth
 				column.MaxWidth = table.Columns[i].MaxWidth
+				column.DefaultHidden = table.Columns[i].DefaultHidden
 				column.Align = alignFromStyle(table.Columns[i].Style)
 			}
 			if column.Label == "" {
@@ -544,17 +546,18 @@ func convertTable(table *api.TextTable) ClickyNode {
 	} else {
 		for _, columnDef := range table.Columns {
 			column := ClickyColumn{
-				Name:      columnDef.Name,
-				Label:     columnDef.Label,
-				Kind:      columnDef.Kind,
-				Type:      columnDef.Type,
-				Format:    columnDef.Format,
-				Unit:      columnDef.Unit,
-				FilterKey: columnDef.FilterKey,
-				SortKey:   columnDef.SortKey,
-				MinWidth:  columnDef.MinWidth,
-				MaxWidth:  columnDef.MaxWidth,
-				Align:     alignFromStyle(columnDef.Style),
+				Name:          columnDef.Name,
+				Label:         columnDef.Label,
+				Kind:          columnDef.Kind,
+				Type:          columnDef.Type,
+				Format:        columnDef.Format,
+				Unit:          columnDef.Unit,
+				FilterKey:     columnDef.FilterKey,
+				SortKey:       columnDef.SortKey,
+				MinWidth:      columnDef.MinWidth,
+				MaxWidth:      columnDef.MaxWidth,
+				Align:         alignFromStyle(columnDef.Style),
+				DefaultHidden: columnDef.DefaultHidden,
 			}
 			if column.Label == "" {
 				column.Label = columnDef.Name
