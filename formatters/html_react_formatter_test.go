@@ -261,6 +261,66 @@ func TestHTMLReactHiddenCellRetainsRawScalar(t *testing.T) {
 	}
 }
 
+type hostRow struct{ Session, Host string }
+
+func (hostRow) Columns() []api.ColumnDef {
+	return []api.ColumnDef{
+		api.Column("sessionId").Build(),
+		api.Column("clientHost").Label("Host").DefaultHidden().Build(),
+	}
+}
+
+func (r hostRow) Row() map[string]any {
+	return map[string]any{"sessionId": r.Session, "clientHost": r.Host}
+}
+
+// defaultHiddenByColumn decodes a clicky-json table's columns into
+// name → the presence and value of their "defaultHidden" key.
+func defaultHiddenByColumn(t *testing.T, document string) map[string]any {
+	t.Helper()
+	var doc struct {
+		Node struct {
+			Columns []map[string]any `json:"columns"`
+		} `json:"node"`
+	}
+	if err := json.Unmarshal([]byte(document), &doc); err != nil {
+		t.Fatalf("decode clicky-json: %v\n%s", err, document)
+	}
+	got := map[string]any{}
+	for _, column := range doc.Node.Columns {
+		value, present := column["defaultHidden"]
+		if !present {
+			value = "absent"
+		}
+		got[column["name"].(string)] = value
+	}
+	return got
+}
+
+func TestClickyJSONDefaultHiddenColumn(t *testing.T) {
+	want := map[string]any{"sessionId": "absent", "clientHost": true}
+	withRows := api.NewTableFrom([]hostRow{{Session: "53", Host: "azure-app-1"}})
+	headerless := api.NewTableFrom([]hostRow{{Session: "53", Host: "azure-app-1"}})
+	headerless.Headers = nil
+
+	for name, table := range map[string]api.TextTable{
+		"with rows":           withRows,
+		"with zero rows":      api.NewTableFrom([]hostRow{}),
+		"columns-only branch": headerless,
+	} {
+		t.Run(name, func(t *testing.T) {
+			out, err := (&ClickyJSONFormatter{}).Format(table, FormatOptions{})
+			if err != nil {
+				t.Fatal(err)
+			}
+			got := defaultHiddenByColumn(t, out)
+			if len(got) != len(want) || got["sessionId"] != want["sessionId"] || got["clientHost"] != want["clientHost"] {
+				t.Fatalf("defaultHidden by column = %v, want %v\n%s", got, want, out)
+			}
+		})
+	}
+}
+
 type presentedReadsRow struct{ PhysicalReads int64 }
 
 func (presentedReadsRow) Columns() []api.ColumnDef {

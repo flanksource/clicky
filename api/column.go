@@ -23,6 +23,7 @@ type ColumnDef struct {
 	MinWidthPixels int
 	MaxWidthPixels int
 	Hidden         bool
+	DefaultHidden  bool
 }
 
 // DisplayLabel returns Label if set, otherwise prettifies Name.
@@ -127,9 +128,18 @@ func (b *ColumnBuilder) MaxWidthPixels(width int) *ColumnBuilder {
 	return b
 }
 
-// Hidden marks the column as hidden from display.
+// Hidden removes the column from the table schema: its values ride along only
+// as row metadata (row identity, raw filter values), so no column picker can
+// offer it. Hidden wins over DefaultHidden.
 func (b *ColumnBuilder) Hidden() *ColumnBuilder {
 	b.col.Hidden = true
+	return b
+}
+
+// DefaultHidden keeps the column in the table schema but starts it hidden, so a
+// UI column picker can offer it. Unlike Hidden, the column is still listed.
+func (b *ColumnBuilder) DefaultHidden() *ColumnBuilder {
+	b.col.DefaultHidden = true
 	return b
 }
 
@@ -195,6 +205,7 @@ func NewEmptyTable(columns []ColumnDef) TextTable {
 			MinWidth:      col.MinWidthPixels,
 			MaxWidth:      col.MaxWidthPixels,
 			FormatOptions: col.FormatOptions,
+			DefaultHidden: col.DefaultHidden,
 		})
 	}
 	return table
