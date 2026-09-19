@@ -59,6 +59,9 @@ func AssignFieldValue(structValue reflect.Value, fv *FlagValue, args []string, i
 	case reflect.Int:
 		fieldValue.SetInt(int64(*fv.IntPtr))
 
+	case reflect.Float64:
+		fieldValue.SetFloat(*fv.Float64Ptr)
+
 	case reflect.Bool:
 		fieldValue.SetBool(*fv.BoolPtr)
 

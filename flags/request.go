@@ -106,6 +106,18 @@ func assignFieldFromRequest(fieldValue reflect.Value, info FieldInfo, raw string
 		fieldValue.SetInt(int64(n))
 		return nil
 
+	case reflect.Float64:
+		if !hasRaw {
+			fieldValue.SetFloat(0)
+			return nil
+		}
+		n, err := strconv.ParseFloat(strings.TrimSpace(raw), 64)
+		if err != nil {
+			return fmt.Errorf("parsing float: %w", err)
+		}
+		fieldValue.SetFloat(n)
+		return nil
+
 	case reflect.Bool:
 		if !hasRaw {
 			fieldValue.SetBool(false)
