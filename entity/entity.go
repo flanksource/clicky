@@ -577,6 +577,11 @@ func BulkAction[R any](name string, fn func(ids []string, flags map[string]strin
 	return &BulkActionSpec[R]{name: name, run: fn}
 }
 
+// BulkActionWithContext creates an ID-based bulk operation with request-scoped context.
+func BulkActionWithContext[R any](name string, fn func(context.Context, []string, map[string]string) (R, error)) *BulkActionSpec[R] {
+	return &BulkActionSpec[R]{name: name, runCtx: fn}
+}
+
 // BulkFilterAction creates a typed custom operation that runs against a typed
 // filtered list selection instead of explicit IDs.
 func BulkFilterAction[ListOpts any, R any](name string, fn func(opts ListOpts, flags map[string]string) (R, error)) *BulkActionSpec[R] {
@@ -1656,11 +1661,18 @@ func generateBulkActionCommand(parent *cobra.Command, ba BulkActionInfo) {
 				flagMap[f.Name] = flagMapValue(f)
 			})
 			if len(args) == 0 && flagMap["filter"] == "" {
+				if ba.FilterFunc == nil && ba.ContextFilterFunc == nil {
+					return fmt.Errorf("bulk action %q requires one or more ids", ba.Name)
+				}
 				return fmt.Errorf("bulk action %q requires one or more ids or --filter", ba.Name)
 			}
 
 			// Use filter mode if --filter flag is set and FilterFunc exists
-			result, err := execute(ContextWithOperationSurface(c.Context(), "cli"), flagMap, args)
+			ctx := c.Context()
+			if ctx == nil {
+				ctx = context.Background()
+			}
+			result, err := execute(ContextWithOperationSurface(ctx, "cli"), flagMap, args)
 			if err != nil {
 				return err
 			}

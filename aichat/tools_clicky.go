@@ -102,6 +102,18 @@ func (p *CobraToolProvider) ToolSet(ctx context.Context) (capchat.ToolSet, error
 			continue
 		}
 		schema := jsonSchema(op.Schema)
+		if idOnlyBulkAction(op) {
+			properties := schema["properties"].(map[string]any)
+			delete(properties, op.Clicky.IDParam)
+			delete(properties, "args")
+			properties["ids"] = map[string]any{
+				"type": "array", "items": map[string]any{"type": "string"},
+				"minItems": 1, "description": "One or more entity IDs to act on",
+			}
+			schema["required"] = appendRequired(op.Schema.Required, "ids", op.Clicky.IDParam)
+		} else if op.Clicky != nil && op.Clicky.Scope == "entity" && op.Clicky.IDParam != "" {
+			schema["required"] = appendRequired(op.Schema.Required, op.Clicky.IDParam, "")
+		}
 		definition := api.ToolDefinition{
 			Name: name, Description: op.Description, InputSchema: schema,
 			Group: info.Group, Parent: info.Parent, Icon: info.Icon,
@@ -212,7 +224,24 @@ func (p *CobraToolProvider) handlerFor(op *rpc.RPCOperation, scope context.Conte
 	// ending without its deadline cutting the tool call short.
 	values := context.WithoutCancel(scope)
 	return func(ctx context.Context, input map[string]any) (any, error) {
-		request := toExecutionRequest(input, positional)
+		var request *rpc.ExecutionRequest
+		if idOnlyBulkAction(op) {
+			ids, err := requiredBulkIDs(op, input)
+			if err != nil {
+				return nil, err
+			}
+			request = toExecutionRequest(input, nil)
+			delete(request.Flags, "ids")
+			request.Args = ids
+		} else {
+			if op.Clicky != nil && op.Clicky.Scope == "entity" && op.Clicky.IDParam != "" {
+				id, ok := input[op.Clicky.IDParam].(string)
+				if !ok || strings.TrimSpace(id) == "" {
+					return nil, fmt.Errorf("operation %s requires %s", op.Name, op.Clicky.IDParam)
+				}
+			}
+			request = toExecutionRequest(input, positional)
+		}
 		request.Context = entity.ContextWithOperationSurface(scopedContext{Context: ctx, values: values}, "mcp")
 		data, response, err := p.executor.ExecuteCommand(op, request)
 		if err != nil {
@@ -223,6 +252,61 @@ func (p *CobraToolProvider) handlerFor(op *rpc.RPCOperation, scope context.Conte
 		}
 		return data, nil
 	}
+}
+
+func idOnlyBulkAction(op *rpc.RPCOperation) bool {
+	return op != nil && op.Clicky != nil && op.Clicky.Verb == "action" &&
+		op.Clicky.Scope == "collection" && op.Clicky.IDParam != "" && !op.Clicky.SupportsFilterMode
+}
+
+func appendRequired(current []string, name, removed string) []string {
+	required := make([]string, 0, len(current)+1)
+	for _, item := range current {
+		if item != removed && item != name {
+			required = append(required, item)
+		}
+	}
+	return append(required, name)
+}
+
+func requiredBulkIDs(op *rpc.RPCOperation, input map[string]any) ([]string, error) {
+	for key := range input {
+		if key == "ids" {
+			continue
+		}
+		if key == op.Clicky.IDParam || key == "args" {
+			return nil, fmt.Errorf("operation %s requires ids, not %s", op.Name, key)
+		}
+		if _, ok := op.Schema.Properties[key]; !ok {
+			return nil, fmt.Errorf("operation %s does not accept %s", op.Name, key)
+		}
+	}
+	var values []string
+	switch ids := input["ids"].(type) {
+	case []string:
+		values = ids
+	case []any:
+		for _, id := range ids {
+			value, ok := id.(string)
+			if !ok {
+				return nil, fmt.Errorf("operation %s requires string ids", op.Name)
+			}
+			values = append(values, value)
+		}
+	default:
+		return nil, fmt.Errorf("operation %s requires one or more ids", op.Name)
+	}
+	if len(values) == 0 {
+		return nil, fmt.Errorf("operation %s requires one or more ids", op.Name)
+	}
+	cleaned := make([]string, len(values))
+	for i, id := range values {
+		cleaned[i] = strings.TrimSpace(id)
+		if cleaned[i] == "" {
+			return nil, fmt.Errorf("operation %s has blank ids[%d]", op.Name, i)
+		}
+	}
+	return cleaned, nil
 }
 
 // maxFindingsBytes caps what a failure appends to its message. A validator's

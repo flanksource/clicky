@@ -147,6 +147,10 @@ func BulkAction[R any](name string, fn func(ids []string, flags map[string]strin
 	return entity.BulkAction(name, fn)
 }
 
+func BulkActionWithContext[R any](name string, fn func(context.Context, []string, map[string]string) (R, error)) *entity.BulkActionSpec[R] {
+	return entity.BulkActionWithContext(name, fn)
+}
+
 func BulkFilterAction[ListOpts any, R any](name string, fn func(opts ListOpts, flags map[string]string) (R, error)) *entity.BulkActionSpec[R] {
 	return entity.BulkFilterAction[ListOpts, R](name, fn)
 }
