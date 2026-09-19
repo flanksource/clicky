@@ -23,6 +23,7 @@ type FlagValue struct {
 	CLIFileRead    bool
 	StringPtr      *string
 	IntPtr         *int
+	Float64Ptr     *float64
 	BoolPtr        *bool
 	StringSlicePtr *[]string
 	IntSlicePtr    *[]int

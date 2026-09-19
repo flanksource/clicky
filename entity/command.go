@@ -345,6 +345,9 @@ func addNamedCommand[T any, R any](
 		// correct without the host knowing the seam exists. A dispatcher that
 		// already named the surface keeps it.
 		ctx := c.Context()
+		if ctx == nil {
+			ctx = context.Background()
+		}
 		if OperationSurfaceFromContext(ctx) == "" {
 			ctx = ContextWithOperationSurface(ctx, "cli")
 		}

@@ -52,6 +52,19 @@ func BindFlag(cmd *cobra.Command, info FieldInfo) *FlagValue {
 			}
 		}
 
+	case reflect.Float64:
+		var val float64
+		if info.DefaultValue != "" {
+			val, _ = strconv.ParseFloat(info.DefaultValue, 64)
+		}
+		fv.Float64Ptr = &val
+		if info.FlagName != "" {
+			if info.ShortFlag != "" {
+				cmd.Flags().Float64VarP(fv.Float64Ptr, info.FlagName, info.ShortFlag, val, info.Help)
+			} else {
+				cmd.Flags().Float64Var(fv.Float64Ptr, info.FlagName, val, info.Help)
+			}
+		}
 	case reflect.Bool:
 		var val bool
 		if info.DefaultValue != "" {
