@@ -19,6 +19,7 @@ const (
 	annotationClickyEntityTitle        = "clicky/entity-title"
 	annotationClickyOperationVerb      = "clicky/operation-verb"
 	annotationClickyOperationMethod    = "clicky/operation-method"
+	annotationClickyOperationPath      = "clicky/operation-path"
 	annotationClickyOperationScope     = "clicky/operation-scope"
 	annotationClickyOperationAction    = "clicky/operation-action-name"
 	annotationClickyOperationIDParam   = "clicky/operation-id-param"
@@ -37,6 +38,7 @@ const (
 	annotationClickyToolPermission     = "clicky/tool-default-permission"
 	annotationClickyToolStrict         = "clicky/tool-strict"
 	annotationClickyLocalOnly          = "clicky/local-only"
+	annotationClickyServedOnly         = "clicky/served-only"
 )
 
 // MarkLocalOnly keeps a command off the generated HTTP surface.
@@ -96,9 +98,18 @@ type CommandOpenAPIMeta struct {
 	// Path is the entity's hierarchy position within Parent, PathSeparator-joined.
 	Path string
 	// Title overrides the auto-generated surface title when non-empty.
-	Title              string
-	Verb               string
-	Method             string
+	Title  string
+	Verb   string
+	Method string
+	// RoutePath overrides the REST path the naming algorithm would derive for
+	// this operation. An absolute path is used verbatim; anything else is taken
+	// as relative to the configured prefix. Empty keeps the derived path.
+	//
+	// It exists so an operation can be published at a URL its callers already
+	// use — a route being converted from a hand-written handler, or one an
+	// earlier release established — rather than at the one its command tree
+	// happens to imply.
+	RoutePath          string
 	Scope              string
 	ActionName         string
 	IDParam            string
@@ -158,6 +169,7 @@ func GetCommandOpenAPIMeta(cmd *cobra.Command) *CommandOpenAPIMeta {
 		Title:              cmd.Annotations[annotationClickyEntityTitle],
 		Verb:               cmd.Annotations[annotationClickyOperationVerb],
 		Method:             cmd.Annotations[annotationClickyOperationMethod],
+		RoutePath:          cmd.Annotations[annotationClickyOperationPath],
 		Scope:              cmd.Annotations[annotationClickyOperationScope],
 		ActionName:         cmd.Annotations[annotationClickyOperationAction],
 		IDParam:            cmd.Annotations[annotationClickyOperationIDParam],
@@ -174,7 +186,9 @@ func GetCommandOpenAPIMeta(cmd *cobra.Command) *CommandOpenAPIMeta {
 		}
 	}
 
-	if meta.Entity == "" && meta.ToolHints.isZero() && meta.Schedule == nil {
+	// A declared route path is meaningful on its own: a command may name where
+	// it is served without belonging to an entity or carrying tool hints.
+	if meta.Entity == "" && meta.RoutePath == "" && meta.ToolHints.isZero() && meta.Schedule == nil {
 		return nil
 	}
 

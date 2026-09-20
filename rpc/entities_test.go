@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/flanksource/clicky"
+	"github.com/flanksource/clicky/route"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -43,7 +44,7 @@ func TestEntitiesHandler_ReturnsRegisteredEntities(t *testing.T) {
 		&OpenAPIConfig{Title: "t", Version: "v"},
 	)
 	mux := http.NewServeMux()
-	server.RegisterRoutes(mux)
+	server.RegisterRoutes(route.NewRouter(mux))
 
 	req := httptest.NewRequest(http.MethodGet, "/api/entities", nil)
 	rr := httptest.NewRecorder()
@@ -110,7 +111,7 @@ func TestEntitiesHandler_BulkActionCarriesHintsAndParamSchema(t *testing.T) {
 		&OpenAPIConfig{Title: "t", Version: "v"},
 	)
 	mux := http.NewServeMux()
-	server.RegisterRoutes(mux)
+	server.RegisterRoutes(route.NewRouter(mux))
 
 	rr := httptest.NewRecorder()
 	mux.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/api/entities", nil))
@@ -231,7 +232,7 @@ func TestEntityPagedList_ResponseEnvelopeAndHeaders(t *testing.T) {
 		&OpenAPIConfig{Title: "t", Version: "v"},
 	)
 	mux := http.NewServeMux()
-	server.RegisterExecutionRoutes(mux)
+	server.RegisterExecutionRoutes(route.NewRouter(mux))
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/"+name+"?limit=2&offset=4", nil)
 	req.Header.Set("Accept", "application/json")
@@ -289,7 +290,7 @@ func TestEntityPagedList_ClickyJSONUnwrapsToTable(t *testing.T) {
 		&OpenAPIConfig{Title: "t", Version: "v"},
 	)
 	mux := http.NewServeMux()
-	server.RegisterExecutionRoutes(mux)
+	server.RegisterExecutionRoutes(route.NewRouter(mux))
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/"+name+"?limit=2&offset=4", nil)
 	req.Header.Set("Accept", "application/json+clicky")
@@ -390,7 +391,7 @@ func TestEntitiesHandler_CORS(t *testing.T) {
 		&OpenAPIConfig{Title: "t", Version: "v"},
 	)
 	mux := http.NewServeMux()
-	server.RegisterRoutes(mux)
+	server.RegisterRoutes(route.NewRouter(mux))
 
 	req := httptest.NewRequest(http.MethodOptions, "/api/entities", nil)
 	rr := httptest.NewRecorder()
@@ -433,7 +434,7 @@ func TestEntitiesHandler_BulkActionPublishesItsRealRoute(t *testing.T) {
 		&OpenAPIConfig{Title: "t", Version: "v"},
 	)
 	mux := http.NewServeMux()
-	server.RegisterRoutes(mux)
+	server.RegisterRoutes(route.NewRouter(mux))
 
 	rr := httptest.NewRecorder()
 	mux.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/api/entities", nil))

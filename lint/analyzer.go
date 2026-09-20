@@ -66,6 +66,7 @@ func run(pass *analysis.Pass) (any, error) {
 		case *ast.FuncDecl:
 			checkFuncReturnType(pass, node)
 			checkRenderBuilderRenderCalls(pass, node)
+			checkServeMuxParameter(pass, node)
 		case *ast.CallExpr:
 			checkDirectStdout(pass, node)
 			checkHTTPHandlerRegistration(pass, node)
@@ -137,11 +138,11 @@ func checkCompositeLiteral(pass *analysis.Pass, lit *ast.CompositeLit) {
 
 	if typeName == "Text" {
 		if len(lit.Elts) > 0 {
-			report(pass, SeverityWarning, lit.Pos(),
+			report(pass, RuleTextStructLiteral, lit.Pos(),
 				"avoid direct api.Text struct literal; use clicky.Text(...) or api.Text{}.Append(...)")
 		}
 	} else if helper, ok := helperBackedTypes[typeName]; ok {
-		report(pass, SeverityWarning, lit.Pos(),
+		report(pass, RuleHelperBackedLiteral, lit.Pos(),
 			"avoid direct api.%s struct literal; use %s", typeName, helper)
 	}
 
@@ -173,12 +174,12 @@ func checkContentField(pass *analysis.Pass, kv *ast.KeyValueExpr) {
 	switch v := kv.Value.(type) {
 	case *ast.BinaryExpr:
 		if v.Op == token.ADD {
-			report(pass, SeverityWarning, kv.Value.Pos(),
+			report(pass, RuleContentConcat, kv.Value.Pos(),
 				"avoid string concatenation in Content field; use .Append()/.Appendf()")
 		}
 	case *ast.CallExpr:
 		if isFmtSprintf(v) {
-			report(pass, SeverityWarning, kv.Value.Pos(),
+			report(pass, RuleContentSprintf, kv.Value.Pos(),
 				"avoid fmt.Sprintf in Content field; use .Appendf()")
 		}
 	}
@@ -209,7 +210,7 @@ func checkChildrenField(pass *analysis.Pass, kv *ast.KeyValueExpr) {
 			continue
 		}
 		if isClickyTextType(pass, innerLit) {
-			report(pass, SeverityWarning, kv.Pos(),
+			report(pass, RuleChildrenLiteral, kv.Pos(),
 				"avoid Children slice literal with api.Text elements; use .Add()/.Append() chaining")
 			return
 		}
@@ -230,7 +231,7 @@ func checkFuncReturnType(pass *analysis.Pass, fn *ast.FuncDecl) {
 	for _, result := range fn.Type.Results.List {
 		t := pass.TypesInfo.TypeOf(result.Type)
 		if t != nil && isClickyTextTypesType(t) {
-			report(pass, SeverityWarning, fn.Name.Pos(),
+			report(pass, RuleTextReturnType, fn.Name.Pos(),
 				"%s returns api.Text; return api.Textable interface or rename to Pretty/PrettyFull/PrettyRow",
 				name)
 			return

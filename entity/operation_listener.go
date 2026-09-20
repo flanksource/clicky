@@ -21,6 +21,12 @@ type OperationEvent struct {
 	TargetID   string
 	Parameters map[string]string
 	Args       []string
+	// ReadOnly is what the registration declared about the operation's effect.
+	// It is nil when nothing declared it, which is every generated operation: a
+	// listener classifies those by Verb. Routes registered through rpc.Router
+	// always set it, so a listener never has to guess whether an event-stream
+	// subscription or a probe changed anything.
+	ReadOnly *bool
 	// Result is borrowed from the operation, not cloned or made immutable.
 	// Listeners must not mutate it or any data reachable through it: those
 	// changes would be visible to the caller and subsequent listeners.
@@ -94,6 +100,16 @@ func notifyOperation(ctx context.Context, build func() OperationEvent, run func(
 		(*listener)(ctx, copy)
 	}
 	return result, err
+}
+
+// ObserveOperation runs one operation and delivers a single event to every
+// listener subscribed when it started, returning the operation's own result and
+// error unchanged. It is the seam for surfaces clicky does not generate: a host
+// application serving its own HTTP routes calls it so those invocations join the
+// same trail as generated ones. build is consulted only once a subscriber
+// exists, so an unobserved operation allocates nothing.
+func ObserveOperation(ctx context.Context, build func() OperationEvent, run func() (any, error)) (any, error) {
+	return notifyOperation(ctx, build, run)
 }
 
 // CommandIdentity names a command the way the operation seam names it.

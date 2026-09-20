@@ -12,6 +12,7 @@ import (
 	"github.com/flanksource/clicky"
 	"github.com/flanksource/clicky/api"
 	"github.com/flanksource/clicky/entity"
+	"github.com/flanksource/clicky/route"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -116,7 +117,7 @@ func TestSwaggerServer_FilterLookupRoutes(t *testing.T) {
 	}, root, &OpenAPIConfig{})
 
 	mux := http.NewServeMux()
-	server.RegisterRoutes(mux)
+	server.RegisterRoutes(route.NewRouter(mux))
 
 	t.Run("GET list lookup returns clicky metadata", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodGet, "/api/v1/rpc-filter-entity?owner=platform&status=healthy&__lookup=filters", nil)

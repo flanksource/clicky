@@ -40,7 +40,7 @@ var _ = Describe("clickylint", func() {
 		Expect(results).NotTo(BeEmpty())
 	})
 
-	It("honors the //clicky:allow-stdout file-level opt-out", func() {
+	It("honors the //clicky:allow file-level opt-out", func() {
 		testdata := analysistest.TestData()
 		results := analysistest.Run(GinkgoT(), testdata, lint.Analyzer, "directstdout/allowed")
 		Expect(results).NotTo(BeEmpty())
@@ -61,6 +61,18 @@ var _ = Describe("clickylint", func() {
 	It("allows registered entities with TableProvider and grouping commands", func() {
 		testdata := analysistest.TestData()
 		results := analysistest.Run(GinkgoT(), testdata, lint.Analyzer, "entityreg/good")
+		Expect(results).NotTo(BeEmpty())
+	})
+
+	It("flags functions that take the mux instead of the router", func() {
+		testdata := analysistest.TestData()
+		results := analysistest.Run(GinkgoT(), testdata, lint.Analyzer, "httpmux/bad")
+		Expect(results).NotTo(BeEmpty())
+	})
+
+	It("allows router registration and a line-scoped //clicky:allow exception", func() {
+		testdata := analysistest.TestData()
+		results := analysistest.Run(GinkgoT(), testdata, lint.Analyzer, "httpmux/good")
 		Expect(results).NotTo(BeEmpty())
 	})
 })

@@ -6,16 +6,26 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+
+	"github.com/flanksource/clicky/route"
 )
 
-// RegisterRoutes mounts the generated-operation schedule API.
-func (s *OperationScheduleService) RegisterRoutes(mux *http.ServeMux) {
-	mux.HandleFunc("GET /api/v1/schedules", s.handleListSchedules)
-	mux.HandleFunc("POST /api/v1/schedules", s.handleCreateSchedule)
-	mux.HandleFunc("PUT /api/v1/schedules/{id}", s.handleUpdateSchedule)
-	mux.HandleFunc("DELETE /api/v1/schedules/{id}", s.handleDeleteSchedule)
-	mux.HandleFunc("POST /api/v1/schedules/{id}/run", s.handleRunSchedule)
-	mux.HandleFunc("POST /api/v1/schedules/run-now", s.handleRunOperationNow)
+// RegisterRoutes mounts the generated-operation schedule API. The handlers are
+// written by hand rather than generated, so each declares what it does: a
+// schedule that fires an operation is itself a change worth recording.
+func (s *OperationScheduleService) RegisterRoutes(router *route.Router) {
+	router.RawFunc("GET /api/v1/schedules", s.handleListSchedules,
+		route.Meta{Entity: "schedule", Verb: "list", ReadOnly: true})
+	router.RawFunc("POST /api/v1/schedules", s.handleCreateSchedule,
+		route.Meta{Entity: "schedule", Verb: "create"})
+	router.RawFunc("PUT /api/v1/schedules/{id}", s.handleUpdateSchedule,
+		route.Meta{Entity: "schedule", Verb: "update", IDParam: "id"})
+	router.RawFunc("DELETE /api/v1/schedules/{id}", s.handleDeleteSchedule,
+		route.Meta{Entity: "schedule", Verb: "delete", IDParam: "id"})
+	router.RawFunc("POST /api/v1/schedules/{id}/run", s.handleRunSchedule,
+		route.Meta{Entity: "schedule", Verb: "run", IDParam: "id"})
+	router.RawFunc("POST /api/v1/schedules/run-now", s.handleRunOperationNow,
+		route.Meta{Entity: "schedule", Verb: "run-now"})
 }
 
 func (s *OperationScheduleService) handleListSchedules(w http.ResponseWriter, r *http.Request) {

@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"time"
+
+	"github.com/flanksource/clicky/route"
 )
 
 // defaultWindow is the look-back applied when a request omits `since`.
@@ -15,7 +17,7 @@ type queryResponse struct {
 	Points []Point `json:"points"`
 }
 
-// RegisterRoutes mounts the metrics read endpoint on mux under prefix:
+// RegisterRoutes mounts the metrics read endpoint on router under prefix:
 //
 //	GET {prefix}/metrics/{id}?since=&until=
 //
@@ -23,19 +25,20 @@ type queryResponse struct {
 // supply only a Timeseries. prefix is the leading path segment shared with the
 // rest of the API (e.g. "/api/v1"); it is used verbatim, so pass it without a
 // trailing slash.
-func RegisterRoutes(mux *http.ServeMux, ts Timeseries, prefix string) {
-	mux.Handle("GET "+prefix+"/metrics/{id}", Handler(ts, prefix))
+func RegisterRoutes(router *route.Router, ts Timeseries, prefix string) {
+	router.RawFunc("GET "+prefix+"/metrics/{id}", func(w http.ResponseWriter, r *http.Request) {
+		serveQuery(w, r, ts)
+	}, route.Meta{Entity: "metrics", Verb: "query", ReadOnly: true, IDParam: "id"})
 }
 
-// Handler returns the metrics endpoint as a standalone http.Handler for
-// callers that compose their own mux. It expects to be mounted such that
-// request paths look like {prefix}/metrics/{id}.
+// Handler returns the metrics endpoint as a standalone http.Handler for callers
+// that compose their own mux. It routes through the same declaration as
+// RegisterRoutes, so a request is observed identically either way. It expects to
+// be mounted such that request paths look like {prefix}/metrics/{id}.
 func Handler(ts Timeseries, prefix string) http.Handler {
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET "+prefix+"/metrics/{id}", func(w http.ResponseWriter, r *http.Request) {
-		serveQuery(w, r, ts)
-	})
-	return mux
+	router := route.NewRouter(nil)
+	RegisterRoutes(router, ts, prefix)
+	return router
 }
 
 func serveQuery(w http.ResponseWriter, r *http.Request, ts Timeseries) {

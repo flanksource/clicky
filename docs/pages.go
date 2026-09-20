@@ -142,8 +142,10 @@ const integrationSnippet = `serveConfig := &rpc.ServeConfig{
 server := rpc.NewSwaggerServer(serveConfig, rootCmd, openAPIConfig)
 
 mux := http.NewServeMux()
-server.RegisterRoutes(mux)        // /api/openapi.json + /api/v1/...
-mux.Handle("/", uiHandler)        // embedded clicky-ui explorer
+router := route.NewRouter(mux)
+server.RegisterRoutes(router)     // /api/openapi.json + /api/v1/...
+router.Raw("/", uiHandler,        // embedded clicky-ui explorer
+	route.Meta{Entity: "webapp", Verb: "get", ReadOnly: true})
 http.ListenAndServe(addr, mux)`
 
 func firstLine(s string) string {

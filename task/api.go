@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/flanksource/clicky/metrics"
+	"github.com/flanksource/clicky/route"
 )
 
 // JSONHandler returns an http.Handler that serves the full task state as JSON.
@@ -214,23 +215,32 @@ func TaskStdinHandler() http.Handler {
 //
 // The {id} route reuses Go 1.22 net/http path-value routing; the stream route is
 // registered before the {id} route so "stream" is not treated as an id.
-func RegisterHandlers(mux *http.ServeMux, prefix string) {
-	RegisterHandlersWithSource(mux, prefix, nil)
+func RegisterHandlers(router *route.Router, prefix string) {
+	RegisterHandlersWithSource(router, prefix, nil)
 }
 
 // RegisterHandlersWithSource wires the task API and merges externally-owned runs.
-func RegisterHandlersWithSource(mux *http.ServeMux, prefix string, source RunSource) {
+// Watching a run changes nothing; driving its lifecycle does, and each route
+// says which it is rather than leaving a reader to infer it from the method.
+func RegisterHandlersWithSource(router *route.Router, prefix string, source RunSource) {
 	prefix = strings.TrimSuffix(prefix, "/")
-	mux.Handle("GET "+prefix+"/tasks", RunsHandlerWithSource(source))
-	mux.Handle("GET "+prefix+"/tasks/stream", SSEHandlerWithSource(source))
-	mux.Handle("GET "+prefix+"/tasks/runs/stream", RunsSSEHandlerWithSource(source))
-	mux.Handle("POST "+prefix+"/tasks/{id}/control", RunControlHandlerWithSource(source))
-	mux.Handle("POST "+prefix+"/tasks/{id}/tasks/{taskID}/control", TaskControlHandlerWithSource(source))
-	mux.Handle("POST "+prefix+"/tasks/{id}/tasks/{taskID}/stdin", TaskStdinHandler())
-	mux.Handle("GET "+prefix+"/tasks/{id}", RunHandlerWithSource(source))
+	router.Raw("GET "+prefix+"/tasks", RunsHandlerWithSource(source),
+		route.Meta{Entity: "task", Verb: "list", ReadOnly: true})
+	router.Raw("GET "+prefix+"/tasks/stream", SSEHandlerWithSource(source),
+		route.Meta{Entity: "task", Verb: "stream", ReadOnly: true})
+	router.Raw("GET "+prefix+"/tasks/runs/stream", RunsSSEHandlerWithSource(source),
+		route.Meta{Entity: "task", Verb: "stream-runs", ReadOnly: true})
+	router.Raw("POST "+prefix+"/tasks/{id}/control", RunControlHandlerWithSource(source),
+		route.Meta{Entity: "task", Verb: "control", IDParam: "id"})
+	router.Raw("POST "+prefix+"/tasks/{id}/tasks/{taskID}/control", TaskControlHandlerWithSource(source),
+		route.Meta{Entity: "task", Verb: "control-task", IDParam: "taskID"})
+	router.Raw("POST "+prefix+"/tasks/{id}/tasks/{taskID}/stdin", TaskStdinHandler(),
+		route.Meta{Entity: "task", Verb: "stdin", IDParam: "taskID"})
+	router.Raw("GET "+prefix+"/tasks/{id}", RunHandlerWithSource(source),
+		route.Meta{Entity: "task", Verb: "get", ReadOnly: true, IDParam: "id"})
 	timeseries := Metrics()
 	if external, ok := source.(MetricSource); ok {
 		timeseries = sourceMetrics{local: timeseries, external: external}
 	}
-	metrics.RegisterRoutes(mux, timeseries, prefix+"/tasks")
+	metrics.RegisterRoutes(router, timeseries, prefix+"/tasks")
 }

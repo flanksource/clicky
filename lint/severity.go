@@ -12,22 +12,27 @@ import (
 type Severity string
 
 const (
-	// SeverityError marks structural violations that bypass clicky's generated
-	// surfaces — manual cobra commands and direct HTTP handlers instead of
-	// registered entities, or writes that corrupt the task renderer.
+	// SeverityError marks violations that fail the run: writes that corrupt the
+	// task renderer, and manual cobra commands that bypass the generated CLI,
+	// REST and MCP surfaces entirely.
 	SeverityError Severity = "error"
-	// SeverityWarning marks advisory style preferences — how Pretty()/render
-	// builders are written, and entities missing a TableProvider.
+	// SeverityWarning marks advice — how Pretty()/render builders are written,
+	// entities missing a TableProvider, and routes registered outside the
+	// router. A codebase adopting a rule re-levels it with RunOptions.Severity
+	// rather than each rule carrying a second, configurable default.
 	SeverityWarning Severity = "warning"
 )
 
-// report emits a diagnostic carrying its severity in Diagnostic.Category, which
-// the runner reads back into Violation.Severity. go/analysis has no native
-// severity, so Category is the carrier.
-func report(pass *analysis.Pass, sev Severity, pos token.Pos, format string, args ...any) {
+// report emits a diagnostic for rule unless the source excuses it there.
+// go/analysis has no native severity or rule field, so both travel in
+// Diagnostic.Category, which the runner unpacks into Violation.
+func report(pass *analysis.Pass, rule Rule, pos token.Pos, format string, args ...any) {
+	if suppressed(pass, pos, rule) {
+		return
+	}
 	pass.Report(analysis.Diagnostic{
 		Pos:      pos,
-		Category: string(sev),
+		Category: rule.category(),
 		Message:  fmt.Sprintf(format, args...),
 	})
 }

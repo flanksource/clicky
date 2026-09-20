@@ -17,6 +17,11 @@ type RunOptions struct {
 	Packages     []string `json:"packages,omitempty"`
 	WorkDir      string   `json:"work_dir,omitempty"`
 	IncludeTests bool     `json:"include_tests"`
+	// Severity re-levels individual rules by ID, so a codebase can adopt a rule
+	// as advice before it adopts it as a gate. Unknown IDs are reported as run
+	// errors rather than ignored: a typo that silently kept a rule failing the
+	// build would be worse than a loud one.
+	Severity map[string]Severity `json:"severity,omitempty"`
 }
 
 // Result is the normalized lint result rendered by the CLI and JSON output.
@@ -122,6 +127,7 @@ func Run(opts RunOptions) (*Result, error) {
 
 	result.PackageCount = len(pkgs)
 	result.Errors = append(result.Errors, packageErrors(pkgs)...)
+	result.Errors = append(result.Errors, unknownSeverityRules(opts.Severity)...)
 
 	graph, err := checker.Analyze([]*analysis.Analyzer{Analyzer}, pkgs, nil)
 	if err != nil {
@@ -140,45 +146,49 @@ func Run(opts RunOptions) (*Result, error) {
 		}
 		for _, diag := range act.Diagnostics {
 			pos := act.Package.Fset.PositionFor(diag.Pos, false)
+			severity, ruleID := parseCategory(diag.Category)
+			if override, ok := opts.Severity[ruleID]; ok && ruleID != "" {
+				severity = override
+			}
 			result.Violations = append(result.Violations, Violation{
 				Package:  act.Package.PkgPath,
 				File:     pos.Filename,
 				Line:     pos.Line,
 				Column:   pos.Column,
-				Severity: severityFromCategory(diag.Category),
-				Rule:     RuleForMessage(diag.Message),
+				Severity: severity,
+				Rule:     ruleID,
 				Message:  diag.Message,
 			})
 		}
 	}
 
 	sortViolations(result.Violations)
+	result.Violations = dedupeViolations(result.Violations)
 	result.Errors = uniqueStrings(result.Errors)
 	result.Success = !result.HasErrors()
 	result.Duration = time.Since(start)
 	return result, nil
 }
 
-// severityFromCategory maps a go/analysis Diagnostic.Category onto a Severity,
-// defaulting to error so an unclassified diagnostic fails loudly rather than
-// being silently demoted to a warning.
-func severityFromCategory(category string) Severity {
-	if Severity(category) == SeverityWarning {
-		return SeverityWarning
+// unknownSeverityRules names overrides that address no rule, so a misspelled ID
+// surfaces instead of quietly leaving the rule at its default.
+func unknownSeverityRules(overrides map[string]Severity) []string {
+	if len(overrides) == 0 {
+		return nil
 	}
-	return SeverityError
-}
-
-// RuleForMessage derives a stable rule bucket from a go/analysis diagnostic.
-func RuleForMessage(message string) string {
-	message = strings.TrimSpace(message)
-	if message == "" {
-		return "(no rule)"
+	known := map[string]bool{}
+	for _, id := range RuleIDs() {
+		known[id] = true
 	}
-	if idx := strings.Index(message, ";"); idx >= 0 {
-		return strings.TrimSpace(message[:idx])
+	var unknown []string
+	for id := range overrides {
+		if !known[id] {
+			unknown = append(unknown, fmt.Sprintf("unknown rule %q in severity override; known rules: %s",
+				id, strings.Join(RuleIDs(), ", ")))
+		}
 	}
-	return message
+	sort.Strings(unknown)
+	return unknown
 }
 
 func packageErrors(pkgs []*packages.Package) []string {
@@ -191,10 +201,31 @@ func packageErrors(pkgs []*packages.Package) []string {
 	return uniqueStrings(out)
 }
 
+// dedupeViolations collapses the same finding reported more than once. Loading
+// with tests returns a package and its test variant as separate packages that
+// share a path and both contain the production files, so every finding in a
+// package that has tests is analyzed — and reported — twice. Callers count
+// violations to decide whether a codebase is improving; double counts make that
+// number meaningless. Expects violations already sorted, so duplicates adjoin.
+func dedupeViolations(violations []Violation) []Violation {
+	if len(violations) < 2 {
+		return violations
+	}
+	unique := violations[:1]
+	for _, violation := range violations[1:] {
+		if violation != unique[len(unique)-1] {
+			unique = append(unique, violation)
+		}
+	}
+	return unique
+}
+
 func sortViolations(violations []Violation) {
 	sort.SliceStable(violations, func(i, j int) bool {
 		a, b := violations[i], violations[j]
 		switch {
+		case a.Package != b.Package:
+			return a.Package < b.Package
 		case a.File != b.File:
 			return a.File < b.File
 		case a.Line != b.Line:

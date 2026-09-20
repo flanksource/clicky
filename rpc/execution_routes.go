@@ -6,6 +6,7 @@ import (
 
 	"github.com/flanksource/clicky"
 	"github.com/flanksource/clicky/entity"
+	"github.com/flanksource/clicky/route"
 )
 
 func normalizeWildcardNames(pattern string) string {
@@ -18,7 +19,7 @@ func normalizeWildcardNames(pattern string) string {
 	return strings.Join(segments, "/")
 }
 
-func (s *SwaggerServer) registerExecutionRoutes(mux *http.ServeMux) {
+func (s *SwaggerServer) registerExecutionRoutes(router *route.Router) {
 	if s.executor == nil || s.executor.service == nil {
 		clicky.Warnf("Executor has no service; no routes registered")
 		return
@@ -40,7 +41,7 @@ func (s *SwaggerServer) registerExecutionRoutes(mux *http.ServeMux) {
 			return false
 		}
 		registered[dedupeKey] = operationName
-		mux.Handle(pattern, s.tracedHandler(pattern, http.HandlerFunc(s.handleExecuteCommand)))
+		router.MountGenerated(pattern, s.tracedHandler(pattern, http.HandlerFunc(s.handleExecuteCommand)))
 		routeCount++
 		return true
 	}
