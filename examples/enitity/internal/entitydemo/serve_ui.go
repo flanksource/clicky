@@ -22,6 +22,7 @@ import (
 	clickyaichat "github.com/flanksource/clicky/aichat"
 	"github.com/flanksource/clicky/formatters"
 	"github.com/flanksource/clicky/markdown"
+	"github.com/flanksource/clicky/route"
 	"github.com/flanksource/clicky/rpc"
 	"github.com/spf13/cobra"
 )
@@ -82,9 +83,12 @@ available and ` + "`pnpm install`" + ` already run in webapp/.`,
 			server := rpc.NewSwaggerServer(serveConfig, rootCmd, openAPIConfig)
 
 			mux := http.NewServeMux()
-			server.RegisterRoutes(mux)
-			mux.HandleFunc("/api/examples/links", serveLinkExamples)
-			mux.HandleFunc("/api/examples/markdown-preview", serveMarkdownPreview)
+			router := route.NewRouter(mux)
+			server.RegisterRoutes(router)
+			router.RawFunc("/api/examples/links", serveLinkExamples,
+				route.Meta{Entity: "examples", Verb: "links", ReadOnly: true})
+			router.RawFunc("/api/examples/markdown-preview", serveMarkdownPreview,
+				route.Meta{Entity: "examples", Verb: "markdown-preview", ReadOnly: true})
 
 			// AI chat backend: the demo's own entity operations become tools.
 			// Requires a provider key (ANTHROPIC_API_KEY / OPENAI_API_KEY /
@@ -99,14 +103,14 @@ available and ` + "`pnpm install`" + ` already run in webapp/.`,
 			})
 			// Mount as a subtree so /api/chat, /api/chat/models and the thread
 			// endpoints all resolve.
-			mux.Handle("/api/chat", chat.Handler())
-			mux.Handle("/api/chat/", chat.Handler())
+			router.Raw("/api/chat", chat.Handler(), route.Meta{Entity: "chat", Verb: "send"})
+			router.Raw("/api/chat/", chat.Handler(), route.Meta{Entity: "chat", Verb: "send"})
 
 			uiHandler, err := newWebappHandler(options.EmbeddedWebapp)
 			if err != nil {
 				return fmt.Errorf("load embedded webapp: %w", err)
 			}
-			mux.Handle("/", uiHandler)
+			router.Raw("/", uiHandler, route.Meta{Entity: "webapp", Verb: "get", ReadOnly: true})
 
 			addr := fmt.Sprintf("%s:%d", host, port)
 			httpSrv := &http.Server{

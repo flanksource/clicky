@@ -8,8 +8,6 @@ import (
 	"golang.org/x/tools/go/analysis"
 )
 
-const allowStdoutDirective = "clicky:allow-stdout"
-
 // checkDirectStdout flags writes that bypass the task renderer's tracking:
 //
 //   - fmt.Println, fmt.Print, fmt.Printf            — always flagged
@@ -29,8 +27,8 @@ const allowStdoutDirective = "clicky:allow-stdout"
 //   - clicky's own module (package path prefix github.com/flanksource/clicky)
 //   - `_test.go` files (tests often capture stdout intentionally)
 //   - `package main` (binaries print to stdout for downstream piping)
-//   - lines inside or below a `//clicky:allow-stdout` directive (on the
-//     enclosing file, function, or statement)
+//   - lines a `//clicky:allow direct-stdout` directive excuses (see
+//     suppress.go), which report applies for every rule
 func checkDirectStdout(pass *analysis.Pass, call *ast.CallExpr) {
 	if skipDirectStdoutFile(pass, call.Pos()) {
 		return
@@ -46,9 +44,9 @@ func checkDirectStdout(pass *analysis.Pass, call *ast.CallExpr) {
 	// SelectorExpr (os.Stdout), not an ident. Handle this first because
 	// the package-import branch below requires sel.X to be an ident.
 	if isOsStdStream(sel.X) && isWriterMethod(sel.Sel.Name) {
-		report(pass, SeverityError, call.Pos(),
+		report(pass, RuleDirectStdout, call.Pos(),
 			"avoid direct os.%s.%s; prefer clicky.Println / clicky.Fprintln "+
-				"(silence with //clicky:allow-stdout)",
+				"(silence with //clicky:allow direct-stdout)",
 			selectorTarget(sel.X), sel.Sel.Name)
 		return
 	}
@@ -60,16 +58,16 @@ func checkDirectStdout(pass *analysis.Pass, call *ast.CallExpr) {
 
 	switch {
 	case isFmtPrintFamily(pkg, sel):
-		report(pass, SeverityError, call.Pos(),
+		report(pass, RuleDirectStdout, call.Pos(),
 			"avoid %s.%s; prefer clicky.Println / clicky.Printf or the commons logger "+
-				"so writes serialize with the task renderer (silence with //clicky:allow-stdout)",
+				"so writes serialize with the task renderer (silence with //clicky:allow direct-stdout)",
 			pkg.Name, sel.Sel.Name)
 
 	case isFmtFprintFamily(pkg, sel):
 		if len(call.Args) > 0 && isOsStdStream(call.Args[0]) {
-			report(pass, SeverityError, call.Args[0].Pos(),
+			report(pass, RuleDirectStdout, call.Args[0].Pos(),
 				"avoid fmt.%s writing to os.%s; prefer clicky.Println/Printf/Fprintln "+
-					"(silence with //clicky:allow-stdout)",
+					"(silence with //clicky:allow direct-stdout)",
 				sel.Sel.Name, selectorTarget(call.Args[0]))
 		}
 	}
@@ -134,46 +132,15 @@ func isWriterMethod(name string) bool {
 
 // skipDirectStdoutFile returns true if the rule should not fire at pos —
 // either because the file is a test, the package is `main`, the code lives
-// inside the clicky module itself, or a `//clicky:allow-stdout` directive
-// appears on an enclosing scope.
+// inside the clicky module itself. The `//clicky:allow direct-stdout` directive
+// is handled uniformly for every rule by report.
 func skipDirectStdoutFile(pass *analysis.Pass, pos token.Pos) bool {
 	if pass.Pkg.Name() == "main" {
 		return true
 	}
-	file := findContainingFile(pass, pos)
+	file := enclosingFile(pass, pos)
 	if file == nil {
 		return true
 	}
-	filename := pass.Fset.Position(file.Pos()).Filename
-	if strings.HasSuffix(filename, "_test.go") {
-		return true
-	}
-	if hasAllowStdoutDirective(file) {
-		return true
-	}
-	return false
-}
-
-func findContainingFile(pass *analysis.Pass, pos token.Pos) *ast.File {
-	for _, f := range pass.Files {
-		if f.Pos() <= pos && pos <= f.End() {
-			return f
-		}
-	}
-	return nil
-}
-
-// hasAllowStdoutDirective is a file-level opt-out. A finer-grained check
-// would walk comment groups near the target position, but file-level is
-// simpler, matches how many Go linters handle escape hatches, and is easy
-// for reviewers to spot.
-func hasAllowStdoutDirective(file *ast.File) bool {
-	for _, cg := range file.Comments {
-		for _, c := range cg.List {
-			if strings.Contains(c.Text, allowStdoutDirective) {
-				return true
-			}
-		}
-	}
-	return false
+	return strings.HasSuffix(pass.Fset.Position(file.Pos()).Filename, "_test.go")
 }

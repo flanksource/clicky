@@ -112,9 +112,33 @@ func TestSummaryViewSurfacesErrors(t *testing.T) {
 	}
 }
 
-func TestRuleForMessageUsesFirstClause(t *testing.T) {
-	got := RuleForMessage("avoid .ANSI() inside clicky render builders; return api.Text")
-	if got != "avoid .ANSI() inside clicky render builders" {
-		t.Fatalf("unexpected rule: %q", got)
+func TestCategoryCarriesSeverityAndRule(t *testing.T) {
+	severity, rule := parseCategory(RuleRenderInPretty.category())
+	if severity != SeverityWarning || rule != "render-in-pretty" {
+		t.Fatalf("unexpected severity/rule: %q/%q", severity, rule)
+	}
+
+	severity, rule = parseCategory(RuleDirectStdout.category())
+	if severity != SeverityError || rule != "direct-stdout" {
+		t.Fatalf("unexpected severity/rule: %q/%q", severity, rule)
+	}
+}
+
+func TestCategoryFromAnotherDriverFailsLoudly(t *testing.T) {
+	// A diagnostic clickylint did not produce carries no rule, and must not be
+	// quietly demoted to advice.
+	severity, rule := parseCategory("something-else")
+	if severity != SeverityError || rule != "" {
+		t.Fatalf("unexpected severity/rule: %q/%q", severity, rule)
+	}
+}
+
+func TestSeverityOverrideMustNameARealRule(t *testing.T) {
+	if errs := unknownSeverityRules(map[string]Severity{"manual-cobra-command": SeverityWarning}); len(errs) != 0 {
+		t.Fatalf("a known rule must be accepted, got %v", errs)
+	}
+	errs := unknownSeverityRules(map[string]Severity{"manual-cobra-comand": SeverityWarning})
+	if len(errs) != 1 {
+		t.Fatalf("a misspelled rule must be reported, got %v", errs)
 	}
 }

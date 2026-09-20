@@ -22,9 +22,9 @@ func TestFormatMap(t *testing.T) {
 	}
 
 	cases := []struct {
-		name      string
-		format    string
-		contains  []string
+		name     string
+		format   string
+		contains []string
 	}{
 		{
 			name:     "markdown",

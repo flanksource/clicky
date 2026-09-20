@@ -26,6 +26,9 @@ type RPCOperation struct {
 	ToolHints         MCPToolHints         `json:"-"`                // MCP annotations and Clicky-specific tool metadata
 	DataFunc          DataFunc             `json:"-"`                // Direct data provider, bypasses stdout capture
 	ContextDataFunc   ContextDataFunc      `json:"-"`                // Context-aware data provider; preferred over DataFunc when set
+	RequestMedia      *MediaSpec           `json:"-"`                // Declared non-JSON request body; the OpenAPI document describes this instead of the assumed JSON one.
+	ResponseMedia     *MediaSpec           `json:"-"`                // Declared non-JSON success response.
+	StreamFunc        StreamFunc           `json:"-"`                // Event producer for operations that stream over time rather than answer once; preferred over every other provider when set. Clicky owns the transport: SSE over HTTP, events printed as they arrive on the CLI.
 	PagedFunc         PagedFunc            `json:"-"`                // Paging/export data provider returning a PageResponse; preferred over ContextDataFunc when set. The operation supplies rows and the paging facts about them, and clicky owns the response: headers, content negotiation, streaming and the download name.
 	LookupFunc        DataFunc             `json:"-"`                // Direct filter metadata provider
 	ContextLookupFunc ContextLookupFunc    `json:"-"`                // Context-aware filter metadata provider; preferred over LookupFunc when set

@@ -10,6 +10,7 @@ import (
 	. "github.com/onsi/gomega"
 
 	"github.com/flanksource/clicky/metrics"
+	"github.com/flanksource/clicky/route"
 )
 
 // base is a fixed reference time so specs never depend on wall-clock now.
@@ -79,7 +80,7 @@ var _ = Describe("HTTP handler", func() {
 	newServer := func() (*httptest.Server, metrics.Timeseries) {
 		ts := metrics.NewMemory(metrics.MemoryConfig{Retention: time.Hour, MaxPoints: 100})
 		mux := http.NewServeMux()
-		metrics.RegisterRoutes(mux, ts, "/api/v1")
+		metrics.RegisterRoutes(route.NewRouter(mux), ts, "/api/v1")
 		return httptest.NewServer(mux), ts
 	}
 

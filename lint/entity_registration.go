@@ -2,7 +2,9 @@ package lint
 
 import (
 	"go/ast"
+	"go/token"
 	"go/types"
+	"strings"
 
 	"golang.org/x/tools/go/analysis"
 )
@@ -26,7 +28,7 @@ func checkManualCobraCommand(pass *analysis.Pass, lit *ast.CompositeLit) {
 	if !hasRunField(lit) {
 		return
 	}
-	report(pass, SeverityError, lit.Pos(),
+	report(pass, RuleManualCobraCommand, lit.Pos(),
 		"avoid manual cobra.Command with Run/RunE; register the operation via "+
 			"clicky.NewEntity(...).Register() + GenerateCLI, or entity.AddCommand")
 }
@@ -50,6 +52,9 @@ func hasRunField(lit *ast.CompositeLit) bool {
 // through the rpc layer, not from raw handlers that collide with the
 // auto-routed /api/v1/* namespace.
 func checkHTTPHandlerRegistration(pass *analysis.Pass, call *ast.CallExpr) {
+	if inTestFile(pass, call.Pos()) {
+		return
+	}
 	sel, ok := call.Fun.(*ast.SelectorExpr)
 	if !ok {
 		return
@@ -62,9 +67,41 @@ func checkHTTPHandlerRegistration(pass *analysis.Pass, call *ast.CallExpr) {
 	if !ok || fn.Pkg() == nil || fn.Pkg().Path() != netHTTPPkgPath {
 		return
 	}
-	report(pass, SeverityWarning, call.Pos(),
+	report(pass, RuleDirectHTTPHandler, call.Pos(),
 		"avoid registering net/http handlers directly; expose data via "+
 			"clicky.NewEntity(...).Register() and serve it through the rpc layer")
+}
+
+// inTestFile reports whether pos is in a _test.go file. The routing rules
+// govern the surface an application serves; a test standing up a fake upstream
+// on its own mux is scaffolding, not that surface. Same exemption direct-stdout
+// already makes for the same reason.
+func inTestFile(pass *analysis.Pass, pos token.Pos) bool {
+	return strings.HasSuffix(pass.Fset.Position(pos).Filename, "_test.go")
+}
+
+// checkServeMuxParameter flags a function that accepts a *http.ServeMux. Taking
+// the mux is how a package claims the right to register whatever it likes
+// wherever it likes: nothing at the call site says what those routes are, so
+// nothing observes, documents or authorizes them alongside the generated
+// surface. Accept a *route.Router instead and declare each route.
+//
+// Only parameters are flagged. Constructing a mux and handing it to
+// route.NewRouter is exactly the intended shape, so a local variable is fine.
+func checkServeMuxParameter(pass *analysis.Pass, fn *ast.FuncDecl) {
+	if fn.Type.Params == nil || inTestFile(pass, fn.Pos()) {
+		return
+	}
+	for _, param := range fn.Type.Params.List {
+		if !isNamedType(pass.TypesInfo.TypeOf(param.Type), netHTTPPkgPath, "ServeMux") {
+			continue
+		}
+		report(pass, RuleServeMuxParameter, param.Pos(),
+			"avoid accepting *http.ServeMux in %s; accept *route.Router and declare each "+
+				"route with route.Meta so it is observed like a generated operation",
+			fn.Name.Name)
+		return
+	}
 }
 
 // checkEntityTableProvider (warning) flags entities registered via
@@ -93,7 +130,7 @@ func checkEntityTableProvider(pass *analysis.Pass, call *ast.CallExpr) {
 	if types.Implements(item, iface) || types.Implements(types.NewPointer(item), iface) {
 		return
 	}
-	report(pass, SeverityWarning, call.Pos(),
+	report(pass, RuleEntityTableProvider, call.Pos(),
 		"entity does not implement api.TableProvider; add Columns()/Row() to %s for table rendering",
 		shortTypeName(item))
 }

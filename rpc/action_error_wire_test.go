@@ -9,6 +9,7 @@ import (
 
 	"github.com/flanksource/clicky"
 	"github.com/flanksource/clicky/entity"
+	"github.com/flanksource/clicky/route"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -52,7 +53,7 @@ func TestEntityAction_FailureServesErrorNotZeroValue(t *testing.T) {
 		&OpenAPIConfig{Title: "t", Version: "v"},
 	)
 	mux := http.NewServeMux()
-	server.RegisterExecutionRoutes(mux)
+	server.RegisterExecutionRoutes(route.NewRouter(mux))
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/"+name+"/conn-1/refresh", nil)
 	req.Header.Set("Accept", "application/json")

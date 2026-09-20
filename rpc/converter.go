@@ -218,6 +218,12 @@ func (c *Converter) ConvertCommand(cmd *cobra.Command) (*RPCOperation, error) {
 	if cdf := clicky.GetContextDataFunc(cmd); cdf != nil {
 		operation.ContextDataFunc = ContextDataFunc(cdf)
 	}
+	if sf := clicky.GetStreamFunc(cmd); sf != nil {
+		operation.StreamFunc = sf
+	}
+	if media := clicky.GetCommandMedia(cmd); media.Request != nil || media.Response != nil {
+		operation.RequestMedia, operation.ResponseMedia = media.Request, media.Response
+	}
 	if lf := clicky.GetLookupFunc(cmd); lf != nil {
 		operation.LookupFunc = lf
 	}
@@ -399,6 +405,16 @@ func methodForVerb(verb string) string {
 }
 
 // generateRESTPath generates a REST API path from command hierarchy
+// joinRoutePath resolves a declared operation path. An absolute path is the
+// whole URL, so a route keeps a shape the prefix does not describe; a relative
+// one is joined to the prefix, so the common case does not repeat it.
+func joinRoutePath(prefix, declared string) string {
+	if strings.HasPrefix(declared, "/") {
+		return declared
+	}
+	return strings.TrimSuffix(prefix, "/") + "/" + declared
+}
+
 func (c *Converter) generateRESTPath(cmd *cobra.Command, cmdPath string) string {
 	// Convert command path to REST path
 	// e.g., "user create" -> "/api/v1/user"
@@ -408,6 +424,13 @@ func (c *Converter) generateRESTPath(cmd *cobra.Command, cmdPath string) string 
 
 	parts := strings.Split(cmdPath, " ")
 	operationMeta := clicky.GetCommandOpenAPIMeta(cmd)
+
+	// A declared path is the answer. Nothing below can improve on a URL the
+	// registration named deliberately, and the derivation must not quietly
+	// move an operation its callers already address.
+	if operationMeta != nil && operationMeta.RoutePath != "" {
+		return joinRoutePath(c.config.PathPrefix, operationMeta.RoutePath)
+	}
 
 	// Build path with prefix
 	pathParts := []string{c.config.PathPrefix}

@@ -15,6 +15,7 @@ import (
 	. "github.com/onsi/gomega"
 
 	"github.com/flanksource/clicky/metrics"
+	"github.com/flanksource/clicky/route"
 	"github.com/flanksource/clicky/task"
 )
 
@@ -203,7 +204,7 @@ var _ = Describe("Managed task runs", func() {
 		controller := &recordingController{actions: []task.ControlAction{task.ControlStop}}
 		run := task.StartManagedRun("controlled", task.WithController(controller))
 		mux := http.NewServeMux()
-		task.RegisterHandlers(mux, "/api")
+		task.RegisterHandlers(route.NewRouter(mux), "/api")
 
 		request := httptest.NewRequest(
 			http.MethodPost,
@@ -238,7 +239,7 @@ var _ = Describe("Managed task runs", func() {
 		Eventually(child.Status).Should(Equal(task.StatusSuccess))
 
 		mux := http.NewServeMux()
-		task.RegisterHandlers(mux, "/api")
+		task.RegisterHandlers(route.NewRouter(mux), "/api")
 		request := httptest.NewRequest(
 			http.MethodPost,
 			"/api/tasks/"+group.ID()+"/tasks/"+child.ID()+"/control",
@@ -298,7 +299,7 @@ var _ = Describe("Managed task runs", func() {
 		}
 		source.points = []metrics.Point{{At: time.Now().UTC(), Value: 42}}
 		mux := http.NewServeMux()
-		task.RegisterHandlersWithSource(mux, "/api", source)
+		task.RegisterHandlersWithSource(route.NewRouter(mux), "/api", source)
 
 		response := httptest.NewRecorder()
 		mux.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/tasks?kind=supervised-process", nil))

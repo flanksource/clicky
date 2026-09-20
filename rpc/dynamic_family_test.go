@@ -12,6 +12,7 @@ import (
 
 	"github.com/flanksource/clicky/api"
 	"github.com/flanksource/clicky/entity"
+	"github.com/flanksource/clicky/route"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -164,7 +165,7 @@ func TestDynamicFamily_RegistersOneRouteForTheWholeFamily(t *testing.T) {
 	server := familyServer()
 
 	mux := http.NewServeMux()
-	server.registerExecutionRoutes(mux)
+	server.registerExecutionRoutes(route.NewRouter(mux))
 
 	for _, method := range []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS", "HEAD"} {
 		_, pattern := mux.Handler(httptest.NewRequest(method, "/api/v1/profile/daily", nil))

@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+
+	"github.com/flanksource/clicky/route"
 )
 
-// RegisterRoutes mounts the cache-browser endpoints on mux under prefix:
+// RegisterRoutes mounts the cache-browser endpoints on router under prefix:
 //
 //	GET    {prefix}/cache/tree?prefix=&max=
 //	GET    {prefix}/cache/key?key=
@@ -21,15 +23,8 @@ import (
 // routinely contain ":" and "/". prefix is the leading path segment shared
 // with the rest of the API (e.g. "/api/v1"); pass it without a trailing
 // slash.
-func RegisterRoutes(mux *http.ServeMux, b Browser, prefix string) {
-	mux.Handle(prefix+"/cache/", Handler(b, prefix))
-}
-
-// Handler returns the cache-browser endpoints as a standalone http.Handler
-// for callers that compose their own mux.
-func Handler(b Browser, prefix string) http.Handler {
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET "+prefix+"/cache/tree", func(w http.ResponseWriter, r *http.Request) {
+func RegisterRoutes(router *route.Router, b Browser, prefix string) {
+	router.RawFunc("GET "+prefix+"/cache/tree", func(w http.ResponseWriter, r *http.Request) {
 		max, err := intParam(r, "max")
 		if err != nil {
 			http.Error(w, "invalid max: "+err.Error(), http.StatusBadRequest)
@@ -40,8 +35,8 @@ func Handler(b Browser, prefix string) http.Handler {
 			MaxChildren: max,
 		})
 		respond(w, v, err)
-	})
-	mux.HandleFunc("GET "+prefix+"/cache/key", func(w http.ResponseWriter, r *http.Request) {
+	}, route.Meta{Entity: "cache", Verb: "tree", ReadOnly: true})
+	router.RawFunc("GET "+prefix+"/cache/key", func(w http.ResponseWriter, r *http.Request) {
 		key := r.URL.Query().Get("key")
 		if key == "" {
 			http.Error(w, "missing key", http.StatusBadRequest)
@@ -49,8 +44,8 @@ func Handler(b Browser, prefix string) http.Handler {
 		}
 		v, err := b.Key(r.Context(), key)
 		respond(w, v, err)
-	})
-	mux.HandleFunc("GET "+prefix+"/cache/search", func(w http.ResponseWriter, r *http.Request) {
+	}, route.Meta{Entity: "cache", Verb: "key", ReadOnly: true})
+	router.RawFunc("GET "+prefix+"/cache/search", func(w http.ResponseWriter, r *http.Request) {
 		q := r.URL.Query().Get("q")
 		if q == "" {
 			http.Error(w, "missing q", http.StatusBadRequest)
@@ -63,12 +58,12 @@ func Handler(b Browser, prefix string) http.Handler {
 		}
 		v, err := b.Search(r.Context(), SearchRequest{Query: q, Limit: limit})
 		respond(w, v, err)
-	})
-	mux.HandleFunc("GET "+prefix+"/cache/stats", func(w http.ResponseWriter, r *http.Request) {
+	}, route.Meta{Entity: "cache", Verb: "search", ReadOnly: true})
+	router.RawFunc("GET "+prefix+"/cache/stats", func(w http.ResponseWriter, r *http.Request) {
 		v, err := b.Stats(r.Context())
 		respond(w, v, err)
-	})
-	mux.HandleFunc("DELETE "+prefix+"/cache/key", func(w http.ResponseWriter, r *http.Request) {
+	}, route.Meta{Entity: "cache", Verb: "stats", ReadOnly: true})
+	router.RawFunc("DELETE "+prefix+"/cache/key", func(w http.ResponseWriter, r *http.Request) {
 		key := r.URL.Query().Get("key")
 		if key == "" {
 			http.Error(w, "missing key", http.StatusBadRequest)
@@ -76,8 +71,8 @@ func Handler(b Browser, prefix string) http.Handler {
 		}
 		v, err := b.DeleteKey(r.Context(), key)
 		respond(w, v, err)
-	})
-	mux.HandleFunc("DELETE "+prefix+"/cache/prefix", func(w http.ResponseWriter, r *http.Request) {
+	}, route.Meta{Entity: "cache", Verb: "delete-key"})
+	router.RawFunc("DELETE "+prefix+"/cache/prefix", func(w http.ResponseWriter, r *http.Request) {
 		// An empty prefix would wipe the whole keyspace; that must never be
 		// reachable from a missing parameter.
 		p := r.URL.Query().Get("prefix")
@@ -87,8 +82,16 @@ func Handler(b Browser, prefix string) http.Handler {
 		}
 		v, err := b.DeletePrefix(r.Context(), p)
 		respond(w, v, err)
-	})
-	return mux
+	}, route.Meta{Entity: "cache", Verb: "delete-prefix"})
+}
+
+// Handler returns the cache-browser endpoints as a standalone http.Handler for
+// callers that compose their own mux. It routes through the same declarations
+// as RegisterRoutes, so a request is observed identically either way.
+func Handler(b Browser, prefix string) http.Handler {
+	router := route.NewRouter(nil)
+	RegisterRoutes(router, b, prefix)
+	return router
 }
 
 // respond writes v as JSON, mapping ErrKeyNotFound to 404 and any other

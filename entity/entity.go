@@ -73,6 +73,8 @@ type EntityInfo struct {
 	BulkActions   []BulkActionInfo
 	ValidArgs     func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective)
 	IsAdmin       bool
+	// ServedOnly keeps the generated commands off the CLI; see Entity.ServedOnly.
+	ServedOnly bool
 	// FilterRefs maps a list filter's flag key to the name of the reusable named
 	// filter backing it (when the filter was attached via the entity package's
 	// Use/As helper). The OpenAPI layer uses it to emit an x-clicky-lookup $ref
@@ -87,9 +89,13 @@ type EntityInfo struct {
 
 // EntityOperation represents a single CRUD operation.
 type EntityOperation struct {
-	Verb     string // "list", "get", "create", "update", "delete"
-	Method   string // Optional explicit HTTP method for generated RPC/OpenAPI routes.
-	DataFunc func(flags map[string]string, args []string) (any, error)
+	Verb   string // "list", "get", "create", "update", "delete"
+	Method string // Optional explicit HTTP method for generated RPC/OpenAPI routes.
+	// RoutePath publishes the operation at a declared URL instead of the one
+	// its command tree implies. An absolute path is used verbatim; anything
+	// else is relative to the configured prefix. Empty keeps the derived path.
+	RoutePath string
+	DataFunc  func(flags map[string]string, args []string) (any, error)
 	// ContextDataFunc, when set, is preferred over DataFunc by both the CLI run
 	// path (fed cmd.Context()) and the RPC executor (fed r.Context()). Lets the
 	// operation resolve request-scoped state instead of process globals.
@@ -115,10 +121,13 @@ type EntityOperation struct {
 
 // ActionInfo is the type-erased representation of a single-entity action.
 type ActionInfo struct {
-	Name     string
-	Short    string
-	Method   string
-	DataFunc func(flags map[string]string, args []string) (any, error)
+	Name   string
+	Short  string
+	Method string
+	// RoutePath publishes the action at a declared URL rather than the derived
+	// one. See ActionSpec.WithPath.
+	RoutePath string
+	DataFunc  func(flags map[string]string, args []string) (any, error)
 	// ContextDataFunc, when set, is preferred over DataFunc by both the CLI run
 	// path (fed cmd.Context()) and the RPC executor (fed r.Context()), mirroring
 	// the entity CRUD seam. Lets an action resolve request-scoped state instead
@@ -370,6 +379,7 @@ type ActionSpec[R any] struct {
 	name              string
 	short             string
 	method            string
+	routePath         string
 	run               func(id string, flags map[string]string) (R, error)
 	runCtx            func(ctx context.Context, id string, flags map[string]string) (R, error)
 	flags             ActionFlags
@@ -459,6 +469,19 @@ func (a *ActionSpec[R]) WithMethod(method string) *ActionSpec[R] {
 	return a
 }
 
+// WithPath publishes the action at a declared URL instead of the one its
+// command tree implies. An absolute path is used verbatim; anything else is
+// relative to the configured prefix. Leave empty to keep the derived path.
+//
+// Use it when callers already address the operation somewhere else — a route
+// being converted from a hand-written handler, or a URL an earlier release
+// established. The path may name wildcards the command does not, e.g.
+// "/api/v1/cycle-runs/{id}/levels/{level}/cancel".
+func (a *ActionSpec[R]) WithPath(path string) *ActionSpec[R] {
+	a.routePath = path
+	return a
+}
+
 // WithOptionalID makes the positional <id> argument optional on the
 // generated action command. Use for actions whose target is supplied
 // entirely through flags; the `id` passed to the run func is then empty.
@@ -517,6 +540,7 @@ func (a *ActionSpec[R]) actionInfo() ActionInfo {
 		Name:              a.name,
 		Short:             a.short,
 		Method:            a.method,
+		RoutePath:         a.routePath,
 		FlagsType:         actionFlagsType(a.flags),
 		ResponseType:      responseTypeOf[R](),
 		OptionalID:        a.optionalID,
@@ -786,6 +810,12 @@ type Entity[T EntityItem, ListOpts any, R any] struct {
 	// together.
 	ToolGroup string
 	ToolHints MCPToolHints
+
+	// ServedOnly keeps this entity off the CLI while leaving it on the HTTP and
+	// MCP surfaces. Set it when the entity's state lives inside the running
+	// server — sessions it holds, runs it has in flight — so a command in
+	// another process would answer about nothing. See MarkServedOnly.
+	ServedOnly bool
 }
 
 // entityIDFrom resolves the entity id from the `id` flag or the first
@@ -961,6 +991,7 @@ func RegisterEntity[T EntityItem, ListOpts any, R any](e Entity[T, ListOpts, R])
 		Type:       reflect.TypeOf((*T)(nil)).Elem(),
 		ListType:   reflect.TypeOf((*ListOpts)(nil)).Elem(),
 		ValidArgs:  e.ValidArgs,
+		ServedOnly: e.ServedOnly,
 		FilterRefs: entityFilterRefs(e.Filters),
 		ToolGroup:  e.ToolGroup,
 		ToolHints:  e.ToolHints,
@@ -1200,6 +1231,34 @@ func GenerateCLI(parent *cobra.Command) {
 
 // findOrCreateChild returns the child command of parent named name. If no
 // matching child exists, a thin parent command is created and attached.
+// findOrCreateEntityCommand returns the command an entity's operations hang
+// from, reusing one the application already registered under that name.
+func findOrCreateEntityCommand(parent *cobra.Command, entity EntityInfo) (cmd *cobra.Command, created bool) {
+	for _, candidate := range parent.Commands() {
+		if candidate.Name() == entity.Name {
+			annotateEntityCommand(candidate, entity)
+			return candidate, false
+		}
+	}
+	cmd = &cobra.Command{
+		Use:     entity.Name,
+		Aliases: entity.Aliases,
+		Short:   fmt.Sprintf("Manage %s resources", entity.Name),
+	}
+	annotateEntityCommand(cmd, entity)
+	parent.AddCommand(cmd)
+	return cmd, true
+}
+
+// commandSet snapshots which subcommands a command already has.
+func commandSet(cmd *cobra.Command) map[*cobra.Command]bool {
+	set := map[*cobra.Command]bool{}
+	for _, child := range cmd.Commands() {
+		set[child] = true
+	}
+	return set
+}
+
 func findOrCreateChild(parent *cobra.Command, name string) *cobra.Command {
 	for _, c := range parent.Commands() {
 		if c.Name() == name {
@@ -1215,13 +1274,11 @@ func findOrCreateChild(parent *cobra.Command, name string) *cobra.Command {
 }
 
 func generateEntityCLI(parent *cobra.Command, entity EntityInfo) {
-	entityCmd := &cobra.Command{
-		Use:     entity.Name,
-		Aliases: entity.Aliases,
-		Short:   fmt.Sprintf("Manage %s resources", entity.Name),
-	}
-	annotateEntityCommand(entityCmd, entity)
-	parent.AddCommand(entityCmd)
+	// An application may already have a command group of this name carrying
+	// commands the entity does not own. Joining it keeps one group in help;
+	// adding a second would leave the user two, only one of which works.
+	entityCmd, ownsGroup := findOrCreateEntityCommand(parent, entity)
+	existing := commandSet(entityCmd)
 
 	for _, op := range entity.Operations {
 		generateEntitySubcommand(entityCmd, entity, op)
@@ -1241,6 +1298,7 @@ func generateEntityCLI(parent *cobra.Command, entity EntityInfo) {
 		generateIDCommand(entityCmd, action.Name, action.Short, EntityOperation{
 			Verb:              action.Name,
 			Method:            action.Method,
+			RoutePath:         action.RoutePath,
 			DataFunc:          action.DataFunc,
 			ContextDataFunc:   action.ContextDataFunc,
 			LookupFunc:        action.LookupFunc,
@@ -1254,6 +1312,21 @@ func generateEntityCLI(parent *cobra.Command, entity EntityInfo) {
 
 	for _, ba := range entity.BulkActions {
 		generateBulkActionCommand(entityCmd, ba)
+	}
+
+	if entity.ServedOnly {
+		// Only the commands this call produced: a shared group's other commands
+		// belong to the application, and hiding them would be a regression.
+		for _, generated := range entityCmd.Commands() {
+			if !existing[generated] {
+				MarkServedOnly(generated)
+			}
+		}
+		// A group this entity created holds nothing else, so leaving it visible
+		// would advertise a command with no subcommands under it.
+		if ownsGroup {
+			MarkServedOnly(entityCmd)
+		}
 	}
 }
 
@@ -1525,6 +1598,9 @@ func generateIDCommand(
 		method = op.Method
 	}
 	annotateEntityOperationCommand(cmd, parent, metaVerb, method, scope, actionName, idParam, supportsLookup, supportsFilterMode, optionalID, toolHints)
+	// Threaded through the operation rather than the already-long parameter
+	// list: only operations that declare a path carry one.
+	setCommandAnnotation(cmd, annotationClickyOperationPath, op.RoutePath)
 	if op.Schedule != nil {
 		AnnotateSchedule(cmd, *op.Schedule)
 	}

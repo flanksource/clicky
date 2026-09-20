@@ -615,6 +615,7 @@ If no packages are given, defaults to ./... in the current directory.`,
   clicky lint ./pkg/foo ./pkg/bar
   clicky lint --summary-limit 2 ./...
   clicky lint --format json ./...
+  clicky lint --severity manual-cobra-command=warning ./...
   clicky lint -- -json ./...`,
 		Args:               cobra.ArbitraryArgs,
 		DisableFlagParsing: true,
@@ -630,9 +631,14 @@ If no packages are given, defaults to ./... in the current directory.`,
 			if err != nil {
 				return err
 			}
+			severity, err := parseSeverityOverrides(opts.Severity)
+			if err != nil {
+				return err
+			}
 			result, err := lint.Run(lint.RunOptions{
 				Packages:     packages,
 				IncludeTests: true,
+				Severity:     severity,
 			})
 			if err != nil {
 				return err
@@ -655,6 +661,7 @@ type lintCLIOptions struct {
 	NoColor      bool
 	Raw          bool
 	SummaryLimit int
+	Severity     []string
 }
 
 type lintExitError struct {
@@ -690,6 +697,32 @@ func bindLintFlags(flags *pflag.FlagSet, opts *lintCLIOptions) {
 	flags.BoolVar(&opts.NoColor, "no-color", opts.NoColor, "Disable ANSI color output")
 	flags.BoolVar(&opts.Raw, "raw", opts.Raw, "Use the raw go/analysis singlechecker driver")
 	flags.IntVar(&opts.SummaryLimit, "summary-limit", opts.SummaryLimit, "Maximum file locations to show per rule")
+	flags.StringArrayVar(&opts.Severity, "severity", opts.Severity,
+		"Re-level a rule, as <rule-id>=error|warning (repeatable). Adopt a rule as advice before making it a gate.")
+}
+
+// parseSeverityOverrides reads the --severity flags into the map the runner
+// takes. Rule IDs are validated by the runner against the real catalogue, so a
+// typo surfaces there rather than being silently dropped here.
+func parseSeverityOverrides(values []string) (map[string]lint.Severity, error) {
+	if len(values) == 0 {
+		return nil, nil
+	}
+	overrides := make(map[string]lint.Severity, len(values))
+	for _, value := range values {
+		id, level, found := strings.Cut(value, "=")
+		if !found {
+			return nil, fmt.Errorf("invalid --severity %q (expected <rule-id>=error|warning)", value)
+		}
+		id, level = strings.TrimSpace(id), strings.ToLower(strings.TrimSpace(level))
+		switch lint.Severity(level) {
+		case lint.SeverityError, lint.SeverityWarning:
+			overrides[id] = lint.Severity(level)
+		default:
+			return nil, fmt.Errorf("invalid severity %q for rule %q (expected error or warning)", level, id)
+		}
+	}
+	return overrides, nil
 }
 
 func parseLintArgs(args []string) (lintCLIOptions, []string, error) {

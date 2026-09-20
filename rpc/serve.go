@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/flanksource/clicky/entity"
+	"github.com/flanksource/clicky/route"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 )
@@ -140,23 +141,26 @@ func (s *SwaggerServer) Executor() *CommandExecutor {
 }
 
 // Start starts the HTTP server
-// RegisterRoutes registers all API routes onto the provided mux.
+// RegisterRoutes registers all API routes onto the provided router.
 // This allows callers to compose the SwaggerServer routes with other handlers.
-func (s *SwaggerServer) RegisterRoutes(mux *http.ServeMux) {
-	// Exemption from the no-direct-ServeMux lint rule: that rule steers app code
-	// onto the entity → rpc auto-routing surface, and this package IS that
-	// surface — these registrations are the endpoints the rule points everyone
-	// else at. (clicky lint already skips the clicky module; there is no
-	// per-call marker for this rule.)
-	mux.Handle("/api/openapi.json", s.tracedHandler("GET /api/openapi.json", http.HandlerFunc(s.handleOpenAPIJSON)))
-	mux.Handle("/api/openapi.yaml", s.tracedHandler("GET /api/openapi.yaml", http.HandlerFunc(s.handleOpenAPIYAML)))
-	mux.Handle("/api/entities", s.tracedHandler("GET /api/entities", http.HandlerFunc(s.handleEntities)))
+//
+// The spec and entity endpoints describe the surface rather than belonging to
+// it, so they are declared read-only: they are in the trail as requests, but a
+// policy that records only changes drops them.
+func (s *SwaggerServer) RegisterRoutes(router *route.Router) {
+	router.Raw("/api/openapi.json", s.tracedHandler("GET /api/openapi.json", http.HandlerFunc(s.handleOpenAPIJSON)),
+		route.Meta{Entity: "openapi", Verb: "get", ReadOnly: true})
+	router.Raw("/api/openapi.yaml", s.tracedHandler("GET /api/openapi.yaml", http.HandlerFunc(s.handleOpenAPIYAML)),
+		route.Meta{Entity: "openapi", Verb: "get", ReadOnly: true})
+	router.Raw("/api/entities", s.tracedHandler("GET /api/entities", http.HandlerFunc(s.handleEntities)),
+		route.Meta{Entity: "entities", Verb: "list", ReadOnly: true})
 	if !s.config.SkipHealth {
-		mux.Handle("/health", s.tracedHandler("GET /health", http.HandlerFunc(s.handleHealth)))
+		router.Raw("/health", s.tracedHandler("GET /health", http.HandlerFunc(s.handleHealth)),
+			route.Meta{Entity: "health", Verb: "get", ReadOnly: true})
 	}
 
 	if s.executor != nil {
-		s.registerExecutionRoutes(mux)
+		s.registerExecutionRoutes(router)
 	}
 }
 
@@ -199,19 +203,19 @@ func (s *SwaggerServer) ConverterConfig() *Config {
 // callers that want everything from RegisterRoutes except the openapi
 // handlers (because they intend to wrap /api/openapi.json with a merge
 // across multiple specs) can opt in route-by-route.
-func (s *SwaggerServer) RegisterExecutionRoutes(mux *http.ServeMux) {
+func (s *SwaggerServer) RegisterExecutionRoutes(router *route.Router) {
 	if s.executor != nil {
-		s.registerExecutionRoutes(mux)
+		s.registerExecutionRoutes(router)
 	}
 }
 
 func (s *SwaggerServer) Start(ctx context.Context) error {
 	mux := http.NewServeMux()
+	router := route.NewRouter(mux)
 
-	// Register routes. Direct mux.Handle is the rpc serving layer's job — see
-	// the exemption note on RegisterRoutes.
-	mux.Handle("/", s.traceHandler("GET /", http.HandlerFunc(s.handleSwaggerUI)))
-	s.RegisterRoutes(mux)
+	router.Raw("/", s.traceHandler("GET /", http.HandlerFunc(s.handleSwaggerUI)),
+		route.Meta{Entity: "swagger-ui", Verb: "get", ReadOnly: true})
+	s.RegisterRoutes(router)
 
 	// Create server
 	addr := fmt.Sprintf("%s:%d", s.config.Host, s.config.Port)

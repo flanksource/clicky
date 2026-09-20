@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/flanksource/clicky"
+	"github.com/flanksource/clicky/route"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -55,7 +56,7 @@ func TestBulkActionIsAddressableByIDs(t *testing.T) {
 		Executor: &ExecutorConfig{Enabled: true, SkipPreRun: true, PathPrefix: "/api/v1"},
 	}, root, &OpenAPIConfig{})
 	mux := http.NewServeMux()
-	server.RegisterRoutes(mux)
+	server.RegisterRoutes(route.NewRouter(mux))
 
 	routeFor := func(action string) (string, string) {
 		t.Helper()

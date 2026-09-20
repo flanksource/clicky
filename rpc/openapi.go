@@ -385,6 +385,33 @@ func (g *OpenAPIGenerator) GenerateFromCobraWithConfig(rootCmd *cobra.Command, c
 	return g.GenerateFromService(service), nil
 }
 
+// mediaRequestBody documents a request body the operation declared.
+func (g *OpenAPIGenerator) mediaRequestBody(media *entity.MediaSpec) *OpenAPIRequestBody {
+	return &OpenAPIRequestBody{
+		Description: mediaDescription(media, "Request body"),
+		Required:    media.Required,
+		Content:     map[string]OpenAPIMediaType{media.ContentType: {Schema: g.mediaSchema(media)}},
+	}
+}
+
+// mediaSchema describes a declared payload. A payload with no schema is opaque
+// bytes, which is what a zip, a PDF or a spreadsheet is to a reader of the
+// document — saying so is more useful than inventing a shape for it.
+func (g *OpenAPIGenerator) mediaSchema(media *entity.MediaSpec) *OpenAPISchema {
+	if media.Schema.Type == "" && len(media.Schema.Properties) == 0 {
+		return &OpenAPISchema{Type: "string", Format: "binary"}
+	}
+	return g.convertRPCSchemaToOpenAPI(media.Schema)
+}
+
+// mediaDescription prefers what the declaration said over a generic label.
+func mediaDescription(media *entity.MediaSpec, fallback string) string {
+	if media.Description != "" {
+		return media.Description
+	}
+	return fallback
+}
+
 // convertOperationToOpenAPI converts an RPC operation to an OpenAPI operation
 func (g *OpenAPIGenerator) convertOperationToOpenAPI(op RPCOperation) OpenAPIOperation {
 	openAPIOp := OpenAPIOperation{
@@ -432,8 +459,13 @@ func (g *OpenAPIGenerator) convertOperationToOpenAPI(op RPCOperation) OpenAPIOpe
 		openAPIOp.Parameters = append(openAPIOp.Parameters, openAPIParam)
 	}
 
-	// Add request body for POST/PUT operations
-	if op.Method == "POST" || op.Method == "PUT" {
+	// Add request body for POST/PUT operations. A declared media type replaces
+	// the assumed JSON one entirely: an upload that is documented as both would
+	// tell a reader it accepts a body it does not.
+	switch {
+	case op.RequestMedia != nil:
+		openAPIOp.RequestBody = g.mediaRequestBody(op.RequestMedia)
+	case op.Method == "POST" || op.Method == "PUT":
 		openAPIOp.RequestBody = &OpenAPIRequestBody{
 			Description: "Request body",
 			Content: map[string]OpenAPIMediaType{
@@ -445,14 +477,22 @@ func (g *OpenAPIGenerator) convertOperationToOpenAPI(op RPCOperation) OpenAPIOpe
 	}
 
 	// Add standard responses
-	openAPIOp.Responses["200"] = OpenAPIResponse{
-		Description: "Successful operation",
-		Headers:     g.responseHeadersForOperation(op),
-		Content: map[string]OpenAPIMediaType{
-			"application/json": {
-				Schema: g.responseSchemaForOperation(op),
+	if op.ResponseMedia != nil {
+		openAPIOp.Responses["200"] = OpenAPIResponse{
+			Description: mediaDescription(op.ResponseMedia, "Successful operation"),
+			Headers:     g.responseHeadersForOperation(op),
+			Content:     map[string]OpenAPIMediaType{op.ResponseMedia.ContentType: {Schema: g.mediaSchema(op.ResponseMedia)}},
+		}
+	} else {
+		openAPIOp.Responses["200"] = OpenAPIResponse{
+			Description: "Successful operation",
+			Headers:     g.responseHeadersForOperation(op),
+			Content: map[string]OpenAPIMediaType{
+				"application/json": {
+					Schema: g.responseSchemaForOperation(op),
+				},
 			},
-		},
+		}
 	}
 
 	if g.config.StructuredErrorResponses {

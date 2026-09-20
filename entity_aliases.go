@@ -36,6 +36,11 @@ type (
 	EntityAction          = entity.EntityAction
 	EntityBulkAction      = entity.EntityBulkAction
 	CommandOpenAPIMeta    = entity.CommandOpenAPIMeta
+	MediaSpec             = entity.MediaSpec
+	CommandMedia          = entity.CommandMedia
+	StreamEvent           = entity.StreamEvent
+	StreamSend            = entity.StreamSend
+	StreamFunc            = entity.StreamFunc
 	ResponseOpenAPIMeta   = entity.ResponseOpenAPIMeta
 	MCPToolHints          = entity.MCPToolHints
 	ToolPermission        = entity.ToolPermission
@@ -73,24 +78,31 @@ type (
 
 // --- non-generic function/var aliases ---
 var (
-	GetEntities            = entity.GetEntities
-	GetEntity              = entity.GetEntity
-	GenerateCLI            = entity.GenerateCLI
-	RegisterDynamicEntity  = entity.RegisterDynamicEntity
-	RegisterSubCommand     = entity.RegisterSubCommand
-	RegisterSubCommandFn   = entity.RegisterSubCommandFn
-	GetDataFunc            = entity.GetDataFunc
-	GetContextDataFunc     = entity.GetContextDataFunc
-	CommandIdentity        = entity.CommandIdentity
-	GetLookupFunc          = entity.GetLookupFunc
-	GetContextLookupFunc   = entity.GetContextLookupFunc
-	GetCommandOpenAPIMeta  = entity.GetCommandOpenAPIMeta
-	GetCommandResponseMeta = entity.GetCommandResponseMeta
-	SetCommandResponseMeta = entity.SetCommandResponseMeta
-	AnnotateTool           = entity.AnnotateTool
-	AnnotateSchedule       = entity.AnnotateSchedule
-	MarkLocalOnly          = entity.MarkLocalOnly
-	IsLocalOnly            = entity.IsLocalOnly
+	GetEntities              = entity.GetEntities
+	GetEntity                = entity.GetEntity
+	GenerateCLI              = entity.GenerateCLI
+	RegisterDynamicEntity    = entity.RegisterDynamicEntity
+	RegisterSubCommand       = entity.RegisterSubCommand
+	RegisterSubCommandFn     = entity.RegisterSubCommandFn
+	GetDataFunc              = entity.GetDataFunc
+	GetContextDataFunc       = entity.GetContextDataFunc
+	GetStreamFunc            = entity.GetStreamFunc
+	GetCommandMedia          = entity.GetCommandMedia
+	AnnotateMedia            = entity.AnnotateMedia
+	AddStreamCommand         = entity.AddStreamCommand
+	CommandIdentity          = entity.CommandIdentity
+	GetLookupFunc            = entity.GetLookupFunc
+	GetContextLookupFunc     = entity.GetContextLookupFunc
+	GetCommandOpenAPIMeta    = entity.GetCommandOpenAPIMeta
+	GetCommandResponseMeta   = entity.GetCommandResponseMeta
+	SetCommandResponseMeta   = entity.SetCommandResponseMeta
+	AnnotateTool             = entity.AnnotateTool
+	AnnotateSchedule         = entity.AnnotateSchedule
+	MarkLocalOnly            = entity.MarkLocalOnly
+	MarkServedOnly           = entity.MarkServedOnly
+	IsServedOnly             = entity.IsServedOnly
+	RefuseServedOnlyCommands = entity.RefuseServedOnlyCommands
+	IsLocalOnly              = entity.IsLocalOnly
 )
 
 const (

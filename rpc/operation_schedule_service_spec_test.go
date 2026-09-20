@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/flanksource/clicky/entity"
+	"github.com/flanksource/clicky/route"
 	"github.com/flanksource/clicky/task"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -161,7 +162,7 @@ var _ = Describe("generated operation schedules", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(service.Load(ctx)).To(Succeed())
 		mux := http.NewServeMux()
-		service.RegisterRoutes(mux)
+		service.RegisterRoutes(route.NewRouter(mux))
 
 		body, err := json.Marshal(OperationScheduleInput{
 			Name: "Nightly", OperationID: "scheduled", Args: map[string]any{},

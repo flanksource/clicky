@@ -10,6 +10,7 @@ import (
 	. "github.com/onsi/gomega"
 
 	"github.com/flanksource/clicky/cache"
+	"github.com/flanksource/clicky/route"
 )
 
 // fakeBrowser records the last request it saw and replies with canned data so
@@ -72,7 +73,7 @@ var _ = Describe("Cache HTTP handler", func() {
 	BeforeEach(func() {
 		browser = &fakeBrowser{}
 		mux := http.NewServeMux()
-		cache.RegisterRoutes(mux, browser, "/api/v1")
+		cache.RegisterRoutes(route.NewRouter(mux), browser, "/api/v1")
 		server = httptest.NewServer(mux)
 		DeferCleanup(server.Close)
 	})

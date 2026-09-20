@@ -77,6 +77,12 @@ func (s *SwaggerServer) handleExecuteCommand(w http.ResponseWriter, r *http.Requ
 			return
 		}
 	}
+	// A streaming operation owns the whole response, so it is dispatched before
+	// any provider that would buffer one.
+	if operation != nil && operation.StreamFunc != nil && !explicitLookup(r) {
+		serveStream(w, r, operation)
+		return
+	}
 	if paged := s.pagedOperation(r, operation); paged != nil && !explicitLookup(r) {
 		s.handlePagedCommand(w, r, paged, paged.PagedFunc, exportName(paged))
 		return
