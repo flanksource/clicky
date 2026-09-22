@@ -22,6 +22,12 @@ go install github.com/flanksource/clicky/cmd/clicky@latest
 clicky lint ./...
 ```
 
+Add `--source` to show the offending source beneath each displayed location. `--source-lines` is the total excerpt length, so `--source-lines=1` shows only the offending line:
+
+```bash
+clicky lint --source --source-lines=1 ./...
+```
+
 The analyzer reports **warnings** for render code:
 
 - `api.Text{...}` struct literals and `Children:` slice literals. Use `clicky.Text(...)` or `api.Text{}.Append(...)` instead.

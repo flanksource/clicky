@@ -607,13 +607,16 @@ composite literal usage of api.Text, direct stdout writes, and calling
 .ANSI()/.HTML()/.Markdown()/.String() inside Pretty/render-builder code.
 
 By default, clicky lint renders a colored tree summary grouped by rule and
-affected file. Use --format json for structured output, or --raw / -- for the
-underlying go/analysis driver flags (-json, -fix, -c=N, etc.).
+affected file. Use --source to include source excerpts in the summary and
+--source-lines to control their total line count. Use --format json for
+structured output, or --raw / -- for the underlying go/analysis driver flags
+(-json, -fix, -c=N, etc.).
 
 If no packages are given, defaults to ./... in the current directory.`,
 		Example: `  clicky lint ./...
   clicky lint ./pkg/foo ./pkg/bar
   clicky lint --summary-limit 2 ./...
+  clicky lint --source --source-lines 3 ./...
   clicky lint --format json ./...
   clicky lint --severity manual-cobra-command=warning ./...
   clicky lint -- -json ./...`,
@@ -621,6 +624,9 @@ If no packages are given, defaults to ./... in the current directory.`,
 		DisableFlagParsing: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if rawArgs, raw := rawLintArgs(args); raw {
+				if lintSourceFlagPresent(args) {
+					return fmt.Errorf("--source and --source-lines cannot be used with raw analyzer output")
+				}
 				return runRawLint(rawArgs)
 			}
 			if lintHelpRequested(args) {
@@ -689,6 +695,7 @@ func defaultLintCLIOptions() lintCLIOptions {
 	return lintCLIOptions{
 		Format:       "pretty",
 		SummaryLimit: 5,
+		SourceLines:  1,
 	}
 }
 
@@ -736,6 +743,12 @@ func parseLintArgs(args []string) (lintCLIOptions, []string, error) {
 	if opts.Raw {
 		return opts, nil, fmt.Errorf("--raw must be handled before lint flag parsing")
 	}
+	if opts.SourceLines < 1 {
+		return opts, nil, fmt.Errorf("--source-lines must be greater than zero")
+	}
+	if flags.Changed("source-lines") && !opts.Source {
+		return opts, nil, fmt.Errorf("--source-lines requires --source")
+	}
 	opts.Format = strings.ToLower(strings.TrimSpace(opts.Format))
 	if opts.Format == "" {
 		opts.Format = "pretty"
@@ -744,6 +757,9 @@ func parseLintArgs(args []string) (lintCLIOptions, []string, error) {
 	case "pretty", "json":
 	default:
 		return opts, nil, fmt.Errorf("unsupported lint format %q (expected pretty or json)", opts.Format)
+	}
+	if opts.Source && opts.Format != "pretty" {
+		return opts, nil, fmt.Errorf("--source is only supported with --format pretty")
 	}
 	packages := flags.Args()
 	if len(packages) == 0 {
@@ -759,12 +775,18 @@ func renderLintResult(cmd *cobra.Command, result *lint.Result, opts lintCLIOptio
 		encoder.SetIndent("", "  ")
 		return encoder.Encode(result)
 	default:
+		view := lint.NewSummaryView(result, opts.SummaryLimit)
+		if opts.Source {
+			if err := view.LoadSource(opts.SourceLines); err != nil {
+				return err
+			}
+		}
 		formatOpts := formatters.FormatOptions{
 			Format:  "tree",
 			NoColor: opts.NoColor,
 		}
 		formatOpts.ResolveNoColor()
-		out, err := clicky.Format(lint.NewSummaryView(result, opts.SummaryLimit), formatOpts)
+		out, err := clicky.Format(view, formatOpts)
 		if err != nil {
 			return err
 		}
@@ -774,6 +796,15 @@ func renderLintResult(cmd *cobra.Command, result *lint.Result, opts lintCLIOptio
 		_, err = fmt.Fprint(cmd.OutOrStdout(), out)
 		return err
 	}
+}
+
+func lintSourceFlagPresent(args []string) bool {
+	for _, arg := range args {
+		if arg == "--source" || strings.HasPrefix(arg, "--source=") || arg == "--source-lines" || strings.HasPrefix(arg, "--source-lines=") {
+			return true
+		}
+	}
+	return false
 }
 
 func lintHelpRequested(args []string) bool {
