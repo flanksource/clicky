@@ -2,6 +2,7 @@ package lint
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -12,8 +13,9 @@ import (
 // SummaryView renders clickylint results as a compact tree, matching the
 // Gavel lint display shape: root -> linter -> rule -> affected files.
 type SummaryView struct {
-	Result *Result `json:"result"`
-	Limit  int     `json:"-"`
+	Result  *Result `json:"result"`
+	Limit   int     `json:"-"`
+	sources map[sourceLocation][]sourceLine
 }
 
 // NewSummaryView returns a tree view for a lint result.
@@ -22,6 +24,87 @@ func NewSummaryView(result *Result, limit int) *SummaryView {
 		limit = 5
 	}
 	return &SummaryView{Result: result, Limit: limit}
+}
+
+type sourceLocation struct {
+	file string
+	line int
+}
+
+type sourceLine struct {
+	number int
+	text   string
+	target bool
+}
+
+// LoadSource preloads source windows for the summary's diagnostic locations.
+// lineCount is the total number of source lines in each window.
+func (s *SummaryView) LoadSource(lineCount int) error {
+	if lineCount < 1 {
+		return fmt.Errorf("source line count must be greater than zero")
+	}
+	if s.Result == nil {
+		return nil
+	}
+
+	files := map[string][]string{}
+	s.sources = map[sourceLocation][]sourceLine{}
+	for _, violation := range s.Result.Violations {
+		if violation.File == "" || violation.Line < 1 {
+			continue
+		}
+		location := sourceLocation{file: violation.File, line: violation.Line}
+		if _, ok := s.sources[location]; ok {
+			continue
+		}
+
+		path := violation.File
+		if !filepath.IsAbs(path) {
+			path = filepath.Join(s.Result.WorkDir, path)
+		}
+		lines, ok := files[path]
+		if !ok {
+			data, err := os.ReadFile(path)
+			if err != nil {
+				return fmt.Errorf("read lint source %s: %w", violation.File, err)
+			}
+			content := strings.ReplaceAll(string(data), "\r\n", "\n")
+			lines = strings.Split(content, "\n")
+			if strings.HasSuffix(content, "\n") {
+				lines = lines[:len(lines)-1]
+			}
+			files[path] = lines
+		}
+		if violation.Line > len(lines) {
+			return fmt.Errorf("read lint source %s:%d: line is outside file with %d lines", violation.File, violation.Line, len(lines))
+		}
+		s.sources[location] = sourceWindow(lines, violation.Line, lineCount)
+	}
+	return nil
+}
+
+func sourceWindow(lines []string, targetLine, lineCount int) []sourceLine {
+	target := targetLine - 1
+	start := target - (lineCount-1)/2
+	end := start + lineCount
+	if start < 0 {
+		end -= start
+		start = 0
+	}
+	if end > len(lines) {
+		start = max(0, start-(end-len(lines)))
+		end = len(lines)
+	}
+
+	window := make([]sourceLine, 0, end-start)
+	for i := start; i < end; i++ {
+		window = append(window, sourceLine{
+			number: i + 1,
+			text:   strings.TrimSuffix(lines[i], "\r"),
+			target: i == target,
+		})
+	}
+	return window
 }
 
 func (s *SummaryView) Pretty() api.Text {
@@ -57,6 +140,7 @@ func (s *SummaryView) GetChildren() []api.TreeNode {
 		violations: s.Result.Violations,
 		errors:     s.Result.Errors,
 		limit:      s.Limit,
+		sources:    s.sources,
 	}}
 }
 
@@ -66,6 +150,7 @@ type linterSummaryNode struct {
 	violations []Violation
 	errors     []string
 	limit      int
+	sources    map[sourceLocation][]sourceLine
 }
 
 func (n *linterSummaryNode) Pretty() api.Text {
@@ -146,6 +231,7 @@ func (n *linterSummaryNode) GetChildren() []api.TreeNode {
 			workDir:    n.workDir,
 			violations: g.violations,
 			limit:      n.limit,
+			sources:    n.sources,
 		})
 	}
 	return children
@@ -167,6 +253,7 @@ type ruleSummaryNode struct {
 	workDir    string
 	violations []Violation
 	limit      int
+	sources    map[sourceLocation][]sourceLine
 }
 
 func (n *ruleSummaryNode) Pretty() api.Text {
@@ -212,6 +299,7 @@ func (n *ruleSummaryNode) GetChildren() []api.TreeNode {
 			workDir:   n.workDir,
 			violation: b.first,
 			count:     b.count,
+			source:    n.sources[sourceLocation{file: b.first.File, line: b.first.Line}],
 		})
 	}
 	if remaining := len(order) - limit; remaining > 0 {
@@ -224,6 +312,7 @@ type locationSummaryNode struct {
 	workDir   string
 	violation Violation
 	count     int
+	source    []sourceLine
 }
 
 func (n *locationSummaryNode) Pretty() api.Text {
@@ -236,20 +325,36 @@ func (n *locationSummaryNode) Pretty() api.Text {
 			file = rel
 		}
 	}
-	if n.count > 1 {
-		return api.Text{
-			Content: fmt.Sprintf("📄 %s (%d)", file, n.count),
-			Style:   "text-muted",
-		}
-	}
 	loc := file
-	if n.violation.Line > 0 {
+	if n.count > 1 {
+		loc = fmt.Sprintf("%s (%d)", file, n.count)
+	} else if n.violation.Line > 0 {
 		loc = fmt.Sprintf("%s:%d", file, n.violation.Line)
 		if n.violation.Column > 0 {
 			loc = fmt.Sprintf("%s:%d", loc, n.violation.Column)
 		}
 	}
-	return api.Text{Content: "📄 " + loc, Style: "text-muted"}
+	t := api.Text{}.Append("📄 "+loc, "text-muted")
+	if len(n.source) == 0 {
+		return t
+	}
+
+	width := len(fmt.Sprintf("%d", n.source[len(n.source)-1].number))
+	for _, line := range n.source {
+		marker, style := "  ", "font-mono text-muted"
+		if line.target {
+			marker, style = "> ", "font-mono text-yellow-600"
+		}
+		t = t.NewLine().
+			Append(fmt.Sprintf("%s%*d │ ", marker, width, line.number), "font-mono text-muted").
+			Append(line.text, style)
+		if line.target && n.violation.Column > 0 {
+			t = t.NewLine().
+				Append(fmt.Sprintf("  %*s │ ", width, ""), "font-mono text-muted").
+				Append(strings.Repeat(" ", n.violation.Column-1)+"^", "font-mono text-red-500")
+		}
+	}
+	return t
 }
 
 func (n *locationSummaryNode) GetChildren() []api.TreeNode { return nil }

@@ -354,6 +354,8 @@ func emit() { fmt.Println("x") }
 			Expect(stdout.String()).To(ContainSubstring("--summary-limit"))
 			Expect(stdout.String()).To(ContainSubstring("--format"))
 			Expect(stdout.String()).To(ContainSubstring("--raw"))
+			Expect(stdout.String()).To(ContainSubstring("--source"))
+			Expect(stdout.String()).To(ContainSubstring("--source-lines"))
 			Expect(stdout.String()).To(ContainSubstring("tree summary"))
 		})
 	})
