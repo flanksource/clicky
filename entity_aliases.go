@@ -36,6 +36,7 @@ type (
 	EntityAction          = entity.EntityAction
 	EntityBulkAction      = entity.EntityBulkAction
 	CommandOpenAPIMeta    = entity.CommandOpenAPIMeta
+	RouteOverride         = entity.RouteOverride
 	MediaSpec             = entity.MediaSpec
 	CommandMedia          = entity.CommandMedia
 	StreamEvent           = entity.StreamEvent
