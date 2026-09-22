@@ -75,7 +75,9 @@ func TestLookupCarriesTheClockAFilterDeclares(t *testing.T) {
 func TestDynamicLookupCarriesDefaultOperator(t *testing.T) {
 	filter := DynamicFilter{
 		Key: "elapsed", Label: "Elapsed", Type: "duration", Unit: "ms", DefaultOperator: ">",
-		Options: func(context.Context, map[string]string, string, int) (map[string]api.Textable, int, error) { return nil, 0, nil },
+		Options: func(context.Context, map[string]string, string, int) (map[string]api.Textable, int, error) {
+			return nil, 0, nil
+		},
 	}
 	response := resolveFilters(t, map[string]string{}, filter)
 	if got := response.Filters["elapsed"].DefaultOperator; got != ">" {

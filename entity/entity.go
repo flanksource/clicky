@@ -816,6 +816,12 @@ type Entity[T EntityItem, ListOpts any, R any] struct {
 	// server — sessions it holds, runs it has in flight — so a command in
 	// another process would answer about nothing. See MarkServedOnly.
 	ServedOnly bool
+
+	// Routes publishes individual operations at declared URLs or methods,
+	// keyed by verb ("list", "get", "create", "update", "delete"). Use it for an
+	// entity whose callers already address it at paths this registration did not
+	// choose; actions declare theirs with ActionSpec.WithPath instead.
+	Routes map[string]RouteOverride
 }
 
 // entityIDFrom resolves the entity id from the `id` flag or the first
@@ -1142,6 +1148,10 @@ func RegisterEntity[T EntityItem, ListOpts any, R any](e Entity[T, ListOpts, R])
 		entityRegistry = append(entityRegistry, adminInfo)
 		entityRegistryMu.Unlock()
 	}
+
+	// Applied last, so it covers every operation the registration produced
+	// however it was declared.
+	applyRouteOverrides(info.Operations, e.Routes)
 
 	observeEntity(&info)
 	entityRegistryMu.Lock()
@@ -1501,7 +1511,8 @@ func generateListCommand(parent *cobra.Command, entity EntityInfo, op EntityOper
 		op.BindCompletions(cmd)
 	}
 
-	annotateEntityOperationCommand(cmd, parent, "list", "", "collection", "", "", op.LookupFunc != nil, false, false, MCPToolHints{})
+	annotateEntityOperationCommand(cmd, parent, "list", op.Method, "collection", "", "", op.LookupFunc != nil, false, false, MCPToolHints{})
+	setCommandAnnotation(cmd, annotationClickyOperationPath, op.RoutePath)
 	parent.AddCommand(cmd)
 	storeEntityDataFuncs(cmd, op)
 	SetCommandResponseMeta(cmd, ResponseOpenAPIMeta{
@@ -1690,7 +1701,8 @@ func generateBodyCommand(parent *cobra.Command, verb, short string, op EntityOpe
 		scope = "entity"
 		idParam = "id"
 	}
-	annotateEntityOperationCommand(cmd, parent, verb, "", scope, "", idParam, false, false, false, MCPToolHints{})
+	annotateEntityOperationCommand(cmd, parent, verb, op.Method, scope, "", idParam, false, false, false, MCPToolHints{})
+	setCommandAnnotation(cmd, annotationClickyOperationPath, op.RoutePath)
 	parent.AddCommand(cmd)
 	storeEntityDataFuncs(cmd, op)
 	SetCommandResponseMeta(cmd, ResponseOpenAPIMeta{
