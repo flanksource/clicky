@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.21.68](https://github.com/flanksource/clicky/compare/v1.21.67...v1.21.68) (2026-09-22)
+
+
+### ✨ Features
+
+* add declared routing and better operation metadata ([bd29c58](https://github.com/flanksource/clicky/commit/bd29c5871da41c4900af13fac17e2c5b15556a0a))
+
+
+### 🔧 Maintenance
+
+* go mod tidy for valkey ([001b84e](https://github.com/flanksource/clicky/commit/001b84e3f78470032cf52ae718dcf8eb0b47f2c6))
+
 ## [1.21.67](https://github.com/flanksource/clicky/compare/v1.21.66...v1.21.67) (2026-09-18)
 
 
