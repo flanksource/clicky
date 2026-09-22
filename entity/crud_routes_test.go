@@ -85,3 +85,71 @@ func TestOperationsWithoutAnOverrideAreUnchanged(t *testing.T) {
 			"%s must not acquire a path it did not declare", verb)
 	}
 }
+
+// A mutation published under a method defined as safe can be triggered by
+// anything that follows links — a prefetcher, a crawler, a browser restoring
+// tabs. The override must refuse rather than register it.
+func TestSafeMethodsAreRefusedForMutations(t *testing.T) {
+	for _, verb := range []string{"create", "update", "delete"} {
+		for _, method := range []string{"GET", "get", "HEAD", "OPTIONS"} {
+			t.Run(verb+"/"+method, func(t *testing.T) {
+				operations := []EntityOperation{{Verb: verb}}
+				assert.Panicsf(t, func() {
+					applyRouteOverrides(operations, map[string]RouteOverride{verb: {Method: method}})
+				}, "%s must not be publishable as %s", verb, method)
+			})
+		}
+	}
+}
+
+func TestSafeMethodsRemainAllowedForReads(t *testing.T) {
+	for _, verb := range []string{"list", "get"} {
+		operations := []EntityOperation{{Verb: verb}}
+		assert.NotPanicsf(t, func() {
+			applyRouteOverrides(operations, map[string]RouteOverride{verb: {Method: "GET"}})
+		}, "%s reads nothing, so GET is correct for it", verb)
+		assert.Equal(t, "GET", operations[0].Method)
+	}
+}
+
+func TestMutationsKeepTheirUnsafeMethodOverrides(t *testing.T) {
+	operations := []EntityOperation{{Verb: "delete"}}
+	applyRouteOverrides(operations, map[string]RouteOverride{"delete": {Method: "POST"}})
+	assert.Equal(t, "POST", operations[0].Method, "a mutation may move between unsafe methods")
+}
+
+// An admin sub-entity is registered separately from its parent, so an override
+// declared on it has to be applied there too. Missing it is silent: the
+// operation keeps the derived route and nothing reports that the declaration
+// was ignored.
+func TestAdminOperationsHonourTheirOwnOverrides(t *testing.T) {
+	resetEntityRegistry(t)
+
+	RegisterEntity(Entity[samplePlainEntity, struct{}, any]{
+		Name: "widget",
+		List: func(struct{}) ([]samplePlainEntity, error) { return nil, nil },
+		Admin: &Entity[samplePlainEntity, struct{}, any]{
+			Name:   "widget",
+			List:   func(struct{}) ([]samplePlainEntity, error) { return nil, nil },
+			Routes: map[string]RouteOverride{"list": {Path: "/api/v1/widget/admin/catalog"}},
+		},
+	})
+
+	var admin *EntityInfo
+	for i, info := range GetEntities() {
+		if info.IsAdmin {
+			admin = &GetEntities()[i]
+		}
+	}
+	if admin == nil {
+		t.Fatal("the admin entity did not register")
+	}
+	for _, op := range admin.Operations {
+		if op.Verb == "list" {
+			assert.Equal(t, "/api/v1/widget/admin/catalog", op.RoutePath,
+				"the admin entity's own override must reach its operations")
+			return
+		}
+	}
+	t.Fatal("the admin entity has no list operation")
+}

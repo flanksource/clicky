@@ -1143,14 +1143,17 @@ func RegisterEntity[T EntityItem, ListOpts any, R any](e Entity[T, ListOpts, R])
 			}
 			adminInfo.Actions = append(adminInfo.Actions, action.actionInfo())
 		}
+		// The admin sub-entity is registered separately from its parent, so its
+		// own overrides have to be applied here; the parent's call below never
+		// sees these operations.
+		applyRouteOverrides(adminInfo.Operations, admin.Routes)
 		observeEntity(&adminInfo)
 		entityRegistryMu.Lock()
 		entityRegistry = append(entityRegistry, adminInfo)
 		entityRegistryMu.Unlock()
 	}
 
-	// Applied last, so it covers every operation the registration produced
-	// however it was declared.
+	// The parent's own operations; the admin sub-entity applied its own above.
 	applyRouteOverrides(info.Operations, e.Routes)
 
 	observeEntity(&info)

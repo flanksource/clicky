@@ -46,16 +46,7 @@ func (m Meta) describe(method string) (verb string, readOnly bool) {
 	if !m.SelfRouted {
 		return m.Verb, m.ReadOnly
 	}
-	return strings.ToLower(method), safeMethod(method)
-}
-
-// safeMethod reports whether a method is defined never to change state.
-func safeMethod(method string) bool {
-	switch method {
-	case http.MethodGet, http.MethodHead, http.MethodOptions:
-		return true
-	}
-	return false
+	return strings.ToLower(method), entity.SafeMethod(method)
 }
 
 // Router registers routes onto a mux and observes the ones the application
