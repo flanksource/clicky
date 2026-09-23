@@ -40,11 +40,11 @@ func RenderASTNode(value interface{}, field api.PrettyField, theme api.Theme) st
 			// Color based on complexity
 			style := lipgloss.NewStyle()
 			if complexity > 10 {
-				style = style.Foreground(theme.Error)
+				style = style.Foreground(lipgloss.Color(theme.Error))
 			} else if complexity > 5 {
-				style = style.Foreground(theme.Warning)
+				style = style.Foreground(lipgloss.Color(theme.Warning))
 			} else {
-				style = style.Foreground(theme.Success)
+				style = style.Foreground(lipgloss.Color(theme.Success))
 			}
 			result += style.Render(complexityStr)
 		}
@@ -85,7 +85,7 @@ func RenderFileTree(value interface{}, field api.PrettyField, theme api.Theme) s
 			icon = "📝"
 		}
 
-		style := lipgloss.NewStyle().Foreground(theme.Info)
+		style := lipgloss.NewStyle().Foreground(lipgloss.Color(theme.Info))
 		return fmt.Sprintf("%s %s", icon, style.Render(path))
 	default:
 		return fmt.Sprintf("%v", value)
@@ -146,13 +146,13 @@ func RenderComplexityColored(value interface{}, field api.PrettyField, theme api
 
 	style := lipgloss.NewStyle()
 	if complexity > 10 {
-		style = style.Foreground(theme.Error).Bold(true)
+		style = style.Foreground(lipgloss.Color(theme.Error)).Bold(true)
 	} else if complexity > 5 {
-		style = style.Foreground(theme.Warning)
+		style = style.Foreground(lipgloss.Color(theme.Warning))
 	} else if complexity > 0 {
-		style = style.Foreground(theme.Success)
+		style = style.Foreground(lipgloss.Color(theme.Success))
 	} else {
-		style = style.Foreground(theme.Muted)
+		style = style.Foreground(lipgloss.Color(theme.Muted))
 	}
 
 	return style.Render(fmt.Sprintf("%d", complexity))
@@ -161,7 +161,7 @@ func RenderComplexityColored(value interface{}, field api.PrettyField, theme api
 // RenderLineNumber renders a line number with formatting
 func RenderLineNumber(value interface{}, field api.PrettyField, theme api.Theme) string {
 	lineStr := fmt.Sprintf("%v", value)
-	style := lipgloss.NewStyle().Foreground(theme.Muted)
+	style := lipgloss.NewStyle().Foreground(lipgloss.Color(theme.Muted))
 	return style.Render(fmt.Sprintf("L%s", lineStr))
 }
 
@@ -211,15 +211,15 @@ func applyStyle(text, styleStr string, theme api.Theme) string {
 	for _, s := range styles {
 		switch {
 		case strings.HasPrefix(s, "text-blue"):
-			style = style.Foreground(theme.Info)
+			style = style.Foreground(lipgloss.Color(theme.Info))
 		case strings.HasPrefix(s, "text-green"):
-			style = style.Foreground(theme.Success)
+			style = style.Foreground(lipgloss.Color(theme.Success))
 		case strings.HasPrefix(s, "text-red"):
-			style = style.Foreground(theme.Error)
+			style = style.Foreground(lipgloss.Color(theme.Error))
 		case strings.HasPrefix(s, "text-yellow"):
-			style = style.Foreground(theme.Warning)
+			style = style.Foreground(lipgloss.Color(theme.Warning))
 		case strings.HasPrefix(s, "text-muted"):
-			style = style.Foreground(theme.Muted)
+			style = style.Foreground(lipgloss.Color(theme.Muted))
 		case s == "bold":
 			style = style.Bold(true)
 		case s == "italic":

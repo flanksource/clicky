@@ -10,7 +10,6 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/flanksource/clicky/api/tailwind"
-	"github.com/samber/lo"
 )
 
 type Comment string
@@ -418,10 +417,11 @@ func (t Text) Indent(spaces int) Text {
 // and time.Duration (human-readable format), appending the result as a styled child.
 func (t Text) PrintfWithStyle(format, style string, args ...interface{}) Text {
 
-	args = lo.Map(args, func(i any, _ int) any {
-		return Human(i)
-	})
-	t.Children = append(t.Children, Text{Content: fmt.Sprintf(format, args...), Style: style})
+	humanArgs := make([]any, len(args))
+	for i, arg := range args {
+		humanArgs[i] = Human(arg)
+	}
+	t.Children = append(t.Children, Text{Content: fmt.Sprintf(format, humanArgs...), Style: style})
 	return t
 }
 

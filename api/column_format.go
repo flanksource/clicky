@@ -6,12 +6,7 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
-
-	"golang.org/x/text/language"
-	"golang.org/x/text/message"
 )
-
-var columnNumberPrinter = message.NewPrinter(language.AmericanEnglish)
 
 // ColumnFormatValues returns the formats supported by schema-driven columns.
 func ColumnFormatValues() []string {
@@ -109,9 +104,35 @@ func formatColumnUnit(value any, unit string) (string, bool) {
 
 func formatDecimal(value float64) string {
 	if math.Trunc(value) == value {
-		return columnNumberPrinter.Sprintf("%.0f", value)
+		return formatGroupedFloat(value, 0)
 	}
-	return strings.TrimSuffix(columnNumberPrinter.Sprintf("%.1f", value), ".0")
+	return strings.TrimSuffix(formatGroupedFloat(value, 1), ".0")
+}
+
+// formatGroupedFloat renders value with fixed decimals and "," thousands
+// groups the way en-US does: negative zero has no sign, a negative value that
+// rounds to zero keeps its "-", and infinity renders as "∞".
+func formatGroupedFloat(value float64, precision int) string {
+	sign := ""
+	if value < 0 {
+		sign = "-"
+	}
+	if math.IsInf(value, 0) {
+		return sign + "∞"
+	}
+	whole, fraction, hasFraction := strings.Cut(strconv.FormatFloat(math.Abs(value), 'f', precision, 64), ".")
+	var grouped strings.Builder
+	grouped.WriteString(sign)
+	for i, digit := range whole {
+		if i > 0 && (len(whole)-i)%3 == 0 {
+			grouped.WriteByte(',')
+		}
+		grouped.WriteRune(digit)
+	}
+	if hasFraction {
+		grouped.WriteString("." + fraction)
+	}
+	return grouped.String()
 }
 
 func formatShortNumber(value float64) string {
@@ -156,7 +177,7 @@ func formatDurationValue(milliseconds float64) string {
 	abs := math.Abs(milliseconds)
 	switch {
 	case abs < 1000:
-		return columnNumberPrinter.Sprintf("%.0f ms", milliseconds)
+		return formatGroupedFloat(milliseconds, 0) + " ms"
 	case abs < 60_000:
 		return formatDecimal(milliseconds/1000) + " s"
 	case abs < 3_600_000:

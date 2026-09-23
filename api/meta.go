@@ -6,13 +6,12 @@ package api
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"reflect"
-	"sort"
+	"slices"
 	"strings"
 
-	lipglosstree "github.com/charmbracelet/lipgloss/tree"
 	"github.com/charmbracelet/x/ansi"
-	"github.com/samber/lo"
 )
 
 // normalizeTreeLabel drops blank lines from a tree-node label and trims
@@ -49,14 +48,14 @@ func trimTreePadding(s string) string {
 
 // Interface types for reflection-based slice checking
 var (
-	tableProviderType  = reflect.TypeOf((*TableProvider)(nil)).Elem()
-	tableMixinType     = reflect.TypeOf((*TableMixin)(nil)).Elem()
-	tableRowMixin2Type = reflect.TypeOf((*TableRowMixin2)(nil)).Elem()
-	treeNodeType       = reflect.TypeOf((*TreeNode)(nil)).Elem()
-	treeMixinType      = reflect.TypeOf((*TreeMixin)(nil)).Elem()
-	prettyRowType      = reflect.TypeOf((*PrettyRow)(nil)).Elem()
-	prettyType         = reflect.TypeOf((*Pretty)(nil)).Elem()
-	textableType       = reflect.TypeOf((*Textable)(nil)).Elem()
+	tableProviderType  = reflect.TypeFor[TableProvider]()
+	tableMixinType     = reflect.TypeFor[TableMixin]()
+	tableRowMixin2Type = reflect.TypeFor[TableRowMixin2]()
+	treeNodeType       = reflect.TypeFor[TreeNode]()
+	treeMixinType      = reflect.TypeFor[TreeMixin]()
+	prettyRowType      = reflect.TypeFor[PrettyRow]()
+	prettyType         = reflect.TypeFor[Pretty]()
+	textableType       = reflect.TypeFor[Textable]()
 )
 
 // PrettyData contains structured data processed through schema-driven formatting.
@@ -208,8 +207,7 @@ func NewTableFromRows(o []PrettyDataRow) TextTable {
 	// Use the first row to determine headers
 	firstRow := o[0]
 
-	headers := lo.Keys(firstRow)
-	sort.StringSlice(headers).Sort()
+	headers := slices.Sorted(maps.Keys(firstRow))
 	for _, key := range headers {
 		table.Headers = append(table.Headers, Text{Content: key})
 	}
@@ -301,54 +299,17 @@ func (tt TextTree) Visit(visitor VisitorFunc) bool {
 	return true
 }
 
-// buildLipglossTree converts a TextTree to a lipgloss tree
-func (tt TextTree) buildLipglossTree(withColors bool, depth int) *lipglosstree.Tree {
-	// Build the node label
-	var nodeLabel string
-	if tt.Node != nil {
-		if withColors {
-			nodeLabel = tt.Node.ANSI()
-		} else {
-			nodeLabel = tt.Node.String()
-		}
-		width := max(1, GetTerminalWidth()-depth*4-2)
-		nodeLabel = normalizeTreeLabelWidth(nodeLabel, width)
-	}
-
-	// If we have no node and only one child, return the child tree directly
-	if nodeLabel == "" && len(tt.Children) == 1 {
-		return tt.Children[0].buildLipglossTree(withColors, depth)
-	}
-
-	// If we have no node and multiple children, we need to create a wrapper
-	// Create the tree with root (use empty string if no node)
-	t := lipglosstree.New().Root(nodeLabel)
-
-	// Add children
-	for _, child := range tt.Children {
-		childTree := child.buildLipglossTree(withColors, depth+1)
-		if childTree != nil {
-			t = t.Child(childTree)
-		}
-	}
-
-	return t
-}
-
-func (tt TextTree) String() string {
-	if tt.Node == nil && len(tt.Children) == 0 {
+// treeLabel renders the node's label for a terminal tree at the given depth,
+// normalized and truncated to the width left after depth connectors.
+func (tt TextTree) treeLabel(withColors bool, depth int) string {
+	if tt.Node == nil {
 		return ""
 	}
-
-	t := tt.buildLipglossTree(false, 0)
-	if t == nil {
-		return ""
+	render := Textable.String
+	if withColors {
+		render = Textable.ANSI
 	}
-
-	// Use rounded enumerator
-	t = t.Enumerator(lipglosstree.RoundedEnumerator)
-
-	return trimTreePadding(t.String())
+	return normalizeTreeLabelWidth(render(tt.Node), max(1, GetTerminalWidth()-depth*4-2))
 }
 
 func (tt TextTree) HTML() string {
@@ -360,22 +321,6 @@ func (tt TextTree) HTML() string {
 // This is suitable for PDF output where JavaScript may not execute.
 func (tt TextTree) StaticHTML() string {
 	return RenderTreeHTML(&tt, false)
-}
-
-func (tt TextTree) ANSI() string {
-	if tt.Node == nil && len(tt.Children) == 0 {
-		return ""
-	}
-
-	t := tt.buildLipglossTree(true, 0)
-	if t == nil {
-		return ""
-	}
-
-	// Use rounded enumerator
-	t = t.Enumerator(lipglosstree.RoundedEnumerator)
-
-	return trimTreePadding(t.String())
 }
 
 func (tt TextTree) Markdown() string {
@@ -544,9 +489,9 @@ func TryTypedValue(o any) *TypedValue {
 	case TypedList:
 		return &TypedValue{TypedList: &v}
 	case TreeNode:
-		return &TypedValue{Tree: lo.ToPtr(NewTree(v))}
+		return &TypedValue{Tree: new(NewTree(v))}
 	case TreeMixin:
-		return &TypedValue{Tree: lo.ToPtr(NewTree(v.Tree()))}
+		return &TypedValue{Tree: new(NewTree(v.Tree()))}
 	// Pretty must be checked before Textable: a type implementing both (e.g.
 	// an EntityLink whose Pretty() returns a Link) controls its own rendered
 	// node via Pretty(), so honor that rather than treating the bare value as
@@ -557,11 +502,11 @@ func TryTypedValue(o any) *TypedValue {
 	case Textable:
 		return &TypedValue{Textable: v}
 	case []TableMixin:
-		return &TypedValue{Table: lo.ToPtr(NewTable(v))}
+		return &TypedValue{Table: new(NewTable(v))}
 	case []TableRowMixin2:
-		return &TypedValue{Table: lo.ToPtr(NewTableFromMixin(v))}
+		return &TypedValue{Table: new(NewTableFromMixin(v))}
 	case []PrettyDataRow:
-		return &TypedValue{Table: lo.ToPtr(NewTableFromRows(v))}
+		return &TypedValue{Table: new(NewTableFromRows(v))}
 	}
 
 	// Use reflection to check slices of interface implementations
@@ -579,11 +524,11 @@ func TryTypedValue(o any) *TypedValue {
 				// Columns() from: render an empty table without a schema
 				// instead of panicking on a nil-interface assertion.
 				if elemType.Kind() == reflect.Interface {
-					return &TypedValue{Table: lo.ToPtr(NewEmptyTable(nil))}
+					return &TypedValue{Table: new(NewEmptyTable(nil))}
 				}
 				zero := zeroTableProvider(elemType)
 				columns := MustMergeSortableColumns(elemType, zero.Columns())
-				return &TypedValue{Table: lo.ToPtr(NewEmptyTable(columns))}
+				return &TypedValue{Table: new(NewEmptyTable(columns))}
 			}
 			return nil
 		}
@@ -599,7 +544,7 @@ func TryTypedValue(o any) *TypedValue {
 				// Merge sort tags from the concrete first item, not the interface.
 				rowType = reflect.TypeOf(items[0])
 			}
-			return &TypedValue{Table: lo.ToPtr(newTableFromProviders(items, rowType))}
+			return &TypedValue{Table: new(newTableFromProviders(items, rowType))}
 		}
 
 		// Check TableMixin
@@ -608,7 +553,7 @@ func TryTypedValue(o any) *TypedValue {
 			for i := 0; i < val.Len(); i++ {
 				items[i] = val.Index(i).Interface().(TableMixin)
 			}
-			return &TypedValue{Table: lo.ToPtr(NewTable(items))}
+			return &TypedValue{Table: new(NewTable(items))}
 		}
 
 		// Check TableRowMixin2
@@ -617,7 +562,7 @@ func TryTypedValue(o any) *TypedValue {
 			for i := 0; i < val.Len(); i++ {
 				items[i] = val.Index(i).Interface().(TableRowMixin2)
 			}
-			return &TypedValue{Table: lo.ToPtr(NewTableFromMixin(items))}
+			return &TypedValue{Table: new(NewTableFromMixin(items))}
 		}
 
 		// Check TreeNode
@@ -626,7 +571,7 @@ func TryTypedValue(o any) *TypedValue {
 			for i := 0; i < val.Len(); i++ {
 				items[i] = val.Index(i).Interface().(TreeNode)
 			}
-			return &TypedValue{Tree: lo.ToPtr(NewTree(items...))}
+			return &TypedValue{Tree: new(NewTree(items...))}
 		}
 
 		// Check TreeMixin
@@ -635,7 +580,7 @@ func TryTypedValue(o any) *TypedValue {
 			for i := 0; i < val.Len(); i++ {
 				nodes[i] = val.Index(i).Interface().(TreeMixin).Tree()
 			}
-			return &TypedValue{Tree: lo.ToPtr(NewTree(nodes...))}
+			return &TypedValue{Tree: new(NewTree(nodes...))}
 		}
 
 		// If elements implement PrettyRow, return nil to let the slice→table

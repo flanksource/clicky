@@ -1,18 +1,14 @@
+//go:build !wasm
+
 package api
 
 import (
 	"bytes"
-	"fmt"
-	"strings"
 
-	"github.com/flanksource/clicky/api/tailwind"
 	"github.com/olekukonko/tablewriter"
 	"github.com/olekukonko/tablewriter/renderer"
 	"github.com/olekukonko/tablewriter/tw"
-	"github.com/samber/lo"
 )
-
-const defaultMarkdownColumnWidth = 200
 
 func (t TextTable) MarkdownWithOptions(options MarkdownOptions) string {
 	if len(t.Headers) == 0 {
@@ -27,20 +23,16 @@ func (t TextTable) MarkdownWithOptions(options MarkdownOptions) string {
 		tablewriter.WithRenderer(renderer.NewMarkdown()),
 	)
 
-	headers := make([]string, len(t.Headers))
+	headers := make([]any, len(t.Headers))
 	for i, header := range t.Headers {
 		headers[i] = markdownTableCell(Text{Content: header.String()}, t.markdownColumnWidth(i), options)
 	}
-	table.Header(lo.ToAnySlice(headers)...)
+	table.Header(headers...)
 
 	for _, row := range t.Rows {
 		values := make([]any, len(t.Headers))
-		for i, header := range t.Headers {
-			fieldName := header.String()
-			if i < len(t.FieldNames) && t.FieldNames[i] != "" {
-				fieldName = t.FieldNames[i]
-			}
-			if cell, ok := row[fieldName]; ok {
+		for i := range t.Headers {
+			if cell, ok := row[t.markdownFieldName(i)]; ok {
 				values[i] = markdownTableCell(cell, t.markdownColumnWidth(i), options)
 			}
 		}
@@ -55,20 +47,6 @@ func (t TextTable) MarkdownWithOptions(options MarkdownOptions) string {
 	return "\n" + buf.String()
 }
 
-func (t TextTable) markdownColumnWidth(index int) int {
-	if index < len(t.Columns) {
-		if width := tailwind.ParseStyle(t.Columns[index].Style).MaxWidth; width > 0 {
-			return width
-		}
-	}
-	return defaultMarkdownColumnWidth
-}
-
 func markdownTableCell(value Textable, width int, options MarkdownOptions) string {
-	limited := Text{Style: fmt.Sprintf("max-w-[%dch] truncate-suffix", width)}.Add(value)
-	markdown := RenderMarkdown(limited, options)
-	markdown = strings.ReplaceAll(markdown, "\r\n", "\n")
-	markdown = strings.ReplaceAll(markdown, "\r", "\n")
-	markdown = strings.ReplaceAll(markdown, "\n", "<br>")
-	return escapeMarkdownPipes(markdown)
+	return escapeMarkdownTableCell(markdownCellText(value, width, options))
 }

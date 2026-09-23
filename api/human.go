@@ -6,8 +6,6 @@ import (
 	"time"
 
 	"github.com/flanksource/clicky/api/icons"
-	commonsText "github.com/flanksource/commons/text"
-	"github.com/google/uuid"
 )
 
 var K = int64(1000)
@@ -16,7 +14,7 @@ var B = M * K
 
 func HumanizeBytes(bytes int64) Text {
 	return Text{
-		Content: commonsText.HumanizeBytes(bytes),
+		Content: humanizeBytes(bytes),
 	}
 }
 
@@ -78,16 +76,6 @@ func Human(content any, styles ...string) Text {
 			return Text{}
 		}
 		return Human(*t, styles...)
-	case uuid.UUID:
-		if t == uuid.Nil {
-			return Text{}
-		}
-		return Text{Content: t.String(), Style: strings.Join(styles, " ")}
-	case *uuid.UUID:
-		if t == nil || *t == uuid.Nil {
-			return Text{}
-		}
-		return Human(*t, styles...)
 	case time.Duration:
 		var v string
 		if t < 5*time.Second {
@@ -99,7 +87,7 @@ func Human(content any, styles ...string) Text {
 		} else if t < 24*time.Hour {
 			v = fmt.Sprintf("%.1fh", t.Hours())
 		} else {
-			v = commonsText.HumanizeDuration(t)
+			v = humanizeDuration(t)
 		}
 		return Text{
 			Content: v,

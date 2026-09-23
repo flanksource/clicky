@@ -1,10 +1,12 @@
-package api
+// Package filter applies CEL expressions to api table rows and tree nodes.
+package filter
 
 import (
 	"fmt"
 	"reflect"
 	"strings"
 
+	"github.com/flanksource/clicky/api"
 	"github.com/flanksource/commons/logger"
 	"github.com/flanksource/gomplate/v3"
 	"github.com/google/cel-go/cel"
@@ -36,10 +38,10 @@ func (b *boolVal) Equal(other ref.Val) ref.Val {
 	return b
 }
 
-// FilterTableRows filters table rows using a CEL expression.
+// TableRows filters table rows using a CEL expression.
 // Field values are injected directly into the CEL context (no "row." prefix).
 // Returns filtered rows or error if CEL expression is invalid.
-func FilterTableRows(rows []PrettyDataRow, filterExpr string) ([]PrettyDataRow, error) {
+func TableRows(rows []api.PrettyDataRow, filterExpr string) ([]api.PrettyDataRow, error) {
 	if filterExpr == "" {
 		return rows, nil
 	}
@@ -68,7 +70,7 @@ func FilterTableRows(rows []PrettyDataRow, filterExpr string) ([]PrettyDataRow, 
 		return nil, fmt.Errorf("failed to create CEL program: %w", err)
 	}
 
-	filtered := make([]PrettyDataRow, 0, len(rows))
+	filtered := make([]api.PrettyDataRow, 0, len(rows))
 	for i, row := range rows {
 		variables := rowToCELMap(row)
 
@@ -86,10 +88,10 @@ func FilterTableRows(rows []PrettyDataRow, filterExpr string) ([]PrettyDataRow, 
 	return filtered, nil
 }
 
-// FilterTreeNode recursively filters tree nodes using a CEL expression.
+// TreeNode recursively filters tree nodes using a CEL expression.
 // Field values from node content are injected directly into the CEL context.
 // Returns filtered tree or error if CEL expression is invalid.
-func FilterTreeNode(node TreeNode, filterExpr string) (TreeNode, error) {
+func TreeNode(node api.TreeNode, filterExpr string) (api.TreeNode, error) {
 	if filterExpr == "" || node == nil {
 		return node, nil
 	}
@@ -118,7 +120,7 @@ func FilterTreeNode(node TreeNode, filterExpr string) (TreeNode, error) {
 }
 
 // filterTreeNodeRecursive recursively filters tree nodes
-func filterTreeNodeRecursive(node TreeNode, prg cel.Program) (TreeNode, error) {
+func filterTreeNodeRecursive(node api.TreeNode, prg cel.Program) (api.TreeNode, error) {
 	if node == nil {
 		return nil, nil
 	}
@@ -152,7 +154,7 @@ func filterTreeNodeRecursive(node TreeNode, prg cel.Program) (TreeNode, error) {
 	}
 
 	// Process children recursively
-	var filteredChildren []TreeNode
+	var filteredChildren []api.TreeNode
 	if len(children) > 0 {
 		for _, child := range children {
 			filteredChild, err := filterTreeNodeRecursive(child, prg)
@@ -167,7 +169,7 @@ func filterTreeNodeRecursive(node TreeNode, prg cel.Program) (TreeNode, error) {
 
 	// If node doesn't match but has matching children, include it with filtered children
 	if !match && len(filteredChildren) > 0 {
-		return &ConcreteBranchNode{
+		return &api.ConcreteBranchNode{
 			Children: filteredChildren,
 		}, nil
 	}
@@ -176,7 +178,7 @@ func filterTreeNodeRecursive(node TreeNode, prg cel.Program) (TreeNode, error) {
 	if match {
 		if len(filteredChildren) > 0 {
 			// Create a new node with filtered children
-			simple := TreeNodeToSimple(node)
+			simple := api.TreeNodeToSimple(node)
 			simple.Children = filteredChildren
 			return simple, nil
 		}
@@ -188,10 +190,10 @@ func filterTreeNodeRecursive(node TreeNode, prg cel.Program) (TreeNode, error) {
 	return nil, nil
 }
 
-// rowToCELMap converts a PrettyDataRow to a flat map for CEL evaluation.
+// rowToCELMap converts an api.PrettyDataRow to a flat map for CEL evaluation.
 // Field names become variable names (no "row." prefix).
 // Uses Primitive() to extract typed values for accurate CEL comparisons.
-func rowToCELMap(row PrettyDataRow) map[string]interface{} {
+func rowToCELMap(row api.PrettyDataRow) map[string]interface{} {
 	result := make(map[string]interface{})
 	for key, fieldValue := range row {
 		// Use Primitive() to get strongly-typed value
@@ -206,9 +208,9 @@ func rowToCELMap(row PrettyDataRow) map[string]interface{} {
 	return result
 }
 
-// nodeToCELMap converts a TreeNode's Pretty text to CEL variables.
+// nodeToCELMap converts an api.TreeNode's Pretty text to CEL variables.
 // For SimpleTreeNode, extracts label and metadata fields.
-func nodeToCELMap(node TreeNode) map[string]interface{} {
+func nodeToCELMap(node api.TreeNode) map[string]interface{} {
 	result := make(map[string]interface{})
 
 	// Get the Pretty() text content
@@ -221,7 +223,7 @@ func nodeToCELMap(node TreeNode) map[string]interface{} {
 	}
 
 	// If it's a SimpleTreeNode, extract additional fields
-	if simple, ok := node.(*SimpleTreeNode); ok {
+	if simple, ok := node.(*api.SimpleTreeNode); ok {
 		result["label"] = simple.Label
 
 		if simple.Icon != "" {
@@ -252,7 +254,7 @@ func createCELEnvironment(variableDecls []cel.EnvOption) (*cel.Env, error) {
 }
 
 // getVariableDeclarationsFromRow creates CEL variable declarations from a row's fields
-func getVariableDeclarationsFromRow(row PrettyDataRow) []cel.EnvOption {
+func getVariableDeclarationsFromRow(row api.PrettyDataRow) []cel.EnvOption {
 	var decls []cel.EnvOption
 
 	for key, fieldValue := range row {
@@ -264,7 +266,7 @@ func getVariableDeclarationsFromRow(row PrettyDataRow) []cel.EnvOption {
 }
 
 // collectTreeVariableDeclarations collects all unique variable names from an entire tree
-func collectTreeVariableDeclarations(node TreeNode) []cel.EnvOption {
+func collectTreeVariableDeclarations(node api.TreeNode) []cel.EnvOption {
 	if node == nil {
 		return nil
 	}
@@ -285,7 +287,7 @@ func collectTreeVariableDeclarations(node TreeNode) []cel.EnvOption {
 }
 
 // collectTreeVariables recursively collects variable names from a tree node and its children
-func collectTreeVariables(node TreeNode, vars map[string]*cel.Type) {
+func collectTreeVariables(node api.TreeNode, vars map[string]*cel.Type) {
 	if node == nil {
 		return
 	}

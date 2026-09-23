@@ -357,25 +357,14 @@ func (s StackTrace) renderHTMLSource(b *strings.Builder, f StackFrame) {
 	b.WriteString(`</div>`)
 }
 
-// renderHTMLSourceContent returns syntax-highlighted HTML for a single source
-// line when a language is known; otherwise the line is HTML-escaped. Each
-// chroma-tokenised <span> is preserved so multi-line highlighting stays
-// consistent across rows.
+// renderHTMLSourceContent returns the inline HTML for a single source line:
+// syntax-highlighted when a language is known (plain-escaped on wasm, see
+// highlightCodeLineHTML), HTML-escaped otherwise.
 func renderHTMLSourceContent(line, language string) string {
 	if language == "" {
 		return htmlEscapeString(line)
 	}
-	highlighted := strings.TrimRight(NewCode(line, language).HTML(), "\n")
-	// chroma's HTML formatter wraps output in `<pre class="chroma">…</pre>`
-	// (sometimes with a `<code>` inside); strip those so the line sits inline.
-	highlighted = strings.TrimPrefix(highlighted, `<pre class="chroma">`)
-	highlighted = strings.TrimPrefix(highlighted, `<code>`)
-	highlighted = strings.TrimSuffix(highlighted, `</pre>`)
-	highlighted = strings.TrimSuffix(highlighted, `</code>`)
-	if strings.TrimSpace(highlighted) == "" {
-		return htmlEscapeString(line)
-	}
-	return highlighted
+	return highlightCodeLineHTML(line, language)
 }
 
 func renderFrameHeader(f StackFrame) Text {
