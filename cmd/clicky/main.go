@@ -668,6 +668,8 @@ type lintCLIOptions struct {
 	Raw          bool
 	SummaryLimit int
 	Severity     []string
+	Source       bool
+	SourceLines  int
 }
 
 type lintExitError struct {
@@ -704,6 +706,8 @@ func bindLintFlags(flags *pflag.FlagSet, opts *lintCLIOptions) {
 	flags.BoolVar(&opts.NoColor, "no-color", opts.NoColor, "Disable ANSI color output")
 	flags.BoolVar(&opts.Raw, "raw", opts.Raw, "Use the raw go/analysis singlechecker driver")
 	flags.IntVar(&opts.SummaryLimit, "summary-limit", opts.SummaryLimit, "Maximum file locations to show per rule")
+	flags.BoolVar(&opts.Source, "source", opts.Source, "Show source excerpts beneath each displayed location")
+	flags.IntVar(&opts.SourceLines, "source-lines", opts.SourceLines, "Total source excerpt lines per location (requires --source)")
 	flags.StringArrayVar(&opts.Severity, "severity", opts.Severity,
 		"Re-level a rule, as <rule-id>=error|warning (repeatable). Adopt a rule as advice before making it a gate.")
 }
