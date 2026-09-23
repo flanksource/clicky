@@ -31,6 +31,25 @@ test-coverage:
 build:
 	go build -ldflags "$(LDFLAGS)" -o clicky ./cmd/clicky/
 
+# Packages a browser-side (GOOS=js) build of a clicky consumer links, e.g. a
+# model package whose Pretty() returns api.Text. Keep them free of terminal-only
+# dependencies (bubbletea, clipboard, SIGWINCH).
+WASM_PACKAGES ?= ./api ./api/icons ./api/tailwind
+
+# wasm-check compiles the browser-safe packages for js/wasm and asserts (via
+# api/wasmtest's native deps test) that none of them reaches a heavy module.
+.PHONY: wasm-check
+wasm-check:
+	GOOS=js GOARCH=wasm go build -o /dev/null $(WASM_PACKAGES)
+	go test -count=1 -run TestBrowserBuildOfAPIAvoidsForbiddenModules ./api/wasmtest/
+
+# test-wasm runs the wasm-tagged renderers under node. env -i: wasm_exec.js
+# refuses to start when the command line plus environment exceeds its limit.
+.PHONY: test-wasm
+test-wasm:
+	env -i PATH="$(PATH)" HOME="$(HOME)" GOOS=js GOARCH=wasm \
+		go test -count=1 -exec="$$(go env GOROOT)/lib/wasm/go_js_wasm_exec" ./api/wasmtest/
+
 # Serve Go package documentation locally and open a browser.
 # Override the port with `make docs DOCS_PORT=9000` if it is in use.
 # pkgsite is installed to $(LOCALBIN) (pinned + cached) and run directly, so it
