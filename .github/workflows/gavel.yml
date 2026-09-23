@@ -95,3 +95,24 @@ jobs:
         run: make test:openapi
         env:
           CGO_ENABLED: 1
+
+  wasm:
+    name: WASM
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: true
+
+      - name: Compile browser-safe packages for js/wasm
+        run: make wasm-check
+
+      - name: Run wasm renderer tests under node
+        run: make test-wasm
