@@ -2,9 +2,9 @@ package api
 
 import (
 	"html"
+	"os"
 	"strings"
 
-	"github.com/fatih/color"
 	"github.com/pmezard/go-difflib/difflib"
 )
 
@@ -58,13 +58,25 @@ func (d Diff) Unified() string {
 // String returns the plain unified diff (no color).
 func (d Diff) String() string { return d.Unified() }
 
-// ANSI returns the unified diff with terminal colors. Honors fatih/color's
-// NoColor (NO_COLOR env, non-tty stdout, --no-color flag).
+// ANSI returns the unified diff with terminal colors when ansiColorEnabled,
+// and the plain unified diff otherwise.
 func (d Diff) ANSI() string {
 	raw := d.Unified()
-	if raw == "" || color.NoColor {
+	if raw == "" || !ansiColorEnabled() {
 		return raw
 	}
+	return colorizeUnifiedDiff(raw)
+}
+
+// ansiColorEnabled reports whether Diff.ANSI should emit escapes: NO_COLOR
+// (https://no-color.org/) and TERM=dumb disable colour, as does a non-terminal
+// stderr — the same TTY check AutoTheme uses. Unlike fatih/color's NoColor it
+// probes stderr rather than stdout and is evaluated per call, not at init.
+func ansiColorEnabled() bool {
+	return os.Getenv("NO_COLOR") == "" && os.Getenv("TERM") != "dumb" && isTerminal()
+}
+
+func colorizeUnifiedDiff(raw string) string {
 	lines := strings.Split(raw, "\n")
 	for i, line := range lines {
 		switch {

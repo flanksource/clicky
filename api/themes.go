@@ -4,7 +4,6 @@ import (
 	"os"
 	"sync/atomic"
 
-	"github.com/charmbracelet/lipgloss"
 	"github.com/flanksource/clicky/api/tailwind"
 	"github.com/muesli/termenv"
 	"golang.org/x/term"
@@ -136,57 +135,63 @@ type Class struct {
 	Border     *Borders
 }
 
+// ThemeColor is a terminal color as lipgloss accepts it: a hex value such as
+// "#8A2BE2", an ANSI index such as "21", or "" for no color. It is a plain
+// string so the theme does not tie package api to lipgloss; renderers convert
+// it with lipgloss.Color(theme.X).
+type ThemeColor string
+
 // Theme provides a consistent color palette for semantic styling
 // across different UI states (success, error, warning, etc.).
 type Theme struct {
-	Primary   lipgloss.Color
-	Secondary lipgloss.Color
-	Success   lipgloss.Color
-	Warning   lipgloss.Color
-	Error     lipgloss.Color
-	Info      lipgloss.Color
-	Muted     lipgloss.Color
+	Primary   ThemeColor
+	Secondary ThemeColor
+	Success   ThemeColor
+	Warning   ThemeColor
+	Error     ThemeColor
+	Info      ThemeColor
+	Muted     ThemeColor
 }
 
 func DefaultTheme() Theme {
 	return Theme{
-		Primary:   lipgloss.Color("#8A2BE2"), // BlueViolet
-		Secondary: lipgloss.Color("#4169E1"), // RoyalBlue
-		Success:   lipgloss.Color("#32CD32"), // LimeGreen
-		Warning:   lipgloss.Color("#FFD700"), // Gold
-		Error:     lipgloss.Color("#FF6347"), // Tomato
-		Info:      lipgloss.Color("#00CED1"), // DarkTurquoise
-		Muted:     lipgloss.Color("#808080"), // Gray
+		Primary:   "#8A2BE2", // BlueViolet
+		Secondary: "#4169E1", // RoyalBlue
+		Success:   "#32CD32", // LimeGreen
+		Warning:   "#FFD700", // Gold
+		Error:     "#FF6347", // Tomato
+		Info:      "#00CED1", // DarkTurquoise
+		Muted:     "#808080", // Gray
 	}
 }
 
 func DarkTheme() Theme {
 	return Theme{
-		Primary:   lipgloss.Color("#BB86FC"), // Purple
-		Secondary: lipgloss.Color("#03DAC6"), // Teal
-		Success:   lipgloss.Color("#4CAF50"), // Green
-		Warning:   lipgloss.Color("#FF9800"), // Orange
-		Error:     lipgloss.Color("#F44336"), // Red
-		Info:      lipgloss.Color("#2196F3"), // Blue
-		Muted:     lipgloss.Color("#9E9E9E"), // Gray
+		Primary:   "#BB86FC", // Purple
+		Secondary: "#03DAC6", // Teal
+		Success:   "#4CAF50", // Green
+		Warning:   "#FF9800", // Orange
+		Error:     "#F44336", // Red
+		Info:      "#2196F3", // Blue
+		Muted:     "#9E9E9E", // Gray
 	}
 }
 
 func LightTheme() Theme {
 	return Theme{
-		Primary:   lipgloss.Color("#6200EA"), // Deep Purple
-		Secondary: lipgloss.Color("#00BCD4"), // Cyan
-		Success:   lipgloss.Color("#388E3C"), // Dark Green
-		Warning:   lipgloss.Color("#F57C00"), // Dark Orange
-		Error:     lipgloss.Color("#D32F2F"), // Dark Red
-		Info:      lipgloss.Color("#1976D2"), // Dark Blue
-		Muted:     lipgloss.Color("#757575"), // Dark Gray
+		Primary:   "#6200EA", // Deep Purple
+		Secondary: "#00BCD4", // Cyan
+		Success:   "#388E3C", // Dark Green
+		Warning:   "#F57C00", // Dark Orange
+		Error:     "#D32F2F", // Dark Red
+		Info:      "#1976D2", // Dark Blue
+		Muted:     "#757575", // Dark Gray
 	}
 }
 
 // NoTTYTheme provides colorless output suitable for pipes and non-interactive contexts.
 func NoTTYTheme() Theme {
-	noColor := lipgloss.Color("")
+	noColor := ThemeColor("")
 	return Theme{
 		Primary:   noColor,
 		Secondary: noColor,

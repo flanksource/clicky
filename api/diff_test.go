@@ -3,8 +3,6 @@ package api
 import (
 	"strings"
 	"testing"
-
-	"github.com/fatih/color"
 )
 
 func TestDiffIsEmpty(t *testing.T) {
@@ -37,30 +35,30 @@ func TestDiffUnifiedHasHeadersAndChanges(t *testing.T) {
 	}
 }
 
-func TestDiffANSIAddsColorWhenEnabled(t *testing.T) {
-	prev := color.NoColor
-	color.NoColor = false
-	defer func() { color.NoColor = prev }()
-
-	d := NewDiff("a\n", "b\n", "x", "y")
-	got := d.ANSI()
-	if !strings.Contains(got, "\x1b[") {
-		t.Fatalf("ANSI output should contain ANSI escapes when color enabled, got %q", got)
+func TestColorizeUnifiedDiffStylesEachLineKind(t *testing.T) {
+	raw := "--- x\n+++ y\n@@ -1 +1 @@\n-a\n+b\n same\n"
+	want := "\x1b[1m--- x\x1b[0m\n\x1b[1m+++ y\x1b[0m\n\x1b[36m@@ -1 +1 @@\x1b[0m\n" +
+		"\x1b[31m-a\x1b[0m\n\x1b[32m+b\x1b[0m\n same\n"
+	if got := colorizeUnifiedDiff(raw); got != want {
+		t.Fatalf("colorizeUnifiedDiff() = %q, want %q", got, want)
 	}
 }
 
-func TestDiffANSIHonorsNoColor(t *testing.T) {
-	prev := color.NoColor
-	color.NoColor = true
-	defer func() { color.NoColor = prev }()
-
-	d := NewDiff("a\n", "b\n", "x", "y")
-	got := d.ANSI()
-	if strings.Contains(got, "\x1b[") {
-		t.Fatalf("ANSI output must omit escapes when color.NoColor is true, got %q", got)
-	}
-	if got != d.Unified() {
-		t.Fatalf("with NoColor, ANSI and Unified should match")
+func TestDiffANSIHonorsNoColorEnv(t *testing.T) {
+	for name, env := range map[string][2]string{
+		"NO_COLOR set": {"NO_COLOR", "1"},
+		"TERM=dumb":    {"TERM", "dumb"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			t.Setenv(env[0], env[1])
+			if ansiColorEnabled() {
+				t.Fatalf("ansiColorEnabled() must be false with %s=%s", env[0], env[1])
+			}
+			d := NewDiff("a\n", "b\n", "x", "y")
+			if got := d.ANSI(); got != d.Unified() {
+				t.Fatalf("ANSI() must equal Unified() with %s=%s, got %q", env[0], env[1], got)
+			}
+		})
 	}
 }
 

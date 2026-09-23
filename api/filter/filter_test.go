@@ -1,35 +1,36 @@
-package api
+package filter
 
 import (
 	"time"
 
+	"github.com/flanksource/clicky/api"
 	"github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
 
-var _ = ginkgo.XDescribe("FilterTableRows", func() {
+var _ = ginkgo.XDescribe("TableRows", func() {
 	tests := []struct {
 		name           string
-		rows           []PrettyDataRow
+		rows           []api.PrettyDataRow
 		filterExpr     string
 		expectedCount  int
 		expectError    bool
-		validateResult func([]PrettyDataRow)
+		validateResult func([]api.PrettyDataRow)
 	}{
 		{
 			name: "filter by string equality",
-			rows: []PrettyDataRow{
+			rows: []api.PrettyDataRow{
 				{
-					"status": NewTypedValue("active"),
-					"name":   NewTypedValue("item1"),
+					"status": api.NewTypedValue("active"),
+					"name":   api.NewTypedValue("item1"),
 				},
 				{
-					"status": NewTypedValue("inactive"),
-					"name":   NewTypedValue("item2"),
+					"status": api.NewTypedValue("inactive"),
+					"name":   api.NewTypedValue("item2"),
 				},
 				{
-					"status": NewTypedValue("active"),
-					"name":   NewTypedValue("item3"),
+					"status": api.NewTypedValue("active"),
+					"name":   api.NewTypedValue("item3"),
 				},
 			},
 			filterExpr:    "status == 'active'",
@@ -37,23 +38,23 @@ var _ = ginkgo.XDescribe("FilterTableRows", func() {
 		},
 		{
 			name: "filter by numeric comparison",
-			rows: []PrettyDataRow{
+			rows: []api.PrettyDataRow{
 				{
-					"age":  NewTypedValue(int64(25)),
-					"name": NewTypedValue("Alice"),
+					"age":  api.NewTypedValue(int64(25)),
+					"name": api.NewTypedValue("Alice"),
 				},
 				{
-					"age":  NewTypedValue(int64(35)),
-					"name": NewTypedValue("Bob"),
+					"age":  api.NewTypedValue(int64(35)),
+					"name": api.NewTypedValue("Bob"),
 				},
 				{
-					"age":  NewTypedValue(int64(45)),
-					"name": NewTypedValue("Charlie"),
+					"age":  api.NewTypedValue(int64(45)),
+					"name": api.NewTypedValue("Charlie"),
 				},
 			},
 			filterExpr:    "age > 30",
 			expectedCount: 2,
-			validateResult: func(result []PrettyDataRow) {
+			validateResult: func(result []api.PrettyDataRow) {
 				Expect(result).To(HaveLen(2))
 				names := []string{result[0]["name"].String(), result[1]["name"].String()}
 				Expect(names).To(ContainElement("Bob"))
@@ -62,14 +63,14 @@ var _ = ginkgo.XDescribe("FilterTableRows", func() {
 		},
 		{
 			name: "filter with boolean field",
-			rows: []PrettyDataRow{
+			rows: []api.PrettyDataRow{
 				{
-					"active": NewTypedValue(true),
-					"name":   NewTypedValue("item1"),
+					"active": api.NewTypedValue(true),
+					"name":   api.NewTypedValue("item1"),
 				},
 				{
-					"active": NewTypedValue(false),
-					"name":   NewTypedValue("item2"),
+					"active": api.NewTypedValue(false),
+					"name":   api.NewTypedValue("item2"),
 				},
 			},
 			filterExpr:    "active",
@@ -77,18 +78,18 @@ var _ = ginkgo.XDescribe("FilterTableRows", func() {
 		},
 		{
 			name: "filter with AND condition",
-			rows: []PrettyDataRow{
+			rows: []api.PrettyDataRow{
 				{
-					"status": NewTypedValue("active"),
-					"age":    NewTypedValue(int64(25)),
+					"status": api.NewTypedValue("active"),
+					"age":    api.NewTypedValue(int64(25)),
 				},
 				{
-					"status": NewTypedValue("active"),
-					"age":    NewTypedValue(int64(35)),
+					"status": api.NewTypedValue("active"),
+					"age":    api.NewTypedValue(int64(35)),
 				},
 				{
-					"status": NewTypedValue("inactive"),
-					"age":    NewTypedValue(int64(35)),
+					"status": api.NewTypedValue("inactive"),
+					"age":    api.NewTypedValue(int64(35)),
 				},
 			},
 			filterExpr:    "status == 'active' && age > 30",
@@ -96,18 +97,18 @@ var _ = ginkgo.XDescribe("FilterTableRows", func() {
 		},
 		{
 			name: "filter with OR condition",
-			rows: []PrettyDataRow{
+			rows: []api.PrettyDataRow{
 				{
-					"status":   NewTypedValue("pending"),
-					"priority": NewTypedValue(int64(1)),
+					"status":   api.NewTypedValue("pending"),
+					"priority": api.NewTypedValue(int64(1)),
 				},
 				{
-					"status":   NewTypedValue("active"),
-					"priority": NewTypedValue(int64(5)),
+					"status":   api.NewTypedValue("active"),
+					"priority": api.NewTypedValue(int64(5)),
 				},
 				{
-					"status":   NewTypedValue("inactive"),
-					"priority": NewTypedValue(int64(10)),
+					"status":   api.NewTypedValue("inactive"),
+					"priority": api.NewTypedValue(int64(10)),
 				},
 			},
 			filterExpr:    "status == 'pending' || priority >= 10",
@@ -115,36 +116,36 @@ var _ = ginkgo.XDescribe("FilterTableRows", func() {
 		},
 		{
 			name: "empty filter expression returns all rows",
-			rows: []PrettyDataRow{
-				{"name": NewTypedValue("item1")},
-				{"name": NewTypedValue("item2")},
+			rows: []api.PrettyDataRow{
+				{"name": api.NewTypedValue("item1")},
+				{"name": api.NewTypedValue("item2")},
 			},
 			filterExpr:    "",
 			expectedCount: 2,
 		},
 		{
 			name: "invalid CEL expression returns error",
-			rows: []PrettyDataRow{
-				{"name": NewTypedValue("item1")},
+			rows: []api.PrettyDataRow{
+				{"name": api.NewTypedValue("item1")},
 			},
 			filterExpr:  "invalid syntax !!!",
 			expectError: true,
 		},
 		{
 			name: "filter with contains function",
-			rows: []PrettyDataRow{
-				{"name": NewTypedValue("hello_world")},
-				{"name": NewTypedValue("goodbye")},
-				{"name": NewTypedValue("world_map")},
+			rows: []api.PrettyDataRow{
+				{"name": api.NewTypedValue("hello_world")},
+				{"name": api.NewTypedValue("goodbye")},
+				{"name": api.NewTypedValue("world_map")},
 			},
 			filterExpr:    "name.contains('world')",
 			expectedCount: 2,
 		},
 		{
 			name: "filter no matches returns empty slice",
-			rows: []PrettyDataRow{
-				{"status": NewTypedValue("active")},
-				{"status": NewTypedValue("pending")},
+			rows: []api.PrettyDataRow{
+				{"status": api.NewTypedValue("active")},
+				{"status": api.NewTypedValue("pending")},
 			},
 			filterExpr:    "status == 'completed'",
 			expectedCount: 0,
@@ -154,7 +155,7 @@ var _ = ginkgo.XDescribe("FilterTableRows", func() {
 	for _, tt := range tests {
 		tt := tt
 		ginkgo.It(tt.name, func() {
-			result, err := FilterTableRows(tt.rows, tt.filterExpr)
+			result, err := TableRows(tt.rows, tt.filterExpr)
 
 			if tt.expectError {
 				Expect(err).To(HaveOccurred())
@@ -171,28 +172,28 @@ var _ = ginkgo.XDescribe("FilterTableRows", func() {
 	}
 })
 
-var _ = ginkgo.Describe("FilterTreeNode", func() {
+var _ = ginkgo.Describe("TreeNode", func() {
 	tests := []struct {
 		name           string
-		tree           TreeNode
+		tree           api.TreeNode
 		filterExpr     string
 		expectedNodes  int
 		expectError    bool
-		validateResult func(TreeNode)
+		validateResult func(api.TreeNode)
 	}{
 		{
 			name: "filter leaf nodes by label",
-			tree: &SimpleTreeNode{
+			tree: &api.SimpleTreeNode{
 				Label: "root",
-				Children: []TreeNode{
-					&SimpleTreeNode{Label: "active_item", Metadata: map[string]interface{}{"status": "active"}},
-					&SimpleTreeNode{Label: "pending_item", Metadata: map[string]interface{}{"status": "pending"}},
-					&SimpleTreeNode{Label: "active_node", Metadata: map[string]interface{}{"status": "active"}},
+				Children: []api.TreeNode{
+					&api.SimpleTreeNode{Label: "active_item", Metadata: map[string]interface{}{"status": "active"}},
+					&api.SimpleTreeNode{Label: "pending_item", Metadata: map[string]interface{}{"status": "pending"}},
+					&api.SimpleTreeNode{Label: "active_node", Metadata: map[string]interface{}{"status": "active"}},
 				},
 			},
 			filterExpr:    "label.contains('active')",
 			expectedNodes: 3,
-			validateResult: func(result TreeNode) {
+			validateResult: func(result api.TreeNode) {
 				Expect(result).ToNot(BeNil())
 				children := result.GetChildren()
 				Expect(children).To(HaveLen(2))
@@ -200,12 +201,12 @@ var _ = ginkgo.Describe("FilterTreeNode", func() {
 		},
 		{
 			name: "filter by metadata field",
-			tree: &SimpleTreeNode{
+			tree: &api.SimpleTreeNode{
 				Label: "root",
-				Children: []TreeNode{
-					&SimpleTreeNode{Label: "item1", Metadata: map[string]interface{}{"priority": int64(1)}},
-					&SimpleTreeNode{Label: "item2", Metadata: map[string]interface{}{"priority": int64(5)}},
-					&SimpleTreeNode{Label: "item3", Metadata: map[string]interface{}{"priority": int64(10)}},
+				Children: []api.TreeNode{
+					&api.SimpleTreeNode{Label: "item1", Metadata: map[string]interface{}{"priority": int64(1)}},
+					&api.SimpleTreeNode{Label: "item2", Metadata: map[string]interface{}{"priority": int64(5)}},
+					&api.SimpleTreeNode{Label: "item3", Metadata: map[string]interface{}{"priority": int64(10)}},
 				},
 			},
 			filterExpr:    "priority >= 5",
@@ -213,26 +214,26 @@ var _ = ginkgo.Describe("FilterTreeNode", func() {
 		},
 		{
 			name: "filter preserves parent nodes with matching children",
-			tree: &SimpleTreeNode{
+			tree: &api.SimpleTreeNode{
 				Label: "root",
-				Children: []TreeNode{
-					&SimpleTreeNode{
+				Children: []api.TreeNode{
+					&api.SimpleTreeNode{
 						Label: "parent1",
-						Children: []TreeNode{
-							&SimpleTreeNode{Label: "child1", Metadata: map[string]interface{}{"category": "match"}},
-							&SimpleTreeNode{Label: "child2", Metadata: map[string]interface{}{"category": "nomatch"}},
+						Children: []api.TreeNode{
+							&api.SimpleTreeNode{Label: "child1", Metadata: map[string]interface{}{"category": "match"}},
+							&api.SimpleTreeNode{Label: "child2", Metadata: map[string]interface{}{"category": "nomatch"}},
 						},
 					},
-					&SimpleTreeNode{
+					&api.SimpleTreeNode{
 						Label: "parent2",
-						Children: []TreeNode{
-							&SimpleTreeNode{Label: "child3", Metadata: map[string]interface{}{"category": "nomatch"}},
+						Children: []api.TreeNode{
+							&api.SimpleTreeNode{Label: "child3", Metadata: map[string]interface{}{"category": "nomatch"}},
 						},
 					},
 				},
 			},
 			filterExpr: "category == 'match'",
-			validateResult: func(result TreeNode) {
+			validateResult: func(result api.TreeNode) {
 				Expect(result).ToNot(BeNil())
 				children := result.GetChildren()
 				Expect(children).To(HaveLen(1))
@@ -243,11 +244,11 @@ var _ = ginkgo.Describe("FilterTreeNode", func() {
 		},
 		{
 			name: "empty filter expression returns original tree",
-			tree: &SimpleTreeNode{
+			tree: &api.SimpleTreeNode{
 				Label: "root",
-				Children: []TreeNode{
-					&SimpleTreeNode{Label: "child1"},
-					&SimpleTreeNode{Label: "child2"},
+				Children: []api.TreeNode{
+					&api.SimpleTreeNode{Label: "child1"},
+					&api.SimpleTreeNode{Label: "child2"},
 				},
 			},
 			filterExpr:    "",
@@ -255,15 +256,15 @@ var _ = ginkgo.Describe("FilterTreeNode", func() {
 		},
 		{
 			name: "filter matches root node",
-			tree: &SimpleTreeNode{
+			tree: &api.SimpleTreeNode{
 				Label:    "important_root",
 				Metadata: map[string]interface{}{"status": "active"},
-				Children: []TreeNode{
-					&SimpleTreeNode{Label: "child1", Metadata: map[string]interface{}{"status": "inactive"}},
+				Children: []api.TreeNode{
+					&api.SimpleTreeNode{Label: "child1", Metadata: map[string]interface{}{"status": "inactive"}},
 				},
 			},
 			filterExpr: "status == 'active'",
-			validateResult: func(result TreeNode) {
+			validateResult: func(result api.TreeNode) {
 				Expect(result).ToNot(BeNil())
 				children := result.GetChildren()
 				Expect(children).To(HaveLen(1))
@@ -271,22 +272,22 @@ var _ = ginkgo.Describe("FilterTreeNode", func() {
 		},
 		{
 			name: "no matches returns nil",
-			tree: &SimpleTreeNode{
+			tree: &api.SimpleTreeNode{
 				Label: "root",
-				Children: []TreeNode{
-					&SimpleTreeNode{Label: "child1", Metadata: map[string]interface{}{"status": "pending"}},
-					&SimpleTreeNode{Label: "child2", Metadata: map[string]interface{}{"status": "pending"}},
+				Children: []api.TreeNode{
+					&api.SimpleTreeNode{Label: "child1", Metadata: map[string]interface{}{"status": "pending"}},
+					&api.SimpleTreeNode{Label: "child2", Metadata: map[string]interface{}{"status": "pending"}},
 				},
 			},
 			filterExpr:    "status == 'completed'",
 			expectedNodes: 0,
-			validateResult: func(result TreeNode) {
+			validateResult: func(result api.TreeNode) {
 				Expect(result).To(BeNil())
 			},
 		},
 		{
 			name: "invalid CEL expression returns error",
-			tree: &SimpleTreeNode{
+			tree: &api.SimpleTreeNode{
 				Label: "root",
 			},
 			filterExpr:  "invalid syntax !!!",
@@ -297,7 +298,7 @@ var _ = ginkgo.Describe("FilterTreeNode", func() {
 	for _, tt := range tests {
 		tt := tt
 		ginkgo.It(tt.name, func() {
-			result, err := FilterTreeNode(tt.tree, tt.filterExpr)
+			result, err := TreeNode(tt.tree, tt.filterExpr)
 
 			if tt.expectError {
 				Expect(err).To(HaveOccurred())
@@ -321,14 +322,14 @@ var _ = ginkgo.Describe("FilterTreeNode", func() {
 var _ = ginkgo.XDescribe("rowToCELMap", func() {
 	tests := []struct {
 		name     string
-		row      PrettyDataRow
+		row      api.PrettyDataRow
 		expected map[string]interface{}
 	}{
 		{
 			name: "string and int fields",
-			row: PrettyDataRow{
-				"name": NewTypedValue("test"),
-				"age":  NewTypedValue(int64(30)),
+			row: api.PrettyDataRow{
+				"name": api.NewTypedValue("test"),
+				"age":  api.NewTypedValue(int64(30)),
 			},
 			expected: map[string]interface{}{
 				"name": "test",
@@ -337,9 +338,9 @@ var _ = ginkgo.XDescribe("rowToCELMap", func() {
 		},
 		{
 			name: "boolean and float fields",
-			row: PrettyDataRow{
-				"active": NewTypedValue(true),
-				"score":  NewTypedValue(95.5),
+			row: api.PrettyDataRow{
+				"active": api.NewTypedValue(true),
+				"score":  api.NewTypedValue(95.5),
 			},
 			expected: map[string]interface{}{
 				"active": true,
@@ -348,8 +349,8 @@ var _ = ginkgo.XDescribe("rowToCELMap", func() {
 		},
 		{
 			name: "time field",
-			row: PrettyDataRow{
-				"created_at": NewTypedValue(time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)),
+			row: api.PrettyDataRow{
+				"created_at": api.NewTypedValue(time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC)),
 			},
 			expected: map[string]interface{}{
 				"created_at": time.Date(2024, 1, 1, 12, 0, 0, 0, time.UTC),
@@ -383,12 +384,12 @@ var _ = ginkgo.XDescribe("rowToCELMap", func() {
 var _ = ginkgo.Describe("nodeToCELMap", func() {
 	tests := []struct {
 		name     string
-		node     TreeNode
+		node     api.TreeNode
 		expected map[string]interface{}
 	}{
 		{
 			name: "simple node with label",
-			node: &SimpleTreeNode{
+			node: &api.SimpleTreeNode{
 				Label: "test_node",
 			},
 			expected: map[string]interface{}{
@@ -398,7 +399,7 @@ var _ = ginkgo.Describe("nodeToCELMap", func() {
 		},
 		{
 			name: "node with metadata",
-			node: &SimpleTreeNode{
+			node: &api.SimpleTreeNode{
 				Label: "node",
 				Metadata: map[string]interface{}{
 					"status":   "active",
@@ -414,7 +415,7 @@ var _ = ginkgo.Describe("nodeToCELMap", func() {
 		},
 		{
 			name: "node with style and icon",
-			node: &SimpleTreeNode{
+			node: &api.SimpleTreeNode{
 				Label: "styled_node",
 				Style: "bold",
 				Icon:  "check",
@@ -441,7 +442,7 @@ var _ = ginkgo.Describe("nodeToCELMap", func() {
 	}
 })
 
-func countTreeNodes(node TreeNode) int {
+func countTreeNodes(node api.TreeNode) int {
 	if node == nil {
 		return 0
 	}

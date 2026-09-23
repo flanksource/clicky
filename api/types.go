@@ -6,11 +6,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-
-	"golang.org/x/text/cases"
-	"golang.org/x/text/language"
-
-	"github.com/samber/lo"
 )
 
 // Pretty enables objects to provide rich text formatting with styling and structure.
@@ -205,21 +200,21 @@ func (v FieldValue) Float() *float64 {
 	}
 
 	if v.IntValue != nil {
-		return lo.ToPtr(float64(*v.IntValue))
+		return new(float64(*v.IntValue))
 	}
 
 	switch val := v.Value.(type) {
 	case float64:
-		return lo.ToPtr(val)
+		return new(val)
 	case int64:
-		return lo.ToPtr(float64(val))
+		return new(float64(val))
 	case int32:
-		return lo.ToPtr(float64(int64(val)))
+		return new(float64(int64(val)))
 	case int:
-		return lo.ToPtr(float64(int64(val)))
+		return new(float64(int64(val)))
 	case string:
 		if i, err := strconv.ParseFloat(val, 64); err == nil {
-			return lo.ToPtr(i)
+			return new(i)
 		}
 	}
 
@@ -235,7 +230,7 @@ func (v FieldValue) Int() *int64 {
 	if i == nil {
 		return nil
 	}
-	return lo.ToPtr(int64(*i))
+	return new(int64(*i))
 }
 
 // formatCurrency formats a value as currency
@@ -837,7 +832,7 @@ func (f PrettyField) prettifyFieldName(name string) string {
 		if i > 0 {
 			result.WriteString(" ")
 		}
-		result.WriteString(cases.Title(language.English).String(strings.ToLower(word)))
+		result.WriteString(titleWord(word))
 	}
 
 	return result.String()
