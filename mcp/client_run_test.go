@@ -10,7 +10,7 @@ import (
 )
 
 func TestRunShortHelpListsServers(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	isolateConfigHome(t)
 	registry := NewServerRegistry("testapp")
 	if err := registry.Add("demo", ServerConfig{Type: "stdio", Command: "server"}); err != nil {
 		t.Fatal(err)
