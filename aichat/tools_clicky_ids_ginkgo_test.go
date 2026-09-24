@@ -67,4 +67,35 @@ var _ = Describe("ID-only entity tools", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(received).To(Equal([]string{"todo-1", "todo-2"}))
 	})
+
+	It("declares the id that generated update tools require", func(ctx SpecContext) {
+		const entityName = "tool-todo-update-spec"
+		var receivedID string
+		clicky.NewEntity[toolTodo, toolTodoListOptions, toolTodo](entityName).
+			List(func(toolTodoListOptions) ([]toolTodo, error) { return nil, nil }).
+			Update(func(id string, _ map[string]any) (toolTodo, error) {
+				receivedID = id
+				return toolTodo{ID: id}, nil
+			}).Register()
+		root := &cobra.Command{Use: "example"}
+		clicky.GenerateCLI(root)
+		provider, err := clickyaichat.NewCobraToolProvider(clickyaichat.CobraToolProviderOptions{Root: root})
+		Expect(err).NotTo(HaveOccurred())
+		set, err := provider.ToolSet(ctx)
+		Expect(err).NotTo(HaveOccurred())
+		var names []string
+		for _, definition := range set.Definitions {
+			names = append(names, definition.Name)
+			if definition.Name != entityName+"_update" {
+				continue
+			}
+			Expect(definition.InputSchema["properties"]).To(HaveKey("id"))
+			Expect(definition.InputSchema["required"]).To(ContainElement("id"))
+			_, err = definition.Handler(ctx, map[string]any{"id": "todo-7"})
+			Expect(err).NotTo(HaveOccurred())
+			Expect(receivedID).To(Equal("todo-7"))
+			return
+		}
+		Fail(fmt.Sprintf("no %s_update tool in %v", entityName, names))
+	})
 })

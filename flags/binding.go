@@ -68,7 +68,7 @@ func BindFlag(cmd *cobra.Command, info FieldInfo) *FlagValue {
 	case reflect.Bool:
 		var val bool
 		if info.DefaultValue != "" {
-			val = info.DefaultValue == "true"
+			val, _ = strconv.ParseBool(info.DefaultValue)
 		}
 		fv.BoolPtr = &val
 		if info.FlagName != "" {
