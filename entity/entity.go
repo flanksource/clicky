@@ -1696,6 +1696,9 @@ func generateBodyCommand(parent *cobra.Command, verb, short string, op EntityOpe
 					flagMap[k] = fmt.Sprintf("%v", v)
 				}
 			}
+			if verb == "update" && flagMap["id"] != args[0] {
+				return fmt.Errorf("update body id %q conflicts with positional id %q", flagMap["id"], args[0])
+			}
 
 			result, err := runEntityOp(c, op, flagMap, args)
 			if err != nil {
