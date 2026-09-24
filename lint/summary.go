@@ -49,7 +49,7 @@ func (s *SummaryView) LoadSource(lineCount int) error {
 
 	files := map[string][]string{}
 	s.sources = map[sourceLocation][]sourceLine{}
-	for _, violation := range s.Result.Violations {
+	for _, violation := range s.displayedViolations() {
 		if violation.File == "" || violation.Line < 1 {
 			continue
 		}
@@ -81,6 +81,39 @@ func (s *SummaryView) LoadSource(lineCount int) error {
 		s.sources[location] = sourceWindow(lines, violation.Line, lineCount)
 	}
 	return nil
+}
+
+// displayedViolations walks the rendered tree so source is read only for the
+// locations the summary limit keeps, in the same selection and order.
+func (s *SummaryView) displayedViolations() []Violation {
+	var displayed []Violation
+	for _, linter := range s.GetChildren() {
+		for _, rule := range linter.GetChildren() {
+			for _, node := range rule.GetChildren() {
+				if location, ok := node.(*locationSummaryNode); ok {
+					displayed = append(displayed, location.violation)
+				}
+			}
+		}
+	}
+	return displayed
+}
+
+// caretPadding reproduces the text before a byte column with tabs kept and
+// every other rune as one space, so the caret lands under the reported token
+// however the terminal expands tabs or however many bytes a rune takes.
+func caretPadding(text string, column int) string {
+	prefix := text[:min(column-1, len(text))]
+	var pad strings.Builder
+	for _, r := range prefix {
+		if r == '\t' {
+			pad.WriteRune('\t')
+		} else {
+			pad.WriteRune(' ')
+		}
+	}
+	pad.WriteString(strings.Repeat(" ", column-1-len(prefix)))
+	return pad.String()
 }
 
 func sourceWindow(lines []string, targetLine, lineCount int) []sourceLine {
@@ -351,7 +384,7 @@ func (n *locationSummaryNode) Pretty() api.Text {
 		if line.target && n.violation.Column > 0 {
 			t = t.NewLine().
 				Append(fmt.Sprintf("  %*s │ ", width, ""), "font-mono text-muted").
-				Append(strings.Repeat(" ", n.violation.Column-1)+"^", "font-mono text-red-500")
+				Append(caretPadding(line.text, n.violation.Column)+"^", "font-mono text-red-500")
 		}
 	}
 	return t
