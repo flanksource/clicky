@@ -5,6 +5,29 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.21.70](https://github.com/flanksource/clicky/compare/v1.21.69...v1.21.70) (2026-09-24)
+
+
+### ♻️ Code Refactoring
+
+* reduce external dependencies and enable wasm builds ([b8061a1](https://github.com/flanksource/clicky/commit/b8061a1c49718261deff14e3061d22b0845abb27))
+
+
+### ✨ Features
+
+* **aichat:** Add ID-only bulk action support with float64 flag binding ([251cb24](https://github.com/flanksource/clicky/commit/251cb242cd688ed78a6f01975becfb582c283882))
+* **api:** Add DefaultHidden column attribute for optional column visibility ([682ec05](https://github.com/flanksource/clicky/commit/682ec059b4bc49888fee84d3608e160059372cab))
+* **build:** Add WASM support with browser-safe renderer tests and dependency validation ([725c2dc](https://github.com/flanksource/clicky/commit/725c2dc242ede879d9aa6d90c5850b6e465dbda6))
+* **lint:** Add source excerpt display for lint violations ([29f5707](https://github.com/flanksource/clicky/commit/29f57079be5ba3714d7bf90fb8257337d84f97ed))
+
+
+### 🐛 Bug Fixes
+
+* **entity,flags:** declare update tool id and reject unparseable flag defaults ([6c69ed5](https://github.com/flanksource/clicky/commit/6c69ed5e833bf7db1e9a0a97dac2e824053ac38d))
+* **entity:** reject update body id that conflicts with positional id ([b62b363](https://github.com/flanksource/clicky/commit/b62b3630e533620b26c748a35d8b76b2e774f916))
+* **lint:** declare --source and --source-lines lint CLI options ([9b43845](https://github.com/flanksource/clicky/commit/9b43845d007ae7b0696e0d4b4590172b36cd879c))
+* **lint:** load source only for displayed locations and align caret on tabs ([494f293](https://github.com/flanksource/clicky/commit/494f293f717c1b5e99874ade92a5de477fbb0236))
+
 ## [1.21.69](https://github.com/flanksource/clicky/compare/v1.21.68...v1.21.69) (2026-09-22)
 
 
