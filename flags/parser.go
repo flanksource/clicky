@@ -3,7 +3,10 @@ package flags
 import (
 	"fmt"
 	"reflect"
+	"strconv"
 	"strings"
+
+	"github.com/flanksource/commons/duration"
 )
 
 // ParseStructFields recursively parses struct fields including embedded structs
@@ -81,11 +84,39 @@ func parseStructFieldsRecursive(structType reflect.Type, fieldPath []int, fields
 			RPCFileRead:  rpcFileRead,
 			Enum:         splitEnumTag(field.Tag.Get("enum")),
 		}
+		if err := validateDefault(info); err != nil {
+			return fmt.Errorf("field %s: invalid default %q: %w", field.Name, info.DefaultValue, err)
+		}
 
 		*fields = append(*fields, info)
 	}
 
 	return nil
+}
+
+// validateDefault parses a `default:` tag the way BindFlag will, so a tag the
+// field type cannot hold fails at registration instead of binding a zero value.
+func validateDefault(info FieldInfo) error {
+	if info.DefaultValue == "" {
+		return nil
+	}
+	var err error
+	switch info.FieldType.Kind() {
+	case reflect.Int:
+		_, err = strconv.Atoi(info.DefaultValue)
+	case reflect.Float64:
+		_, err = strconv.ParseFloat(info.DefaultValue, 64)
+	case reflect.Bool:
+		_, err = strconv.ParseBool(info.DefaultValue)
+	default:
+		switch info.FieldType.String() {
+		case "duration.Duration":
+			_, err = duration.ParseDuration(info.DefaultValue)
+		case "time.Time":
+			_, err = parseTime(info.DefaultValue)
+		}
+	}
+	return err
 }
 
 // splitEnumTag splits an `enum:"a,b,c"` tag into its values, trimming space and

@@ -1654,10 +1654,14 @@ func actionFlagsType(f ActionFlags) reflect.Type {
 }
 
 func generateBodyCommand(parent *cobra.Command, verb, short string, op EntityOperation) {
+	use, argsValidator := fmt.Sprintf("%s [key=value ...]", verb), cobra.ArbitraryArgs
+	if verb == "update" {
+		use, argsValidator = "update <id> [key=value ...]", cobra.MinimumNArgs(1)
+	}
 	cmd := &cobra.Command{
-		Use:   fmt.Sprintf("%s [key=value ...]", verb),
+		Use:   use,
 		Short: short,
-		Args:  cobra.ArbitraryArgs,
+		Args:  argsValidator,
 		RunE: func(c *cobra.Command, args []string) error {
 			flagMap := make(map[string]string)
 			c.Flags().Visit(func(f *pflag.Flag) {
@@ -1666,7 +1670,7 @@ func generateBodyCommand(parent *cobra.Command, verb, short string, op EntityOpe
 
 			// For update, first arg is ID
 			callArgs := args
-			if verb == "update" && len(args) > 0 {
+			if verb == "update" {
 				flagMap["id"] = args[0]
 				callArgs = args[1:]
 			}
@@ -1805,8 +1809,7 @@ func generateBulkActionCommand(parent *cobra.Command, ba BulkActionInfo) {
 
 // bindTypeFlags registers cobra flags from a struct type's field tags.
 func bindTypeFlags(cmd *cobra.Command, t reflect.Type) {
-	fieldInfos, _ := flags.ParseStructFields(t)
-	for _, info := range fieldInfos {
+	for _, info := range mustParseFlagFields(t) {
 		flags.BindFlag(cmd, info)
 	}
 }
@@ -1820,13 +1823,22 @@ func bindTypeFlagsSkippingExisting(cmd *cobra.Command, t reflect.Type) {
 	if t == nil {
 		return
 	}
-	fieldInfos, _ := flags.ParseStructFields(t)
-	for _, info := range fieldInfos {
+	for _, info := range mustParseFlagFields(t) {
 		if info.FlagName != "" && cmd.Flags().Lookup(info.FlagName) != nil {
 			continue
 		}
 		flags.BindFlag(cmd, info)
 	}
+}
+
+// mustParseFlagFields panics on malformed flag tags: they are programmer errors
+// in a registered type, and CLI generation has no error path to report them.
+func mustParseFlagFields(t reflect.Type) []flags.FieldInfo {
+	fieldInfos, err := flags.ParseStructFields(t)
+	if err != nil {
+		panic(fmt.Sprintf("failed to parse flag fields of %s: %v", t, err))
+	}
+	return fieldInfos
 }
 
 func buildFilterCompletionBinder[T any](filters []Filter[T]) func(cmd *cobra.Command) {
