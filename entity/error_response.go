@@ -138,9 +138,14 @@ func (e *ErrorWriter) response(ctx context.Context, err error) (int, ErrorRespon
 	var statusError *StatusError
 	if errors.As(err, &statusError) && statusError != nil {
 		message, _, truncated := sanitizeErrorText(statusError.Message, e.options.MaxDetailBytes)
-		return statusError.StatusCode(), ErrorResponse{
+		response := ErrorResponse{
 			Code: statusError.Code, Message: message, Trace: traceID, Truncated: truncated,
-		}, message
+		}
+		response.Hint, _, response.Truncated = mergeSanitizedText(
+			response.Truncated, statusError.Hint, e.options.MaxDetailBytes,
+		)
+		e.addContext(&response, statusError.Context)
+		return statusError.StatusCode(), response, message
 	}
 
 	logMessage, _, messageTruncated := sanitizeErrorText(safeErrorMessage(err), e.options.MaxDetailBytes)
@@ -166,7 +171,10 @@ func (e *ErrorWriter) addDiagnostics(response *ErrorResponse, diagnostics diagno
 		response.Truncated, diagnostics.Stacktrace(), e.options.MaxDetailBytes,
 	)
 
-	contextValues := diagnostics.Context()
+	e.addContext(response, diagnostics.Context())
+}
+
+func (e *ErrorWriter) addContext(response *ErrorResponse, contextValues map[string]any) {
 	keys := make([]string, 0, len(contextValues))
 	for key := range contextValues {
 		keys = append(keys, key)
