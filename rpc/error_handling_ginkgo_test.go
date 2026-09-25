@@ -13,6 +13,23 @@ import (
 )
 
 var _ = Describe("RPC error handling", func() {
+	It("preserves classified operation codes, hints, and context", func() {
+		server := NewSwaggerServer(&ServeConfig{StructuredErrorResponses: true}, nil, nil)
+		failure := entity.NewStatusError(http.StatusBadRequest, "invalid_query", "expected a symbol")
+		failure.Hint = "Enter a symbol after &"
+		failure.Context = map[string]any{"line": 1, "column": 11}
+		response := httptest.NewRecorder()
+
+		server.writeOperationError(response, httptest.NewRequest(http.MethodPost, "/query", nil), http.StatusBadRequest, failure)
+
+		var body entity.ErrorResponse
+		Expect(json.Unmarshal(response.Body.Bytes(), &body)).To(Succeed())
+		Expect(response.Code).To(Equal(http.StatusBadRequest))
+		Expect(body.Code).To(Equal("invalid_query"))
+		Expect(body.Hint).To(Equal("Enter a symbol after &"))
+		Expect(body.Context).To(Equal(map[string]any{"line": float64(1), "column": float64(11)}))
+	})
+
 	It("keeps error hiding disabled unless the serve flag opts in", func() {
 		Expect(DefaultServeConfig().HideErrorDetails).To(BeFalse())
 		Expect(newOpenAPIServeCommand(nil).Flags().Lookup("hide-error-details").DefValue).To(Equal("false"))

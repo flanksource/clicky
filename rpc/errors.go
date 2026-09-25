@@ -80,6 +80,11 @@ func (s *SwaggerServer) writeStatusError(w http.ResponseWriter, r *http.Request,
 }
 
 func (s *SwaggerServer) writeOperationError(w http.ResponseWriter, r *http.Request, statusCode int, err error) {
+	var classified *entity.StatusError
+	if errors.As(err, &classified) {
+		s.writeError(w, r, err)
+		return
+	}
 	if statusCode >= http.StatusInternalServerError {
 		s.writeError(w, r, err)
 		return
