@@ -104,6 +104,7 @@ var (
 	IsServedOnly             = entity.IsServedOnly
 	RefuseServedOnlyCommands = entity.RefuseServedOnlyCommands
 	IsLocalOnly              = entity.IsLocalOnly
+	AcceptsPositionalArgs    = entity.AcceptsPositionalArgs
 )
 
 const (

@@ -39,7 +39,34 @@ const (
 	annotationClickyToolStrict         = "clicky/tool-strict"
 	annotationClickyLocalOnly          = "clicky/local-only"
 	annotationClickyServedOnly         = "clicky/served-only"
+	annotationClickyPositionalArgs     = "clicky/positional-args"
 )
+
+// annotatePositionalArgs records whether a generated command's options declare
+// a positional-args field. The cobra Args validator alone cannot answer that
+// reliably (cobra.NoArgs is a func value), so the RPC converter reads this.
+func annotatePositionalArgs(cmd *cobra.Command, accepts bool) {
+	setCommandAnnotation(cmd, annotationClickyPositionalArgs, strconv.FormatBool(accepts))
+}
+
+// AcceptsPositionalArgs reports whether cmd takes positional arguments. A
+// command with no Args validator, or one generated from options without a
+// positional field, does not. Plain cobra commands with any validator are
+// assumed to accept them.
+func AcceptsPositionalArgs(cmd *cobra.Command) bool {
+	if cmd == nil || cmd.Args == nil {
+		return false
+	}
+	declared, ok := cmd.Annotations[annotationClickyPositionalArgs]
+	if !ok {
+		return true
+	}
+	accepts, err := strconv.ParseBool(declared)
+	if err != nil {
+		panic(fmt.Sprintf("command %q has invalid %s annotation %q: %v", cmd.CommandPath(), annotationClickyPositionalArgs, declared, err))
+	}
+	return accepts
+}
 
 // MarkLocalOnly keeps a command off the generated HTTP surface.
 //

@@ -31,6 +31,7 @@ func generatePrimaryAction(entityCmd *cobra.Command, action ActionInfo) {
 		ResponseType:    action.ResponseType,
 	}
 	entityCmd.Args = cobra.NoArgs
+	annotatePositionalArgs(entityCmd, false)
 	entityCmd.RunE = func(c *cobra.Command, args []string) error {
 		flagMap := make(map[string]string)
 		c.Flags().Visit(func(f *pflag.Flag) {
