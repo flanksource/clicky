@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.21.71](https://github.com/flanksource/clicky/compare/v1.21.70...v1.21.71) (2026-09-25)
+
+
+### ✨ Features
+
+* **entity:** track positional args support via command annotations ([55c873b](https://github.com/flanksource/clicky/commit/55c873be67e04ccf0bd8284a7d16ecaffeafe457))
+
 ## [1.21.70](https://github.com/flanksource/clicky/compare/v1.21.69...v1.21.70) (2026-09-24)
 
 
