@@ -26,8 +26,10 @@ type StatusError struct {
 	// two to disagree.
 	Status int `json:"-"`
 
-	Code    string `json:"code"`
-	Message string `json:"message"`
+	Code    string         `json:"code"`
+	Message string         `json:"message"`
+	Hint    string         `json:"hint,omitempty"`
+	Context map[string]any `json:"context,omitempty"`
 }
 
 // NewStatusError builds an error a handler can return and the transport can

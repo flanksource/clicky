@@ -34,6 +34,22 @@ var _ = Describe("ErrorWriter", func() {
 		}))
 	})
 
+	It("preserves classified hints and positions in structured responses", func() {
+		const traceID = "0123456789abcdef0123456789abcdef"
+		w := httptest.NewRecorder()
+		classified := NewStatusError(http.StatusBadRequest, "invalid_query", "expected a symbol")
+		classified.Hint = "Enter a Go symbol after &"
+		classified.Context = map[string]any{"line": 1, "column": 12}
+
+		NewErrorWriter(ErrorOptions{}).Write(ContextWithTraceID(context.Background(), traceID), w, classified)
+
+		Expect(w.Code).To(Equal(http.StatusBadRequest))
+		Expect(decodeErrorResponse(w)).To(Equal(ErrorResponse{
+			Code: "invalid_query", Message: "expected a symbol", Trace: traceID,
+			Hint: "Enter a Go symbol after &", Context: map[string]any{"line": float64(1), "column": float64(12)},
+		}))
+	})
+
 	It("shows sanitized diagnostics by default", func() {
 		w := httptest.NewRecorder()
 		NewErrorWriter(ErrorOptions{}).Write(context.Background(), w, diagnosticTestError{
