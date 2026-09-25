@@ -41,7 +41,7 @@ func (c *Converter) ConvertCommand(cmd *cobra.Command) (*RPCOperation, error) {
 	// Add positional arguments
 	// Extract parameter name from Use field if available
 	positionalParamName := ""
-	if cmd.Args != nil && (commandMeta == nil || !commandMeta.OptionalID) {
+	if clicky.AcceptsPositionalArgs(cmd) && (commandMeta == nil || !commandMeta.OptionalID) {
 		positionalParamName = extractParameterName(cmd.Use)
 		if positionalParamName != "" {
 			// Add named path parameter for single positional arg

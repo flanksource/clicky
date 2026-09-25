@@ -295,6 +295,7 @@ func addNamedCommand[T any, R any](
 	} else {
 		cmd.Args = cobra.NoArgs
 	}
+	annotatePositionalArgs(cmd, argsField != nil)
 
 	// Wire shell completions for any Filterable subcommand. The binder skips
 	// flag names the opts struct does not actually expose, so a filter list
