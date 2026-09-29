@@ -1,7 +1,9 @@
 package process
 
 import (
+	"context"
 	"encoding/json"
+	"os"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -52,6 +54,14 @@ var _ = Describe("process snapshots", func() {
 		encoded, err := json.Marshal(Process{PID: 9000})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(string(encoded)).NotTo(ContainSubstring("environment"))
+	})
+
+	It("populates disk counters for a selected process without losing a measured zero", func() {
+		snapshot := NewSnapshot([]Process{{PID: os.Getpid(), Active: true}})
+		Expect(snapshot.PopulateIO(context.Background(), []int{os.Getpid()})).To(Succeed())
+		observed, found := snapshot.Get(os.Getpid())
+		Expect(found).To(BeTrue())
+		Expect(observed.IO).NotTo(BeNil())
 	})
 
 	It("filters environment variables by exact key and prefix", func() {

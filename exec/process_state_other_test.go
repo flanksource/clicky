@@ -5,7 +5,7 @@ package exec
 import (
 	"slices"
 
-	"github.com/shirou/gopsutil/v3/process"
+	"github.com/shirou/gopsutil/v4/process"
 )
 
 func pidIsZombie(pid int) (bool, error) {

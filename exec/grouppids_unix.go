@@ -5,7 +5,7 @@ package exec
 import (
 	"syscall"
 
-	gops "github.com/shirou/gopsutil/v3/process"
+	gops "github.com/shirou/gopsutil/v4/process"
 )
 
 // groupPids lists every process in root's POSIX process group, but only when

@@ -5,7 +5,7 @@ package process
 import (
 	"context"
 
-	gops "github.com/shirou/gopsutil/v3/process"
+	gops "github.com/shirou/gopsutil/v4/process"
 )
 
 func readEnvironment(ctx context.Context, pid int) ([]string, error) {

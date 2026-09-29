@@ -6,7 +6,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/shirou/gopsutil/v3/process"
+	"github.com/shirou/gopsutil/v4/process"
 )
 
 // killTreeByWalk SIGKILLs pid and every descendant discovered from a process
