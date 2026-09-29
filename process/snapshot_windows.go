@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	gops "github.com/shirou/gopsutil/v3/process"
+	gops "github.com/shirou/gopsutil/v4/process"
 )
 
 func Discover(ctx context.Context, opts SnapshotOptions) (*Snapshot, error) {

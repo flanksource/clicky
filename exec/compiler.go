@@ -4,7 +4,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	gops "github.com/shirou/gopsutil/v3/process"
+	gops "github.com/shirou/gopsutil/v4/process"
 )
 
 var compilerExecutableBasenames = map[string]struct{}{

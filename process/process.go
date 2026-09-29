@@ -3,12 +3,15 @@ package process
 import (
 	"bytes"
 	"context"
+	"errors"
+	"fmt"
+	"os"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
 
-	gops "github.com/shirou/gopsutil/v3/process"
+	gops "github.com/shirou/gopsutil/v4/process"
 )
 
 type EnvironmentOptions struct {
@@ -28,12 +31,18 @@ type Process struct {
 	CPUPercent       float64           `json:"cpuPercent,omitempty"`
 	MemoryPercent    float64           `json:"memoryPercent,omitempty"`
 	RSSBytes         uint64            `json:"rssBytes,omitempty"`
+	IO               *ProcessIO        `json:"io,omitempty"`
 	StartedAt        *time.Time        `json:"startedAt,omitempty"`
 	Command          string            `json:"command,omitempty"`
 	CWD              string            `json:"cwd,omitempty"`
 	CWDError         string            `json:"cwdError,omitempty"`
 	Environment      map[string]string `json:"environment,omitempty"`
 	EnvironmentError string            `json:"environmentError,omitempty"`
+}
+
+type ProcessIO struct {
+	DiskReadBytes  uint64 `json:"diskReadBytes"`
+	DiskWriteBytes uint64 `json:"diskWriteBytes"`
 }
 
 type ResourceUsage struct {
@@ -158,6 +167,30 @@ func (s *Snapshot) PopulateWorkingDirectories(ctx context.Context, pids []int) {
 		process.CWD = cwd
 		s.processes[pid] = process
 	}
+}
+
+func (s *Snapshot) PopulateIO(ctx context.Context, pids []int) error {
+	for _, pid := range pids {
+		item, found := s.processes[pid]
+		if !found {
+			continue
+		}
+		handle, err := gops.NewProcessWithContext(ctx, int32(pid))
+		if err == nil {
+			var counters *gops.IOCountersStat
+			counters, err = handle.IOCountersWithContext(ctx)
+			if err == nil {
+				item.IO = &ProcessIO{DiskReadBytes: counters.DiskReadBytes, DiskWriteBytes: counters.DiskWriteBytes}
+				s.processes[pid] = item
+				continue
+			}
+		}
+		if errors.Is(err, gops.ErrorProcessNotRunning) || errors.Is(err, os.ErrNotExist) {
+			continue
+		}
+		return fmt.Errorf("read disk I/O for process %d: %w", pid, err)
+	}
+	return nil
 }
 
 func parseSnapshot(output []byte, location *time.Location) *Snapshot {

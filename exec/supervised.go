@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/flanksource/clicky/task"
-	gops "github.com/shirou/gopsutil/v3/process"
+	gops "github.com/shirou/gopsutil/v4/process"
 )
 
 // Resource-monitor defaults applied when a ResourceLimits field is left zero.
