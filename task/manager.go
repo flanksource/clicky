@@ -68,6 +68,10 @@ type Manager struct {
 	// Task identity tracking for deduplication
 	tasksByIdentity sync.Map // map[string]*Task
 
+	// groupsByIdentity holds the last group started under each
+	// WithGroupIdentity; guarded by mu.
+	groupsByIdentity map[string]*Group
+
 	// Render loop control. renderState re-arms the lifecycle so a batch of
 	// tasks enqueued after Wait()/stopRender renders again; all fields below
 	// are guarded by mu.
@@ -453,6 +457,16 @@ func (tm *Manager) newTask(name string, opts ...Option) *Task {
 }
 
 func (tm *Manager) enqueue(task *Task) *Task {
+	if existing := tm.claimIdentity(task); existing != task {
+		discardDuplicate(task)
+		return existing
+	}
+	tm.enqueueClaimed(task)
+	return task
+}
+
+// enqueueClaimed queues a task whose identity, if any, it already holds.
+func (tm *Manager) enqueueClaimed(task *Task) {
 	if !tm.noRender.Load() && !tm.noProgress.Load() {
 		tm.mu.RLock()
 		idle := tm.renderState == renderIdle
@@ -460,13 +474,6 @@ func (tm *Manager) enqueue(task *Task) *Task {
 		if idle {
 			tm.startRenderLoop()
 		}
-	}
-
-	if task.identity != "" {
-		if existing, ok := tm.tasksByIdentity.Load(task.identity); ok {
-			return existing.(*Task)
-		}
-		tm.tasksByIdentity.Store(task.identity, task)
 	}
 
 	task.enqueuedAt = time.Now()
@@ -477,7 +484,6 @@ func (tm *Manager) enqueue(task *Task) *Task {
 	tm.mu.Unlock()
 
 	tm.taskQueue.Enqueue(task)
-	return task
 }
 
 // Start creates and starts tracking a new task
@@ -489,8 +495,16 @@ func StartTask[T any](name string, taskFunc func(flanksourceContext.Context, *Ta
 	return startTask(global, name, taskFunc, opts...)
 }
 
+// startTask enqueues a typed task. When another task already holds the same
+// identity, the caller gets that task — its result is shared — and the
+// duplicate is discarded before it is attached to any group, so a group never
+// waits on work that will not run.
 func startTask[T any](manager *Manager, name string, taskFunc func(flanksourceContext.Context, *Task) (T, error), opts ...Option) TypedTask[T] {
 	t := manager.newTask(name, opts...)
+	if existing := manager.claimIdentity(t); existing != t {
+		discardDuplicate(t)
+		return TypedTask[T]{existing}
+	}
 	typed := TypedTask[T]{t}
 	attachTaskableToGroup(t, typed)
 	t.runFunc = func(ctx flanksourceContext.Context, task *Task) error {
@@ -504,13 +518,17 @@ func startTask[T any](manager *Manager, name string, taskFunc func(flanksourceCo
 		task.mu.Unlock()
 		return err
 	}
-	manager.enqueue(t)
+	manager.enqueueClaimed(t)
 	return typed
 }
 
 // StartWithResult creates and starts tracking a new task with typed result handling
 func (tm *Manager) StartWithResult(name string, taskFunc func(flanksourceContext.Context, *Task) (interface{}, error), opts ...Option) *Task {
 	task := tm.newTask(name, opts...)
+	if existing := tm.claimIdentity(task); existing != task {
+		discardDuplicate(task)
+		return existing
+	}
 	attachTaskableToGroup(task, task)
 
 	task.runFunc = func(ctx flanksourceContext.Context, t *Task) error {
@@ -530,7 +548,8 @@ func (tm *Manager) StartWithResult(name string, taskFunc func(flanksourceContext
 		return nil
 	}
 
-	return tm.enqueue(task)
+	tm.enqueueClaimed(task)
+	return task
 }
 
 func attachTaskableToGroup(t *Task, item Taskable) {
@@ -581,10 +600,16 @@ func StartGroup[T any](name string, opts ...TaskGroupOption) TypedGroup[T] {
 	}
 
 	// Publish only after the group is fully constructed so concurrent
-	// SnapshotAll/RunsRaw readers never observe a half-initialized group.
+	// SnapshotAll/RunsRaw readers never observe a half-initialized group. The
+	// identity is checked under the same lock, so of two concurrent starts
+	// exactly one publishes and the other joins it.
 	global.mu.Lock()
+	defer global.mu.Unlock()
+	if existing := global.joinLiveGroup(group); existing != nil {
+		cancel()
+		return TypedGroup[T]{Group: existing, joined: true}
+	}
 	global.groups = append(global.groups, group)
-	global.mu.Unlock()
 
-	return TypedGroup[T]{group}
+	return TypedGroup[T]{Group: group}
 }

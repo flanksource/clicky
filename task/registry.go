@@ -134,6 +134,9 @@ func GCRuns() {
 			runSnapshots := snapshotGroupWithTasks(g)
 			notifyBeforeGC(g.ID(), runSnapshots)
 			persistEvictedRun(g.ID(), runSnapshots)
+			if g.identity != "" && global.groupsByIdentity[g.identity] == g {
+				delete(global.groupsByIdentity, g.identity)
+			}
 			continue
 		}
 		kept = append(kept, g)
