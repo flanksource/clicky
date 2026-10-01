@@ -48,9 +48,7 @@ func (w *worker) run() {
 				task.Cancel()
 				task.markCompleted()
 				task.signalDone()
-				if task.identity != "" {
-					w.manager.tasksByIdentity.Delete(task.identity)
-				}
+				w.manager.releaseIdentity(task)
 				// Retiring a cancelled task can be what makes its group
 				// terminal just as much as running one can, so the run is
 				// handed to the store here too. See the tail of the loop.
@@ -103,10 +101,7 @@ func (w *worker) run() {
 
 			w.manager.workersActive.Add(-1)
 
-			// Clean up identity tracking
-			if task.identity != "" {
-				w.manager.tasksByIdentity.Delete(task.identity)
-			}
+			w.manager.releaseIdentity(task)
 
 			// Signal done channel for compatibility
 			task.signalDone()

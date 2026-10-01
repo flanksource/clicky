@@ -24,6 +24,7 @@ type GroupMetadata struct {
 type Group struct {
 	name            string
 	id              string     // stable unique id; distinct from name for registry drill-down
+	identity        string     // deduplicates concurrent runs; see WithGroupIdentity
 	Items           []Taskable // Can contain Tasks or nested Groups
 	startTime       time.Time
 	finishedAt      time.Time // set lazily when the group is observed terminal; cleared when work is added
@@ -53,6 +54,17 @@ func WithConcurrency(concurrency int) TaskGroupOption {
 func WithGroupID(id string) TaskGroupOption {
 	return func(group *Group) {
 		group.id = id
+	}
+}
+
+// WithGroupIdentity deduplicates runs the way WithIdentity deduplicates tasks:
+// while a group started with the identity is still live (pending or running,
+// and not cancelled), StartGroup returns that group instead of a new one, and
+// the returned handle reports Joined. A joining caller waits on the group; it
+// must not add the same work again.
+func WithGroupIdentity(identity string) TaskGroupOption {
+	return func(group *Group) {
+		group.identity = identity
 	}
 }
 
@@ -181,6 +193,13 @@ func observeGroupTerminal(g *Group) {
 	g.observeTerminal(status, time.Now())
 }
 
+// live reports whether the group still holds its identity: it was not
+// cancelled and it is pending or running. A group with no work yet is pending,
+// so a caller that has just started it keeps the identity while adding work.
+func (g *Group) live() bool {
+	return g.ctx.Err() == nil && isRunning(g.Status())
+}
+
 func (g *Group) GetTasks() []Taskable {
 	g.mu.RLock()
 	defer g.mu.RUnlock()
@@ -214,6 +233,13 @@ func (g *Group) freezeDetails() {
 
 type TypedGroup[T any] struct {
 	*Group
+	joined bool
+}
+
+// Joined reports whether StartGroup returned a group that was already running
+// under the same WithGroupIdentity rather than starting this one.
+func (g TypedGroup[T]) Joined() bool {
+	return g.joined
 }
 
 // Add adds a Waitable item (Task or Group) to this group
