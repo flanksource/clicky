@@ -42,7 +42,17 @@ func (s *SwaggerServer) executeOperation(r *http.Request, operation *RPCOperatio
 	if err != nil {
 		return data, metadata, statusForError(err), err
 	}
-	return data, metadata, http.StatusOK, nil
+	declared, ok := data.(entity.ResponseStatus)
+	if !ok {
+		return data, metadata, http.StatusOK, nil
+	}
+	status := declared.ResponseStatus()
+	if status < 200 || status > 299 {
+		err := fmt.Errorf("operation %s returned a result with declared response status %d; a result must succeed with a 2xx status", operation.Name, status)
+		response := &ExecutionResponse{Success: false, Error: err.Error(), Input: request}
+		return response, response, http.StatusInternalServerError, err
+	}
+	return data, metadata, status, nil
 }
 
 // statusForError honors the status an error classified itself with. A handler

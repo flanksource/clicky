@@ -103,7 +103,8 @@ type EntityOperation struct {
 	// FlagsType, when non-nil, binds typed flags from the given struct type
 	// onto the generated cobra command and collects their values into the
 	// flag map passed to DataFunc. Used by actions that implement
-	// ActionFlags; ignored for the built-in CRUD verbs.
+	// ActionFlags and by the get and delete verbs when the entity declares
+	// GetFlags or DeleteFlags.
 	FlagsType  reflect.Type
 	LookupFunc func(flags map[string]string, args []string) (any, error)
 	// ContextLookupFunc, when set, is the context-aware filter lookup closure.
@@ -792,7 +793,18 @@ type Entity[T EntityItem, ListOpts any, R any] struct {
 	CreateWithContext func(ctx context.Context, body map[string]any) (R, error)
 	UpdateWithContext func(ctx context.Context, id string, body map[string]any) (R, error)
 	DeleteWithContext func(ctx context.Context, id string) error
-	Filters           []Filter[ListOpts]
+	// DeleteFlags, when non-nil, is a zero-value struct value implementing
+	// ActionFlags whose `flag:"..."` tagged fields are registered as
+	// CLI flags on the generated `delete` subcommand and published as query
+	// parameters on its DELETE route. The parsed values are passed into
+	// DeleteWithFlagsAndContext.
+	//
+	// DeleteWithFlagsAndContext takes precedence over DeleteWithContext and
+	// Delete. Unlike them it returns a result, which the CLI renders and the
+	// HTTP route answers with.
+	DeleteFlags               ActionFlags
+	DeleteWithFlagsAndContext func(ctx context.Context, id string, flags map[string]string) (any, error)
+	Filters                   []Filter[ListOpts]
 	// Sort enables validated server-side sorting on the list operation. Public
 	// keys are derived from the response column metadata, never from SQL names.
 	Sort *SortSpec
@@ -1057,9 +1069,20 @@ func RegisterEntity[T EntityItem, ListOpts any, R any](e Entity[T, ListOpts, R])
 		info.Operations = append(info.Operations, op)
 	}
 
-	if e.DeleteWithContext != nil || e.Delete != nil {
+	if e.DeleteWithFlagsAndContext != nil || e.DeleteWithContext != nil || e.Delete != nil {
 		op := EntityOperation{Verb: "delete"}
-		if e.DeleteWithContext != nil {
+		switch {
+		case e.DeleteWithFlagsAndContext != nil:
+			op.FlagsType = actionFlagsType(e.DeleteFlags)
+			op.ResponseType = responseTypeOf[any]()
+			op.ContextDataFunc = func(ctx context.Context, flagMap map[string]string, args []string) (any, error) {
+				id, err := entityIDFrom(flagMap, args)
+				if err != nil {
+					return nil, err
+				}
+				return dataOrError(e.DeleteWithFlagsAndContext(ctx, id, flagMap))
+			}
+		case e.DeleteWithContext != nil:
 			op.ContextDataFunc = func(ctx context.Context, flagMap map[string]string, args []string) (any, error) {
 				id, err := entityIDFrom(flagMap, args)
 				if err != nil {
@@ -1067,7 +1090,7 @@ func RegisterEntity[T EntityItem, ListOpts any, R any](e Entity[T, ListOpts, R])
 				}
 				return nil, e.DeleteWithContext(ctx, id)
 			}
-		} else {
+		default:
 			op.DataFunc = func(flagMap map[string]string, args []string) (any, error) {
 				id, err := entityIDFrom(flagMap, args)
 				if err != nil {

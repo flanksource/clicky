@@ -58,6 +58,7 @@ If `Name` is empty, the name is the kebab-cased Go type name of `T`.
 | `Create`, `CreateWithContext` | same | `create [key=value ...]` |
 | `Update`, `UpdateWithContext` | same | `update <id> [key=value ...]` |
 | `Delete`, `DeleteWithContext` | same | `delete <id>` |
+| `DeleteWithFlagsAndContext` | `DeleteFlags` + handler | `delete <id> [flags]` with typed flags and a returned result |
 | `Filters(...)` | `Filters` | completions, lookup metadata, value normalization |
 | `Sort(SortSpec)` | `Sort` | validated `--sort` / `--order` |
 | `WithPrimaryAction` | `PrimaryAction` | the bare entity command runs an action instead of `list` |
@@ -76,7 +77,8 @@ When more than one variant of the same verb is set, only one is used:
 
 - **list**: `ListPagedWithContext` > `ListPaged` > `ListWithContext` > `List`
 - **get**: `GetWithFlagsAndContext` > `GetWithFlags` > `GetWithContext` > `Get`
-- **create / update / delete**: `…WithContext` > plain
+- **create / update**: `…WithContext` > plain
+- **delete**: `DeleteWithFlagsAndContext` > `DeleteWithContext` > `Delete`
 
 Set exactly one variant per verb. Precedence exists to make migration safe, not to provide fallbacks.
 

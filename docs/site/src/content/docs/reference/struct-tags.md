@@ -24,7 +24,7 @@ Marker methods on option structs:
 
 | Method | Interface | Used by |
 | --- | --- | --- |
-| `ClickyActionFlags()` | `clicky.ActionFlags` | `GetWithFlags`, actions, bulk `WithFlags`, primary action |
+| `ClickyActionFlags()` | `clicky.ActionFlags` | `GetWithFlags`, `DeleteWithFlagsAndContext`, actions, bulk `WithFlags`, primary action |
 | `Filters() []clicky.Filter[T]` | `clicky.Filterable[T]` | typed actions, `AddNamedCommand` |
 | `SetClickyActionID(id)` | `entity.ActionIDSetter` | typed actions |
 | `SetClickyActionContext(ctx, id)` | `entity.ActionContextSetter` | typed actions |
