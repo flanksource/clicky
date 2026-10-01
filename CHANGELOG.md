@@ -5,6 +5,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.21.73](https://github.com/flanksource/clicky/compare/v1.21.72...v1.21.73) (2026-10-01)
+
+
+### ♻️ Code Refactoring
+
+* extract platform-specific shutdown signals to separate files ([0810427](https://github.com/flanksource/clicky/commit/08104272a1f0b1c158ce80d03f693cb68612baea))
+
+
+### ✨ Features
+
+* Add task and group identity deduplication with Steps support ([bcd95f9](https://github.com/flanksource/clicky/commit/bcd95f9a29a0a826b9e609b7f92f151b97a3da4d))
+* **entity:** Add DeleteWithFlagsAndContext for typed delete operations with results ([d40d0de](https://github.com/flanksource/clicky/commit/d40d0de8f61e5b62585ed613100607e07ad9ece0))
+
 ## [1.21.72](https://github.com/flanksource/clicky/compare/v1.21.71...v1.21.72) (2026-09-29)
 
 
