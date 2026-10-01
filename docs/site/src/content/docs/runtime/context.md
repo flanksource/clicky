@@ -17,6 +17,7 @@ Use the context to resolve **request-scoped state**, such as the tenant, the dat
 | `List`, `ListPaged` | `ListWithContext`, `ListPagedWithContext` |
 | `Get`, `GetWithFlags` | `GetWithContext`, `GetWithFlagsAndContext` |
 | `Create`, `Update`, `Delete` | `CreateWithContext`, `UpdateWithContext`, `DeleteWithContext` |
+| — | `DeleteWithFlagsAndContext` |
 | `Action`, `ActionWithFlags` | `ActionWithContext`, `ActionWithFlagsAndContext`, `TypedActionWithContext` |
 | — | `entity.PrimaryActionWithContext` |
 | `BulkAction`, `BulkActionWithFilter` | `BulkActionWithFilterAndContext` |

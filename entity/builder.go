@@ -145,6 +145,15 @@ func (b *EntityBuilder[T, ListOpts, R]) DeleteWithContext(fn func(context.Contex
 	return b
 }
 
+// DeleteWithFlagsAndContext sets the typed delete flags and the context-aware
+// delete handler that receives them. Its result is rendered on the CLI and
+// returned by the DELETE route.
+func (b *EntityBuilder[T, ListOpts, R]) DeleteWithFlagsAndContext(flags ActionFlags, fn func(context.Context, string, map[string]string) (any, error)) *EntityBuilder[T, ListOpts, R] {
+	b.entity.DeleteFlags = flags
+	b.entity.DeleteWithFlagsAndContext = fn
+	return b
+}
+
 func (b *EntityBuilder[T, ListOpts, R]) Filters(filters ...Filter[ListOpts]) *EntityBuilder[T, ListOpts, R] {
 	b.entity.Filters = append(b.entity.Filters, filters...)
 	return b

@@ -103,6 +103,35 @@ DeleteWithContext(func(ctx context.Context, id string) error)
 - CLI: `app stack delete <id>`
 - HTTP: `DELETE /api/v1/stack/{id}`
 
+### Delete with typed flags
+
+Use `DeleteWithFlagsAndContext` when the delete takes options or has something to report, such as a dry-run preview or per-table counts. The flags struct implements `ActionFlags`, and whatever the handler returns is rendered on the CLI and returned as the response body:
+
+```go
+type PurgeFlags struct {
+	DryRun bool `flag:"dry-run" help:"Preview the delete without applying it"`
+	Yes    bool `flag:"yes" help:"Skip the confirmation"`
+}
+
+func (PurgeFlags) ClickyActionFlags() {}
+
+clicky.NewEntity[Stack, StackListOpts, StackDetail]("stack").
+	DeleteWithFlagsAndContext(PurgeFlags{}, func(ctx context.Context, id string, flags map[string]string) (any, error) {
+		opts, err := clicky.BuildOpts[PurgeFlags](flags)
+		if err != nil {
+			return nil, err
+		}
+		return store.Purge(ctx, id, opts)
+	})
+```
+
+```bash
+app stack delete stk-001 --dry-run
+curl -X DELETE 'localhost:8080/api/v1/stack/stk-001?dry-run=true'
+```
+
+Over HTTP the flags are query parameters. A `DELETE` request body is not read.
+
 To delete many rows at once, add a [bulk action](/entities/bulk-actions/). A bulk action named `delete` is routed as `DELETE /api/v1/stack/{id}/delete`, with the IDs comma-joined in `{id}`. It does not collide with the entity's own delete.
 
 ## ID completion
