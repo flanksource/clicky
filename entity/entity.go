@@ -1477,9 +1477,6 @@ func runEntityOp(c *cobra.Command, op EntityOperation, flagMap map[string]string
 	if err != nil {
 		return nil, err
 	}
-	if paged, ok := result.(Paged); ok {
-		return paged.PageRows(), nil
-	}
 	return result, nil
 }
 

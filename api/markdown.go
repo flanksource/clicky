@@ -63,6 +63,9 @@ func (t Text) markdown(options MarkdownOptions) string {
 	} else if t.Style != "" {
 		transformedText, parsedStyle := ApplyTailwindStyle(plainContent, t.Style)
 		style = parsedStyle
+		if options.Unbounded {
+			transformedText = tailwind.TransformText(plainContent, style.TextTransform)
+		}
 		if transformedText != plainContent {
 			content = transformedText
 		}

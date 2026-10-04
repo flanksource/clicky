@@ -72,7 +72,15 @@ func Tracef(format string, args ...any) {
 }
 
 func Format(o any, opts ...FormatOptions) (string, error) {
-	return Formatter.FormatWithOptions(formatters.MergeOptions(append([]FormatOptions{defaultOpts}, opts...)...), o)
+	options := formatters.MergeOptions(append([]FormatOptions{defaultOpts}, opts...)...)
+	return Formatter.FormatWithOptions(options, cliFormatData(o, options))
+}
+
+func cliFormatData(o any, opts FormatOptions) any {
+	if paged, ok := o.(api.Paged); ok && opts.ResolveFormat() != "llm" {
+		return paged.PageRows()
+	}
+	return o
 }
 
 func MustPrint(o any, opts ...FormatOptions) {
@@ -91,14 +99,14 @@ func MustPrint(o any, opts ...FormatOptions) {
 }
 
 func MustFormat(o any, opts ...FormatOptions) string {
-	result, _ := Formatter.FormatWithOptions(formatters.MergeOptions(append([]FormatOptions{defaultOpts}, opts...)...), o)
+	result, _ := Format(o, opts...)
 	return result
 }
 
 func FormatToFile(o any, opts FormatOptions, file string) error {
 	opts.Output = file
 	_opts := formatters.MergeOptions(append([]FormatOptions{defaultOpts}, opts)...)
-	return Formatter.FormatToFile(_opts, o)
+	return Formatter.FormatToFile(_opts, cliFormatData(o, _opts))
 }
 
 // PrintAndWriteSinks renders o for each sink in opts.Sinks.
@@ -124,13 +132,14 @@ func PrintAndWriteSinks(o any, opts FormatOptions) {
 		sinkOpts.JSON, sinkOpts.YAML, sinkOpts.CSV = false, false, false
 		sinkOpts.HTML, sinkOpts.Markdown, sinkOpts.Pretty = false, false, false
 		sinkOpts.PDF, sinkOpts.Slack = false, false
+		sinkOpts.LLM = false
 		if sink.File == "" {
 			sinkOpts.Output = ""
 			MustPrint(o, sinkOpts)
 			continue
 		}
 		sinkOpts.Output = sink.File
-		if err := Formatter.FormatToFile(sinkOpts, o); err != nil {
+		if err := Formatter.FormatToFile(sinkOpts, cliFormatData(o, sinkOpts)); err != nil {
 			Errorf("failed to write %s output to %s: %v", sink.Format, sink.File, err)
 		}
 	}

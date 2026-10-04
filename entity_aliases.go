@@ -3,6 +3,7 @@ package clicky
 import (
 	"context"
 
+	"github.com/flanksource/clicky/api"
 	"github.com/flanksource/clicky/entity"
 	"github.com/spf13/cobra"
 )
@@ -50,8 +51,8 @@ type (
 	ContextDataFunc       = entity.ContextDataFunc
 	ContextLookupFunc     = entity.ContextLookupFunc
 	MultiFilter           = entity.MultiFilter
-	PageInfo              = entity.PageInfo
-	Paged                 = entity.Paged
+	PageInfo              = api.PageInfo
+	Paged                 = api.Paged
 	Name                  = entity.Name
 	Help                  = entity.Help
 	SortDirection         = entity.SortDirection
