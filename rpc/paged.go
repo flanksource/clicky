@@ -5,6 +5,7 @@ package rpc
 
 import (
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -107,6 +108,7 @@ func (s *SwaggerServer) streamExport(w http.ResponseWriter, r *http.Request, row
 		MaxRows:    int64(res.Ceiling),
 		CSVBOM:     req.Download,
 		FlushEvery: pagedFlushEvery,
+		LLMPage:    llmPageInfo(req, res, llmNextURL(r, req, res)),
 	})
 	if err != nil {
 		// The status line and the headers are gone and the body cannot be
@@ -134,7 +136,7 @@ func (s *SwaggerServer) streamExport(w http.ResponseWriter, r *http.Request, row
 // failure that genuinely arrived too late to be a status.
 func streamableExport(format string, ceiling int) error {
 	switch format {
-	case "json", "ndjson", "yaml", "csv", "markdown", "html", "excel":
+	case "json", "ndjson", "yaml", "csv", "markdown", "llm", "html", "excel":
 		return nil
 	case "pdf":
 		if ceiling <= 0 {
@@ -146,6 +148,43 @@ func streamableExport(format string, ceiling int) error {
 		return entity.NewStatusErrorf(http.StatusNotAcceptable, "not_acceptable",
 			"%s is not a representation this operation can stream as rows", format)
 	}
+}
+
+func llmPageInfo(req entity.PageRequest, res entity.PageResponse, next string) *formatters.LLMPageInfo {
+	more := res.HasMore
+	page := &formatters.LLMPageInfo{Offset: req.Offset, HasMore: &more, Next: next, Pageable: res.Pageable, Cursor: req.Cursor != ""}
+	if res.Total != nil {
+		page.Total = &res.Total.Value
+		page.TotalExact = res.Total.Exact
+	}
+	return page
+}
+
+func llmNextURL(r *http.Request, req entity.PageRequest, res entity.PageResponse) string {
+	if !res.Pageable || !res.HasMore {
+		return ""
+	}
+	next := *r.URL
+	query := next.Query()
+	query.Set("limit", strconv.Itoa(req.Limit))
+	if res.Next != "" {
+		query.Set("cursor", res.Next)
+		query.Del("offset")
+	} else {
+		query.Set("offset", strconv.Itoa(req.Offset+req.Limit))
+		query.Del("cursor")
+	}
+	next.RawQuery = query.Encode()
+	return "[next page](" + next.String() + ")"
+}
+
+func llmToolPageRequest(flags map[string]string) (entity.PageRequest, error) {
+	query := url.Values{}
+	for key, value := range flags {
+		query.Set(key, value)
+	}
+	query.Set("format", "llm")
+	return entity.ParsePageRequest(&http.Request{URL: &url.URL{RawQuery: query.Encode()}}, entity.PageLimits{})
 }
 
 // requestFlags reads the operation's declared parameters and then forwards every

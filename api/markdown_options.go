@@ -24,8 +24,9 @@ const (
 )
 
 type MarkdownOptions struct {
-	NoColor bool
-	Dialect Dialect
+	NoColor   bool
+	Dialect   Dialect
+	Unbounded bool
 }
 
 type MarkdownWithOptions interface {

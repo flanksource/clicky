@@ -24,7 +24,7 @@ func (r markdownRow) Row() map[string]any {
 	return map[string]any{"name": r.name, "note": r.note}
 }
 
-func TestTextTableMarkdownRendersUnpaddedGFMWithEscapedWidthLimitedCells(t *testing.T) {
+func TestTextTableMarkdownRendersUnpaddedGFMWithFullEscapedCells(t *testing.T) {
 	rendered := api.NewTableFrom([]markdownRow{
 		{name: "alpha", note: "pipe | inside"},
 		{name: "βeta", note: "multi\nline"},
@@ -36,7 +36,7 @@ func TestTextTableMarkdownRendersUnpaddedGFMWithEscapedWidthLimitedCells(t *test
 		"| --- | --- |\n" +
 		"| alpha | pipe \\| inside |\n" +
 		"| βeta | multi<br>line |\n" +
-		"| gamma | abcdefghijkl… |\n"
+		"| gamma | abcdefghijklmno |\n"
 	if rendered != want {
 		t.Fatalf("Markdown() =\n%q\nwant\n%q", rendered, want)
 	}

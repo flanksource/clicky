@@ -17,6 +17,7 @@ import (
 
 	"github.com/flanksource/clicky/entity"
 	"github.com/flanksource/clicky/formatters"
+	"github.com/flanksource/clicky/rpc"
 	"github.com/flanksource/clicky/task"
 	flanksourceContext "github.com/flanksource/commons/context"
 	"github.com/google/uuid"
@@ -549,20 +550,37 @@ func (s *MCPServer) executeToolWithTaskManager(ctx context.Context, tool *ToolDe
 	// Create a task for the tool execution
 	task := clicky.StartTask(fmt.Sprintf("MCP: %s", tool.Name),
 		func(ctx flanksourceContext.Context, t *clicky.Task) (interface{}, error) {
-			if tool.Command == nil {
-				return nil, fmt.Errorf("tool command not available")
-			}
-
 			t.SetName(fmt.Sprintf("Executing: %s", tool.Name))
 
 			// Run through the transport-neutral handle, which serializes the
 			// global stdout/stderr capture, resets state, and applies the
 			// arguments + server-wide format overrides.
 			flags, posArgs := splitMCPArgs(args)
+			overrides := formatOverrides(s.config.Tools.Format)
+			if rpc.IsListOperation(tool.Operation) && overrides["format"] == "" {
+				if overrides == nil {
+					overrides = map[string]string{}
+				}
+				overrides["format"] = "llm"
+				overrides["no-color"] = "true"
+			}
+			if tool.Operation != nil && tool.Operation.PagedFunc != nil && overrides["format"] == "llm" {
+				flags["format"] = "llm"
+				executor := rpc.NewCommandExecutor(&rpc.RPCService{}, &rpc.ExecutorConfig{Enabled: true})
+				data, _, err := executor.ExecuteCommand(tool.Operation, &rpc.ExecutionRequest{Flags: flags, Args: posArgs, Context: entity.ContextWithOperationSurface(ctx, "mcp")})
+				if err != nil {
+					return nil, err
+				}
+				output.WriteString(data.(string))
+				return nil, nil
+			}
+			if tool.Command == nil {
+				return nil, fmt.Errorf("tool command not available")
+			}
 			stdout, stderr, cmdErr := tool.Command.Execute(ctx, entity.ExecuteOptions{
 				Args:            posArgs,
 				Flags:           flags,
-				FormatOverrides: formatOverrides(s.config.Tools.Format),
+				FormatOverrides: overrides,
 			})
 			if stdout != "" {
 				output.WriteString(stdout)
@@ -584,6 +602,7 @@ func (s *MCPServer) executeToolWithTaskManager(ctx context.Context, tool *ToolDe
 			t.Success()
 			return nil, nil
 		},
+		task.WithContext(ctx),
 		clicky.WithTimeout(timeout),
 	)
 
@@ -664,6 +683,8 @@ func formatOverrides(opts *formatters.FormatOptions) map[string]string {
 // Boolean toggles win over the Format string when both are set.
 func formatName(opts *formatters.FormatOptions) string {
 	switch {
+	case opts.LLM:
+		return "llm"
 	case opts.Markdown:
 		return "markdown"
 	case opts.JSON:

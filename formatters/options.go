@@ -26,6 +26,7 @@ var knownFormats = map[string]bool{
 	"html-react":  true,
 	"html-static": true,
 	"markdown":    true,
+	"llm":         true,
 	"md":          true,
 	"pdf":         true,
 	"slack":       true,
@@ -34,7 +35,7 @@ var knownFormats = map[string]bool{
 	"tree":        true,
 }
 
-const FormatSpecHelp = "Output format. Use one stdout format (pretty|json|ndjson|toon|yaml|yml|csv|markdown|md|html|html-static|html-react|clicky-json|pdf|slack|excel|xlsx|tree), " +
+const FormatSpecHelp = "Output format. Use one stdout format (pretty|json|ndjson|toon|yaml|yml|csv|markdown|md|llm|html|html-static|html-react|clicky-json|pdf|slack|excel|xlsx|tree), " +
 	"or comma-separated format=file sinks such as 'pretty,json=out.json,markdown=summary.md'."
 
 // canonicalFormat normalises common aliases (e.g. "md" -> "markdown").
@@ -77,6 +78,7 @@ type FormatOptions struct {
 	YAML     bool `json:"yaml,omitempty"`
 	CSV      bool `json:"csv,omitempty"`
 	Markdown bool `json:"markdown,omitempty"`
+	LLM      bool `json:"llm,omitempty"`
 	Pretty   bool `json:"pretty,omitempty"`
 	HTML     bool `json:"html,omitempty"`
 	PDF      bool `json:"pdf,omitempty"`
@@ -87,8 +89,9 @@ type FormatOptions struct {
 	Table bool `json:"table,omitempty"` // Display in table structure
 
 	// Paging options
-	Page  int `json:"page,omitempty"`  // Current page (1-indexed)
-	Limit int `json:"limit,omitempty"` // Items per page
+	Page    int          `json:"page,omitempty"`  // Current page (1-indexed)
+	Limit   int          `json:"limit,omitempty"` // Items per page
+	LLMPage *LLMPageInfo `json:"-"`
 
 	// Sinks is derived state populated by ParseFormatSpec from the raw Format
 	// string. It holds zero or one stdout sink (File == "") plus zero or more
@@ -169,6 +172,8 @@ func legacyBoolFormat(o *FormatOptions) string {
 		return "html"
 	case o.Markdown:
 		return "markdown"
+	case o.LLM:
+		return "llm"
 	case o.PDF:
 		return "pdf"
 	case o.Slack:
@@ -222,6 +227,12 @@ func MergeOptions(opts ...FormatOptions) FormatOptions {
 		}
 		if opt.Limit > 0 {
 			merged.Limit = opt.Limit
+		}
+		if opt.LLMPage != nil {
+			merged.LLMPage = opt.LLMPage
+		}
+		if opt.LLM {
+			merged.LLM = true
 		}
 		if opt.depth > 0 {
 			merged.depth = opt.depth
@@ -278,6 +289,7 @@ func BindFlags(flags *flag.FlagSet, options *FormatOptions) {
 	flags.BoolVar(&options.YAML, "yaml", false, "Output in YAML format")
 	flags.BoolVar(&options.CSV, "csv", false, "Output in CSV format")
 	flags.BoolVar(&options.Markdown, "markdown", false, "Output in Markdown format")
+	flags.BoolVar(&options.LLM, "llm", false, "Output up to 25 rows in Markdown with paging information")
 	flags.BoolVar(&options.Pretty, "pretty", false, "Output in pretty format (default)")
 	flags.BoolVar(&options.HTML, "html", false, "Output in HTML format")
 	flags.BoolVar(&options.PDF, "pdf", false, "Output in PDF format")
@@ -301,6 +313,7 @@ func BindPFlags(flags *pflag.FlagSet, options *FormatOptions) {
 	flags.BoolVar(&options.YAML, "yaml", false, "Output in YAML format")
 	flags.BoolVar(&options.CSV, "csv", false, "Output in CSV format")
 	flags.BoolVar(&options.Markdown, "markdown", false, "Output in Markdown format")
+	flags.BoolVar(&options.LLM, "llm", false, "Output up to 25 rows in Markdown with paging information")
 	flags.BoolVar(&options.Pretty, "pretty", false, "Output in pretty format (default)")
 	flags.BoolVar(&options.HTML, "html", false, "Output in HTML format")
 	flags.BoolVar(&options.PDF, "pdf", false, "Output in PDF format")
@@ -327,6 +340,8 @@ func (options *FormatOptions) ResolveFormat() string {
 		selectedFormat = append(selectedFormat, "csv")
 	} else if options.Markdown {
 		selectedFormat = append(selectedFormat, "markdown")
+	} else if options.LLM {
+		selectedFormat = append(selectedFormat, "llm")
 	} else if options.HTML {
 		selectedFormat = append(selectedFormat, "html")
 	} else if options.PDF {

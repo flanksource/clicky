@@ -81,7 +81,7 @@ func BindAllFlags(flags *pflag.FlagSet, filters ...string) *AllFlags {
 
 	if collections.MatchItems("format", filters...) {
 		flags.StringVar(&Flags.Format, "format", "",
-			"Output format. Either a single format (pretty|json|ndjson|toon|yaml|csv|html|markdown|pdf|slack) "+
+			"Output format. Either a single format (pretty|json|ndjson|toon|yaml|csv|html|markdown|llm|pdf|slack) "+
 				"rendered to stdout, or a comma-separated list of format=file sinks "+
 				"(e.g. 'json=out.json,markdown=summary.md') written to files. "+
 				"A bare format and format=file pairs may be mixed in one spec.")
@@ -94,6 +94,7 @@ func BindAllFlags(flags *pflag.FlagSet, filters ...string) *AllFlags {
 		flags.BoolVar(&Flags.YAML, "yaml", false, "Output in YAML format")
 		flags.BoolVar(&Flags.CSV, "csv", false, "Output in CSV format")
 		flags.BoolVar(&Flags.Markdown, "markdown", false, "Output in Markdown format")
+		flags.BoolVar(&Flags.LLM, "llm", false, "Output up to 25 rows in Markdown with paging information")
 		flags.BoolVar(&Flags.Pretty, "pretty", false, "Output in pretty format (default)")
 		flags.BoolVar(&Flags.HTML, "html", false, "Output in HTML format")
 		flags.BoolVar(&Flags.PDF, "pdf", false, "Output in PDF format")
@@ -103,7 +104,7 @@ func BindAllFlags(flags *pflag.FlagSet, filters ...string) *AllFlags {
 		flags.BoolVar(&Flags.Table, "table", false, "Display in table structure (additive with format)")
 		for _, n := range []string{
 			"format", "filter", "no-color", "dump-schema",
-			"json", "yaml", "csv", "markdown", "pretty", "html", "pdf",
+			"json", "yaml", "csv", "markdown", "llm", "pretty", "html", "pdf",
 			"tree", "table",
 		} {
 			setCategory(flags, n, CategoryFormat)

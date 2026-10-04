@@ -131,7 +131,7 @@ func formatForMediaType(media string) (string, bool) {
 
 func SupportedExportFormat(format string) bool {
 	switch format {
-	case "clicky-json", "json", "ndjson", "yaml", "csv", "markdown", "html", "excel", "pdf":
+	case "clicky-json", "json", "ndjson", "yaml", "csv", "markdown", "llm", "html", "excel", "pdf":
 		return true
 	default:
 		return false
@@ -142,7 +142,7 @@ func SupportedExportFormat(format string) bool {
 // to be written through formatters.WriteTableStream rather than serialized.
 func IsTabularExport(format string) bool {
 	switch format {
-	case "csv", "markdown", "html", "excel", "pdf":
+	case "csv", "markdown", "llm", "html", "excel", "pdf":
 		return true
 	default:
 		return false
@@ -161,7 +161,7 @@ func ExportContentType(format string) string {
 		return "application/yaml"
 	case "csv":
 		return "text/csv; charset=utf-8"
-	case "markdown":
+	case "markdown", "llm":
 		return "text/markdown; charset=utf-8"
 	case "html":
 		return "text/html; charset=utf-8"
@@ -176,7 +176,7 @@ func ExportContentType(format string) string {
 
 func ExportExtension(format string) string {
 	switch format {
-	case "markdown":
+	case "markdown", "llm":
 		return ".md"
 	case "excel":
 		return ".xlsx"
