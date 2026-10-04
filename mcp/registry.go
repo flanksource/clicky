@@ -28,6 +28,7 @@ type ToolDefinition struct {
 	Annotations  *ToolAnnotations         `json:"annotations,omitempty"`
 	Meta         map[string]any           `json:"_meta,omitempty"`
 	Command      entity.ExecutableCommand `json:"-"` // Internal reference
+	Operation    *rpc.RPCOperation        `json:"-"`
 }
 
 // ToolAnnotations are the well-known MCP tool annotations.
@@ -87,6 +88,7 @@ func NewMcpTool(rpcOp *rpc.RPCOperation) *ToolDefinition {
 		Annotations: toolAnnotations(rpcOp),
 		Meta:        clickyToolMeta(rpcOp),
 		Command:     rpcOp.Command,
+		Operation:   rpcOp,
 	}
 }
 
@@ -408,6 +410,7 @@ func (r *ToolRegistry) ToListResponse() *ListToolsResponse {
 		// Create a copy without the internal Command field
 		toolCopy := *tool
 		toolCopy.Command = nil
+		toolCopy.Operation = nil
 		tools = append(tools, toolCopy)
 	}
 

@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/flanksource/clicky/api"
 	"github.com/flanksource/clicky/formatters"
 )
 
@@ -341,6 +342,9 @@ func ParsePageRequest(r *http.Request, limits PageLimits) (PageRequest, error) {
 	if request.Scope != ScopePage && request.Scope != ScopeAll {
 		return request, NewStatusErrorf(http.StatusBadRequest, "invalid_scope", "invalid export scope %q", request.Scope)
 	}
+	if format == "llm" && request.Scope != ScopePage {
+		return request, NewStatusError(http.StatusBadRequest, "invalid_scope", "llm previews require scope=page")
+	}
 	if value := query.Get("limit"); value != "" {
 		limit, err := strconv.Atoi(value)
 		if err != nil || limit <= 0 || limit > limits.MaxPageSize {
@@ -367,6 +371,9 @@ func ParsePageRequest(r *http.Request, limits PageLimits) (PageRequest, error) {
 	if request.Cursor != "" && request.Offset != 0 {
 		return request, NewStatusError(http.StatusBadRequest, "invalid_cursor",
 			"a cursor already says where to resume, so it cannot be combined with an offset")
+	}
+	if format == "llm" {
+		request.Limit = min(request.Limit, api.LLMPageSize)
 	}
 	return request, nil
 }

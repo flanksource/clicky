@@ -52,22 +52,21 @@ var _ = Describe("TextTable Markdown rendering", func() {
 		Expect(markdownTableLines(narrow)).To(HaveLen(3))
 	})
 
-	It("uses an explicit column MaxWidth without breaking rich markup", func() {
+	It("preserves the full cell despite terminal column MaxWidth", func() {
 		value := Text{}.Append("abcdefghijklmno", "text-green-600")
 		rendered := NewTableFrom([]markdownTableRow{{value: value, width: 10}}).Markdown()
 
-		Expect(rendered).To(ContainSubstring("abcdefghi…"))
-		Expect(rendered).NotTo(ContainSubstring("<span sty"))
+		Expect(rendered).To(ContainSubstring("abcdefghijklmno"))
+		Expect(rendered).To(ContainSubstring(`<span style="color: #16a34a">abcdefghijklmno</span>`))
 		Expect(rendered).NotTo(ContainSubstring("↩"))
 		Expect(markdownTableLines(rendered)).To(HaveLen(3))
 	})
 
-	It("caps columns without MaxWidth at 200 visible characters", func() {
+	It("preserves cells longer than 200 characters", func() {
 		value := strings.Repeat("b", 205)
 		rendered := NewTableFrom([]markdownTableRow{{value: value}}).Markdown()
 
-		Expect(rendered).To(ContainSubstring(strings.Repeat("b", 199) + "…"))
-		Expect(rendered).NotTo(ContainSubstring(strings.Repeat("b", 200)))
+		Expect(rendered).To(ContainSubstring(value))
 		Expect(markdownTableLines(rendered)).To(HaveLen(3))
 	})
 

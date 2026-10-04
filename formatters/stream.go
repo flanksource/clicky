@@ -47,7 +47,8 @@ type StreamOptions struct {
 	// are downloaded and opened in a spreadsheet; a caller streaming CSV into a
 	// pipe or a parser must not receive bytes it did not ask for, so the same
 	// endpoint serving a plain API read leaves this false.
-	CSVBOM bool
+	CSVBOM  bool
+	LLMPage *LLMPageInfo
 }
 
 // WriteTableStream writes rows incrementally in a Clicky-supported tabular
@@ -77,6 +78,8 @@ func WriteTableStream(ctx context.Context, w io.Writer, rows RowIterator, opts S
 	}
 
 	switch format {
+	case "llm":
+		return writeLLMStream(ctx, w, rows, columns, first, ok, opts)
 	case "json":
 		return writeJSONStream(ctx, w, rows, structuredColumns, first, ok, false, opts)
 	case "ndjson":
@@ -499,6 +502,8 @@ func writePDFStream(ctx context.Context, w io.Writer, rows RowIterator, columns 
 func streamCell(value any, column api.ColumnDef, format string) string {
 	text := api.ColumnTextable(column, value)
 	switch format {
+	case "markdown":
+		return api.RenderMarkdown(text, api.MarkdownOptions{NoColor: true, Unbounded: true})
 	case "html":
 		return text.HTML()
 	default:

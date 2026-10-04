@@ -82,6 +82,7 @@ type PrettyField struct {
 // TableOptions configures tabular data presentation including column definitions,
 // sorting behavior, and styling options for headers and rows.
 type TableOptions struct {
+	SkipDetails   bool                     `json:"-" yaml:"-"`
 	Title         string                   `json:"title,omitempty" yaml:"title,omitempty"`
 	Columns       []PrettyField            `json:"fields" yaml:"fields"`
 	Rows          []map[string]interface{} `json:"rows,omitempty" yaml:"rows,omitempty"`

@@ -1,26 +1,20 @@
 package api
 
 import (
-	"fmt"
 	"strings"
 	"unicode"
 	"unicode/utf8"
-
-	"github.com/flanksource/clicky/api/tailwind"
 )
 
-const defaultMarkdownColumnWidth = 200
-
-// plainMarkdown renders the same cells as the native tablewriter table (same
-// header auto-format and cell text) without padding or alignment, so it
-// needs no table-layout dependency.
+// plainMarkdown renders full, unpadded cells identically in native and WASM builds.
 func (t TextTable) plainMarkdown(options MarkdownOptions) string {
+	options.Unbounded = true
 	if len(t.Headers) == 0 {
 		return ""
 	}
 	headers := make([]string, len(t.Headers))
 	for i, header := range t.Headers {
-		text := markdownCellText(Text{Content: header.String()}, t.markdownColumnWidth(i), options)
+		text := RenderMarkdown(Text{Content: header.String()}, options)
 		headers[i] = markdownHeaderTitle(markdownNewlinesToBr(text))
 	}
 	rows := make([][]string, len(t.Rows))
@@ -28,7 +22,7 @@ func (t TextTable) plainMarkdown(options MarkdownOptions) string {
 		rows[r] = make([]string, len(t.Headers))
 		for i := range t.Headers {
 			if cell, ok := row[t.markdownFieldName(i)]; ok {
-				rows[r][i] = strings.TrimSpace(markdownCellText(cell, t.markdownColumnWidth(i), options))
+				rows[r][i] = strings.TrimSpace(RenderMarkdown(cell, options))
 			}
 		}
 	}
@@ -128,21 +122,6 @@ func (t TextTable) markdownFieldName(index int) string {
 		return t.FieldNames[index]
 	}
 	return t.Headers[index].String()
-}
-
-func (t TextTable) markdownColumnWidth(index int) int {
-	if index < len(t.Columns) {
-		if width := tailwind.ParseStyle(t.Columns[index].Style).MaxWidth; width > 0 {
-			return width
-		}
-	}
-	return defaultMarkdownColumnWidth
-}
-
-// markdownCellText renders a cell truncated to its column width, unescaped.
-func markdownCellText(value Textable, width int, options MarkdownOptions) string {
-	limited := Text{Style: fmt.Sprintf("max-w-[%dch] truncate-suffix", width)}.Add(value)
-	return RenderMarkdown(limited, options)
 }
 
 // escapeMarkdownTableCell keeps a cell on one pipe-table line: newlines
