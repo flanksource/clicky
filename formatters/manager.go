@@ -170,6 +170,8 @@ func (f *FormatManager) ExcelToFile(data interface{}, filename string) error {
 func (f *FormatManager) Format(format string, data interface{}) (string, error) {
 	format = strings.ToLower(format)
 	switch format {
+	case "llm":
+		return formatLLM(data, FormatOptions{Format: "llm"})
 	case "json":
 		return f.JSON(data)
 	case "ndjson":
@@ -248,6 +250,12 @@ func (f *FormatManager) formatWithOptions(options FormatOptions, data ...any) (s
 	}
 	// Resolve format from boolean flags first to check for custom formatters
 	format := strings.ToLower(options.ResolveFormat())
+	if format == "llm" {
+		if len(data) == 1 {
+			return formatLLM(data[0], options)
+		}
+		return formatLLM(data, options)
+	}
 
 	// A single Textable renders itself for the formats formatTextable owns; any
 	// other format falls through to the generic pipeline below so Textable input
@@ -495,6 +503,8 @@ func (f *FormatManager) FormatWithSchemaContext(ctx any, prettyData *api.PrettyD
 	var output string
 	var err error
 	switch format {
+	case "llm":
+		output, err = formatLLM(prettyData, options)
 	case "json":
 		output, err = f.jsonFormatter.FormatValue(prettyData.Original)
 	case "yaml", "yml":

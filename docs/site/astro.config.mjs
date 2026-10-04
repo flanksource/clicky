@@ -31,6 +31,7 @@ export default defineConfig({
             'pretty/text',
             'pretty/structs',
             'pretty/tables',
+            'pretty/llm',
             'pretty/trees',
             'pretty/components',
             'pretty/guidelines',

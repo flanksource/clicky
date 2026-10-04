@@ -611,7 +611,7 @@ func TryTypedValue(o any) *TypedValue {
 	return nil
 }
 
-func newTableFromProviders(items []TableProvider, rowType reflect.Type) TextTable {
+func newTableFromProviders(items []TableProvider, rowType reflect.Type, options ...TableOptions) TextTable {
 	columns := MustMergeSortableColumns(rowType, items[0].Columns())
 	table := NewEmptyTable(columns)
 	var hasDetail bool
@@ -664,7 +664,7 @@ func newTableFromProviders(items []TableProvider, rowType reflect.Type) TextTabl
 			row[col.Name] = cell
 		}
 		table.Rows = append(table.Rows, row)
-		if detail, ok := item.(DetailProvider); ok {
+		if detail, ok := item.(DetailProvider); ok && (len(options) == 0 || !options[0].SkipDetails) {
 			content := detail.RowDetail()
 			table.RowDetail = append(table.RowDetail, content)
 			hasDetail = hasDetail || content != nil

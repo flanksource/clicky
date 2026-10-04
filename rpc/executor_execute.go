@@ -16,6 +16,15 @@ func (e *CommandExecutor) ExecuteCommand(op *RPCOperation, req *ExecutionRequest
 		resp := &ExecutionResponse{Success: false, Error: "Command execution is disabled", Input: req, CLI: buildCLICommand(op, req)}
 		return resp, resp, fmt.Errorf("command execution is disabled")
 	}
+	if op.PagedFunc != nil && req.Flags["format"] == "llm" {
+		data, err := executeLLMPaged(req.ctx(), op, req.Flags)
+		response := &ExecutionResponse{Success: err == nil, DataIsStructured: true}
+		if err != nil {
+			response.Error = err.Error()
+			response.ExitCode = 1
+		}
+		return data, response, err
+	}
 
 	if op.ContextDataFunc != nil || op.DataFunc != nil {
 		var data any

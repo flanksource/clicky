@@ -11,6 +11,7 @@ import (
 	capchat "github.com/flanksource/captain/pkg/aichat"
 	"github.com/flanksource/captain/pkg/api"
 	"github.com/flanksource/clicky/entity"
+	"github.com/flanksource/clicky/formatters"
 	clickymcp "github.com/flanksource/clicky/mcp"
 	"github.com/flanksource/clicky/rpc"
 	"github.com/spf13/cobra"
@@ -51,7 +52,7 @@ func (p *CobraToolProvider) Strategies() []api.PermissionStrategy { return p.str
 
 func NewCobraToolProvider(options CobraToolProviderOptions) (*CobraToolProvider, error) {
 	if options.Root == nil {
-		return nil, fmt.Errorf("Cobra tool provider root command is required")
+		return nil, fmt.Errorf("cobra tool provider root command is required")
 	}
 	config := rpc.DefaultConfig()
 	service, err := rpc.NewConverter(config).ConvertCommandTree(options.Root)
@@ -74,10 +75,10 @@ func NewCobraToolProvider(options CobraToolProviderOptions) (*CobraToolProvider,
 // hand, so each handler captures them (see scopedContext).
 func (p *CobraToolProvider) ToolSet(ctx context.Context) (capchat.ToolSet, error) {
 	if p == nil || p.service == nil || p.executor == nil {
-		return capchat.ToolSet{}, fmt.Errorf("Cobra tool provider is not initialized")
+		return capchat.ToolSet{}, fmt.Errorf("cobra tool provider is not initialized")
 	}
 	if ctx == nil {
-		return capchat.ToolSet{}, fmt.Errorf("Cobra tool provider requires a context to scope its tools")
+		return capchat.ToolSet{}, fmt.Errorf("cobra tool provider requires a context to scope its tools")
 	}
 	set := capchat.ToolSet{}
 	seen := map[string]bool{}
@@ -126,6 +127,9 @@ func (p *CobraToolProvider) ToolSet(ctx context.Context) (capchat.ToolSet, error
 		outputSchema, err := rpc.ResponseSchema(*op)
 		if err != nil {
 			return capchat.ToolSet{}, fmt.Errorf("operation %q response schema: %w", op.Name, err)
+		}
+		if rpc.IsListOperation(op) {
+			outputSchema = map[string]any{"type": "string", "description": "Markdown list preview, up to 25 full rows, with paging information"}
 		}
 		set.Definitions = append(set.Definitions, definition)
 		set.Catalog = append(set.Catalog, catalogEntry(definition, outputSchema))
@@ -243,12 +247,21 @@ func (p *CobraToolProvider) handlerFor(op *rpc.RPCOperation, scope context.Conte
 			request = toExecutionRequest(input, positional)
 		}
 		request.Context = entity.ContextWithOperationSurface(scopedContext{Context: ctx, values: values}, "mcp")
+		if rpc.IsListOperation(op) {
+			request.Flags["format"] = "llm"
+		}
 		data, response, err := p.executor.ExecuteCommand(op, request)
 		if err != nil {
 			return nil, fmt.Errorf("execute %s: %w%s", op.Name, err, findings(data, response))
 		}
 		if response != nil && !response.Success {
 			return nil, fmt.Errorf("operation %s failed (exit %d): %s", op.Name, response.ExitCode, response.Error)
+		}
+		if rpc.IsListOperation(op) {
+			if op.PagedFunc != nil {
+				return data, nil
+			}
+			return formatters.NewFormatManager().FormatWithOptions(formatters.FormatOptions{Format: "llm"}, data)
 		}
 		return data, nil
 	}
@@ -375,7 +388,7 @@ func toolName(raw string) string {
 	if value == "" {
 		return ""
 	}
-	if first := value[0]; first != '_' && !(first >= 'a' && first <= 'z') && !(first >= 'A' && first <= 'Z') {
+	if first := value[0]; first != '_' && (first < 'a' || first > 'z') && (first < 'A' || first > 'Z') {
 		value = "_" + value
 	}
 	if len(value) > 64 {

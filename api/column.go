@@ -212,7 +212,7 @@ func NewEmptyTable(columns []ColumnDef) TextTable {
 }
 
 // NewTableFrom creates a TextTable from a slice of TableProvider items.
-func NewTableFrom[T TableProvider](items []T) TextTable {
+func NewTableFrom[T TableProvider](items []T, options ...TableOptions) TextTable {
 	if len(items) == 0 {
 		rowType := reflect.TypeFor[T]()
 		// An interface type parameter has no concrete zero value to read
@@ -230,7 +230,7 @@ func NewTableFrom[T TableProvider](items []T) TextTable {
 	for i := range items {
 		providers[i] = items[i]
 	}
-	return newTableFromProviders(providers, reflect.TypeOf(items[0]))
+	return newTableFromProviders(providers, reflect.TypeOf(items[0]), options...)
 }
 
 // convertToTextable converts any value to a Textable for table cells.
