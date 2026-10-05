@@ -42,6 +42,32 @@ var _ = Describe("typed handler results", func() {
 		Expect(data).To(Equal(want))
 	})
 
+	It("drops a typed nil pointer when a context action fails", func() {
+		info := ActionWithContext("refresh", func(context.Context, string, map[string]string) (*actionPayload, error) {
+			return nil, failure
+		}).actionInfo()
+
+		data, err := info.ContextDataFunc(context.Background(), map[string]string{"id": "conn-1"}, nil)
+
+		Expect(err).To(MatchError(failure))
+		Expect(data).To(BeNil())
+	})
+
+	// A handler that fails after producing a partial result (a run that failed
+	// with a trace of where it failed) returns both; the result is the
+	// diagnostic, so it must reach the caller alongside the error.
+	It("keeps a non-zero partial result when a context action fails", func() {
+		partial := &actionPayload{ConnectionID: "conn-1", Provider: "xero"}
+		info := ActionWithContext("refresh", func(context.Context, string, map[string]string) (any, error) {
+			return partial, failure
+		}).actionInfo()
+
+		data, err := info.ContextDataFunc(context.Background(), map[string]string{"id": "conn-1"}, nil)
+
+		Expect(err).To(MatchError(failure))
+		Expect(data).To(Equal(partial))
+	})
+
 	It("drops the zero value when a flag action fails", func() {
 		info := Action("refresh", func(string, map[string]string) (actionPayload, error) {
 			return actionPayload{}, failure

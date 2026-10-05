@@ -393,16 +393,22 @@ type ActionSpec[R any] struct {
 	schedule          *OperationScheduleMeta
 }
 
-// dataOrError type-erases a typed handler result, dropping the value when the
-// handler failed. Without it a failed handler's zero R is boxed into a non-nil
-// `any`, and callers that branch on `data != nil` (the RPC executor serializing
-// partial results) render a zero struct as the response body — hiding the error
-// behind `{"field": "", ...}`.
+// dataOrError type-erases a typed handler result. When the handler failed, a
+// zero R (including a typed nil pointer or interface) is dropped: boxed into a
+// non-nil `any`, callers that branch on `data != nil` (the RPC executor
+// serializing partial results) would render a zero struct as the response body,
+// hiding the error behind `{"field": "", ...}`. A non-zero result returned with
+// an error is a partial result — e.g. a failed run carrying the trace of where it
+// failed — and is kept so it reaches the caller alongside the error.
 func dataOrError[R any](result R, err error) (any, error) {
-	if err != nil {
+	if err == nil {
+		return result, nil
+	}
+	v := reflect.ValueOf(&result).Elem()
+	if v.IsZero() || (v.Kind() == reflect.Interface && v.Elem().Kind() == reflect.Pointer && v.Elem().IsNil()) {
 		return nil, err
 	}
-	return result, nil
+	return result, err
 }
 
 // Action creates a typed custom operation on a single entity by ID.
