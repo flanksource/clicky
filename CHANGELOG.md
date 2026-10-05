@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.21.75](https://github.com/flanksource/clicky/compare/v1.21.74...v1.21.75) (2026-10-05)
+
+
+### 🐛 Bug Fixes
+
+* keep partial results when action handlers fail ([ffae94d](https://github.com/flanksource/clicky/commit/ffae94d0ec5139261747b6df7f185b255c1053fc))
+
 ## [1.21.74](https://github.com/flanksource/clicky/compare/v1.21.73...v1.21.74) (2026-10-05)
 
 
