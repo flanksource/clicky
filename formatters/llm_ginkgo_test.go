@@ -34,6 +34,7 @@ var _ = Describe("LLM list format", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(out).To(ContainSubstring(fmt.Sprintf("Shown: %d", min(count, 25))))
 		Expect(out).To(ContainSubstring(fmt.Sprintf("Total: %d", 50+count)))
+		Expect(out).To(ContainSubstring("Use --json for complete fields and all returned rows."))
 		if count > 25 {
 			Expect(out).To(ContainSubstring("--offset 75 --limit 25"))
 			Expect(out).NotTo(ContainSubstring("record-025"))
@@ -78,6 +79,7 @@ var _ = Describe("LLM list format", func() {
 		Expect(err).NotTo(HaveOccurred())
 		Expect(out).To(ContainSubstring("Has more: true"))
 		Expect(out).To(ContainSubstring("Paging is unavailable"))
+		Expect(out).To(ContainSubstring("Use --json for complete fields and all returned rows."))
 		Expect(out).NotTo(ContainSubstring("--offset"))
 	})
 })

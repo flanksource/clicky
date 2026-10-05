@@ -83,15 +83,16 @@ func LLMPageFooter(page LLMPageInfo, shown int, more bool) string {
 	out := fmt.Sprintf("\nShown: %d (rows %s); Total: %s; Has more: %s.\n", shown, rangeText, total, hasMore)
 	if more && shown > 0 {
 		if !page.Pageable {
-			return out + "Paging is unavailable for this operation. Use a full export to read the remaining rows.\n"
+			out += "Paging is unavailable for this operation. Use a full export to read the remaining rows.\n"
+		} else {
+			next := page.Next
+			if next == "" {
+				next = fmt.Sprintf("--offset %d --limit %d", page.Offset+shown, api.LLMPageSize)
+			}
+			out += "Next: " + next + ". Keep the same filters, sort and entity scope.\n"
 		}
-		next := page.Next
-		if next == "" {
-			next = fmt.Sprintf("--offset %d --limit %d", page.Offset+shown, api.LLMPageSize)
-		}
-		out += "Next: " + next + ". Keep the same filters, sort and entity scope.\n"
 	}
-	return out
+	return out + "Use --json for complete fields and all returned rows.\n"
 }
 
 func llmTable(data any) (*api.TextTable, int, error) {

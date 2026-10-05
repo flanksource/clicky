@@ -34,6 +34,7 @@ var _ = Describe("LLM native paging", func() {
 			server.handleExecuteCommand(rec, httptest.NewRequest("GET", "/api/v1/config?format=llm&limit=100&account=assets%3A%2F%2Fexample&cursor="+cursor, nil))
 			Expect(rec.Code).To(Equal(200))
 			Expect(rec.Body.String()).To(ContainSubstring("Shown: 25"))
+			Expect(rec.Body.String()).To(ContainSubstring("Use --json for complete fields and all returned rows."))
 			Expect(rec.Body.String()).To(ContainSubstring("format=llm"))
 			Expect(rec.Body.String()).To(ContainSubstring("account=assets%3A%2F%2Fexample"))
 			if cursor == "" {
