@@ -24,7 +24,6 @@ require (
 	github.com/labstack/echo/v4 v4.15.2
 	github.com/mark3labs/mcp-go v0.56.0
 	github.com/muesli/termenv v0.16.0
-	github.com/olekukonko/tablewriter v1.1.4
 	github.com/onsi/ginkgo/v2 v2.32.1
 	github.com/onsi/gomega v1.42.1
 	github.com/playwright-community/playwright-go v0.5700.1
@@ -108,7 +107,6 @@ require (
 	github.com/go-stack/stack v1.8.1 // indirect
 	github.com/go-task/slim-sprig/v3 v3.0.0 // indirect
 	github.com/gobwas/glob v0.2.3 // indirect
-	github.com/goccy/go-json v0.10.6 // indirect
 	github.com/golang/groupcache v0.0.0-20241129210726-2c02b8208cf8 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/google/jsonschema-go v0.4.2 // indirect
@@ -143,9 +141,6 @@ require (
 	github.com/ncruces/go-strftime v1.0.0 // indirect
 	github.com/ohler55/ojg v1.28.1 // indirect
 	github.com/oklog/ulid/v2 v2.1.1 // indirect
-	github.com/olekukonko/cat v0.0.0-20250911104152-50322a0618f6 // indirect
-	github.com/olekukonko/errors v1.2.0 // indirect
-	github.com/olekukonko/ll v0.1.7 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/patrickmn/go-cache v2.1.0+incompatible // indirect
 	github.com/pkg/errors v0.9.1 // indirect

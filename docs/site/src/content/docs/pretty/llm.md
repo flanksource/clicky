@@ -8,6 +8,7 @@ Use `--llm` or `--format llm` on a Clicky command to render a list as a Markdown
 ```bash
 app records list --llm --offset 0 --limit 25
 app records list --format llm --offset 25 --limit 25
+app records list --json --offset 0 --limit 25
 app records list --format llm,json=.tmp/records.json
 ```
 
@@ -16,9 +17,12 @@ The footer reports the displayed window, total count (or `unknown`), and whether
 ```text
 Shown: 25 (rows 1–25); Total: 68; Has more: true.
 Next: --offset 25 --limit 25. Keep the same filters, sort and entity scope.
+Use --json for complete fields and all returned rows.
 ```
 
-CLI stdout and file sinks use their own formats. The JSON sink in the example receives all rows returned by the operation, while stdout displays up to 25. Use the operation's normal export options to fetch all rows from a paged backend.
+The footer also references `--json` for complete fields and all rows returned by the operation. Replace `--llm` with `--json` to read that structured output. This changes the output format; use the operation's normal paging or export options to fetch more rows from a paged backend.
+
+CLI stdout and file sinks use their own formats. The JSON sink in the example receives all rows returned by the operation, while stdout displays up to 25.
 
 ## Provider integration
 
