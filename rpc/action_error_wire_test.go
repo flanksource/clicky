@@ -69,3 +69,43 @@ func TestEntityAction_FailureServesErrorNotZeroValue(t *testing.T) {
 	assert.NotEmpty(t, body.Trace)
 	assert.NotContains(t, rr.Body.String(), "connectionId", "the failed action's zero value must not be served as data")
 }
+
+// On the legacy (non-structured) surface a failed action that produced a
+// partial result serves that result as the body, with the error in X-Error —
+// the result is the diagnostic (e.g. a failed run's trace) a client renders.
+func TestEntityAction_LegacyFailureServesPartialResult(t *testing.T) {
+	const name = "rpc-action-partial-wire-test"
+	clicky.NewEntity[testEntity, testListOpts, testEntity](name).
+		List(func(_ testListOpts) ([]testEntity, error) {
+			return []testEntity{{ID: "1", Name: "one"}}, nil
+		}).
+		WithAction(clicky.Action("refresh", func(string, map[string]string) (*refreshResult, error) {
+			return &refreshResult{ConnectionID: "conn-1", Provider: "xero"}, errors.New("tenant name matches 2 companies")
+		})).
+		Register()
+
+	root := &cobra.Command{Use: "testapp"}
+	clicky.GenerateCLI(root)
+	server := NewSwaggerServer(
+		&ServeConfig{
+			Title:      "t",
+			Version:    "v",
+			SkipHealth: true,
+			Executor:   &ExecutorConfig{Enabled: true, PathPrefix: "/api/v1"},
+		},
+		root,
+		&OpenAPIConfig{Title: "t", Version: "v"},
+	)
+	mux := http.NewServeMux()
+	server.RegisterExecutionRoutes(route.NewRouter(mux))
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/"+name+"/conn-1/refresh", nil)
+	req.Header.Set("Accept", "application/json")
+	rr := httptest.NewRecorder()
+	mux.ServeHTTP(rr, req)
+
+	assert.Equal(t, "tenant name matches 2 companies", rr.Header().Get("X-Error"))
+	var body refreshResult
+	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &body), rr.Body.String())
+	assert.Equal(t, refreshResult{ConnectionID: "conn-1", Provider: "xero"}, body)
+}
