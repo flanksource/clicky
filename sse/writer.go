@@ -36,12 +36,7 @@ func (s *Writer) begin() error {
 		return nil
 	}
 	s.started = true
-	header := s.writer.Header()
-	header.Set("Content-Type", "text/event-stream")
-	header.Set("Cache-Control", "no-cache")
-	header.Set("Connection", "keep-alive")
-	// Proxies that buffer would defeat the point of streaming at all.
-	header.Set("X-Accel-Buffering", "no")
+	setStreamHeaders(s.writer.Header())
 	s.writer.WriteHeader(http.StatusOK)
 	// A stream lives far longer than any fixed response deadline. A writer
 	// without deadlines (a recorder, the hub's sub writer) has none to lift.
@@ -51,6 +46,21 @@ func (s *Writer) begin() error {
 	return nil
 }
 
+// setStreamHeaders marks a response as an event stream.
+func setStreamHeaders(header http.Header) {
+	header.Set("Content-Type", "text/event-stream")
+	header.Set("Cache-Control", "no-cache")
+	header.Set("Connection", "keep-alive")
+	// The stream echoes request-derived text; never let a browser sniff it as HTML.
+	header.Set("X-Content-Type-Options", "nosniff")
+	// Proxies that buffer would defeat the point of streaming at all.
+	header.Set("X-Accel-Buffering", "no")
+}
+
+// sseLineBreaks maps every line ending EventSource recognises (CRLF, bare CR)
+// to LF, so a payload line break can only ever become another data: line.
+var sseLineBreaks = strings.NewReplacer("\r\n", "\n", "\r", "\n")
+
 // Send writes one event and flushes it. Data is rendered by entity.StreamText:
 // strings and byte slices verbatim, anything else as JSON.
 func (s *Writer) Send(event entity.StreamEvent) error {
@@ -58,6 +68,7 @@ func (s *Writer) Send(event entity.StreamEvent) error {
 	if err != nil {
 		return err
 	}
+	payload = sseLineBreaks.Replace(payload)
 	var frame strings.Builder
 	if event.Name != "" {
 		frame.WriteString("event: " + event.Name + "\n")

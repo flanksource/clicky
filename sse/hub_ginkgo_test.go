@@ -20,6 +20,33 @@ var _ = Describe("multiplexed events hub", func() {
 		Expect(client.build).To(Equal(testBuild))
 	})
 
+	It("keeps relaying sub events past the server's WriteTimeout", func() {
+		const writeTimeout = 200 * time.Millisecond
+		server := newHubTestServer(HubOptions{Build: testBuild}, writeTimeout, map[string]http.HandlerFunc{
+			"GET /api/test/late": func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "text/event-stream")
+				w.(http.Flusher).Flush()
+				time.Sleep(3 * writeTimeout)
+				fmt.Fprint(w, "data: late\n\n")
+				w.(http.Flusher).Flush()
+				<-r.Context().Done()
+			},
+		})
+		client := openEvents(server.URL, DefaultPrefix)
+
+		Expect(client.subscribe("late", "/api/test/late").StatusCode).To(Equal(http.StatusNoContent))
+
+		Expect(client.nextFrame("late/").Data).To(Equal("late"))
+	})
+
+	It("forbids content sniffing on the events stream", func() {
+		server := newEventsTestServer(nil)
+		resp, err := http.Get(server.URL + DefaultPrefix + "?x=<script>")
+		Expect(err).NotTo(HaveOccurred())
+		DeferCleanup(resp.Body.Close)
+		Expect(resp.Header.Get("X-Content-Type-Options")).To(Equal("nosniff"))
+	})
+
 	It("relays a Snapshot stream route through the guarded root", func() {
 		fixture := map[string]any{"web": map[string]any{"status": "running", "pid": float64(42)}}
 		served := make(chan error, 1)
@@ -215,7 +242,7 @@ var _ = Describe("multiplexed events hub", func() {
 		const prefix = "/api/stream"
 
 		It("mounts the hub under the prefix and makes the default prefix an ordinary route", func() {
-			server := newHubTestServer(HubOptions{Build: testBuild, Prefix: prefix}, map[string]http.HandlerFunc{
+			server := newHubTestServer(HubOptions{Build: testBuild, Prefix: prefix}, 0, map[string]http.HandlerFunc{
 				"GET /api/events": burstHandler,
 			})
 			client := openEvents(server.URL, prefix)
