@@ -191,6 +191,82 @@ middleware.ApplyDefaultMiddleware(e)
 middleware.ApplyProductionMiddleware(e)
 ```
 
+### Stream Live Data over SSE
+
+The `sse` package carries the server-sent-events plumbing:
+
+- `sse.Snapshot` / `sse.ServeSnapshot` re-load a value on a tick or a wake and send it only when it changed. When nothing changed they send a keepalive ping instead. `Exclude` lists fields that churn without meaning anything, such as a fetch timestamp or a sampled counter. Those fields are left out of the change check, but a frame sent for another reason still carries their current values.
+- `sse.Notifier` wakes every subscribed stream at once.
+- `sse.Hub` multiplexes every stream of a browser tab over one connection. Browsers allow six HTTP/1.1 connections per host across all tabs. `Guard` refuses the direct per-topic EventSource connections that a stale page would otherwise hold open.
+
+```go
+package main
+
+import (
+	"context"
+	"log"
+	"net/http"
+	"sync"
+	"time"
+
+	"github.com/flanksource/clicky/sse"
+)
+
+type inventory struct {
+	Items     []string  `json:"items"`
+	FetchedAt time.Time `json:"fetchedAt"`
+}
+
+func main() {
+	var changed sse.Notifier
+	var mu sync.Mutex
+	items := []string{"widget"}
+
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /api/items", func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		items = append(items, r.URL.Query().Get("name"))
+		mu.Unlock()
+		changed.Notify() // every open stream reloads now, not at its next tick
+		w.WriteHeader(http.StatusNoContent)
+	})
+	mux.HandleFunc("GET /api/items/stream", func(w http.ResponseWriter, r *http.Request) {
+		wake, cancel := changed.Subscribe()
+		defer cancel()
+		err := sse.ServeSnapshot(w, r, sse.SnapshotOptions{
+			Load: func(context.Context) (any, error) {
+				mu.Lock()
+				defer mu.Unlock()
+				return inventory{Items: append([]string(nil), items...), FetchedAt: time.Now()}, nil
+			},
+			Interval: 5 * time.Second,
+			Wake:     wake,
+			Exclude:  []string{"fetchedAt"}, // a new timestamp alone is not news
+			Event:    "items",
+		})
+		if err != nil {
+			log.Printf("items stream: %v", err)
+		}
+	})
+
+	hub := sse.NewHub(sse.HubOptions{Build: "dev"})
+	root := hub.Guard(mux)
+	hub.Register(mux, root)
+	log.Fatal(http.ListenAndServe(":8080", root))
+}
+```
+
+Try it from a shell (these clients are not browsers, so `Guard` lets the direct stream through):
+
+```bash
+curl -N localhost:8080/api/items/stream          # one frame, then ": ping" every 5s
+curl -X POST 'localhost:8080/api/items?name=gear' # the stream above sends a new frame at once
+curl -N localhost:8080/api/events                # hello frame: {"conn":"<id>","build":"dev"}
+curl -X POST localhost:8080/api/events/<id>/subs -d '{"id":"inv","path":"/api/items/stream"}'
+```
+
+Over the hub, each event is renamed `<subId>/<name>` (here `inv/items`), and a sub whose handler ends emits `<subId>/__closed`. In the browser, clicky-ui's `createEventHub` speaks this protocol.
+
 ## Schema Formatting
 
 The CLI can format dynamic JSON/YAML data using schema files. A schema describes fields, labels, types, styles, color rules, table fields, tree fields, and format-specific options.
@@ -237,6 +313,7 @@ clicky schema example
 - `task`: task manager, typed tasks, groups, progress rendering, retries, shutdown handling, and output capture
 - `middleware`: Echo v4 middleware configuration, validation, auth, interceptors, and presets
 - `rpc`: Cobra-to-OpenAPI generation, Swagger UI server, validation, and HTTP command execution
+- `sse`: server-sent events: the frame writer, change-only snapshot streams, a fan-out notifier, and the multiplexing hub
 - `mcp`: Model Context Protocol server and tool discovery for Cobra commands
 - `extensions`: fluent helpers that attach OpenAPI and MCP commands to Cobra roots
 - `exec`: command execution wrappers with logging and process-group handling

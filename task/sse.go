@@ -7,6 +7,9 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/flanksource/clicky/sse"
+	"github.com/flanksource/commons/logger"
 )
 
 // SSEHandler returns an http.Handler that streams task events via Server-Sent Events.
@@ -198,8 +201,9 @@ func emitOutputDelta(
 // never sends a terminal event: a manager view stays subscribed to observe new
 // and changing runs. supplement (may be nil) merges extra runs — e.g. archived
 // or persisted runs the in-memory registry no longer holds; live runs win on id.
-// It emits a single "event: runs" frame carrying the full listing, and only
-// re-emits when the listing changes.
+// It emits a single "event: runs" frame carrying the full listing, only
+// re-emits when the listing changes, and pings in between (sse.Snapshot). A
+// failure to list runs ends the stream with an "event: error" frame.
 func RunsSSEHandler(supplement func(RunFilter) []RunMeta) http.Handler {
 	return runsSSEHandler(func(_ context.Context, filter RunFilter) ([]RunMeta, error) {
 		if supplement == nil {
@@ -222,52 +226,24 @@ func RunsSSEHandlerWithSource(source RunSource) http.Handler {
 func runsSSEHandler(loadExternal func(context.Context, RunFilter) ([]RunMeta, error)) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		filter := runFilterFromQuery(r)
-
-		flusher, ok := w.(http.Flusher)
-		if !ok {
-			http.Error(w, "streaming not supported", http.StatusInternalServerError)
-			return
-		}
-
-		w.Header().Set("Content-Type", "text/event-stream")
-		w.Header().Set("Cache-Control", "no-cache")
-		w.Header().Set("Connection", "keep-alive")
-		w.Header().Set("X-Accel-Buffering", "no")
-		flusher.Flush()
-
-		// Listing updates are cheaper and less urgent than per-task progress, so
-		// poll on a slower tick than SSEHandler.
-		ticker := time.NewTicker(500 * time.Millisecond)
-		defer ticker.Stop()
-
-		var lastSent string
-		emit := func() {
-			GCRuns()
-			external, err := loadExternal(r.Context(), filter)
-			if err != nil {
-				return
-			}
-			runs := mergeRunMetas(RunsRaw(filter), external)
-			data, err := json.Marshal(runs)
-			if err != nil {
-				return
-			}
-			if string(data) == lastSent {
-				return
-			}
-			lastSent = string(data)
-			_, _ = fmt.Fprintf(w, "event: runs\ndata: %s\n\n", data)
-			flusher.Flush()
-		}
-
-		emit()
-		for {
-			select {
-			case <-r.Context().Done():
-				return
-			case <-ticker.C:
-				emit()
-			}
+		err := sse.ServeSnapshot(w, r, sse.SnapshotOptions{
+			Load: func(ctx context.Context) (any, error) {
+				GCRuns()
+				external, err := loadExternal(ctx, filter)
+				if err != nil {
+					return nil, fmt.Errorf("list external task runs: %w", err)
+				}
+				return mergeRunMetas(RunsRaw(filter), external), nil
+			},
+			// Listing updates are cheaper and less urgent than per-task progress,
+			// so poll on a slower tick than SSEHandler.
+			Interval: 500 * time.Millisecond,
+			Event:    "runs",
+		})
+		if err != nil {
+			// A load failure has already reached the client as an error event;
+			// this is the server's copy.
+			logger.Warnf("task runs stream: %v", err)
 		}
 	})
 }
