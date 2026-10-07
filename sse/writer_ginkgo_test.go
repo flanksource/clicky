@@ -30,10 +30,20 @@ var _ = Describe("Writer", func() {
 		Expect(recorder.Header()).To(Equal(http.Header{
 			"Content-Type":      {"text/event-stream"},
 			"Cache-Control":     {"no-cache"},
-			"Connection":        {"keep-alive"},
-			"X-Accel-Buffering": {"no"},
+			"Connection":             {"keep-alive"},
+			"X-Content-Type-Options": {"nosniff"},
+			"X-Accel-Buffering":      {"no"},
 		}))
 		Expect(recorder.Body.String()).To(Equal("event: update\nid: 7\ndata: line one\ndata: line two\n\n"))
+	})
+
+	It("frames CRLF and bare CR line breaks as data lines so payload text cannot become a field", func() {
+		recorder := httptest.NewRecorder()
+		writer := NewWriter(recorder)
+
+		Expect(writer.Send(entity.StreamEvent{Name: "log", Data: "one\r\ntwo\revent: other\rthree"})).To(Succeed())
+
+		Expect(recorder.Body.String()).To(Equal("event: log\ndata: one\ndata: two\ndata: event: other\ndata: three\n\n"))
 	})
 
 	It("encodes structured data as JSON and bytes verbatim", func() {

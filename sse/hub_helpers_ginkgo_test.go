@@ -42,8 +42,9 @@ type eventsClient struct {
 
 // newHubTestServer serves a mux shaped like a real dashboard: a "/" catch-all
 // (the SPA route), the test stream handlers, and the hub routes dispatching
-// through the guarded, TimingMiddleware-wrapped root.
-func newHubTestServer(opts HubOptions, routes map[string]http.HandlerFunc) *httptest.Server {
+// through the guarded, TimingMiddleware-wrapped root. A non-zero writeTimeout
+// becomes the server's http.Server.WriteTimeout.
+func newHubTestServer(opts HubOptions, writeTimeout time.Duration, routes map[string]http.HandlerFunc) *httptest.Server {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", func(w http.ResponseWriter, _ *http.Request) { fmt.Fprint(w, "<html>spa</html>") })
 	for pattern, handler := range routes {
@@ -52,13 +53,15 @@ func newHubTestServer(opts HubOptions, routes map[string]http.HandlerFunc) *http
 	hub := NewHub(opts)
 	root := hub.Guard(rpchttp.TimingMiddleware(mux))
 	hub.Register(mux, root)
-	server := httptest.NewServer(root)
+	server := httptest.NewUnstartedServer(root)
+	server.Config.WriteTimeout = writeTimeout
+	server.Start()
 	DeferCleanup(server.Close)
 	return server
 }
 
 func newEventsTestServer(routes map[string]http.HandlerFunc) *httptest.Server {
-	return newHubTestServer(HubOptions{Build: testBuild}, routes)
+	return newHubTestServer(HubOptions{Build: testBuild}, 0, routes)
 }
 
 // openEvents opens GET {prefix} and returns once the hello frame arrived.

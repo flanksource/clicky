@@ -125,10 +125,13 @@ func (h *Hub) handleStream(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "streaming not supported", http.StatusInternalServerError)
 		return
 	}
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
-	w.Header().Set("X-Accel-Buffering", "no")
+	setStreamHeaders(w.Header())
+	// The hub connection outlives any fixed response deadline; a write after
+	// http.Server.WriteTimeout would drop every sub multiplexed onto it.
+	if err := http.NewResponseController(w).SetWriteDeadline(time.Time{}); err != nil && !errors.Is(err, http.ErrNotSupported) {
+		http.Error(w, fmt.Sprintf("clear events write deadline: %v", err), http.StatusInternalServerError)
+		return
+	}
 
 	ctx, cancel := context.WithCancel(r.Context())
 	conn := &hubConn{id: uuid.NewString(), ctx: ctx, cancel: cancel, w: w, flusher: flusher, subs: map[string]*hubSub{}}
@@ -293,6 +296,7 @@ func (c *hubConn) write(frame []byte) error {
 // writeJSONError answers a control request with {"error": "..."}.
 func writeJSONError(w http.ResponseWriter, status int, err error) {
 	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.WriteHeader(status)
 	if encodeErr := json.NewEncoder(w).Encode(map[string]string{"error": err.Error()}); encodeErr != nil {
 		// The status is already out; the client is gone or the body broke.
