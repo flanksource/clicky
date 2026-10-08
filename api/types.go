@@ -467,7 +467,7 @@ func (f PrettyField) Parse(value interface{}) (FieldValue, error) {
 
 	// Dereference pointer values before processing
 	val := reflect.ValueOf(value)
-	for val.Kind() == reflect.Ptr {
+	for val.Kind() == reflect.Pointer {
 		var isNil bool
 		val, isNil = SafeDerefPointer(val)
 		if isNil {
@@ -769,7 +769,7 @@ func InferValueType(value interface{}) string {
 	val := reflect.ValueOf(value)
 
 	// Dereference pointers
-	for val.Kind() == reflect.Ptr {
+	for val.Kind() == reflect.Pointer {
 		if val.IsNil() {
 			return "nil"
 		}

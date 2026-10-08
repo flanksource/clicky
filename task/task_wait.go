@@ -97,7 +97,7 @@ func (t *Task) GetTypedResult(target interface{}) error {
 
 	// Use reflection to set the target value
 	targetValue := reflect.ValueOf(target)
-	if targetValue.Kind() != reflect.Ptr {
+	if targetValue.Kind() != reflect.Pointer {
 		return fmt.Errorf("target must be a pointer")
 	}
 

@@ -20,14 +20,14 @@ import (
 func (t *Task) prettyWithLogOffset(from int) (api.Text, int) {
 	if pretty, ok := t.result.(api.PrettyShort); ok {
 		rv := reflect.ValueOf(pretty)
-		if rv.Kind() != reflect.Ptr || (!rv.IsNil() && rv.Pointer() != reflect.ValueOf(t).Pointer()) {
+		if rv.Kind() != reflect.Pointer || (!rv.IsNil() && rv.Pointer() != reflect.ValueOf(t).Pointer()) {
 			return api.Text{}.Add(pretty.PrettyShort()), from
 		}
 	}
 
 	if pretty, ok := t.result.(formatters.PrettyMixin); ok {
 		rv := reflect.ValueOf(pretty)
-		if rv.Kind() != reflect.Ptr || (!rv.IsNil() && rv.Pointer() != reflect.ValueOf(t).Pointer()) {
+		if rv.Kind() != reflect.Pointer || (!rv.IsNil() && rv.Pointer() != reflect.ValueOf(t).Pointer()) {
 			return pretty.Pretty(), from
 		}
 	}

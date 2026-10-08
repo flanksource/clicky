@@ -1673,7 +1673,7 @@ func actionFlagsType(f ActionFlags) reflect.Type {
 		return nil
 	}
 	t := reflect.TypeOf(f)
-	for t.Kind() == reflect.Ptr {
+	for t.Kind() == reflect.Pointer {
 		t = t.Elem()
 	}
 	return t
@@ -2216,7 +2216,7 @@ func buildLookupMetadata[T any]() map[string]entityLookupMetadata {
 
 func describeLookupField(field flags.FieldInfo) entityLookupMetadata {
 	fieldType := field.FieldType
-	for fieldType.Kind() == reflect.Ptr {
+	for fieldType.Kind() == reflect.Pointer {
 		fieldType = fieldType.Elem()
 	}
 
@@ -2434,7 +2434,7 @@ func columnsAndRowFromStruct(inner any) ([]api.ColumnDef, map[string]any, bool) 
 		return nil, nil, false
 	}
 
-	for val.Kind() == reflect.Ptr {
+	for val.Kind() == reflect.Pointer {
 		if val.IsNil() {
 			return nil, nil, false
 		}

@@ -174,7 +174,7 @@ func findListOperation(info EntityInfo) (EntityOperation, bool) {
 // result whose Data field is such a slice) into id→label options.
 func itemsToOptions(result any) map[string]api.Textable {
 	rv := reflect.ValueOf(result)
-	for rv.Kind() == reflect.Ptr {
+	for rv.Kind() == reflect.Pointer {
 		rv = rv.Elem()
 	}
 	if rv.Kind() == reflect.Struct {

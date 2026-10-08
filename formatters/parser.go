@@ -186,7 +186,7 @@ func ToPrettyDataWithOptions(data interface{}, opts FormatOptions) (*api.PrettyD
 	val := reflect.ValueOf(data)
 
 	// Handle nil pointer at root level
-	if val.Kind() == reflect.Ptr && val.IsNil() {
+	if val.Kind() == reflect.Pointer && val.IsNil() {
 		return &api.PrettyData{
 			Schema:   &api.PrettyObject{Fields: []api.PrettyField{}},
 			Original: data,
@@ -595,7 +595,7 @@ func ToPrettyData(data interface{}, opts ...TypeOptions) (*api.PrettyData, error
 	val := reflect.ValueOf(data)
 
 	// Handle nil pointer at root level
-	if val.Kind() == reflect.Ptr && val.IsNil() {
+	if val.Kind() == reflect.Pointer && val.IsNil() {
 		return &api.PrettyData{
 			Schema:   &api.PrettyObject{Fields: []api.PrettyField{}},
 			Original: data,
