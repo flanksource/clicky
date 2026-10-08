@@ -5,6 +5,10 @@
 packages:
   - "."
 
+allowBuilds:
+  esbuild: set this to true or false
+  vue-demi: set this to true or false
+
 catalog:
   '@flanksource/clicky-ui': ^0.3.25
   "@iconify/react": ^5.0.2

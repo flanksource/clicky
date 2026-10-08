@@ -159,7 +159,7 @@ func fieldValue(opts any, key string) []string {
 // requires addressability).
 func addressableStruct(opts any) reflect.Value {
 	v := reflect.ValueOf(opts)
-	for v.Kind() == reflect.Ptr {
+	for v.Kind() == reflect.Pointer {
 		if v.IsNil() {
 			return reflect.Value{}
 		}
@@ -176,7 +176,7 @@ func addressableStruct(opts any) reflect.Value {
 // fieldStrings renders a field value to its string form(s), returning nil for
 // zero values so they are treated as "unset".
 func fieldStrings(v reflect.Value) []string {
-	for v.Kind() == reflect.Ptr {
+	for v.Kind() == reflect.Pointer {
 		if v.IsNil() {
 			return nil
 		}

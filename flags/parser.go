@@ -33,7 +33,7 @@ func parseStructFieldsRecursive(structType reflect.Type, fieldPath []int, fields
 		if field.Anonymous {
 			fieldType := field.Type
 			// Dereference pointer if needed
-			if fieldType.Kind() == reflect.Ptr {
+			if fieldType.Kind() == reflect.Pointer {
 				fieldType = fieldType.Elem()
 			}
 
@@ -173,7 +173,7 @@ func GetFieldByPath(structValue reflect.Value, fieldPath []int) reflect.Value {
 		current = current.Field(index)
 
 		// If we hit an embedded pointer struct, dereference it
-		if current.Kind() == reflect.Ptr {
+		if current.Kind() == reflect.Pointer {
 			if current.IsNil() {
 				// Initialize nil embedded struct pointer
 				current.Set(reflect.New(current.Type().Elem()))

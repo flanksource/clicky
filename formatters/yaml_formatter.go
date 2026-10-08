@@ -74,7 +74,7 @@ func HasYAMLTags(data interface{}) bool {
 
 func hasYAMLTagsValue(val reflect.Value) bool {
 	// Handle pointers
-	if val.Kind() == reflect.Ptr {
+	if val.Kind() == reflect.Pointer {
 		if val.IsNil() {
 			return false
 		}
@@ -117,7 +117,7 @@ func hasYAMLTagsValue(val reflect.Value) bool {
 		}
 		// Check the element type itself
 		elemType := val.Type().Elem()
-		if elemType.Kind() == reflect.Ptr {
+		if elemType.Kind() == reflect.Pointer {
 			elemType = elemType.Elem()
 		}
 		if elemType.Kind() == reflect.Struct {

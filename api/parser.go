@@ -14,7 +14,7 @@ import (
 // SafeDerefPointer safely dereferences a pointer value, returning the
 // dereferenced value and whether it was nil.
 func SafeDerefPointer(val reflect.Value) (reflect.Value, bool) {
-	if val.Kind() != reflect.Ptr {
+	if val.Kind() != reflect.Pointer {
 		return val, false
 	}
 	if val.IsNil() {
@@ -32,7 +32,7 @@ func shortTextable(val reflect.Value) Textable {
 	if !val.IsValid() || !val.CanInterface() {
 		return nil
 	}
-	if val.Kind() == reflect.Ptr && val.IsNil() {
+	if val.Kind() == reflect.Pointer && val.IsNil() {
 		return nil
 	}
 	if ps, ok := val.Interface().(PrettyShort); ok {
@@ -67,7 +67,7 @@ func (p *StructParser) Parse(data interface{}) (*PrettyObject, error) {
 	}
 
 	val := reflect.ValueOf(data)
-	if val.Kind() == reflect.Ptr {
+	if val.Kind() == reflect.Pointer {
 		val = val.Elem()
 	}
 
@@ -130,7 +130,7 @@ func (p *StructParser) inferType(val reflect.Value) string {
 	if !val.IsValid() {
 		return "nil"
 	}
-	if val.Kind() == reflect.Ptr && val.IsNil() {
+	if val.Kind() == reflect.Pointer && val.IsNil() {
 		return "nil"
 	}
 	if val.CanInterface() {
@@ -156,7 +156,7 @@ func (p *StructParser) parseTableField(val reflect.Value, field PrettyField) (Pr
 
 	// Get the first item to determine the structure
 	firstItem := val.Index(0)
-	if firstItem.Kind() == reflect.Ptr {
+	if firstItem.Kind() == reflect.Pointer {
 		firstItem = firstItem.Elem()
 	}
 
@@ -174,7 +174,7 @@ func (p *StructParser) parseTableField(val reflect.Value, field PrettyField) (Pr
 	rows := make([]map[string]interface{}, val.Len())
 	for i := 0; i < val.Len(); i++ {
 		item := val.Index(i)
-		if item.Kind() == reflect.Ptr {
+		if item.Kind() == reflect.Pointer {
 			item = item.Elem()
 		}
 
@@ -282,7 +282,7 @@ func (p *StructParser) ParseWithSchema(data interface{}, schema *PrettyObject) (
 	}
 
 	val := reflect.ValueOf(data)
-	if val.Kind() == reflect.Ptr {
+	if val.Kind() == reflect.Pointer {
 		val = val.Elem()
 	}
 
@@ -300,7 +300,7 @@ func (p *StructParser) ParseDataWithSchema(data interface{}, schema *PrettyObjec
 	}
 
 	val := reflect.ValueOf(data)
-	if val.Kind() == reflect.Ptr {
+	if val.Kind() == reflect.Pointer {
 		val = val.Elem()
 	}
 
@@ -488,7 +488,7 @@ func (p *StructParser) parseTableData(val reflect.Value, field PrettyField) Text
 
 	for i := 0; i < val.Len(); i++ {
 		item := val.Index(i)
-		if item.Kind() == reflect.Ptr {
+		if item.Kind() == reflect.Pointer {
 			item = item.Elem()
 		}
 		if item.Kind() == reflect.Interface && !item.IsNil() {
@@ -619,7 +619,7 @@ func (p *StructParser) ParseStructSchema(val reflect.Value) (*PrettyObject, erro
 			// Parse table schema from first element if available
 			if fieldVal.Len() > 0 {
 				firstElem := fieldVal.Index(0)
-				if firstElem.Kind() == reflect.Ptr {
+				if firstElem.Kind() == reflect.Pointer {
 					firstElem = firstElem.Elem()
 				}
 				if firstElem.Kind() == reflect.Interface && !firstElem.IsNil() {
@@ -646,7 +646,7 @@ func (p *StructParser) ParseStructSchema(val reflect.Value) (*PrettyObject, erro
 			// Auto-detect slices of maps or structs as tables (even without explicit "table" tag)
 			if fieldVal.Len() > 0 {
 				firstElem := fieldVal.Index(0)
-				if firstElem.Kind() == reflect.Ptr {
+				if firstElem.Kind() == reflect.Pointer {
 					firstElem = firstElem.Elem()
 				}
 				if firstElem.Kind() == reflect.Interface && !firstElem.IsNil() {
@@ -743,7 +743,7 @@ func (p *StructParser) GetTableFieldsFromMap(val reflect.Value) []PrettyField {
 // StructToRowWithOptions converts a struct to a PrettyDataRow, checking for PrettyRow interface first
 func (p *StructParser) StructToRowWithOptions(val reflect.Value, opts interface{}) (PrettyDataRow, error) {
 	// Dereference pointer if needed
-	if val.Kind() == reflect.Ptr {
+	if val.Kind() == reflect.Pointer {
 		if val.IsNil() {
 			return nil, fmt.Errorf("cannot convert nil pointer to row")
 		}
@@ -805,7 +805,7 @@ func (p *StructParser) StructToRowWithOptions(val reflect.Value, opts interface{
 // StructToRow converts a struct to a PrettyDataRow
 func (p *StructParser) StructToRow(val reflect.Value) (PrettyDataRow, error) {
 	// Dereference pointer if needed
-	if val.Kind() == reflect.Ptr {
+	if val.Kind() == reflect.Pointer {
 		if val.IsNil() {
 			return nil, fmt.Errorf("cannot convert nil pointer to row")
 		}
@@ -922,7 +922,7 @@ func (p *StructParser) ProcessFieldValue(fieldVal reflect.Value) TypedValue {
 func (p *StructParser) processFieldValueWithVisited(fieldVal reflect.Value, visited map[uintptr]bool) TypedValue {
 	// Track the original pointer address before dereferencing to detect circular references
 	var ptrAddr uintptr
-	if fieldVal.Kind() == reflect.Ptr && !fieldVal.IsNil() && fieldVal.Elem().Kind() == reflect.Struct {
+	if fieldVal.Kind() == reflect.Pointer && !fieldVal.IsNil() && fieldVal.Elem().Kind() == reflect.Struct {
 		ptrAddr = fieldVal.Pointer()
 		// Check if we've already visited this pointer (circular reference detected)
 		if visited[ptrAddr] {
@@ -935,7 +935,7 @@ func (p *StructParser) processFieldValueWithVisited(fieldVal reflect.Value, visi
 	}
 
 	// Recursively dereference all pointer levels
-	for fieldVal.Kind() == reflect.Ptr {
+	for fieldVal.Kind() == reflect.Pointer {
 		if fieldVal.IsNil() {
 			return TypedValue{Textable: nil}
 		}
@@ -1129,7 +1129,7 @@ func IsEmpty(v any) bool {
 	// Guard: nil pointers boxed in an interface satisfy method-set checks
 	// (e.g. (*time.Time)(nil) matches interface{ IsZero() bool }) but will
 	// panic when the method is called. Detect and short-circuit.
-	if rv := reflect.ValueOf(v); rv.Kind() == reflect.Ptr && rv.IsNil() {
+	if rv := reflect.ValueOf(v); rv.Kind() == reflect.Pointer && rv.IsNil() {
 		return true
 	}
 
@@ -1195,7 +1195,7 @@ func isEmptyReflect(v reflect.Value) bool {
 			return IsEmpty(v.Elem().Interface())
 		}
 		return isEmptyReflect(v.Elem())
-	case reflect.Ptr:
+	case reflect.Pointer:
 		if v.IsNil() {
 			return true
 		}

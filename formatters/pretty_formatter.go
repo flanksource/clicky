@@ -66,7 +66,7 @@ func applyRenderFuncsToTypedMap(typedMap *api.TypedMap, raw interface{}, fields 
 	}
 
 	rawVal := reflect.ValueOf(raw)
-	for rawVal.IsValid() && (rawVal.Kind() == reflect.Ptr || rawVal.Kind() == reflect.Interface) {
+	for rawVal.IsValid() && (rawVal.Kind() == reflect.Pointer || rawVal.Kind() == reflect.Interface) {
 		if rawVal.IsNil() {
 			return
 		}
@@ -85,7 +85,7 @@ func applyRenderFuncsToTypedMap(typedMap *api.TypedMap, raw interface{}, fields 
 
 		if field.RenderFunc != nil {
 			renderVal := fieldVal
-			for renderVal.IsValid() && (renderVal.Kind() == reflect.Ptr || renderVal.Kind() == reflect.Interface) {
+			for renderVal.IsValid() && (renderVal.Kind() == reflect.Pointer || renderVal.Kind() == reflect.Interface) {
 				if renderVal.IsNil() {
 					renderVal = reflect.Value{}
 					break

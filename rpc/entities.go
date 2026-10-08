@@ -107,7 +107,7 @@ func actionParamSchema(t reflect.Type) *ActionParamSchema {
 }
 
 func jsonSchemaType(t reflect.Type) string {
-	for t.Kind() == reflect.Ptr {
+	for t.Kind() == reflect.Pointer {
 		t = t.Elem()
 	}
 	switch t.Kind() {

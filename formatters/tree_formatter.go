@@ -379,9 +379,7 @@ func mapToTreeNode(m map[string]interface{}) api.TreeNode {
 	// Handle children
 	if children, ok := m["children"].([]interface{}); ok {
 		for _, child := range children {
-			if childNode := ConvertToTreeNode(child); childNode != nil {
-				node.Children = append(node.Children, childNode)
-			}
+			node.Children = append(node.Children, ConvertToTreeNode(child))
 		}
 	}
 

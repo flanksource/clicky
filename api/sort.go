@@ -169,7 +169,7 @@ func tableProviderForType(rowType reflect.Type) (TableProvider, bool) {
 }
 
 func dereferenceType(value reflect.Type) reflect.Type {
-	for value.Kind() == reflect.Ptr {
+	for value.Kind() == reflect.Pointer {
 		value = value.Elem()
 	}
 	return value

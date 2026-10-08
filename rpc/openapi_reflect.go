@@ -38,7 +38,7 @@ func (g *OpenAPIGenerator) convertGoTypeWithSeen(t reflect.Type, seen map[reflec
 		return &OpenAPISchema{Type: "object"}
 	}
 
-	for t.Kind() == reflect.Ptr {
+	for t.Kind() == reflect.Pointer {
 		schema := g.convertGoTypeWithSeen(t.Elem(), seen)
 		schema.Nullable = true
 		return schema
@@ -132,7 +132,7 @@ func (g *OpenAPIGenerator) convertStructTypeWithSeen(t reflect.Type, seen map[re
 
 		name, omitempty := responseJSONName(field)
 		fieldType := field.Type
-		for fieldType.Kind() == reflect.Ptr {
+		for fieldType.Kind() == reflect.Pointer {
 			fieldType = fieldType.Elem()
 		}
 		if field.Anonymous && name == "" && fieldType.Kind() == reflect.Struct && fieldType != timeType {
@@ -198,7 +198,7 @@ func responseJSONName(field reflect.StructField) (string, bool) {
 
 func isOptionalResponseField(t reflect.Type) bool {
 	switch t.Kind() {
-	case reflect.Ptr, reflect.Map, reflect.Slice, reflect.Interface:
+	case reflect.Pointer, reflect.Map, reflect.Slice, reflect.Interface:
 		return true
 	default:
 		return false

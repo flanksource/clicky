@@ -20,7 +20,7 @@ func unwrapElement(val reflect.Value) (reflect.Value, error) {
 		val = val.Elem()
 	}
 
-	for val.Kind() == reflect.Ptr {
+	for val.Kind() == reflect.Pointer {
 		if val.IsNil() {
 			return reflect.Value{}, fmt.Errorf("cannot convert slice with nil pointer element")
 		}

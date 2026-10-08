@@ -122,7 +122,7 @@ func llmTable(data any) (*api.TextTable, int, error) {
 	if available == 0 {
 		element := value.Type().Elem()
 		zero := reflect.Zero(element)
-		if element.Kind() == reflect.Ptr {
+		if element.Kind() == reflect.Pointer {
 			zero = reflect.New(element.Elem())
 		}
 		if zero.IsValid() {
@@ -135,7 +135,7 @@ func llmTable(data any) (*api.TextTable, int, error) {
 	providers := make([]api.TableProvider, 0, min(available, api.LLMPageSize))
 	for i := 0; i < min(available, api.LLMPageSize); i++ {
 		row := value.Index(i)
-		if (row.Kind() == reflect.Ptr || row.Kind() == reflect.Interface) && row.IsNil() {
+		if (row.Kind() == reflect.Pointer || row.Kind() == reflect.Interface) && row.IsNil() {
 			return nil, 0, fmt.Errorf("nil LLM row at index %d", i)
 		}
 		provider, ok := row.Interface().(api.TableProvider)
