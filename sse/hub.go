@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html"
 	"net/http"
 	"regexp"
 	"strings"
@@ -219,7 +220,10 @@ func (h *Hub) handleSubscribe(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusBadRequest, err)
 		return
 	}
-	status, err := conn.startSub(body.ID, req, h.root)
+	// WORKAROUND(codeql-reflected-xss): the pattern above already admits no HTML metacharacters, so escaping is an identity; CodeQL's Go XSS model has no regexp barrier.
+	// Correct fix: stop echoing a client-chosen id — JSON-encode sub frames (`event: sub`, data {sub,event,id,data}) with the matching clicky-ui event-hub change.
+	// Ref: discussed with user 2026-10-08
+	status, err := conn.startSub(html.EscapeString(body.ID), req, h.root)
 	if err != nil {
 		writeJSONError(w, status, err)
 		return
@@ -295,11 +299,15 @@ func (c *hubConn) write(frame []byte) error {
 
 // writeJSONError answers a control request with {"error": "..."}.
 func writeJSONError(w http.ResponseWriter, status int, err error) {
+	payload, marshalErr := json.Marshal(map[string]string{"error": err.Error()})
+	if marshalErr != nil {
+		panic(fmt.Sprintf("marshal events error response: %v", marshalErr))
+	}
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.WriteHeader(status)
-	if encodeErr := json.NewEncoder(w).Encode(map[string]string{"error": err.Error()}); encodeErr != nil {
+	if _, writeErr := w.Write(append(payload, '\n')); writeErr != nil {
 		// The status is already out; the client is gone or the body broke.
-		logger.Debugf("write events error response: %v", encodeErr)
+		logger.Debugf("write events error response: %v", writeErr)
 	}
 }
