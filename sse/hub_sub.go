@@ -12,12 +12,17 @@ import (
 	pathpkg "path"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/flanksource/commons/logger"
 )
 
 // hubErrorBodyLimit caps the body carried in a __closed frame's "error".
 const hubErrorBodyLimit = 500
+
+// hubSubStopTimeout bounds how long a cancelled sub waits for its handler to
+// return before abandoning it. A var so specs can shorten it.
+var hubSubStopTimeout = 5 * time.Second
 
 // hubForwardedHeaders are the subscribe request's headers a sub request
 // inherits: identity and proxy context a handler may consult. Accept-Encoding
@@ -107,7 +112,12 @@ func (c *hubConn) runSub(sub *hubSub, req *http.Request, root http.Handler) {
 	handlerDone := make(chan struct{})
 	go serveSub(root, rw, req, pw, handlerDone)
 
-	<-rw.committed
+	select {
+	case <-rw.committed:
+	case <-sub.ctx.Done():
+		awaitSubHandler(sub, req, handlerDone)
+		return
+	}
 	closed := hubClosed{Status: rw.status}
 	contentType, _, _ := mime.ParseMediaType(rw.header.Get("Content-Type"))
 	switch {
@@ -122,8 +132,9 @@ func (c *hubConn) runSub(sub *hubSub, req *http.Request, root http.Handler) {
 	}
 	stopped := sub.ctx.Err() != nil
 	sub.cancel()
-	<-handlerDone
-	if rw.panicked != nil {
+	if !awaitSubHandler(sub, req, handlerDone) {
+		closed.Error = fmt.Sprintf("handler did not return within %s of cancellation", hubSubStopTimeout)
+	} else if rw.panicked != nil {
 		closed = hubClosed{Status: http.StatusInternalServerError, Error: fmt.Sprintf("handler panic: %v", rw.panicked)}
 	}
 	if stopped {
@@ -135,6 +146,23 @@ func (c *hubConn) runSub(sub *hubSub, req *http.Request, root http.Handler) {
 	}
 	if err := c.write(fmt.Appendf(nil, "event: %s/__closed\ndata: %s\n\n", sub.id, payload)); err != nil && !errors.Is(err, errHubConnClosed) {
 		logger.Debugf("events sub %s: %v", sub.id, err)
+	}
+}
+
+// awaitSubHandler waits for a cancelled sub's handler to return, at most
+// hubSubStopTimeout. Go cannot stop a goroutine that ignores its request
+// context, so a handler that overruns is abandoned: it only ever writes into
+// the sub's closed pipe, never onto the connection, and DELETE and connection
+// shutdown stay bounded. It reports whether the handler returned.
+func awaitSubHandler(sub *hubSub, req *http.Request, handlerDone <-chan struct{}) bool {
+	timer := time.NewTimer(hubSubStopTimeout)
+	defer timer.Stop()
+	select {
+	case <-handlerDone:
+		return true
+	case <-timer.C:
+		logger.Errorf("events sub %s: handler for %s ignored cancellation for %s; abandoning it", sub.id, req.URL, hubSubStopTimeout)
+		return false
 	}
 }
 
