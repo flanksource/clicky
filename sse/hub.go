@@ -107,6 +107,10 @@ func NewHub(opts HubOptions) *Hub {
 // Register mounts the hub routes on mux. root must be the handler the server
 // actually serves (mux wrapped in its middlewares, Guard included) so subs see
 // exactly what a direct request to the same path would.
+//
+// Every stream handler a sub can reach must return once its request context
+// is cancelled. A handler that does not is abandoned hubSubStopTimeout after
+// its sub is stopped and keeps its goroutine and resources until it returns.
 func (h *Hub) Register(mux *http.ServeMux, root http.Handler) {
 	h.mu.Lock()
 	if h.mux != nil {
@@ -164,6 +168,7 @@ func (h *Hub) handleStream(w http.ResponseWriter, r *http.Request) {
 
 // closeConn forgets conn, stops its writes, cancels every sub and waits for
 // their goroutines: the response writer is invalid once handleStream returns.
+// The wait is bounded: each sub gives its handler at most hubSubStopTimeout.
 func (h *Hub) closeConn(conn *hubConn) {
 	h.mu.Lock()
 	delete(h.conns, conn.id)

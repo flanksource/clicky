@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"time"
 
@@ -236,6 +237,43 @@ var _ = Describe("multiplexed events hub", func() {
 		Eventually(func() int {
 			return client.subscribe("c", "/api/test/burst?n=1").StatusCode
 		}, 5*time.Second).Should(Equal(http.StatusNotFound))
+	})
+
+	Context("with a handler that ignores cancellation and never responds", func() {
+		const stopTimeout = 100 * time.Millisecond
+		var (
+			server *httptest.Server
+			client *eventsClient
+		)
+
+		BeforeEach(func() {
+			previous := hubSubStopTimeout
+			hubSubStopTimeout = stopTimeout
+			DeferCleanup(func() { hubSubStopTimeout = previous })
+			release := make(chan struct{})
+			DeferCleanup(func() { close(release) })
+			server = newEventsTestServer(map[string]http.HandlerFunc{
+				"GET /api/test/stuck": func(http.ResponseWriter, *http.Request) { <-release },
+			})
+			client = openEvents(server.URL, DefaultPrefix)
+			Expect(client.subscribe("s", "/api/test/stuck").StatusCode).To(Equal(http.StatusNoContent))
+		})
+
+		It("answers DELETE once the stop timeout lapses", NodeTimeout(20*stopTimeout), func(SpecContext) {
+			started := time.Now()
+			Expect(client.unsubscribe("s").StatusCode).To(Equal(http.StatusNoContent))
+			Expect(time.Since(started)).To(BeNumerically(">=", stopTimeout))
+		})
+
+		It("ends the events stream on disconnect once the stop timeout lapses", func() {
+			client.cancel()
+			closed := make(chan struct{})
+			go func() {
+				server.Close()
+				close(closed)
+			}()
+			Eventually(closed, 20*stopTimeout).Should(BeClosed())
+		})
 	})
 
 	Context("with a custom prefix", func() {
