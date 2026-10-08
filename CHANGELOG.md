@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.21.76](https://github.com/flanksource/clicky/compare/v1.21.75...v1.21.76) (2026-10-08)
+
+
+### ♻️ Code Refactoring
+
+* replace deprecated reflect.Ptr with reflect.Pointer ([43bfebc](https://github.com/flanksource/clicky/commit/43bfebcc46dc9a3ef503c9838c217e708812d850))
+
+
+### ✨ Features
+
+* **sse:** add server-sent events package with streaming, snapshots, and multiplexing ([9a93755](https://github.com/flanksource/clicky/commit/9a93755b0dad556aa34066fa66a68790bca94598))
+
+
+### 🐛 Bug Fixes
+
+* **sse:** bound wait time for sub handlers ignoring cancellation ([7ba4645](https://github.com/flanksource/clicky/commit/7ba464534d7155b1d6f6c609f622c0446108a4c9))
+* **sse:** clear write deadline and add security headers to stream handlers ([7115a5f](https://github.com/flanksource/clicky/commit/7115a5f65d03aa55920ee68522f030827b4bb7f8))
+* **sse:** marshal error payload before writing HTTP status header ([8246d32](https://github.com/flanksource/clicky/commit/8246d32ad0d3070b24c8f53fb8174f4ee68384cc))
+
 ## [1.21.75](https://github.com/flanksource/clicky/compare/v1.21.74...v1.21.75) (2026-10-05)
 
 
