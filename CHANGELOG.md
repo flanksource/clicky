@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.21.77](https://github.com/flanksource/clicky/compare/v1.21.76...v1.21.77) (2026-10-12)
+
+
+### ✨ Features
+
+* **task:** add WithNoRender group option to keep tasks off the terminal ([d655f83](https://github.com/flanksource/clicky/commit/d655f83bec59f767c78430f1b6ac78a5e29c24d0))
+
 ## [1.21.76](https://github.com/flanksource/clicky/compare/v1.21.75...v1.21.76) (2026-10-08)
 
 
