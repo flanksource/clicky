@@ -241,13 +241,12 @@ func (tm *Manager) renderFinal(loopRan bool) {
 		return
 	}
 	tm.mu.Lock()
-	if tm.finalRendered || len(tm.tasks) == 0 {
+	taskSnapshot := renderedTasks(tm.tasks)
+	if tm.finalRendered || len(taskSnapshot) == 0 {
 		tm.mu.Unlock()
 		return
 	}
 	tm.finalRendered = true
-	taskSnapshot := make([]*Task, len(tm.tasks))
-	copy(taskSnapshot, tm.tasks)
 	tm.mu.Unlock()
 
 	var rendered api.Text

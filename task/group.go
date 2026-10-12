@@ -39,6 +39,7 @@ type Group struct {
 	detailsProvider func() any
 	frozenDetails   any
 	work            *WorkProgress
+	noRender        bool // keeps the group's tasks off the terminal; see WithNoRender
 }
 
 type TaskGroupOption func(group *Group)
