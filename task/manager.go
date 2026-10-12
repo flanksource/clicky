@@ -467,7 +467,7 @@ func (tm *Manager) enqueue(task *Task) *Task {
 
 // enqueueClaimed queues a task whose identity, if any, it already holds.
 func (tm *Manager) enqueueClaimed(task *Task) {
-	if !tm.noRender.Load() && !tm.noProgress.Load() {
+	if !tm.noRender.Load() && !tm.noProgress.Load() && task.rendered() {
 		tm.mu.RLock()
 		idle := tm.renderState == renderIdle
 		tm.mu.RUnlock()

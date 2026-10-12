@@ -39,11 +39,10 @@ func (tm *Manager) getLiveRenderer() LiveRenderer {
 	return tm.liveRenderer
 }
 
-// snapshotTasks returns a lock-free copy of the manager's tasks for rendering.
+// snapshotTasks returns a lock-free copy of the manager's tasks for rendering,
+// without the tasks of WithNoRender groups.
 func (tm *Manager) snapshotTasks() []*Task {
 	tm.mu.RLock()
 	defer tm.mu.RUnlock()
-	snapshot := make([]*Task, len(tm.tasks))
-	copy(snapshot, tm.tasks)
-	return snapshot
+	return renderedTasks(tm.tasks)
 }

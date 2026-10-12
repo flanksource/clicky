@@ -23,13 +23,10 @@ func (tm *Manager) PlainRender() {
 
 	tm.mu.RLock()
 	defer tm.mu.RUnlock()
-	if len(tm.tasks) == 0 {
+	taskSnapshot := renderedTasks(tm.tasks)
+	if len(taskSnapshot) == 0 {
 		return
 	}
-
-	// Create snapshot to avoid holding lock during rendering
-	taskSnapshot := make([]*Task, len(tm.tasks))
-	copy(taskSnapshot, tm.tasks)
 
 	// noProgress mode: only print dirty tasks, never clear screen. Route
 	// writes through the renderer's Output (original stderr captured at
