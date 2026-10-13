@@ -72,6 +72,46 @@ func TestOpenFileReferenceRejectsRootEscapeThroughSymlink(t *testing.T) {
 	}
 }
 
+func TestOpenFileReferenceAcceptsAnyOfSeveralRoots(t *testing.T) {
+	first, second := t.TempDir(), t.TempDir()
+	if err := os.WriteFile(filepath.Join(second, "data.csv"), []byte("Name\nAlice\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	opened, err := OpenFileReference(context.Background(), "@"+filepath.Join(second, "data.csv"),
+		FileReferenceOptions{BaseDir: first, Roots: []string{first, second}, Remote: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := opened.Body.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestOpenFileReferenceRejectsFileOutsideEveryRoot(t *testing.T) {
+	first, second, outside := t.TempDir(), t.TempDir(), t.TempDir()
+	target := filepath.Join(outside, "data.csv")
+	if err := os.WriteFile(target, []byte("Name\nAlice\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, err := OpenFileReference(context.Background(), "@"+target,
+		FileReferenceOptions{BaseDir: first, Root: first, Roots: []string{second}})
+	if err == nil || !strings.Contains(err.Error(), "escapes root") {
+		t.Fatalf("expected root escape, got %v", err)
+	}
+}
+
+func TestOpenFileReferenceFailsOnMissingRoot(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "data.csv"), []byte("Name\nAlice\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, err := OpenFileReference(context.Background(), "@data.csv",
+		FileReferenceOptions{BaseDir: root, Roots: []string{root, filepath.Join(root, "missing")}})
+	if err == nil || !strings.Contains(err.Error(), "resolving file reference root") {
+		t.Fatalf("expected missing root error, got %v", err)
+	}
+}
+
 func TestOpenFileReferenceRejectsRemoteLocalWithoutRoot(t *testing.T) {
 	_, err := OpenFileReference(context.Background(), "@data.csv", FileReferenceOptions{Remote: true})
 	if err == nil || !strings.Contains(err.Error(), "root") {
