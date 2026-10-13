@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"maps"
 	"strings"
 	"time"
 
@@ -32,7 +31,8 @@ var (
 // OperationScheduleContextAdapter captures request identity as durable metadata
 // and reconstructs the operation context when background execution begins.
 type OperationScheduleContextAdapter interface {
-	Capture(context.Context) (map[string]string, error)
+	Capture(context.Context, string) (map[string]string, error)
+	Target(map[string]string) (string, error)
 	Rehydrate(context.Context, map[string]string) (context.Context, func(), error)
 }
 
@@ -58,6 +58,7 @@ type OperationScheduleService struct {
 type OperationScheduleInput struct {
 	Name        string         `json:"name"`
 	OperationID string         `json:"operationId"`
+	Targets     []string       `json:"targets"`
 	Args        map[string]any `json:"args"`
 	Cron        string         `json:"cron"`
 	Timezone    string         `json:"timezone,omitempty"`
@@ -66,6 +67,7 @@ type OperationScheduleInput struct {
 
 type OperationRunInput struct {
 	OperationID string         `json:"operationId"`
+	Targets     []string       `json:"targets"`
 	Args        map[string]any `json:"args"`
 }
 
@@ -73,6 +75,7 @@ type OperationSchedule struct {
 	ID          string         `json:"id"`
 	Name        string         `json:"name"`
 	OperationID string         `json:"operationId"`
+	Targets     []string       `json:"targets"`
 	Args        map[string]any `json:"args"`
 	Cron        string         `json:"cron"`
 	Timezone    string         `json:"timezone,omitempty"`
@@ -86,8 +89,10 @@ type OperationScheduleRun struct {
 }
 
 type operationSchedulePayload struct {
-	OperationID string         `json:"operationId"`
-	Args        map[string]any `json:"args"`
+	OperationID string              `json:"operationId"`
+	Targets     []string            `json:"targets"`
+	Args        map[string]any      `json:"args"`
+	Contexts    []map[string]string `json:"contexts"`
 }
 
 func NewOperationScheduleService(options OperationScheduleServiceOptions) (*OperationScheduleService, error) {
@@ -116,6 +121,9 @@ func (s *OperationScheduleService) Load(ctx context.Context) error {
 		return fmt.Errorf("list operation schedules: %w", err)
 	}
 	for _, schedule := range schedules {
+		if err := s.migrateSchedule(&schedule); err != nil {
+			return fmt.Errorf("migrate operation schedule %q: %w", schedule.Name, err)
+		}
 		if _, _, err := s.validateStoredSchedule(schedule); err != nil {
 			return fmt.Errorf("load operation schedule %q: %w", schedule.Name, err)
 		}
@@ -141,7 +149,7 @@ func (s *OperationScheduleService) List(ctx context.Context) ([]OperationSchedul
 	}
 	result := make([]OperationSchedule, 0)
 	for _, schedule := range s.scheduler.Schedules() {
-		if !maps.Equal(metadata, contextMetadata(schedule.Labels)) {
+		if !s.matchesContext(metadata, schedule) {
 			continue
 		}
 		item, err := operationScheduleFromTask(schedule)
@@ -162,7 +170,15 @@ func (s *OperationScheduleService) Update(
 	id string,
 	input OperationScheduleInput,
 ) (OperationSchedule, error) {
-	if _, err := s.scheduleForContext(ctx, id); err != nil {
+	schedule, err := s.scheduleForContext(ctx, id)
+	if err != nil {
+		return OperationSchedule{}, err
+	}
+	operation, _, err := s.validateStoredSchedule(schedule)
+	if err != nil {
+		return OperationSchedule{}, err
+	}
+	if err := s.authorizeTargets(ctx, operation, schedule); err != nil {
 		return OperationSchedule{}, err
 	}
 	return s.save(ctx, id, input)
@@ -177,7 +193,7 @@ func (s *OperationScheduleService) Delete(ctx context.Context, id string) error 
 	if err != nil {
 		return err
 	}
-	if err := s.authorizeOperation(ctx, operation); err != nil {
+	if err := s.authorizeTargets(ctx, operation, schedule); err != nil {
 		return err
 	}
 	return s.scheduler.Delete(ctx, id)
@@ -192,7 +208,7 @@ func (s *OperationScheduleService) Run(ctx context.Context, id string) (Operatio
 	if err != nil {
 		return OperationScheduleRun{}, err
 	}
-	if err := s.authorizeOperation(ctx, operation); err != nil {
+	if err := s.authorizeTargets(ctx, operation, schedule); err != nil {
 		return OperationScheduleRun{}, err
 	}
 	group, err := s.scheduler.Trigger(flanksourceContext.NewContext(ctx), id)
@@ -207,21 +223,18 @@ func (s *OperationScheduleService) RunNow(ctx context.Context, input OperationRu
 	if err != nil {
 		return OperationScheduleRun{}, err
 	}
-	if err := s.authorizeOperation(ctx, operation); err != nil {
-		return OperationScheduleRun{}, err
-	}
-	metadata, err := s.capture(ctx)
+	selection, err := s.captureTargets(ctx, input.Targets, operation)
 	if err != nil {
 		return OperationScheduleRun{}, err
 	}
-	payload, err := json.Marshal(operationSchedulePayload{OperationID: input.OperationID, Args: nonNilArgs(input.Args)})
+	selection.OperationID, selection.Args = input.OperationID, nonNilArgs(input.Args)
+	payload, err := json.Marshal(selection)
 	if err != nil {
 		return OperationScheduleRun{}, fmt.Errorf("encode operation arguments: %w", err)
 	}
 	group, err := s.scheduler.RunNow(flanksourceContext.NewContext(ctx), task.Schedule{
 		Name: uuid.NewString(), Title: operationTitle(operation), Kind: OperationScheduleKind,
-		Labels: labelsWithContext(operationID(operation), metadata), Payload: payload,
-		Timeout: operation.Clicky.Schedule.Timeout,
+		Labels: labelsWithContext(operationID(operation), nil), Payload: payload,
 	})
 	if err != nil {
 		return OperationScheduleRun{}, err
@@ -241,22 +254,20 @@ func (s *OperationScheduleService) save(
 	if err != nil {
 		return OperationSchedule{}, err
 	}
-	if err := s.authorizeOperation(ctx, operation); err != nil {
-		return OperationSchedule{}, err
-	}
-	metadata, err := s.capture(ctx)
+	selection, err := s.captureTargets(ctx, input.Targets, operation)
 	if err != nil {
 		return OperationSchedule{}, err
 	}
-	payload, err := json.Marshal(operationSchedulePayload{OperationID: input.OperationID, Args: nonNilArgs(input.Args)})
+	selection.OperationID, selection.Args = input.OperationID, nonNilArgs(input.Args)
+	payload, err := json.Marshal(selection)
 	if err != nil {
 		return OperationSchedule{}, fmt.Errorf("encode operation arguments: %w", err)
 	}
 	schedule := task.Schedule{
 		Name: id, Title: strings.TrimSpace(input.Name), Kind: OperationScheduleKind,
-		Labels: labelsWithContext(input.OperationID, metadata), Payload: payload,
+		Labels: labelsWithContext(input.OperationID, nil), Payload: payload,
 		Cron: input.Cron, Timezone: input.Timezone, Enabled: input.Enabled,
-		Timeout: operation.Clicky.Schedule.Timeout, Overlap: task.OverlapSkip, CatchUp: task.CatchUpNone,
+		Overlap: task.OverlapSkip, CatchUp: task.CatchUpNone,
 	}
 	if err := s.scheduler.Add(ctx, schedule); err != nil {
 		return OperationSchedule{}, fmt.Errorf("%w: %v", ErrOperationScheduleInvalid, err)
@@ -275,7 +286,7 @@ func (s *OperationScheduleService) scheduleForContext(ctx context.Context, id st
 		return task.Schedule{}, err
 	}
 	for _, schedule := range s.scheduler.Schedules() {
-		if schedule.Name == id && maps.Equal(metadata, contextMetadata(schedule.Labels)) {
+		if schedule.Name == id && s.matchesContext(metadata, schedule) {
 			return schedule, nil
 		}
 	}
@@ -307,6 +318,20 @@ func (s *OperationScheduleService) validateStoredSchedule(
 	if err != nil {
 		return nil, operationSchedulePayload{}, err
 	}
+	if len(payload.Targets) == 0 || len(payload.Targets) != len(payload.Contexts) {
+		return nil, operationSchedulePayload{}, fmt.Errorf("operation schedule targets and contexts must be nonempty and aligned")
+	}
+	seen := map[string]bool{}
+	for index, target := range payload.Targets {
+		if target == "" || target != strings.TrimSpace(target) || seen[target] {
+			return nil, operationSchedulePayload{}, fmt.Errorf("operation schedule target %q is invalid or duplicated", target)
+		}
+		seen[target] = true
+		captured, err := s.contextAdapter.Target(payload.Contexts[index])
+		if err != nil || captured != target {
+			return nil, operationSchedulePayload{}, fmt.Errorf("operation schedule target %q has inconsistent context: %v", target, err)
+		}
+	}
 	operation, err := s.schedulableOperation(payload.OperationID, payload.Args)
 	return operation, payload, err
 }
@@ -314,26 +339,47 @@ func (s *OperationScheduleService) validateStoredSchedule(
 func (s *OperationScheduleService) runScheduledOperation(
 	ctx flanksourceContext.Context,
 	schedule task.Schedule,
-	_ *task.Group,
+	group *task.Group,
 ) error {
-	_, payload, err := s.validateStoredSchedule(schedule)
+	operation, payload, err := s.validateStoredSchedule(schedule)
 	if err != nil {
 		return err
 	}
-	rehydrated, cleanup, err := s.contextAdapter.Rehydrate(ctx, contextMetadata(schedule.Labels))
-	if err != nil {
-		return fmt.Errorf("rehydrate operation context: %w", err)
+	var failures []error
+	for i, target := range payload.Targets {
+		step := group.StartStep(target)
+		err := func() error {
+			targetCtx, cancel := context.WithCancel(ctx)
+			if timeout := operation.Clicky.Schedule.Timeout; timeout > 0 {
+				cancel()
+				targetCtx, cancel = context.WithTimeout(ctx, timeout)
+			}
+			defer cancel()
+			if err := targetCtx.Err(); err != nil {
+				return err
+			}
+			rehydrated, cleanup, err := s.rehydrate(flanksourceContext.NewContext(targetCtx, flanksourceContext.WithLogger(step.Task())), payload.Contexts[i])
+			if err != nil {
+				return err
+			}
+			defer cleanup()
+			result, _, err := s.executor.ExecuteOperation(rehydrated, payload.OperationID, payload.Args)
+			step.Task().SetResult(result)
+			if err == nil {
+				err = targetCtx.Err()
+			}
+			return err
+		}()
+		step.Finish(err)
+		if err != nil {
+			failures = append(failures, fmt.Errorf("target %q: %w", target, err))
+		}
 	}
-	if rehydrated == nil || cleanup == nil {
-		return fmt.Errorf("rehydrate operation context returned an incomplete context lease")
-	}
-	defer cleanup()
-	_, _, err = s.executor.ExecuteOperation(rehydrated, payload.OperationID, payload.Args)
-	return err
+	return errors.Join(failures...)
 }
 
 func (s *OperationScheduleService) capture(ctx context.Context) (map[string]string, error) {
-	metadata, err := s.contextAdapter.Capture(ctx)
+	metadata, err := s.contextAdapter.Capture(ctx, "")
 	if err != nil {
 		return nil, fmt.Errorf("capture operation context: %w", err)
 	}
@@ -366,6 +412,7 @@ func operationScheduleFromTask(schedule task.Schedule) (OperationSchedule, error
 	return OperationSchedule{
 		ID: schedule.Name, Name: schedule.Title, OperationID: payload.OperationID,
 		Args: payload.Args, Cron: schedule.Cron, Timezone: schedule.Timezone, Enabled: schedule.Enabled,
+		Targets: payload.Targets,
 		LastRun: schedule.LastRun, NextRun: schedule.NextRun,
 	}, nil
 }

@@ -590,7 +590,7 @@ func (s *Scheduler) start(
 	// runner that fails before adding any child leaves a failed run instead of
 	// a group stuck pending and an error visible only in the log. The children
 	// it adds join the same group and are waited for below.
-	var options []Option
+	options := []Option{WithContext(context.WithoutCancel(ctx))}
 	if schedule.Timeout > 0 {
 		options = append(options, WithTimeout(schedule.Timeout))
 	}

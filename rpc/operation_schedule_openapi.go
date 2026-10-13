@@ -71,9 +71,10 @@ func operationScheduleOpenAPIOperation(
 func operationScheduleInputSchema() *OpenAPISchema {
 	return &OpenAPISchema{
 		Type:     "object",
-		Required: []string{"name", "operationId", "args", "cron", "enabled"},
+		Required: []string{"name", "operationId", "targets", "args", "cron", "enabled"},
 		Properties: map[string]*OpenAPISchema{
 			"name":        {Type: "string"},
+			"targets":     {Type: "array", Items: &OpenAPISchema{Type: "string"}},
 			"operationId": {Type: "string"},
 			"args":        {Type: "object", AdditionalProperties: &OpenAPISchema{}},
 			"cron":        {Type: "string"},
@@ -85,9 +86,10 @@ func operationScheduleInputSchema() *OpenAPISchema {
 
 func operationRunInputSchema() *OpenAPISchema {
 	return &OpenAPISchema{
-		Type: "object", Required: []string{"operationId", "args"},
+		Type: "object", Required: []string{"operationId", "targets", "args"},
 		Properties: map[string]*OpenAPISchema{
 			"operationId": {Type: "string"},
+			"targets":     {Type: "array", Items: &OpenAPISchema{Type: "string"}},
 			"args":        {Type: "object", AdditionalProperties: &OpenAPISchema{}},
 		},
 	}
