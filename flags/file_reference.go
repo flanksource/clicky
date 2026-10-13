@@ -18,8 +18,12 @@ import (
 type FileReferenceOptions struct {
 	// BaseDir anchors relative paths; empty uses the working directory.
 	BaseDir string
-	// Root confines local files to this real directory. Remote callers must set it.
+	// Root confines local files to this real directory. Remote callers must set
+	// it or Roots.
 	Root string
+	// Roots extends Root: a local file is accepted when it lies under Root or any
+	// of these. Every entry must exist.
+	Roots []string
 	// Remote uses defensive HTTP and forbids unrooted local files.
 	Remote bool
 }
@@ -76,7 +80,11 @@ func openURLFileReference(ctx context.Context, ref string, remote bool) (FileRef
 }
 
 func openLocalFileReference(ref string, options FileReferenceOptions) (FileReference, error) {
-	if options.Remote && options.Root == "" {
+	roots, err := resolveFileReferenceRoots(options)
+	if err != nil {
+		return FileReference{}, err
+	}
+	if options.Remote && len(roots) == 0 {
 		return FileReference{}, fmt.Errorf("remote local file reference requires a root")
 	}
 	base := options.BaseDir
@@ -91,7 +99,7 @@ func openLocalFileReference(ref string, options FileReferenceOptions) (FileRefer
 	if !filepath.IsAbs(local) {
 		local = filepath.Join(base, local)
 	}
-	local, err := filepath.Abs(local)
+	local, err = filepath.Abs(local)
 	if err != nil {
 		return FileReference{}, fmt.Errorf("resolving file reference: %w", err)
 	}
@@ -102,27 +110,16 @@ func openLocalFileReference(ref string, options FileReferenceOptions) (FileRefer
 	if err := checkPath(canonical); err != nil {
 		return FileReference{}, err
 	}
-	var root string
-	if options.Root != "" {
-		absoluteRoot, err := filepath.Abs(options.Root)
-		if err != nil {
-			return FileReference{}, fmt.Errorf("resolving file reference root: %w", err)
-		}
-		root, err = filepath.EvalSymlinks(absoluteRoot)
-		if err != nil {
-			return FileReference{}, fmt.Errorf("resolving file reference root: %w", err)
-		}
-		if !fileReferenceWithinRoot(root, canonical) {
-			return FileReference{}, fmt.Errorf("file reference escapes root")
-		}
+	if len(roots) > 0 && !fileReferenceWithinAnyRoot(roots, canonical) {
+		return FileReference{}, fmt.Errorf("file reference escapes root")
 	}
 	file, err := openValidatedFile(canonical)
 	if err != nil {
 		return FileReference{}, err
 	}
-	if root != "" {
+	if len(roots) > 0 {
 		openedPath, pathErr := filepath.EvalSymlinks(canonical)
-		if pathErr != nil || !fileReferenceWithinRoot(root, openedPath) {
+		if pathErr != nil || !fileReferenceWithinAnyRoot(roots, openedPath) {
 			_ = file.Close()
 			return FileReference{}, fmt.Errorf("file reference escapes root after opening")
 		}
@@ -130,9 +127,39 @@ func openLocalFileReference(ref string, options FileReferenceOptions) (FileRefer
 	return FileReference{Name: filepath.Base(canonical), Body: file}, nil
 }
 
-func fileReferenceWithinRoot(root, target string) bool {
-	relative, err := filepath.Rel(root, target)
-	return err == nil && relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator)) && !filepath.IsAbs(relative)
+// resolveFileReferenceRoots returns Root and Roots as absolute, symlink-free
+// directories. A configured root that does not resolve is an error, never skipped.
+func resolveFileReferenceRoots(options FileReferenceOptions) ([]string, error) {
+	configured := options.Roots
+	if options.Root != "" {
+		configured = append([]string{options.Root}, configured...)
+	}
+	roots := make([]string, 0, len(configured))
+	for _, root := range configured {
+		if root == "" {
+			return nil, fmt.Errorf("resolving file reference root: empty root")
+		}
+		absoluteRoot, err := filepath.Abs(root)
+		if err != nil {
+			return nil, fmt.Errorf("resolving file reference root %q: %w", root, err)
+		}
+		resolved, err := filepath.EvalSymlinks(absoluteRoot)
+		if err != nil {
+			return nil, fmt.Errorf("resolving file reference root %q: %w", root, err)
+		}
+		roots = append(roots, resolved)
+	}
+	return roots, nil
+}
+
+func fileReferenceWithinAnyRoot(roots []string, target string) bool {
+	for _, root := range roots {
+		relative, err := filepath.Rel(root, target)
+		if err == nil && relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator)) && !filepath.IsAbs(relative) {
+			return true
+		}
+	}
+	return false
 }
 
 func fileReferenceRequestError(err error, ref string, parsed *url.URL) error {
