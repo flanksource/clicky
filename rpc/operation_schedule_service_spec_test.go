@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"sync"
@@ -25,8 +26,18 @@ type testOperationScheduleContextAdapter struct {
 	cleanups atomic.Int64
 }
 
-func (a *testOperationScheduleContextAdapter) Capture(ctx context.Context) (map[string]string, error) {
-	return map[string]string{"environment": ctx.Value(environmentContextKey).(string)}, nil
+func (a *testOperationScheduleContextAdapter) Capture(ctx context.Context, target string) (map[string]string, error) {
+	if target == "" {
+		target = ctx.Value(environmentContextKey).(string)
+		if target == "global" {
+			return map[string]string{}, nil
+		}
+	}
+	return map[string]string{"environment": target}, nil
+}
+
+func (a *testOperationScheduleContextAdapter) Target(metadata map[string]string) (string, error) {
+	return metadata["environment"], nil
 }
 
 func (a *testOperationScheduleContextAdapter) Rehydrate(
@@ -73,6 +84,73 @@ func (s *testOperationScheduleStore) DeleteSchedule(_ context.Context, name stri
 func (*testOperationScheduleStore) RecordFire(context.Context, string, task.Fire) error { return nil }
 
 var _ = Describe("generated operation schedules", func() {
+	It("continues after a target failure, releases every lease, and retains identity after request cancellation", func(ctx SpecContext) {
+		started := make(chan struct{})
+		release := make(chan struct{})
+		invocations := make(chan string, 2)
+		adapter := &testOperationScheduleContextAdapter{}
+		operation := RPCOperation{Name: "scheduled", Clicky: &ClickyOperationMeta{Schedule: &entity.OperationScheduleMeta{Timeout: time.Minute}}, ContextDataFunc: func(runCtx context.Context, _ map[string]string, _ []string) (any, error) {
+			environment := runCtx.Value(environmentContextKey).(string)
+			if environment == "rehydrated:dev" {
+				close(started)
+				<-release
+			}
+			invocations <- environment + ":" + runCtx.Value(scheduleContextKey("identity")).(string)
+			if environment == "rehydrated:dev" {
+				return nil, fmt.Errorf("dev failed")
+			}
+			return nil, runCtx.Err()
+		}}
+		service, err := NewOperationScheduleService(OperationScheduleServiceOptions{Store: newOperationScheduleStore(), Executor: NewCommandExecutor(&RPCService{Operations: []RPCOperation{operation}}, &ExecutorConfig{Enabled: true}), ContextAdapter: adapter})
+		Expect(err).NotTo(HaveOccurred())
+		request, cancel := context.WithCancel(context.WithValue(ctx, scheduleContextKey("identity"), "operator"))
+		defer cancel()
+		_, err = service.RunNow(request, OperationRunInput{OperationID: "scheduled", Targets: []string{"dev", "qa"}})
+		Expect(err).NotTo(HaveOccurred())
+		Eventually(started).Should(BeClosed())
+		cancel()
+		close(release)
+		Eventually(invocations).Should(Receive(Equal("rehydrated:dev:operator")))
+		Eventually(invocations).Should(Receive(Equal("rehydrated:qa:operator")))
+		Eventually(adapter.cleanups.Load).Should(BeEquivalentTo(2))
+	})
+	It("rejects a forbidden target before saving any schedule", func(ctx SpecContext) {
+		store := newOperationScheduleStore()
+		adapter := &testOperationScheduleContextAdapter{}
+		operation := RPCOperation{Name: "scheduled", Clicky: &ClickyOperationMeta{Schedule: &entity.OperationScheduleMeta{}}}
+		service, err := NewOperationScheduleService(OperationScheduleServiceOptions{Store: store, Executor: NewCommandExecutor(&RPCService{Operations: []RPCOperation{operation}}, &ExecutorConfig{Enabled: true}), ContextAdapter: adapter, Authorize: func(targetCtx context.Context, _ *RPCOperation) error {
+			if targetCtx.Value(environmentContextKey) == "rehydrated:qa" {
+				return fmt.Errorf("qa forbidden")
+			}
+			return nil
+		}})
+		Expect(err).NotTo(HaveOccurred())
+		_, err = service.Create(ctx, OperationScheduleInput{Name: "Denied", OperationID: "scheduled", Targets: []string{"dev", "qa"}, Cron: "0 1 * * *"})
+		Expect(err).To(MatchError(ContainSubstring("qa forbidden")))
+		Expect(store.schedules).To(BeEmpty())
+		Expect(adapter.cleanups.Load()).To(BeEquivalentTo(2))
+	})
+	It("persists one schedule with multiple targets and exposes it in each target context", func(ctx SpecContext) {
+		service, err := NewOperationScheduleService(OperationScheduleServiceOptions{
+			Store: newOperationScheduleStore(), ContextAdapter: &testOperationScheduleContextAdapter{},
+			Executor: NewCommandExecutor(&RPCService{Operations: []RPCOperation{{Name: "scheduled", Clicky: &ClickyOperationMeta{Schedule: &entity.OperationScheduleMeta{}}}}}, &ExecutorConfig{Enabled: true}),
+		})
+		Expect(err).NotTo(HaveOccurred())
+		created, err := service.Create(context.WithValue(ctx, environmentContextKey, "dev"), OperationScheduleInput{
+			Name: "Multiple environments", OperationID: "scheduled", Targets: []string{"dev", "qa"}, Cron: "0 1 * * *", Enabled: true,
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(created.Targets).To(Equal([]string{"dev", "qa"}))
+		for _, name := range []string{"dev", "qa", "global"} {
+			listed, err := service.List(context.WithValue(ctx, environmentContextKey, name))
+			Expect(err).NotTo(HaveOccurred())
+			Expect(listed).To(HaveLen(1))
+			Expect(listed[0].ID).To(Equal(created.ID))
+		}
+		listed, err := service.List(context.WithValue(ctx, environmentContextKey, "other"))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(listed).To(BeEmpty())
+	})
 	It("captures context metadata and rehydrates it for manual and recurring execution", func(ctx SpecContext) {
 		invocations := make(chan string, 2)
 		operation := RPCOperation{
@@ -97,7 +175,7 @@ var _ = Describe("generated operation schedules", func() {
 		requestContext := context.WithValue(ctx, environmentContextKey, "dev")
 
 		run, err := service.RunNow(requestContext, OperationRunInput{
-			OperationID: "database_compact", Args: map[string]any{"batch-size": 250},
+			OperationID: "database_compact", Targets: []string{"dev"}, Args: map[string]any{"batch-size": 250},
 		})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(run.RunID).NotTo(BeEmpty())
@@ -105,7 +183,7 @@ var _ = Describe("generated operation schedules", func() {
 		Eventually(adapter.cleanups.Load).Should(BeEquivalentTo(1))
 
 		created, err := service.Create(requestContext, OperationScheduleInput{
-			Name: "Weekly compact", OperationID: "database_compact",
+			Name: "Weekly compact", OperationID: "database_compact", Targets: []string{"dev"},
 			Args: map[string]any{"batch-size": 500}, Cron: "0 2 * * 0", Timezone: "UTC", Enabled: true,
 		})
 		Expect(err).NotTo(HaveOccurred())
@@ -165,7 +243,7 @@ var _ = Describe("generated operation schedules", func() {
 		service.RegisterRoutes(route.NewRouter(mux))
 
 		body, err := json.Marshal(OperationScheduleInput{
-			Name: "Nightly", OperationID: "scheduled", Args: map[string]any{},
+			Name: "Nightly", OperationID: "scheduled", Targets: []string{"dev"}, Args: map[string]any{},
 			Cron: "0 1 * * *", Timezone: "UTC", Enabled: true,
 		})
 		Expect(err).NotTo(HaveOccurred())
