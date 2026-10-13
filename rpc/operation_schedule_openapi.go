@@ -80,6 +80,7 @@ func operationScheduleInputSchema() *OpenAPISchema {
 			"cron":        {Type: "string"},
 			"timezone":    {Type: "string"},
 			"enabled":     {Type: "boolean"},
+			"concurrency": concurrencySchema(),
 		},
 	}
 }
@@ -91,7 +92,15 @@ func operationRunInputSchema() *OpenAPISchema {
 			"operationId": {Type: "string"},
 			"targets":     {Type: "array", Items: &OpenAPISchema{Type: "string"}},
 			"args":        {Type: "object", AdditionalProperties: &OpenAPISchema{}},
+			"concurrency": concurrencySchema(),
 		},
+	}
+}
+
+func concurrencySchema() *OpenAPISchema {
+	return &OpenAPISchema{
+		Type:        "integer",
+		Description: "How many targets run at once, from 1 to the number of targets. 0 or omitted runs them one at a time.",
 	}
 }
 

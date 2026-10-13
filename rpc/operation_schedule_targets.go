@@ -3,12 +3,87 @@ package rpc
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"maps"
 	"strings"
+	"time"
 
 	"github.com/flanksource/clicky/task"
+	flanksourceContext "github.com/flanksource/commons/context"
 )
+
+// targetConcurrency resolves how many of a run's targets run at once. 0 means
+// one at a time, which is how every run behaved before the field existed.
+func targetConcurrency(requested, targets int) (int, error) {
+	if requested == 0 {
+		return 1, nil
+	}
+	if requested < 0 || requested > targets {
+		return 0, fmt.Errorf("%w: concurrency %d must be between 1 and the %d selected targets",
+			ErrOperationScheduleInvalid, requested, targets)
+	}
+	return requested, nil
+}
+
+// runScheduledOperation adds one task per target to the run group and returns
+// without waiting on them: the group's concurrency gates the targets, and at a
+// concurrency of 1 this runner holds the only slot until it returns. The
+// scheduler already waits on the whole group.
+//
+// Targets are never retried. A maintenance operation that failed part-way is
+// not safe to re-run behind the operator's back, whatever its error says.
+func (s *OperationScheduleService) runScheduledOperation(
+	ctx flanksourceContext.Context,
+	schedule task.Schedule,
+	group *task.Group,
+) error {
+	operation, payload, err := s.validateStoredSchedule(schedule)
+	if err != nil {
+		return err
+	}
+	run := task.TypedGroup[any]{Group: group}
+	identity := context.WithoutCancel(ctx)
+	for i, target := range payload.Targets {
+		metadata := payload.Contexts[i]
+		run.Add(target, func(targetCtx flanksourceContext.Context, t *task.Task) (any, error) {
+			return s.runTarget(targetCtx, t, operation.Clicky.Schedule.Timeout, payload, metadata)
+		}, task.WithContext(identity), task.WithRetryConfig(task.RetryConfig{MaxRetries: 0}))
+	}
+	return nil
+}
+
+// runTarget executes the operation in one target's rehydrated context. The
+// timeout starts here, when the target gets its slot, rather than when it was
+// queued behind the others; and it fails the target instead of cancelling it,
+// because a target that ran out of time did not succeed.
+func (s *OperationScheduleService) runTarget(
+	ctx context.Context,
+	t *task.Task,
+	timeout time.Duration,
+	payload operationSchedulePayload,
+	metadata map[string]string,
+) (any, error) {
+	targetCtx, cancel := context.WithCancel(ctx)
+	if timeout > 0 {
+		cancel()
+		targetCtx, cancel = context.WithTimeout(ctx, timeout)
+	}
+	defer cancel()
+	rehydrated, cleanup, err := s.rehydrate(flanksourceContext.NewContext(targetCtx, flanksourceContext.WithLogger(t)), metadata)
+	if err != nil {
+		return nil, err
+	}
+	defer cleanup()
+	result, _, err := s.executor.ExecuteOperation(rehydrated, payload.OperationID, payload.Args)
+	if err == nil {
+		err = targetCtx.Err()
+	}
+	if ctx.Err() == nil && errors.Is(targetCtx.Err(), context.DeadlineExceeded) {
+		return result, fmt.Errorf("timed out after %s: %w", timeout, err)
+	}
+	return result, err
+}
 
 func (s *OperationScheduleService) captureTargets(ctx context.Context, targets []string, operation *RPCOperation) (operationSchedulePayload, error) {
 	selection := operationSchedulePayload{Targets: append([]string(nil), targets...)}

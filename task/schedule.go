@@ -67,6 +67,11 @@ type Schedule struct {
 	Enabled bool          `json:"enabled"`
 	Timeout time.Duration `json:"timeout,omitempty"`
 
+	// Concurrency is how many of the run's tasks run at once; 0 is unbounded.
+	// The runner task itself holds one of those slots while it runs, so a
+	// runner that waits on the children it adds deadlocks at 1.
+	Concurrency int `json:"concurrency,omitempty"`
+
 	Overlap OverlapPolicy `json:"overlap,omitempty"`
 	CatchUp CatchUpPolicy `json:"catchUp,omitempty"`
 
@@ -118,6 +123,9 @@ func (s Schedule) Validate() error {
 	}
 	if s.Timeout < 0 {
 		return fmt.Errorf("schedule %q: timeout must not be negative", s.Name)
+	}
+	if s.Concurrency < 0 {
+		return fmt.Errorf("schedule %q: concurrency must not be negative, got %d", s.Name, s.Concurrency)
 	}
 	return nil
 }
