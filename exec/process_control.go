@@ -123,7 +123,7 @@ func (p *Process) stopAndReap(resultChan <-chan error, grace time.Duration) {
 	select {
 	case <-resultChan:
 	case <-time.After(grace):
-		_ = p.ForceKill()
+		_ = p.KillTree()
 		<-resultChan
 	}
 }

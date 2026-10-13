@@ -223,6 +223,7 @@ func (s *SupervisedProcess) resetTaskMetrics() {
 	s.tree = nil
 	s.highCPU = 0
 	s.killed = false
+	s.limitError = nil
 	clear(s.handles)
 	s.mu.Unlock()
 }

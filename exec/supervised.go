@@ -2,6 +2,8 @@ package exec
 
 import (
 	"encoding/json"
+	"fmt"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -48,6 +50,7 @@ type ProcessSample struct {
 // limit field disables that limit. When a limit is exceeded the whole process
 // tree is killed (KillTree) and SupervisedProcess.Killed reports true.
 type ResourceLimits struct {
+	StopGrace time.Duration `json:"stopGrace,omitempty"`
 	// MaxRSSBytes kills the process the first sample its tree RSS exceeds this.
 	MaxRSSBytes uint64 `json:"maxRssBytes,omitempty"`
 	// MaxCPUPercent kills the process after CPUSampleCount consecutive samples
@@ -126,11 +129,12 @@ type SupervisedProcess struct {
 	wake        chan struct{} // wakes the loop out of restart backoff
 
 	// resource-monitor state (guarded by the same mu)
-	latest  ResourceSnapshot
-	peak    ResourceSnapshot
-	tree    []ProcessSample
-	highCPU int
-	killed  bool
+	latest     ResourceSnapshot
+	peak       ResourceSnapshot
+	tree       []ProcessSample
+	highCPU    int
+	killed     bool
+	limitError *ResourceLimitError
 	// handles caches one gopsutil Process per pid so Percent(0) yields the CPU
 	// delta since the previous sample rather than the lifetime average.
 	handles   map[int32]*gops.Process
@@ -526,7 +530,27 @@ func (s *SupervisedProcess) killForLimit(format string, args ...any) {
 		return
 	}
 	s.killed = true
+	s.limitError = &ResourceLimitError{Reason: fmt.Sprintf(format, args...)}
 	s.mu.Unlock()
 	log.Warnf("supervised process %s killed: "+format, append([]any{s.Name()}, args...)...)
+	if s.opts.Limits.StopGrace > 0 {
+		s.mu.RLock()
+		p := s.current
+		s.mu.RUnlock()
+		if p != nil {
+			p.mu.RLock()
+			proc, done := p.cmd.Process, p.done
+			p.mu.RUnlock()
+			_ = proc.Signal(os.Interrupt)
+			go func() {
+				select {
+				case <-done:
+				case <-time.After(s.opts.Limits.StopGrace):
+					_ = p.KillTree()
+				}
+			}()
+		}
+		return
+	}
 	_ = s.KillTree()
 }

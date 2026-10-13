@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"slices"
 	"time"
 
 	"github.com/flanksource/commons/logger"
@@ -105,6 +106,8 @@ func (p *Process) clone() *Process {
 		Cmd:              p.Cmd,
 		Args:             make([]string, len(p.Args)),
 		Timeout:          p.Timeout,
+		niceness:         ptrCopy(p.niceness),
+		resourceLimits:   p.resourceLimits,
 		ctx:              p.ctx,
 		captureOutput:    capture,
 		SucceedOnNonZero: p.SucceedOnNonZero,
@@ -115,6 +118,7 @@ func (p *Process) clone() *Process {
 		newProcessGroup:  p.newProcessGroup,
 		wantStdioPipe:    p.wantStdioPipe,
 		input:            p.input,
+		extraFiles:       slices.Clone(p.extraFiles),
 		done:             make(chan struct{}),
 	}
 	for key, value := range p.Env {
