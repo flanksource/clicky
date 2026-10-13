@@ -53,6 +53,7 @@ func (s *SupervisedProcess) Start() {
 	s.restarts = 0
 	s.exitCode = nil
 	s.killed = false
+	s.limitError = nil
 	s.expectsPort = false
 	s.status = StatusStarting
 	clear(s.handles) // reset CPU-delta cache for the fresh run streak
@@ -230,6 +231,10 @@ func (s *SupervisedProcess) runLoop() {
 		res := proc.Result()
 
 		s.mu.Lock()
+		if s.limitError != nil {
+			res.Error = s.limitError
+			res.Status = "failed"
+		}
 		result := *res
 		s.result = &result
 		code := res.ExitCode

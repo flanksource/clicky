@@ -93,9 +93,11 @@ type Process struct {
 	// already-expired context prevents the start, and ctx.Done() firing during
 	// execution interrupts the child (escalating to SIGKILL) while Run itself
 	// reaps it.
-	ctx     context.Context
-	Timeout time.Duration
-	Env     map[string]string
+	ctx            context.Context
+	Timeout        time.Duration
+	niceness       *int
+	resourceLimits ResourceLimits
+	Env            map[string]string
 	// exactEnvironment makes Env the complete child environment instead of
 	// merging it over the host environment.
 	exactEnvironment bool
@@ -122,6 +124,7 @@ type Process struct {
 	// parent-side ends, published under mu once Run() has started the child.
 	wantStdioPipe bool
 	input         io.Reader
+	extraFiles    []*os.File
 	stdin         io.WriteCloser
 	stdoutR       io.Reader
 }
@@ -334,6 +337,13 @@ func (p *Process) Run() *Process {
 		return p
 	}
 
+	path, args, err = p.runtimeCommand(path, args)
+	if err != nil {
+		p.mu.Lock()
+		p.Err = err
+		p.mu.Unlock()
+		return p
+	}
 	cmd = exec.Command(path, args...)
 
 	if p.Cwd != "" {
@@ -341,6 +351,7 @@ func (p *Process) Run() *Process {
 	}
 
 	cmd.Env = p.environment()
+	cmd.ExtraFiles = p.extraFiles
 
 	cmd.Stderr = p.captureOutput.GetStderrWriter()
 
@@ -455,16 +466,7 @@ func (p *Process) Run() *Process {
 		ctxDone = p.ctx.Done()
 	}
 
-	select {
-	case err := <-resultChan:
-		runErr = err
-	case <-timeoutChan:
-		p.stopAndReap(resultChan, 5*time.Second)
-		runErr = fmt.Errorf("command timed out after %v", api.Human(time.Since(*p.Started).String()))
-	case <-ctxDone:
-		p.stopAndReap(resultChan, 5*time.Second)
-		runErr = p.ctx.Err()
-	}
+	runErr = p.waitRuntime(resultChan, timeoutChan, ctxDone)
 
 	// Classify the error before publishing. Reading ProcessState here is safe:
 	// cmd.Wait() has returned, so os/exec is done mutating it.
@@ -484,7 +486,7 @@ func (p *Process) Run() *Process {
 			// non-zero exit codes are not considered errors
 			runErr = nil
 		case exitCode != nil:
-			runErr = fmt.Errorf("exit code: %d", *exitCode)
+			runErr = fmt.Errorf("exit code: %d: %w", *exitCode, v)
 		}
 		// Enhance fork/exec permission errors with better messages
 		if v.ExitCode() == 126 {
