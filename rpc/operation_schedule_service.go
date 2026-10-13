@@ -63,12 +63,16 @@ type OperationScheduleInput struct {
 	Cron        string         `json:"cron"`
 	Timezone    string         `json:"timezone,omitempty"`
 	Enabled     bool           `json:"enabled"`
+	// Concurrency is how many targets run at once; 0 means one at a time.
+	Concurrency int `json:"concurrency,omitempty"`
 }
 
 type OperationRunInput struct {
 	OperationID string         `json:"operationId"`
 	Targets     []string       `json:"targets"`
 	Args        map[string]any `json:"args"`
+	// Concurrency is how many targets run at once; 0 means one at a time.
+	Concurrency int `json:"concurrency,omitempty"`
 }
 
 type OperationSchedule struct {
@@ -80,6 +84,7 @@ type OperationSchedule struct {
 	Cron        string         `json:"cron"`
 	Timezone    string         `json:"timezone,omitempty"`
 	Enabled     bool           `json:"enabled"`
+	Concurrency int            `json:"concurrency,omitempty"`
 	LastRun     *time.Time     `json:"lastRun,omitempty"`
 	NextRun     *time.Time     `json:"nextRun,omitempty"`
 }
@@ -124,7 +129,13 @@ func (s *OperationScheduleService) Load(ctx context.Context) error {
 		if err := s.migrateSchedule(&schedule); err != nil {
 			return fmt.Errorf("migrate operation schedule %q: %w", schedule.Name, err)
 		}
-		if _, _, err := s.validateStoredSchedule(schedule); err != nil {
+		_, payload, err := s.validateStoredSchedule(schedule)
+		if err != nil {
+			return fmt.Errorf("load operation schedule %q: %w", schedule.Name, err)
+		}
+		// A schedule saved before concurrency existed ran its targets in
+		// sequence, so its stored 0 is loaded as exactly that.
+		if schedule.Concurrency, err = targetConcurrency(schedule.Concurrency, len(payload.Targets)); err != nil {
 			return fmt.Errorf("load operation schedule %q: %w", schedule.Name, err)
 		}
 		if err := s.scheduler.Add(ctx, schedule); err != nil {
@@ -227,6 +238,10 @@ func (s *OperationScheduleService) RunNow(ctx context.Context, input OperationRu
 	if err != nil {
 		return OperationScheduleRun{}, err
 	}
+	concurrency, err := targetConcurrency(input.Concurrency, len(selection.Targets))
+	if err != nil {
+		return OperationScheduleRun{}, err
+	}
 	selection.OperationID, selection.Args = input.OperationID, nonNilArgs(input.Args)
 	payload, err := json.Marshal(selection)
 	if err != nil {
@@ -234,7 +249,7 @@ func (s *OperationScheduleService) RunNow(ctx context.Context, input OperationRu
 	}
 	group, err := s.scheduler.RunNow(flanksourceContext.NewContext(ctx), task.Schedule{
 		Name: uuid.NewString(), Title: operationTitle(operation), Kind: OperationScheduleKind,
-		Labels: labelsWithContext(operationID(operation), nil), Payload: payload,
+		Labels: labelsWithContext(operationID(operation), nil), Payload: payload, Concurrency: concurrency,
 	})
 	if err != nil {
 		return OperationScheduleRun{}, err
@@ -258,6 +273,10 @@ func (s *OperationScheduleService) save(
 	if err != nil {
 		return OperationSchedule{}, err
 	}
+	concurrency, err := targetConcurrency(input.Concurrency, len(selection.Targets))
+	if err != nil {
+		return OperationSchedule{}, err
+	}
 	selection.OperationID, selection.Args = input.OperationID, nonNilArgs(input.Args)
 	payload, err := json.Marshal(selection)
 	if err != nil {
@@ -267,7 +286,7 @@ func (s *OperationScheduleService) save(
 		Name: id, Title: strings.TrimSpace(input.Name), Kind: OperationScheduleKind,
 		Labels: labelsWithContext(input.OperationID, nil), Payload: payload,
 		Cron: input.Cron, Timezone: input.Timezone, Enabled: input.Enabled,
-		Overlap: task.OverlapSkip, CatchUp: task.CatchUpNone,
+		Overlap: task.OverlapSkip, CatchUp: task.CatchUpNone, Concurrency: concurrency,
 	}
 	if err := s.scheduler.Add(ctx, schedule); err != nil {
 		return OperationSchedule{}, fmt.Errorf("%w: %v", ErrOperationScheduleInvalid, err)
@@ -332,50 +351,11 @@ func (s *OperationScheduleService) validateStoredSchedule(
 			return nil, operationSchedulePayload{}, fmt.Errorf("operation schedule target %q has inconsistent context: %v", target, err)
 		}
 	}
+	if _, err := targetConcurrency(schedule.Concurrency, len(payload.Targets)); err != nil {
+		return nil, operationSchedulePayload{}, err
+	}
 	operation, err := s.schedulableOperation(payload.OperationID, payload.Args)
 	return operation, payload, err
-}
-
-func (s *OperationScheduleService) runScheduledOperation(
-	ctx flanksourceContext.Context,
-	schedule task.Schedule,
-	group *task.Group,
-) error {
-	operation, payload, err := s.validateStoredSchedule(schedule)
-	if err != nil {
-		return err
-	}
-	var failures []error
-	for i, target := range payload.Targets {
-		step := group.StartStep(target)
-		err := func() error {
-			targetCtx, cancel := context.WithCancel(ctx)
-			if timeout := operation.Clicky.Schedule.Timeout; timeout > 0 {
-				cancel()
-				targetCtx, cancel = context.WithTimeout(ctx, timeout)
-			}
-			defer cancel()
-			if err := targetCtx.Err(); err != nil {
-				return err
-			}
-			rehydrated, cleanup, err := s.rehydrate(flanksourceContext.NewContext(targetCtx, flanksourceContext.WithLogger(step.Task())), payload.Contexts[i])
-			if err != nil {
-				return err
-			}
-			defer cleanup()
-			result, _, err := s.executor.ExecuteOperation(rehydrated, payload.OperationID, payload.Args)
-			step.Task().SetResult(result)
-			if err == nil {
-				err = targetCtx.Err()
-			}
-			return err
-		}()
-		step.Finish(err)
-		if err != nil {
-			failures = append(failures, fmt.Errorf("target %q: %w", target, err))
-		}
-	}
-	return errors.Join(failures...)
 }
 
 func (s *OperationScheduleService) capture(ctx context.Context) (map[string]string, error) {
@@ -409,10 +389,14 @@ func operationScheduleFromTask(schedule task.Schedule) (OperationSchedule, error
 	if err != nil {
 		return OperationSchedule{}, fmt.Errorf("operation schedule %q: %w", schedule.Name, err)
 	}
+	concurrency, err := targetConcurrency(schedule.Concurrency, len(payload.Targets))
+	if err != nil {
+		return OperationSchedule{}, fmt.Errorf("operation schedule %q: %w", schedule.Name, err)
+	}
 	return OperationSchedule{
 		ID: schedule.Name, Name: schedule.Title, OperationID: payload.OperationID,
 		Args: payload.Args, Cron: schedule.Cron, Timezone: schedule.Timezone, Enabled: schedule.Enabled,
-		Targets: payload.Targets,
+		Targets: payload.Targets, Concurrency: concurrency,
 		LastRun: schedule.LastRun, NextRun: schedule.NextRun,
 	}, nil
 }
