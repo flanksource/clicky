@@ -177,6 +177,9 @@ func (s *OperationScheduleService) migrateSchedule(schedule *task.Schedule) erro
 	if err != nil {
 		return err
 	}
+	if target == "" {
+		return fmt.Errorf("legacy schedule context labels %v resolve to no target", metadata)
+	}
 	payload.Targets = []string{target}
 	payload.Contexts = []map[string]string{metadata}
 	schedule.Payload, err = json.Marshal(payload)

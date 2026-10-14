@@ -103,12 +103,12 @@ func MustPrint(o any, opts ...FormatOptions) {
 
 // MustPrintStderr is MustPrint onto stderr, for a summary that must stay off
 // stdout (e.g. when stdout is a patch or data being redirected). Colour follows
-// stderr: on when it is a terminal and neither --no-color nor
-// NO_COLOR/COLOR/TERM turn it off, whatever stdout is.
+// stderr: on when it is a terminal and neither an explicit NoColor option,
+// --no-color nor NO_COLOR/COLOR/TERM turn it off, whatever stdout is.
 func MustPrintStderr(o any, opts ...FormatOptions) {
 	_ = task.Wait()
 	options := formatters.MergeOptions(append([]FormatOptions{defaultOpts}, opts...)...)
-	options.NoColor = formatters.IsNoColor() || !term.IsTerminal(int(os.Stderr.Fd()))
+	options.NoColor = options.NoColor || formatters.IsNoColor() || !term.IsTerminal(int(os.Stderr.Fd()))
 	result, err := Formatter.FormatWithOptions(options, cliFormatData(o, options))
 	if err != nil {
 		panic(err)

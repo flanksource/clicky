@@ -120,29 +120,37 @@ func NewOperationScheduleService(options OperationScheduleServiceOptions) (*Oper
 	return service, nil
 }
 
+// Load registers every stored schedule. A schedule that cannot be migrated or
+// validated does not stop the others from loading: each failure is reported in
+// the joined error, and only the failing schedules stay unregistered.
 func (s *OperationScheduleService) Load(ctx context.Context) error {
 	schedules, err := s.store.ListSchedules(ctx)
 	if err != nil {
 		return fmt.Errorf("list operation schedules: %w", err)
 	}
+	var failures []error
 	for _, schedule := range schedules {
-		if err := s.migrateSchedule(&schedule); err != nil {
-			return fmt.Errorf("migrate operation schedule %q: %w", schedule.Name, err)
-		}
-		_, payload, err := s.validateStoredSchedule(schedule)
-		if err != nil {
-			return fmt.Errorf("load operation schedule %q: %w", schedule.Name, err)
-		}
-		// A schedule saved before concurrency existed ran its targets in
-		// sequence, so its stored 0 is loaded as exactly that.
-		if schedule.Concurrency, err = targetConcurrency(schedule.Concurrency, len(payload.Targets)); err != nil {
-			return fmt.Errorf("load operation schedule %q: %w", schedule.Name, err)
-		}
-		if err := s.scheduler.Add(ctx, schedule); err != nil {
-			return fmt.Errorf("load operation schedule %q: %w", schedule.Name, err)
+		if err := s.loadSchedule(ctx, schedule); err != nil {
+			failures = append(failures, fmt.Errorf("load operation schedule %q: %w", schedule.Name, err))
 		}
 	}
-	return nil
+	return errors.Join(failures...)
+}
+
+func (s *OperationScheduleService) loadSchedule(ctx context.Context, schedule task.Schedule) error {
+	if err := s.migrateSchedule(&schedule); err != nil {
+		return fmt.Errorf("migrate: %w", err)
+	}
+	_, payload, err := s.validateStoredSchedule(schedule)
+	if err != nil {
+		return err
+	}
+	// A schedule saved before concurrency existed ran its targets in
+	// sequence, so its stored 0 is loaded as exactly that.
+	if schedule.Concurrency, err = targetConcurrency(schedule.Concurrency, len(payload.Targets)); err != nil {
+		return err
+	}
+	return s.scheduler.Add(ctx, schedule)
 }
 
 func (s *OperationScheduleService) Start(ctx flanksourceContext.Context) {

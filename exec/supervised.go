@@ -539,12 +539,19 @@ func (s *SupervisedProcess) killForLimit(format string, args ...any) {
 		s.mu.RUnlock()
 		if p != nil {
 			p.mu.RLock()
-			proc, done := p.cmd.Process, p.done
+			proc, done, group := p.cmd.Process, p.done, p.newProcessGroup
 			p.mu.RUnlock()
+			descendants := snapshotDescendants(int32(proc.Pid))
 			_ = proc.Signal(os.Interrupt)
 			go func() {
 				select {
 				case <-done:
+					// The direct child exiting on the interrupt does not stop the
+					// descendants it leaves behind, which still breach the limit.
+					if group {
+						_ = p.KillTree()
+					}
+					killSurvivors(descendants)
 				case <-time.After(s.opts.Limits.StopGrace):
 					_ = p.KillTree()
 				}
@@ -553,4 +560,43 @@ func (s *SupervisedProcess) killForLimit(format string, args ...any) {
 		return
 	}
 	_ = s.KillTree()
+}
+
+// processIdentity pins a pid to its start time, so a later kill never signals
+// an unrelated process that reused the pid.
+type processIdentity struct {
+	pid     int32
+	created int64
+}
+
+func snapshotDescendants(root int32) []processIdentity {
+	var out []processIdentity
+	for _, pid := range collectPids(root) {
+		if pid == root {
+			continue
+		}
+		proc, err := gops.NewProcess(pid)
+		if err != nil {
+			continue
+		}
+		if created, err := proc.CreateTime(); err == nil {
+			out = append(out, processIdentity{pid: pid, created: created})
+		}
+	}
+	return out
+}
+
+func killSurvivors(survivors []processIdentity) {
+	for _, survivor := range survivors {
+		proc, err := gops.NewProcess(survivor.pid)
+		if err != nil {
+			continue
+		}
+		if created, err := proc.CreateTime(); err != nil || created != survivor.created {
+			continue
+		}
+		if err := proc.Kill(); err != nil {
+			log.Warnf("kill surviving descendant %d: %v", survivor.pid, err)
+		}
+	}
 }

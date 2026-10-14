@@ -120,6 +120,18 @@ var _ = Describe("generated operation schedules target lifecycle", func() {
 		Expect(store.schedules["weekly"].Timeout).To(BeZero())
 	})
 
+	It("reports a legacy schedule without context labels and still loads the valid ones", func(ctx SpecContext) {
+		store := newOperationScheduleStore()
+		legacyPayload := json.RawMessage(`{"operationId":"scheduled","args":{}}`)
+		store.schedules["unscoped"] = task.Schedule{Name: "unscoped", Title: "Unscoped", Kind: OperationScheduleKind, Cron: "0 1 * * *", Labels: labelsWithContext("scheduled", nil), Payload: legacyPayload}
+		store.schedules["scoped"] = task.Schedule{Name: "scoped", Title: "Scoped", Kind: OperationScheduleKind, Cron: "0 1 * * *", Labels: labelsWithContext("scheduled", map[string]string{"environment": "dev"}), Payload: legacyPayload}
+		service := newTargetScheduleService(store, &testOperationScheduleContextAdapter{}, RPCOperation{Name: "scheduled", Clicky: &ClickyOperationMeta{Schedule: &entity.OperationScheduleMeta{}}})
+		Expect(service.Load(ctx)).To(MatchError(And(ContainSubstring(`"unscoped"`), ContainSubstring("no target"))))
+		listed, err := service.List(context.WithValue(ctx, environmentContextKey, "dev"))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(listed).To(ConsistOf(HaveField("ID", "scoped")))
+	})
+
 	It("runs a legacy multi-target schedule saved without a concurrency one target at a time", func(ctx SpecContext) {
 		store := newOperationScheduleStore()
 		store.schedules["legacy"] = task.Schedule{Name: "legacy", Title: "Legacy", Kind: OperationScheduleKind, Cron: "0 1 * * *", Labels: labelsWithContext("scheduled", nil), Payload: twoTargetPayload()}
