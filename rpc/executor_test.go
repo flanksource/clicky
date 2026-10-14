@@ -357,7 +357,7 @@ func TestExtractRequestFromHTTP_ArgsPrecedence(t *testing.T) {
 	}
 
 	// Test comma-separated args in query parameter
-	req = httptest.NewRequest("POST", "/api/v1/user?args=file1.json,file2.json,file3.json", nil)
+	req = httptest.NewRequest("POST", "/api/v1/user?name=john&args=file1.json,file2.json,file3.json", nil)
 	execReq, err = executor.ExtractRequestFromHTTP(req, createOp)
 	if err != nil {
 		t.Fatalf("Failed to extract request with comma-separated args: %v", err)
@@ -376,6 +376,7 @@ func TestExtractRequestFromHTTP_ArgsPrecedence(t *testing.T) {
 	// Test empty args query parameter (should clear body args)
 	bodyWithArgs := map[string]interface{}{
 		"args": []string{"body-file.json"},
+		"name": "body-name",
 	}
 	bodyBytesWithArgs, _ := json.Marshal(bodyWithArgs)
 	req = httptest.NewRequest("POST", "/api/v1/user?args=", bytes.NewReader(bodyBytesWithArgs))

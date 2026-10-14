@@ -98,3 +98,20 @@ func TestConvertCommand_OmitsEmptySliceDefaults(t *testing.T) {
 	assert.Equal(t, "[a,b]", defaults["tag"])
 	assert.Equal(t, "fallback", defaults["name"])
 }
+
+func TestConvertCommand_MarksRequiredFlagParameters(t *testing.T) {
+	cmd := &cobra.Command{Use: "run", RunE: func(*cobra.Command, []string) error { return nil }}
+	cmd.Flags().String("company-id", "", "Company")
+	cmd.Flags().String("through", "today", "Last date")
+	require.NoError(t, cmd.MarkFlagRequired("company-id"))
+
+	op, err := NewConverter(DefaultConfig()).ConvertCommand(cmd)
+	require.NoError(t, err)
+
+	required := map[string]bool{}
+	for _, p := range op.Parameters {
+		required[p.Name] = p.Required
+	}
+	assert.Equal(t, map[string]bool{"company-id": true, "through": false}, required)
+	assert.Equal(t, []string{"company-id"}, op.Schema.Required)
+}

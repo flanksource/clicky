@@ -156,7 +156,8 @@ var _ = Describe("E2E Clicky Command Execution", func() {
 
 		It("shows the colored full pretty-printing API guide", func() {
 			cmd := exec.Command(binaryPath, "help", "pretty")
-			cmd.Env = clickyTestEnv(false)
+			// stdout is a buffer, not a terminal, so color must be forced.
+			cmd.Env = append(clickyTestEnv(false), "CLICKY_FORCE_INTERACTIVE=1")
 
 			var stdout, stderr bytes.Buffer
 			cmd.Stdout = &stdout
