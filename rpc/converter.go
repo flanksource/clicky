@@ -136,14 +136,14 @@ func (c *Converter) ConvertCommand(cmd *cobra.Command) (*RPCOperation, error) {
 			}
 		}
 
-		schema.Properties[flag.Name] = prop
-		parameters = append(parameters, param)
-
 		// Check if flag is required (skip for boolean flags since they always have defaults)
 		if flag.Value.Type() != "bool" && c.isFlagRequired(cmd, flag.Name) {
 			schema.Required = append(schema.Required, flag.Name)
 			param.Required = true
 		}
+
+		schema.Properties[flag.Name] = prop
+		parameters = append(parameters, param)
 	})
 
 	// Generate HTTP method based on command semantics

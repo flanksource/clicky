@@ -335,8 +335,6 @@ func (e *CommandExecutor) ExtractRequestFromHTTP(r *http.Request, op *RPCOperati
 			// Always check if the parameter exists in the query, even if empty
 			if r.URL.Query().Has(param.Name) {
 				req.Flags[param.Name] = value // Override body value, even if empty
-			} else if param.Required {
-				return nil, fmt.Errorf("required parameter %s is missing", param.Name)
 			}
 		}
 	}
