@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/spf13/pflag"
+	"golang.org/x/term"
 
 	"github.com/flanksource/clicky/api"
 )
@@ -382,18 +383,23 @@ func IsNoColor() bool {
 	return false
 }
 
-// ResolveNoColor checks env vars and sets NoColor accordingly.
-// Respects: NO_COLOR (https://no-color.org/), COLOR=no|false, TERM=dumb.
+// stdoutIsTerminal reports whether formatted output, which MustPrint writes to
+// stdout, lands on a terminal. A variable so tests can stand in a terminal.
+var stdoutIsTerminal = func() bool { return term.IsTerminal(int(os.Stdout.Fd())) }
+
+// ResolveNoColor checks env vars and stdout and sets NoColor accordingly.
+// Respects: NO_COLOR (https://no-color.org/), COLOR=no|false, TERM=dumb, and a
+// stdout that is not a terminal (`cmd > out.txt`, `cmd | less`) unless
+// CLICKY_FORCE_INTERACTIVE is set.
 // The --no-color CLI flag takes precedence (already set before this is called).
 func (options *FormatOptions) ResolveNoColor() {
 	if options.NoColor {
 		return
 	}
 
-	if IsNoColor() {
+	if IsNoColor() || (!stdoutIsTerminal() && os.Getenv("CLICKY_FORCE_INTERACTIVE") == "") {
 		options.NoColor = true
 	}
-
 }
 
 // IncreaseDepth returns a copy of FormatOptions with depth incremented by 1

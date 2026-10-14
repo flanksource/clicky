@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/flanksource/clicky/formatters"
 	"github.com/flanksource/commons/collections"
 	"github.com/flanksource/commons/logger"
 	"github.com/spf13/cobra"
@@ -258,12 +259,10 @@ func (a *AllFlags) String() string {
 }
 
 func (a *AllFlags) UseFlags() {
+	// The logger writes to stderr, so only --no-color and the env turn its colour
+	// off — never a redirected stdout, which ResolveNoColor also honours.
+	a.Color = !a.NoColor && !formatters.IsNoColor()
 	a.ResolveNoColor()
-	if a.NoColor {
-		a.Color = false
-	} else {
-		a.Color = true
-	}
 	logger.Configure(a.Flags)
 	UseFormatter(a.FormatOptions)
 	a.Apply()
