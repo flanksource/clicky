@@ -105,13 +105,18 @@ var _ = Describe("generated operation schedules", func() {
 		Expect(err).NotTo(HaveOccurred())
 		request, cancel := context.WithCancel(context.WithValue(ctx, scheduleContextKey("identity"), "operator"))
 		defer cancel()
-		_, err = service.RunNow(request, OperationRunInput{OperationID: "scheduled", Targets: []string{"dev", "qa"}})
+		_, err = service.RunNow(request, OperationRunInput{OperationID: "scheduled", Targets: []string{"dev", "qa"}, Concurrency: 2})
 		Expect(err).NotTo(HaveOccurred())
 		Eventually(started).Should(BeClosed())
 		cancel()
 		close(release)
-		Eventually(invocations).Should(Receive(Equal("rehydrated:dev:operator")))
-		Eventually(invocations).Should(Receive(Equal("rehydrated:qa:operator")))
+		received := []string{}
+		for range 2 {
+			var got string
+			Eventually(invocations).Should(Receive(&got))
+			received = append(received, got)
+		}
+		Expect(received).To(ConsistOf("rehydrated:dev:operator", "rehydrated:qa:operator"))
 		Eventually(adapter.cleanups.Load).Should(BeEquivalentTo(2))
 	})
 	It("rejects a forbidden target before saving any schedule", func(ctx SpecContext) {

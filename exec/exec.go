@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -337,7 +338,9 @@ func (p *Process) Run() *Process {
 		return p
 	}
 
-	path, args, err = p.runtimeCommand(path, args)
+	// The launcher's status descriptor follows the caller's extra files, so
+	// their child descriptor numbers are unchanged.
+	path, args, err = p.runtimeCommand(path, args, 3+len(p.extraFiles))
 	if err != nil {
 		p.mu.Lock()
 		p.Err = err
@@ -411,7 +414,24 @@ func (p *Process) Run() *Process {
 	// (a clicky-owned field) instead of cmd.Process, which os/exec mutates
 	// without a lock we control.
 	var runErr error
-	if startErr := cmd.Start(); startErr != nil {
+	var launch *launchStatus
+	var startErr error
+	if p.usesLauncher() {
+		launch, startErr = newLaunchStatus()
+	}
+	if launch != nil {
+		cmd.ExtraFiles = append(slices.Clone(p.extraFiles), launch.writer)
+	}
+	if startErr == nil {
+		startErr = cmd.Start()
+	}
+	if launch != nil {
+		launch.started()
+	}
+	if startErr != nil {
+		if launch != nil {
+			_ = launch.reader.Close()
+		}
 		// Close the child-side pipe ends the parent still holds; the deferred
 		// cleanup only closes the parent-side ends, so without this the two
 		// child-side descriptors leak on every failed start (e.g. a restart
@@ -494,6 +514,13 @@ func (p *Process) Run() *Process {
 		}
 		if v.ExitCode() == 127 {
 			runErr = fmt.Errorf("command not found: %s", p.Cmd)
+		}
+	}
+	// The launcher exits before the target runs, so its failure is not a target
+	// exit status and SucceedOnNonZero must not clear it.
+	if launch != nil {
+		if launchErr := launch.err(); launchErr != nil {
+			runErr = launchErr
 		}
 	}
 

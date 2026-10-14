@@ -229,7 +229,9 @@ func extractPathParams(template, path string) (map[string]string, error) {
 	return result, nil
 }
 
-// ExtractRequestFromHTTP extracts execution parameters from HTTP request
+// ExtractRequestFromHTTP extracts execution parameters from HTTP request. When
+// only a required parameter is missing it returns the extracted request together
+// with the error; any other failure returns a nil request.
 func (e *CommandExecutor) ExtractRequestFromHTTP(r *http.Request, op *RPCOperation) (*ExecutionRequest, error) {
 	// Buffer the body once so the raw (nested) JSON stays available to
 	// context-based entity handlers via RequestFromContext, even though the
@@ -339,14 +341,15 @@ func (e *CommandExecutor) ExtractRequestFromHTTP(r *http.Request, op *RPCOperati
 		}
 	}
 
-	// Validate required parameters
+	// A missing required parameter still returns the extracted request, so the
+	// error response can echo the input the caller actually sent.
 	for _, param := range op.Parameters {
 		if param.Required {
 			if param.Name == "args" && len(req.Args) == 0 {
-				return nil, fmt.Errorf("required parameter %s is missing", param.Name)
+				return req, fmt.Errorf("required parameter %s is missing", param.Name)
 			}
 			if _, exists := req.Flags[param.Name]; !exists && param.Name != "args" {
-				return nil, fmt.Errorf("required parameter %s is missing", param.Name)
+				return req, fmt.Errorf("required parameter %s is missing", param.Name)
 			}
 		}
 	}

@@ -1,14 +1,18 @@
 package exec
 
 import (
+	"errors"
 	"fmt"
-	gops "github.com/shirou/gopsutil/v4/process"
+	"io"
 	"math"
 	"os"
 	"os/exec"
 	"runtime"
 	"strconv"
+	"strings"
 	"time"
+
+	gops "github.com/shirou/gopsutil/v4/process"
 )
 
 type ResourceLimitError struct {
@@ -41,7 +45,7 @@ func (p *Process) PrepareCommand() (*exec.Cmd, error) {
 	if err != nil {
 		return nil, err
 	}
-	binary, args, err = p.runtimeCommand(binary, args)
+	binary, args, err = p.runtimeCommand(binary, args, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -52,12 +56,21 @@ func (p *Process) PrepareCommand() (*exec.Cmd, error) {
 	return cmd, nil
 }
 
-func (p *Process) runtimeCommand(binary string, args []string) (string, []string, error) {
+// usesLauncher reports whether the target runs behind the niceness launcher.
+func (p *Process) usesLauncher() bool {
+	return p.niceness != nil && *p.niceness != 0
+}
+
+// runtimeCommand wraps the target in the niceness launcher when one is needed.
+// A statusFD above 2 is the child descriptor the launcher writes to when it
+// fails before executing the target; 0 leaves the exit status 125 as the only
+// signal.
+func (p *Process) runtimeCommand(binary string, args []string, statusFD int) (string, []string, error) {
 	l := p.resourceLimits
 	if math.IsNaN(l.MaxCPUPercent) || math.IsInf(l.MaxCPUPercent, 0) || l.MaxCPUPercent < 0 {
 		return "", nil, fmt.Errorf("invalid CPU limit: %v", l.MaxCPUPercent)
 	}
-	if p.niceness == nil || *p.niceness == 0 {
+	if !p.usesLauncher() {
 		return binary, args, nil
 	}
 	if *p.niceness < -20 || *p.niceness > 19 || runtime.GOOS == "windows" {
@@ -81,15 +94,54 @@ func (p *Process) runtimeCommand(binary string, args []string) (string, []string
 		return "", nil, fmt.Errorf("niceness: %w", err)
 	}
 	// nice can execute the target after failing to change priority. Refuse that execution.
-	const launcher = `"$1" "$2" -p "$$" >/dev/null
-status=$?
-if [ "$status" -ne 0 ]
-then
-  exit 125
-fi
+	launcher := `"$1" "$2" -p "$$" >/dev/null || exit 125
 shift 2
 exec "$@"`
+	if statusFD > 2 {
+		// The status descriptor is closed for renice and before exec, so only a
+		// launcher failure ever writes to it and the target never inherits it.
+		launcher = fmt.Sprintf(`"$1" "$2" -p "$$" >/dev/null %[1]d>&- || { echo "renice exited $?" >&%[1]d; exit 125; }
+exec %[1]d>&-
+shift 2
+exec "$@"`, statusFD)
+	}
 	return shell, append([]string{"-c", launcher, "clicky-niceness", renice, strconv.Itoa(priority), binary}, args...), nil
+}
+
+// launchStatus reports whether the niceness launcher failed before it executed
+// the target, independently of the target's own exit status.
+type launchStatus struct {
+	reader, writer *os.File
+}
+
+func newLaunchStatus() (*launchStatus, error) {
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		return nil, fmt.Errorf("niceness status pipe: %w", err)
+	}
+	return &launchStatus{reader: reader, writer: writer}, nil
+}
+
+// started closes the parent's write end once the child holds its own copy.
+func (s *launchStatus) started() {
+	_ = s.writer.Close()
+}
+
+// err reads what the launcher reported. It must run after the launcher exited
+// or executed the target, which leaves no open write end and makes the read
+// return immediately; the deadline guards a launcher that was never reaped.
+func (s *launchStatus) err() error {
+	defer func() { _ = s.reader.Close() }()
+	_ = s.reader.SetReadDeadline(time.Now().Add(time.Second))
+	report, err := io.ReadAll(s.reader)
+	if len(report) > 0 {
+		return fmt.Errorf("niceness: launcher failed to set child priority (%s); the command was not executed",
+			strings.TrimSpace(string(report)))
+	}
+	if err != nil && !errors.Is(err, os.ErrDeadlineExceeded) {
+		return fmt.Errorf("niceness: read launcher status: %w", err)
+	}
+	return nil
 }
 
 func (p *Process) waitRuntime(result <-chan error, timeout <-chan time.Time, cancelled <-chan struct{}) error {
