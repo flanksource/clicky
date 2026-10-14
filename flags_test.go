@@ -77,3 +77,22 @@ func flagSection(help, heading string) string {
 	}
 	return strings.Join(out, "\n")
 }
+
+// go test pipes stdout, so stdout formatting resolves uncoloured; the logger
+// writes to stderr and must keep its colour.
+func TestUseFlags_RedirectedStdoutKeepsLogColor(t *testing.T) {
+	for _, env := range []string{"NO_COLOR", "COLOR", "CLICKY_FORCE_INTERACTIVE"} {
+		t.Setenv(env, "")
+	}
+	t.Setenv("TERM", "xterm-256color")
+	flags := AllFlags{}
+
+	flags.UseFlags()
+
+	if !flags.NoColor {
+		t.Errorf("NoColor = false, want true: stdout is not a terminal")
+	}
+	if !flags.Color {
+		t.Errorf("Color = false, want true: the logger writes to stderr, which a redirected stdout does not decolour")
+	}
+}

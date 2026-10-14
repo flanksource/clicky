@@ -3,8 +3,11 @@ package clicky
 import (
 	"fmt"
 	"io"
+	"os"
 	"sort"
 	"strings"
+
+	"golang.org/x/term"
 
 	"github.com/flanksource/clicky/api"
 	"github.com/flanksource/clicky/formatters"
@@ -96,6 +99,24 @@ func MustPrint(o any, opts ...FormatOptions) {
 		result += "\n"
 	}
 	fmt.Print(result)
+}
+
+// MustPrintStderr is MustPrint onto stderr, for a summary that must stay off
+// stdout (e.g. when stdout is a patch or data being redirected). Colour follows
+// stderr: on when it is a terminal and neither --no-color nor
+// NO_COLOR/COLOR/TERM turn it off, whatever stdout is.
+func MustPrintStderr(o any, opts ...FormatOptions) {
+	_ = task.Wait()
+	options := formatters.MergeOptions(append([]FormatOptions{defaultOpts}, opts...)...)
+	options.NoColor = formatters.IsNoColor() || !term.IsTerminal(int(os.Stderr.Fd()))
+	result, err := Formatter.FormatWithOptions(options, cliFormatData(o, options))
+	if err != nil {
+		panic(err)
+	}
+	if result != "" && !strings.HasSuffix(result, "\n") {
+		result += "\n"
+	}
+	fmt.Fprint(os.Stderr, result)
 }
 
 func MustFormat(o any, opts ...FormatOptions) string {
