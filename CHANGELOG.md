@@ -5,6 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.21.79](https://github.com/flanksource/clicky/compare/v1.21.78...v1.21.79) (2026-10-15)
+
+
+### ⚠ BREAKING CHANGES
+
+* children started with WithProcessGroup no longer share the caller's session or controlling terminal. Callers that relied on /dev/tty must add WithControllingTerminal.
+
+### ✨ Features
+
+* add session isolation for process groups, descriptor listing, and task progress bars ([41a234b](https://github.com/flanksource/clicky/commit/41a234bc5795c1184afe3a9783baeb19d17af8df))
+
 ## [1.21.78](https://github.com/flanksource/clicky/compare/v1.21.77...v1.21.78) (2026-10-15)
 
 
