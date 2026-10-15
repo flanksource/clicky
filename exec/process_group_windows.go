@@ -11,7 +11,9 @@ import (
 // need the constant here so we avoid pulling in that dep just for one symbol.
 const createNewProcessGroup = 0x00000200
 
-func applyProcessGroup(cmd *exec.Cmd, newPG bool) {
+// applyProcessGroup ignores keepTerminal: Windows has no controlling-terminal
+// foreground for a child to take over.
+func applyProcessGroup(cmd *exec.Cmd, newPG, _ bool) {
 	if !newPG {
 		return
 	}

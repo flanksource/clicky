@@ -116,6 +116,7 @@ func (p *Process) clone() *Process {
 		Shell:            p.Shell,
 		exactEnvironment: p.exactEnvironment,
 		newProcessGroup:  p.newProcessGroup,
+		keepTerminal:     p.keepTerminal,
 		wantStdioPipe:    p.wantStdioPipe,
 		input:            p.input,
 		extraFiles:       slices.Clone(p.extraFiles),

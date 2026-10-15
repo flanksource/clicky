@@ -115,8 +115,22 @@ func (p *Process) WithCaptureLimit(maxBytes int) *Process {
 	return p
 }
 
+// WithProcessGroup starts the child as the leader of its own session and
+// process group (Unix Setsid; Windows CREATE_NEW_PROCESS_GROUP) so KillTree can
+// signal the whole tree. The new session has no controlling terminal, so no
+// descendant can take over the caller's terminal foreground (and swallow its
+// Ctrl+C); one that opens /dev/tty fails with ENXIO instead.
 func (p *Process) WithProcessGroup() *Process {
 	p.newProcessGroup = true
+	return p
+}
+
+// WithControllingTerminal opts a WithProcessGroup child out of the new
+// session: it gets its own process group but stays in the caller's session and
+// keeps its controlling terminal (for password prompts or TUIs). Such a child
+// can make itself the terminal foreground and leave it stranded on exit.
+func (p *Process) WithControllingTerminal() *Process {
+	p.keepTerminal = true
 	return p
 }
 

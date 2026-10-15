@@ -8,14 +8,23 @@ import (
 	"syscall"
 )
 
-func applyProcessGroup(cmd *exec.Cmd, newPG bool) {
+// applyProcessGroup makes the child lead its own process group. By default it
+// also leads a new session (Setsid), leaving it without a controlling terminal
+// so no descendant can tcsetpgrp itself into the caller's terminal foreground;
+// keepTerminal keeps it in the caller's session (Setpgid only). Either way the
+// child's pgid equals its pid, which terminateTree/killTree rely on.
+func applyProcessGroup(cmd *exec.Cmd, newPG, keepTerminal bool) {
 	if !newPG {
 		return
 	}
 	if cmd.SysProcAttr == nil {
 		cmd.SysProcAttr = &syscall.SysProcAttr{}
 	}
-	cmd.SysProcAttr.Setpgid = true
+	if keepTerminal {
+		cmd.SysProcAttr.Setpgid = true
+		return
+	}
+	cmd.SysProcAttr.Setsid = true
 }
 
 // terminateTree asks the process tree to exit gracefully (SIGTERM). With a

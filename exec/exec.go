@@ -111,10 +111,14 @@ type Process struct {
 	SucceedOnNonZero bool
 	exitCode         *int
 	done             chan struct{} // Closed when Run() completes
-	// newProcessGroup, when true, spawns the subprocess in its own POSIX
-	// process group (Setpgid) / Windows process group (CREATE_NEW_PROCESS_GROUP)
-	// so the whole descendant tree can be terminated atomically via KillTree.
+	// newProcessGroup, when true, spawns the subprocess as the leader of its own
+	// POSIX session and process group (Setsid), detached from the controlling
+	// terminal, / Windows process group (CREATE_NEW_PROCESS_GROUP) so the whole
+	// descendant tree can be terminated atomically via KillTree.
 	newProcessGroup bool
+	// keepTerminal narrows newProcessGroup to Setpgid: the child keeps the
+	// caller's session and controlling terminal (WithControllingTerminal).
+	keepTerminal bool
 
 	// wantStdioPipe, when true, connects the child's stdin to a writable pipe
 	// (Stdin) and its stdout to a readable pipe (StdoutReader) for bidirectional
@@ -393,7 +397,7 @@ func (p *Process) Run() *Process {
 		cmd.Stdout = p.captureOutput.GetStdoutWriter()
 	}
 
-	applyProcessGroup(cmd, p.newProcessGroup)
+	applyProcessGroup(cmd, p.newProcessGroup, p.keepTerminal)
 	if p.newProcessGroup || p.wantStdioPipe {
 		// Force-close the stdio pipes shortly after the direct child exits so
 		// Wait() can return even when orphaned descendants (e.g. tsx→node→claude)
