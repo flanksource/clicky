@@ -1,6 +1,8 @@
 package task
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"reflect"
 	"time"
@@ -26,17 +28,25 @@ func (t *Task) WaitFor() *WaitResult {
 		case <-wait:
 			return t.waitResult()
 		case <-ticker.C:
-			t.mu.Lock()
-			cancelled := t.ctx.Err() != nil
-			t.mu.Unlock()
-			if cancelled {
-				t.Cancel()
-			}
+			t.cancelIfContextDone()
 			if waited := time.Since(start); waited >= warnAfter {
 				logger.Warnf("Still waiting for task %q (%s) after %s", t.Name(), t.Status(), waited.Round(time.Second))
 				warnAfter *= 2
 			}
 		}
+	}
+}
+
+// cancelIfContextDone cancels a task whose context is done — its own deadline
+// passed or an owner cancelled it — so a waiter is never held by, nor reads as
+// success, a run function that ignores its context. Cancel records the
+// context's cause, so a self-timeout reports the task's named timeout error.
+func (t *Task) cancelIfContextDone() {
+	t.mu.Lock()
+	done := t.ctx.Err() != nil
+	t.mu.Unlock()
+	if done {
+		t.Cancel()
 	}
 }
 
@@ -58,11 +68,20 @@ func (t *Task) waitResult() *WaitResult {
 	return result
 }
 
+// resultError reports a task cancelled by its own deadline as a timeout naming
+// the task, whatever the run function returned: a bare ctx.Err() is replaced,
+// a more specific error is kept under the timeout. Any other cancellation
+// surfaces only under WithCancellationDrain.
 func (t *Task) resultError() error {
-	if t.err != nil {
+	timedOut := t.status == StatusCancelled && t.timeoutErr != nil && errors.Is(t.cancelErr, t.timeoutErr)
+	switch {
+	case timedOut && (t.err == nil || t.err == context.DeadlineExceeded):
+		return t.cancelErr
+	case timedOut:
+		return fmt.Errorf("%w: %w", t.cancelErr, t.err)
+	case t.err != nil:
 		return t.err
-	}
-	if t.drainCancellation && t.status == StatusCancelled {
+	case t.drainCancellation && t.status == StatusCancelled:
 		return t.cancelErr
 	}
 	return nil

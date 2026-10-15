@@ -357,18 +357,18 @@ func (g *TypedGroup[T]) WaitFor() *WaitResult {
 		allComplete := true
 		hasRunning := false
 
-		g.mu.RLock()
-		for _, item := range g.Items {
-			status := item.GetTask().Status()
-			if status == StatusPending || status == StatusRunning {
+		// Every member is swept, not just up to the first unfinished one, so a
+		// member past its deadline is cut off as soon as the group is polled.
+		for _, item := range g.GetTasks() {
+			member := item.GetTask()
+			member.cancelIfContextDone()
+			switch member.Status() {
+			case StatusRunning:
+				allComplete, hasRunning = false, true
+			case StatusPending:
 				allComplete = false
-				if status == StatusRunning {
-					hasRunning = true
-				}
-				break
 			}
 		}
-		g.mu.RUnlock()
 
 		if allComplete {
 			stableIterations++

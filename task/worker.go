@@ -8,8 +8,6 @@ import (
 	"strings"
 	"sync/atomic"
 	"time"
-
-	flanksourcecontext "github.com/flanksource/commons/context"
 )
 
 // worker represents a worker goroutine that processes tasks
@@ -172,36 +170,7 @@ func (w *worker) executeTask(task *Task) {
 	task.mu.Unlock()
 	task.dirty.Store(true)
 
-	// Apply task-specific timeout if specified
-	if task.taskTimeout > 0 {
-		timeoutCtx, timeoutCancel := context.WithTimeout(task.ctx, task.taskTimeout)
-		defer timeoutCancel()
-
-		// Update task context temporarily
-		task.mu.Lock()
-		originalCtx := task.ctx
-		originalCancel := task.cancel
-
-		// Rebuild around the timeout context but keep the original context's
-		// Logger — it routes into the task's buffered logger; a bare
-		// NewContext would silently reset it to the global standard logger.
-		task.flanksourceCtx = flanksourcecontext.NewContext(timeoutCtx, flanksourcecontext.WithLogger(originalCtx.Logger))
-		task.ctx = task.flanksourceCtx
-		task.cancel = func() {
-			timeoutCancel()
-			originalCancel()
-		}
-		task.mu.Unlock()
-
-		// Restore original context after execution
-		defer func() {
-			task.mu.Lock()
-			task.ctx = originalCtx
-			task.flanksourceCtx = originalCtx
-			task.cancel = originalCancel
-			task.mu.Unlock()
-		}()
-	}
+	defer task.armTimeout()()
 
 	// Execute with retry logic
 	w.executeWithRetry(task)
@@ -215,6 +184,32 @@ func (w *worker) executeTask(task *Task) {
 	task.mu.Lock()
 	task.runFunc = nil
 	task.mu.Unlock()
+}
+
+// armTimeout starts the task's timeout budget. It runs once the task has been
+// scheduled — dependencies satisfied, group permit held — so time spent queued
+// never counts against the budget. One budget covers every retry attempt and
+// the backoff between them. The returned func releases the timer.
+func (t *Task) armTimeout() context.CancelFunc {
+	if t.timeout <= 0 {
+		return func() {}
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.timeoutErr = fmt.Errorf("task %q timed out after %s: %w", t.name, t.timeout, context.DeadlineExceeded)
+	// Swap only the embedded context so the Logger (routed into the task's
+	// buffered logger), tracer and debug/trace hooks carry over.
+	var timeoutCancel context.CancelFunc
+	t.flanksourceCtx.Context, timeoutCancel = context.WithTimeoutCause(t.flanksourceCtx.Context, t.timeout, t.timeoutErr)
+	t.ctx = t.flanksourceCtx
+	parentCancel := t.cancel
+	t.cancel = func() {
+		timeoutCancel()
+		if parentCancel != nil {
+			parentCancel()
+		}
+	}
+	return timeoutCancel
 }
 
 // executeWithRetry handles task execution with exponential backoff retry
@@ -259,7 +254,7 @@ func (w *worker) executeWithRetry(task *Task) {
 				case <-time.After(delay):
 					continue // Retry
 				case <-task.ctx.Done():
-					task.SetStatus(StatusCancelled)
+					task.Cancel()
 					return
 				}
 			} else {

@@ -36,18 +36,20 @@ func (h Health) Style() string {
 	return "text-gray-500"
 }
 
-// WithTimeout sets a timeout for the task
+// WithTimeout bounds how long the task may run. The budget starts when a worker
+// starts the task — after its dependencies finish and a group permit is held —
+// not when it is created, and it covers every retry attempt plus the backoff
+// between them. A task that exceeds it is cancelled with
+// context.DeadlineExceeded as its cause.
 func WithTimeout(d time.Duration) Option {
 	return func(t *Task) {
 		t.timeout = d
 	}
 }
 
-// WithTaskTimeout sets an individual task timeout applied at execution time
+// WithTaskTimeout is WithTimeout: both measure from when the task starts.
 func WithTaskTimeout(d time.Duration) Option {
-	return func(t *Task) {
-		t.taskTimeout = d
-	}
+	return WithTimeout(d)
 }
 
 // WithCancellationDrain makes cancellation waits block until the callback returns.

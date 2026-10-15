@@ -22,6 +22,7 @@ type Task struct {
 	runFunc         func(flanksourceContext.Context, *Task) error
 	err             error
 	cancelErr       error
+	timeoutErr      error         // cause of the task's own deadline; set when armed
 	parent          *Group        // Reference to parent group (nil if ungrouped)
 	doneChan        chan struct{} // Channel to signal task completion
 	drainedChan     chan struct{} // Channel closed after the callback has returned
@@ -48,14 +49,13 @@ type Task struct {
 	retryConfig RetryConfig
 
 	// 8-byte aligned types
-	startTime   time.Time
-	endTime     time.Time
-	timeout     time.Duration
-	taskTimeout time.Duration // Individual task timeout applied at execution time
-	enqueuedAt  time.Time     // Time when task was added to queue
-	dirty       atomic.Bool   // Indicates if the task has been modified since last render
-	completed   atomic.Bool   // Atomic flag for completion status
-	background  atomic.Bool   // Excluded from drain waits; see SetBackground
+	startTime  time.Time
+	endTime    time.Time
+	timeout    time.Duration // Run budget, armed when the worker starts the task
+	enqueuedAt time.Time     // Time when task was added to queue
+	dirty      atomic.Bool   // Indicates if the task has been modified since last render
+	completed  atomic.Bool   // Atomic flag for completion status
+	background atomic.Bool   // Excluded from drain waits; see SetBackground
 
 	// Strings (16 bytes each on 64-bit)
 	name        string
