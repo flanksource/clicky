@@ -52,7 +52,7 @@ func (p *Process) PrepareCommand() (*exec.Cmd, error) {
 	cmd := exec.Command(binary, args...)
 	cmd.Dir, cmd.Env, cmd.Stdin = p.Cwd, p.environment(), p.input
 	cmd.ExtraFiles = p.extraFiles
-	applyProcessGroup(cmd, p.newProcessGroup)
+	applyProcessGroup(cmd, p.newProcessGroup, p.keepTerminal)
 	return cmd, nil
 }
 

@@ -3,6 +3,7 @@ package task
 import (
 	"fmt"
 	"reflect"
+	"strings"
 
 	"github.com/flanksource/commons/logger"
 	"github.com/samber/lo"
@@ -50,6 +51,10 @@ func (t *Task) prettyWithLogOffset(from int) (api.Text, int) {
 	text.Content = displayName
 	text.Style = "max-w-[tw-20ch] truncate-suffix"
 	text = text.Space().Append(fmt.Sprintf("%-10s", duration), "")
+	// t.mu is held by the caller, so read the fields instead of t.Progress().
+	if t.maxValue > 0 {
+		text = text.Space().Append(progressBar(t.progress, t.maxValue), "text-gray-500")
+	}
 
 	// Note: We can't call t.Status() here since it would try to acquire the same mutex
 	// So we directly access t.status and handle the health check inline
@@ -116,4 +121,14 @@ func (t *Task) prettyWithLogOffset(from int) (api.Text, int) {
 	}
 
 	return text, total
+}
+
+const progressBarCells = 10
+
+// progressBar renders a bounded progress as "value/maximum ▰▰▱▱…". The count
+// is always the true value; only the bar's filled cells are clamped to its width.
+func progressBar(value, maximum int) string {
+	filled := min(max((value*progressBarCells+maximum/2)/maximum, 0), progressBarCells)
+	return fmt.Sprintf("%d/%d %s%s", value, maximum,
+		strings.Repeat("▰", filled), strings.Repeat("▱", progressBarCells-filled))
 }
