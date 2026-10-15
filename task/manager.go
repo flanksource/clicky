@@ -429,22 +429,10 @@ func (tm *Manager) newTask(name string, opts ...Option) *Task {
 	// Route ctx.Logger into the task's buffered logger so context-logged
 	// lines render under the task's line (and stream in plain mode) instead
 	// of interleaving with global logger output. Set on both context copies;
-	// the timeout clone below inherits it via WithTimeout.
+	// the timeout clone armed when the task starts inherits it.
 	taskLog := task.contextLogger()
 	task.ctx.Logger = taskLog
 	task.flanksourceCtx.Logger = taskLog
-
-	if task.timeout > 0 {
-		timeoutCtx, timeoutCancel := task.flanksourceCtx.WithTimeout(task.timeout)
-		task.ctx = timeoutCtx
-		task.flanksourceCtx = timeoutCtx
-
-		oldCancel := task.cancel
-		task.cancel = func() {
-			timeoutCancel()
-			oldCancel()
-		}
-	}
 
 	if len(task.dependencies) == 0 {
 		task.priority = 0
