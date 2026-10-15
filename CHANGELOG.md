@@ -5,6 +5,35 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.21.78](https://github.com/flanksource/clicky/compare/v1.21.77...v1.21.78) (2026-10-15)
+
+
+### ⚠ BREAKING CHANGES
+
+* **task:** timeouts start at execution rather than creation, so tasks that previously timed out while queued now get their full budget. WithTaskTimeout no longer behaves differently from WithTimeout.
+* Load no longer aborts on the first invalid schedule, and ExtractRequestFromHTTP returns a non-nil request alongside missing-parameter errors.
+
+Gavel-Issue-Id: 4a8ef193-681e-4114-a241-d363a63e3bff
+Claude-Session-Id: 1a7195e4-dc74-58a3-9c86-6cf2e49d8219
+* **rpc:** ExtractRequestFromHTTP no longer returns an error for missing required query parameters; validation now happens downstream.
+The pretty-help e2e test now forces color, since its stdout buffer is not a terminal.
+
+### ✨ Features
+
+* **exec:** support process runtime resource limits ([b8ec08b](https://github.com/flanksource/clicky/commit/b8ec08b42b1ccd50e6be33296f9615381c87b3f8))
+* **flags:** Accept local file references under any of several roots ([4e9f17c](https://github.com/flanksource/clicky/commit/4e9f17c59ba293237e94be66daf1ad8487f3f3b5))
+* **rpc:** support multi-target operation schedules ([3079fb3](https://github.com/flanksource/clicky/commit/3079fb34bd14842b90acdc955c66148115f4fd7c))
+* **schedule:** add concurrency limit to operation schedules and runs ([366ece9](https://github.com/flanksource/clicky/commit/366ece9fbaba150d71072fbc306b3b8610d7e17b))
+
+
+### 🐛 Bug Fixes
+
+* report niceness launcher failures and reap descendants after CPU limit breaches ([6063fb7](https://github.com/flanksource/clicky/commit/6063fb70846b44228894d0530b881d33f06bf96a))
+* **color:** keep logger colour when stdout is redirected ([24638ea](https://github.com/flanksource/clicky/commit/24638ea7470db62c36421caa4f93d51bfd45d487))
+* **process:** exclude the ps subprocess from discovered process snapshots ([83c4deb](https://github.com/flanksource/clicky/commit/83c4debe256794bbb5a26d20b0b9fe6115fa787c))
+* **rpc:** mark required flag parameters and drop HTTP required-query check ([d3681a9](https://github.com/flanksource/clicky/commit/d3681a9b6dce43e2916fb81d0e1b5a312d5be290))
+* **task:** start task timeout budget at execution and cut off expired group members ([edebd2a](https://github.com/flanksource/clicky/commit/edebd2aaa7e07ef00dffecdee6991d17bbd1db1e))
+
 ## [1.21.77](https://github.com/flanksource/clicky/compare/v1.21.76...v1.21.77) (2026-10-12)
 
 
