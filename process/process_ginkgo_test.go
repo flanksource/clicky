@@ -50,6 +50,15 @@ var _ = Describe("process snapshots", func() {
 		Expect(snapshot.Ancestors(8000)).To(Equal([]Process{snapshot.All()[1]}))
 	})
 
+	It("leaves the ps it runs out of the caller's own subtree", func() {
+		snapshot, err := Discover(context.Background(), SnapshotOptions{})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(snapshot.Subtree(os.Getpid())).NotTo(ContainElement(HaveField("Command", HavePrefix("ps -eo "+psFormat))))
+		self, found := snapshot.Get(os.Getpid())
+		Expect(found).To(BeTrue(), "the caller itself is still listed")
+		Expect(self.PID).To(Equal(os.Getpid()))
+	})
+
 	It("omits environment data unless capture is requested", func() {
 		encoded, err := json.Marshal(Process{PID: 9000})
 		Expect(err).NotTo(HaveOccurred())
