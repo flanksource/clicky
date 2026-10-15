@@ -72,6 +72,22 @@ func NewSnapshot(processes []Process) *Snapshot {
 	return snapshot
 }
 
+// remove drops pid, and its place among its parent's children, from s.
+func (s *Snapshot) remove(pid int) {
+	process, found := s.processes[pid]
+	if !found {
+		return
+	}
+	delete(s.processes, pid)
+	siblings := s.children[process.PPID]
+	for i, sibling := range siblings {
+		if sibling == pid {
+			s.children[process.PPID] = append(siblings[:i:i], siblings[i+1:]...)
+			break
+		}
+	}
+}
+
 func (s *Snapshot) All() []Process {
 	pids := make([]int, 0, len(s.processes))
 	for pid := range s.processes {
