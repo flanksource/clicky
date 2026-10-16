@@ -38,6 +38,9 @@ func processFromHandle(ctx context.Context, handle *gops.Process) Process {
 	if cpu, err := handle.CPUPercentWithContext(ctx); err == nil {
 		process.CPUPercent = cpu
 	}
+	if times, err := handle.TimesWithContext(ctx); err == nil {
+		process.CPUTime = time.Duration((times.User + times.System) * float64(time.Second))
+	}
 	if memory, err := handle.MemoryPercentWithContext(ctx); err == nil {
 		process.MemoryPercent = float64(memory)
 	}
