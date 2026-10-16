@@ -12,23 +12,26 @@ import (
 	"strings"
 )
 
-// Descriptors lists the files and sockets pid holds open, read with lsof.
-func Descriptors(ctx context.Context, pid int) ([]Descriptor, error) {
+// Descriptors lists the files and sockets each of pids holds open, by pid,
+// read with one lsof call. A pid lsof lists nothing for, one that is not
+// running or not readable by this user, is left out.
+func Descriptors(ctx context.Context, pids ...int) (map[int][]Descriptor, error) {
+	if len(pids) == 0 {
+		return map[int][]Descriptor{}, nil
+	}
+	list := make([]string, 0, len(pids))
+	for _, pid := range pids {
+		list = append(list, strconv.Itoa(pid))
+	}
 	var stdout, stderr bytes.Buffer
-	cmd := exec.CommandContext(ctx, "lsof", "-nP", "-a", "-p", strconv.Itoa(pid), "-F", "ftPnT")
+	cmd := exec.CommandContext(ctx, "lsof", "-nP", "-a", "-p", strings.Join(list, ","), "-F", "pftPnT")
 	cmd.Stdout, cmd.Stderr = &stdout, &stderr
 	err := cmd.Run()
-	descriptors := parseLsof(stdout.Bytes())
-	// lsof exits 1 when it could not read some file of a process it still
-	// listed; only an exit with nothing listed means the pid is unreadable.
-	if err != nil {
-		var exitErr *exec.ExitError
-		if !errors.As(err, &exitErr) {
-			return nil, fmt.Errorf("lsof -p %d: %w: %s", pid, err, strings.TrimSpace(stderr.String()))
-		}
-		if len(descriptors) == 0 {
-			return nil, fmt.Errorf("lsof: no open files for pid %d (exited, or not readable by this user): %s", pid, strings.TrimSpace(stderr.String()))
-		}
+	// lsof exits 1 when some pid is not running, or some file of a process it
+	// still listed could not be read: only a failure to run it is an error.
+	var exitErr *exec.ExitError
+	if err != nil && (!errors.As(err, &exitErr) || ctx.Err() != nil) {
+		return nil, fmt.Errorf("lsof -p %s: %w: %s", strings.Join(list, ","), err, strings.TrimSpace(stderr.String()))
 	}
-	return descriptors, nil
+	return parseLsof(stdout.Bytes()), nil
 }

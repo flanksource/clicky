@@ -43,19 +43,27 @@ func (d Descriptor) IsListening() bool {
 	return false
 }
 
-// Environment is pid's whole environment, as the kernel reports it.
-func Environment(ctx context.Context, pid int) (map[string]string, error) {
+// IsConnected reports whether d is a TCP or UDP socket with a peer.
+func (d Descriptor) IsConnected() bool {
+	return (d.Protocol == "TCP" || d.Protocol == "UDP") && d.RemoteAddr != ""
+}
+
+// Environment is pid's environment as the kernel reports it, limited to the
+// keys and prefixes options name; no keys and no prefixes is all of it.
+func Environment(ctx context.Context, pid int, options EnvironmentOptions) (map[string]string, error) {
 	entries, err := readEnvironment(ctx, pid)
 	if err != nil {
 		return nil, err
 	}
-	return filterEnvironment(entries, EnvironmentOptions{}), nil
+	return filterEnvironment(entries, options), nil
 }
 
-// parseLsof reads lsof -F ftPnT output: one field per line, keyed by its first
-// byte, where an f field starts the next descriptor.
-func parseLsof(output []byte) []Descriptor {
-	var descriptors []Descriptor
+// parseLsof reads lsof -F pftPnT output, by pid: one field per line, keyed by
+// its first byte, where a p field starts the next process and an f field the
+// next descriptor of it.
+func parseLsof(output []byte) map[int][]Descriptor {
+	byPID := map[int][]Descriptor{}
+	pid := 0
 	scanner := bufio.NewScanner(bytes.NewReader(output))
 	scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
 	for scanner.Scan() {
@@ -64,31 +72,41 @@ func parseLsof(output []byte) []Descriptor {
 			continue
 		}
 		field, value := line[0], line[1:]
-		if field == 'f' {
-			descriptors = append(descriptors, Descriptor{FD: value})
+		switch {
+		case field == 'p':
+			pid, _ = strconv.Atoi(value)
+			continue
+		case pid == 0:
+			continue
+		case field == 'f':
+			byPID[pid] = append(byPID[pid], Descriptor{FD: value})
+			continue
+		case len(byPID[pid]) == 0:
 			continue
 		}
-		if len(descriptors) == 0 {
-			continue
-		}
-		d := &descriptors[len(descriptors)-1]
-		switch field {
-		case 't':
-			d.Type = value
-		case 'P':
-			d.Protocol = value
-		case 'n':
-			d.Name = value
-		case 'T':
-			if state, ok := strings.CutPrefix(value, "ST="); ok {
-				d.State = state
-			}
+		setField(&byPID[pid][len(byPID[pid])-1], field, value)
+	}
+	for _, descriptors := range byPID {
+		for i := range descriptors {
+			setEndpoints(&descriptors[i])
 		}
 	}
-	for i := range descriptors {
-		setEndpoints(&descriptors[i])
+	return byPID
+}
+
+func setField(d *Descriptor, field byte, value string) {
+	switch field {
+	case 't':
+		d.Type = value
+	case 'P':
+		d.Protocol = value
+	case 'n':
+		d.Name = value
+	case 'T':
+		if state, ok := strings.CutPrefix(value, "ST="); ok {
+			d.State = state
+		}
 	}
-	return descriptors
 }
 
 func setEndpoints(d *Descriptor) {

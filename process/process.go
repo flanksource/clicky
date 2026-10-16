@@ -24,11 +24,18 @@ type SnapshotOptions struct {
 }
 
 type Process struct {
-	PID              int               `json:"pid"`
-	PPID             int               `json:"ppid,omitempty"`
-	Status           string            `json:"status,omitempty"`
-	Active           bool              `json:"active"`
-	CPUPercent       float64           `json:"cpuPercent,omitempty"`
+	PID    int    `json:"pid"`
+	PPID   int    `json:"ppid,omitempty"`
+	Status string `json:"status,omitempty"`
+	Active bool   `json:"active"`
+	// CPUPercent is the OS-reported figure, not current load: a lifetime
+	// average (cpu time ÷ elapsed) on linux and windows, a decaying ~1 minute
+	// average on darwin. A hung busy loop can read as idle; use CPUTime with
+	// IntervalCPUPercent for the CPU% over a sampling interval.
+	CPUPercent float64 `json:"cpuPercent,omitempty"`
+	// CPUTime is the cumulative user+system CPU time the process has used
+	// (JSON: nanoseconds). Resolution is 1s on linux ps, 10ms on darwin ps.
+	CPUTime          time.Duration     `json:"cpuTime,omitempty"`
 	MemoryPercent    float64           `json:"memoryPercent,omitempty"`
 	RSSBytes         uint64            `json:"rssBytes,omitempty"`
 	IO               *ProcessIO        `json:"io,omitempty"`
@@ -188,7 +195,9 @@ func (s *Snapshot) PopulateWorkingDirectories(ctx context.Context, pids []int) {
 func (s *Snapshot) PopulateIO(ctx context.Context, pids []int) error {
 	for _, pid := range pids {
 		item, found := s.processes[pid]
-		if !found {
+		// A zombie reads as all-zero counters and an exiting process as EPERM:
+		// neither has disk counters left to report.
+		if !found || item.Status == "zombie" || item.Status == "exiting" {
 			continue
 		}
 		handle, err := gops.NewProcessWithContext(ctx, int32(pid))
@@ -209,48 +218,67 @@ func (s *Snapshot) PopulateIO(ctx context.Context, pids []int) error {
 	return nil
 }
 
-func parseSnapshot(output []byte, location *time.Location) *Snapshot {
+func parseSnapshot(output []byte, location *time.Location) (*Snapshot, error) {
 	if location == nil {
 		location = time.Local
 	}
 	var processes []Process
 	for _, raw := range bytes.Split(output, []byte{'\n'}) {
-		process, found := parseProcessLine(strings.TrimSpace(string(raw)), location)
-		if !found {
+		line := strings.TrimSpace(string(raw))
+		if line == "" {
 			continue
+		}
+		process, err := parseProcessLine(line, location)
+		if err != nil {
+			return nil, err
 		}
 		processes = append(processes, process)
 	}
-	return NewSnapshot(processes)
+	return NewSnapshot(processes), nil
 }
 
-func parseProcessLine(line string, location *time.Location) (Process, bool) {
-	const processFields = 11
+// parseProcessLine parses one row of psFormat; lstart spans five fields.
+func parseProcessLine(line string, location *time.Location) (Process, error) {
+	const commandField = 12
 	fields := strings.Fields(line)
-	if len(fields) <= processFields {
-		return Process{}, false
+	if len(fields) <= commandField {
+		return Process{}, fmt.Errorf("ps row has %d fields, want more than %d: %q", len(fields), commandField, line)
 	}
-	pid, err := strconv.Atoi(fields[0])
-	if err != nil || pid <= 0 {
-		return Process{}, false
+	pid, pidErr := strconv.Atoi(fields[0])
+	ppid, ppidErr := strconv.Atoi(fields[1])
+	cpu, cpuErr := strconv.ParseFloat(fields[2], 64)
+	memory, memoryErr := strconv.ParseFloat(fields[3], 64)
+	rssKB, rssErr := strconv.ParseUint(fields[4], 10, 64)
+	cpuTime, cpuTimeErr := parseCPUTime(fields[6])
+	started, startedErr := time.ParseInLocation("Mon Jan 2 15:04:05 2006", strings.Join(fields[7:commandField], " "), location)
+	if err := errors.Join(columnError("pid", pidErr), columnError("ppid", ppidErr), columnError("pcpu", cpuErr),
+		columnError("pmem", memoryErr), columnError("rss", rssErr), columnError("time", cpuTimeErr), columnError("lstart", startedErr)); err != nil {
+		return Process{}, fmt.Errorf("ps row %q: %w", line, err)
 	}
-	ppid, _ := strconv.Atoi(fields[1])
-	cpu, _ := strconv.ParseFloat(fields[2], 64)
-	memory, _ := strconv.ParseFloat(fields[3], 64)
-	rssKB, _ := strconv.ParseUint(fields[4], 10, 64)
 	status, active := processStatus(fields[5])
+	started = started.UTC()
 	return Process{
 		PID: pid, PPID: ppid, Status: status, Active: active,
-		CPUPercent: cpu, MemoryPercent: memory, RSSBytes: rssKB * 1024,
-		StartedAt: parseProcessStart(strings.Join(fields[6:processFields], " "), location),
-		Command:   strings.Join(fields[processFields:], " "),
-	}, true
+		CPUPercent: cpu, CPUTime: cpuTime, MemoryPercent: memory, RSSBytes: rssKB * 1024,
+		StartedAt: &started, Command: strings.Join(fields[commandField:], " "),
+	}, nil
+}
+
+func columnError(column string, err error) error {
+	if err == nil {
+		return nil
+	}
+	return fmt.Errorf("%s: %w", column, err)
 }
 
 func processStatus(status string) (string, bool) {
 	switch {
 	case strings.Contains(status, "Z"):
 		return "zombie", false
+	// BSD "E" (trying to exit) and linux "X" (dead): ps may already report the
+	// process's cpu time as 0, so it must not be rated like a live process.
+	case strings.Contains(status, "E"), strings.Contains(status, "X"):
+		return "exiting", false
 	case strings.Contains(status, "T"):
 		return "stopped", false
 	case strings.Contains(status, "S"):
@@ -258,15 +286,6 @@ func processStatus(status string) (string, bool) {
 	default:
 		return "active", true
 	}
-}
-
-func parseProcessStart(value string, location *time.Location) *time.Time {
-	parsed, err := time.ParseInLocation("Mon Jan 2 15:04:05 2006", value, location)
-	if err != nil {
-		return nil
-	}
-	utc := parsed.UTC()
-	return &utc
 }
 
 func populateEnvironments(ctx context.Context, snapshot *Snapshot, opts EnvironmentOptions) {

@@ -8,6 +8,6 @@ import (
 )
 
 // Descriptors is not available on Windows, which has no lsof.
-func Descriptors(_ context.Context, pid int) ([]Descriptor, error) {
-	return nil, fmt.Errorf("listing open files of pid %d is not supported on windows", pid)
+func Descriptors(_ context.Context, pids ...int) (map[int][]Descriptor, error) {
+	return nil, fmt.Errorf("listing open files of pids %v is not supported on windows", pids)
 }
