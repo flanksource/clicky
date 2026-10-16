@@ -62,10 +62,11 @@ func (w *worker) run() {
 			}
 
 			// Gate on group concurrency at dequeue time. If the group's permit
-			// pool is saturated, do not occupy a worker slot — re-enqueue with a
-			// short delay and let this worker pick up other work.
+			// pool is saturated, or a member added before this one is still
+			// waiting for a permit, do not occupy a worker slot — re-enqueue with
+			// a short delay and let this worker pick up other work.
 			sem := task.groupSem()
-			if sem != nil && !sem.TryAcquire(1) {
+			if sem != nil && !task.parent.admit(task) {
 				w.manager.taskQueue.EnqueueWithDelay(task, 50*time.Millisecond)
 				continue
 			}

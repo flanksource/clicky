@@ -471,6 +471,9 @@ func (tm *Manager) enqueueClaimed(task *Task) {
 	tm.finalRendered = false
 	tm.mu.Unlock()
 
+	if task.groupSem() != nil {
+		task.parent.admission.enlist(task)
+	}
 	tm.taskQueue.Enqueue(task)
 }
 
