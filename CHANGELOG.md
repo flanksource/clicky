@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.21.80](https://github.com/flanksource/clicky/compare/v1.21.79...v1.21.80) (2026-10-16)
+
+
+### 🐛 Bug Fixes
+
+* **task:** admit serial-group members in FIFO submission order ([1b24f81](https://github.com/flanksource/clicky/commit/1b24f8102fa82bdf78d1bed28839d18a2c8985d2))
+
 ## [1.21.79](https://github.com/flanksource/clicky/compare/v1.21.78...v1.21.79) (2026-10-15)
 
 
