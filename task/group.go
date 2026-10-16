@@ -35,6 +35,7 @@ type Group struct {
 	mu              sync.RWMutex
 	concurrency     int
 	sem             *semaphore.Weighted // Semaphore for concurrency control
+	admission       admissionLine       // FIFO order in which members may take a sem permit; see admit
 	controller      TaskController
 	detailsProvider func() any
 	frozenDetails   any
