@@ -79,7 +79,11 @@ func TableRows(rows []api.PrettyDataRow, filterExpr string) ([]api.PrettyDataRow
 			return nil, fmt.Errorf("failed to evaluate filter expression at row %d: %w", i, err)
 		}
 
-		if boolResult, ok := out.Value().(bool); ok && boolResult {
+		boolResult, ok := out.Value().(bool)
+		if !ok {
+			return nil, fmt.Errorf("filter expression at row %d returned %T, expected boolean", i+1, out.Value())
+		}
+		if boolResult {
 			filtered = append(filtered, row)
 		}
 	}
@@ -203,8 +207,17 @@ func rowToCELMap(row api.PrettyDataRow) map[string]interface{} {
 		// - bool for booleans
 		// - string for strings
 		// - time.Time for dates
-		result[key] = fieldValue.String()
+		if fieldValue.FilterValue != nil {
+			result[key] = fieldValue.FilterValue
+		} else {
+			result[key] = fieldValue.String()
+		}
 	}
+	rowValues := make(map[string]interface{}, len(result))
+	for key, value := range result {
+		rowValues[key] = value
+	}
+	result["row"] = rowValues
 	return result
 }
 
@@ -255,11 +268,17 @@ func createCELEnvironment(variableDecls []cel.EnvOption) (*cel.Env, error) {
 
 // getVariableDeclarationsFromRow creates CEL variable declarations from a row's fields
 func getVariableDeclarationsFromRow(row api.PrettyDataRow) []cel.EnvOption {
-	var decls []cel.EnvOption
+	decls := []cel.EnvOption{cel.Variable("row", cel.MapType(cel.StringType, cel.DynType))}
 
 	for key, fieldValue := range row {
-		celType := inferCELTypeFromValue(fieldValue.String())
-		decls = append(decls, cel.Variable(key, celType))
+		if key == "row" || !celIdentifier.MatchString(key) {
+			continue
+		}
+		value := any(fieldValue.String())
+		if fieldValue.FilterValue != nil {
+			value = fieldValue.FilterValue
+		}
+		decls = append(decls, cel.Variable(key, inferCELTypeFromValue(value)))
 	}
 
 	return decls
