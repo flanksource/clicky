@@ -1,15 +1,19 @@
 package clicky
 
 import (
+	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 
 	"golang.org/x/term"
 
 	"github.com/flanksource/clicky/api"
+	filterapi "github.com/flanksource/clicky/api/filter"
 	"github.com/flanksource/clicky/formatters"
 	"github.com/flanksource/clicky/task"
 	"github.com/flanksource/clicky/text"
@@ -17,6 +21,10 @@ import (
 )
 
 type FormatOptions = formatters.FormatOptions
+
+type FormatWriter interface {
+	WriteFormat(io.Writer, FormatOptions) error
+}
 
 var (
 	Formatter   = formatters.NewFormatManager()
@@ -76,7 +84,57 @@ func Tracef(format string, args ...any) {
 
 func Format(o any, opts ...FormatOptions) (string, error) {
 	options := formatters.MergeOptions(append([]FormatOptions{defaultOpts}, opts...)...)
-	return Formatter.FormatWithOptions(options, cliFormatData(o, options))
+	if writer, ok := o.(FormatWriter); ok {
+		var output bytes.Buffer
+		if err := writer.WriteFormat(&output, options); err != nil {
+			return "", err
+		}
+		return output.String(), nil
+	}
+	if view, ok := o.(interface {
+		FormatView(FormatOptions) (any, error)
+	}); ok {
+		var err error
+		o, err = view.FormatView(options)
+		if err != nil {
+			return "", err
+		}
+	} else {
+		o = cliFormatData(o, options)
+		if options.Filter != "" {
+			var err error
+			o, err = filterFormatData(o, options.Filter)
+			if err != nil {
+				return "", err
+			}
+		}
+	}
+	return Formatter.FormatWithOptions(options, o)
+}
+
+func filterFormatData(data any, expression string) (any, error) {
+	switch value := data.(type) {
+	case []map[string]any:
+		return filterapi.MapRows(value, expression)
+	case api.TextTable:
+		rows := make([]api.PrettyDataRow, len(value.Rows))
+		for i, row := range value.Rows {
+			rows[i] = api.PrettyDataRow(row)
+		}
+		filtered, err := filterapi.TableRows(rows, expression)
+		if err != nil {
+			return nil, err
+		}
+		value.Rows = make([]api.TableRow, len(filtered))
+		for i, row := range filtered {
+			value.Rows[i] = api.TableRow(row)
+		}
+		return value, nil
+	case api.TreeNode:
+		return filterapi.TreeNode(value, expression)
+	default:
+		return nil, fmt.Errorf("--filter is unsupported for %T", data)
+	}
 }
 
 func cliFormatData(o any, opts FormatOptions) any {
@@ -125,27 +183,28 @@ func MustFormat(o any, opts ...FormatOptions) string {
 }
 
 func FormatToFile(o any, opts FormatOptions, file string) error {
-	opts.Output = file
-	_opts := formatters.MergeOptions(append([]FormatOptions{defaultOpts}, opts)...)
-	return Formatter.FormatToFile(_opts, cliFormatData(o, _opts))
+	if writer, ok := o.(FormatWriter); ok {
+		return writeFormatFileFrom(file, func(output io.Writer) error { return writer.WriteFormat(output, opts) })
+	}
+	output, err := Format(o, opts)
+	if err != nil {
+		return err
+	}
+	return writeFormatFile(file, []byte(output))
 }
 
 // PrintAndWriteSinks renders o for each sink in opts.Sinks.
 //
-// Stdout sinks (File == "") go through MustPrint, preserving existing
-// pretty/stdout behaviour. File sinks call Formatter.FormatToFile, which
-// renders in the sink's format and writes to the given path.
-//
-// Per-sink errors are logged via Errorf but do NOT abort other sinks, so a
-// broken HTML template cannot eat the JSON artifact that CI depends on. If
-// opts.Sinks is empty the function falls back to MustPrint(o, opts) for
-// back-compat with call sites that haven't run ParseFormatSpec.
-func PrintAndWriteSinks(o any, opts FormatOptions) {
+// Each sink is attempted independently; errors are returned after all sinks run.
+func PrintAndWriteSinks(o any, opts FormatOptions) (resultErr error) {
 	_ = task.Wait()
-	if len(opts.Sinks) == 0 {
-		MustPrint(o, opts)
-		return
+	if closer, ok := o.(io.Closer); ok {
+		defer func() { resultErr = errors.Join(resultErr, closer.Close()) }()
 	}
+	if len(opts.Sinks) == 0 {
+		return printFormat(o, opts)
+	}
+	var errs []error
 	for _, sink := range opts.Sinks {
 		sinkOpts := opts
 		sinkOpts.Sinks = nil
@@ -156,14 +215,58 @@ func PrintAndWriteSinks(o any, opts FormatOptions) {
 		sinkOpts.LLM = false
 		if sink.File == "" {
 			sinkOpts.Output = ""
-			MustPrint(o, sinkOpts)
+			if err := printFormat(o, sinkOpts); err != nil {
+				errs = append(errs, fmt.Errorf("%s stdout: %w", sink.Format, err))
+			}
 			continue
 		}
-		sinkOpts.Output = sink.File
-		if err := Formatter.FormatToFile(sinkOpts, cliFormatData(o, sinkOpts)); err != nil {
-			Errorf("failed to write %s output to %s: %v", sink.Format, sink.File, err)
+		if err := FormatToFile(o, sinkOpts, sink.File); err != nil {
+			errs = append(errs, fmt.Errorf("%s output to %s: %w", sink.Format, sink.File, err))
 		}
 	}
+	return errors.Join(errs...)
+}
+
+func printFormat(o any, opts FormatOptions) error {
+	if writer, ok := o.(FormatWriter); ok {
+		return writer.WriteFormat(os.Stdout, opts)
+	}
+	output, err := Format(o, opts)
+	if err != nil {
+		return err
+	}
+	if output != "" && !strings.HasSuffix(output, "\n") && opts.Format != "excel" && opts.Format != "pdf" {
+		output += "\n"
+	}
+	_, err = fmt.Fprint(os.Stdout, output)
+	return err
+}
+
+func writeFormatFile(path string, data []byte) (err error) {
+	return writeFormatFileFrom(path, func(output io.Writer) error {
+		_, err := output.Write(data)
+		return err
+	})
+}
+
+func writeFormatFileFrom(path string, write func(io.Writer) error) (err error) {
+	file, err := os.CreateTemp(filepath.Dir(path), ".clicky-export-*")
+	if err != nil {
+		return err
+	}
+	defer func() { _ = os.Remove(file.Name()) }()
+	if err = write(file); err != nil {
+		_ = file.Close()
+		return err
+	}
+	if err = file.Sync(); err != nil {
+		_ = file.Close()
+		return err
+	}
+	if err = file.Close(); err != nil {
+		return err
+	}
+	return os.Rename(file.Name(), path)
 }
 
 var Human = api.Human

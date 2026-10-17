@@ -352,6 +352,9 @@ func addNamedCommand[T any, R any](
 		if OperationSurfaceFromContext(ctx) == "" {
 			ctx = ContextWithOperationSurface(ctx, "cli")
 		}
+		if err := PreflightOutput(); err != nil {
+			return err
+		}
 
 		result, err := observeGeneratedCommand(ctx, cmd, changedFlagMap(c), args, func() (any, error) {
 			// Create new instance of opts
@@ -387,6 +390,9 @@ func addNamedCommand[T any, R any](
 			return dataOrError(fn(optsValue.Interface().(T)))
 		})
 		if err != nil {
+			if result != nil {
+				err = errors.Join(err, RenderResult(result))
+			}
 			return renderCommandError(name, err)
 		}
 

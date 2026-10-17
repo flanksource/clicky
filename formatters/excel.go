@@ -26,6 +26,9 @@ func NewExcelFormatter() *ExcelFormatter {
 // and a --format excel sink is a file). It is a string because that is the
 // FormatterFunc contract every other format shares.
 func (f *ExcelFormatter) Format(data interface{}) (string, error) {
+	if workbook, ok := data.(ExcelWorkbook); ok {
+		return formatExcelWorkbook(workbook)
+	}
 	// Unwrap single-element varargs slices, as the other formatters do.
 	if slice, ok := data.([]interface{}); ok && len(slice) == 1 {
 		data = slice[0]
