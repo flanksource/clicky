@@ -16,12 +16,12 @@ import (
 // a dependency back on this package.
 
 func init() {
+	entity.PreflightOutput = Flags.ParseFormatSpec
 	entity.RenderResult = func(o any) error {
 		if err := Flags.ParseFormatSpec(); err != nil {
 			return err
 		}
-		PrintAndWriteSinks(o, Flags.FormatOptions)
-		return nil
+		return PrintAndWriteSinks(o, Flags.FormatOptions)
 	}
 	entity.ParseArgs = ParseArgumentsAsMap
 }

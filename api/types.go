@@ -214,8 +214,9 @@ func (v FieldValue) Float() *float64 {
 	case int:
 		return new(float64(int64(val)))
 	case string:
-		if i, err := strconv.ParseFloat(val, 64); err == nil {
-			return new(i)
+		parsed, err := strconv.ParseFloat(val, 64)
+		if err == nil {
+			return &parsed
 		}
 	}
 

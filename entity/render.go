@@ -20,3 +20,6 @@ var ParseArgs = func(args []string) (map[string]any, error) {
 // package stays free of the root clicky package (which owns the global flag
 // state) — preserving the one-way entity → clicky-subpackages dependency.
 var RenderResult = func(o any) error { return nil }
+
+// PreflightOutput validates CLI output options before a generated operation runs.
+var PreflightOutput = func() error { return nil }

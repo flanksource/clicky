@@ -4,8 +4,10 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
+	"github.com/google/cel-go/cel"
 	"github.com/spf13/pflag"
 	"golang.org/x/term"
 
@@ -121,22 +123,55 @@ func (o *FormatOptions) ParseFormatSpec() error {
 	if len(o.Sinks) > 0 {
 		return nil
 	}
+	legacy := []string{}
+	for _, candidate := range []struct {
+		selected bool
+		name     string
+	}{{o.JSON, "json"}, {o.YAML, "yaml"}, {o.CSV, "csv"}, {o.Markdown, "markdown"}, {o.LLM, "llm"}, {o.Pretty, "pretty"}, {o.HTML, "html"}, {o.PDF, "pdf"}, {o.Slack, "slack"}} {
+		if candidate.selected {
+			legacy = append(legacy, candidate.name)
+		}
+	}
+	if len(legacy) > 1 || (o.Format != "" && len(legacy) > 0) {
+		return fmt.Errorf("choose one output format: --format cannot be combined with legacy format flags")
+	}
+	if o.Tree && o.Table {
+		return fmt.Errorf("--tree and --table cannot be combined")
+	}
+	if o.Filter != "" {
+		env, err := cel.NewEnv()
+		if err != nil {
+			return fmt.Errorf("prepare --filter parser: %w", err)
+		}
+		if _, issues := env.Parse(o.Filter); issues != nil && issues.Err() != nil {
+			return fmt.Errorf("invalid --filter: %w", issues.Err())
+		}
+	}
 	spec := strings.TrimSpace(o.Format)
 	if spec == "" {
-		if legacy := legacyBoolFormat(o); legacy != "" {
-			o.Sinks = []FormatSink{{Format: legacy}}
+		if len(legacy) > 0 || o.Output != "" {
+			format := "pretty"
+			if len(legacy) > 0 {
+				format = legacy[0]
+			}
+			if incompatibleStructure(o.Tree, o.Table, format) {
+				return fmt.Errorf("--tree or --table is incompatible with --format %s", format)
+			}
+			o.Sinks = []FormatSink{{Format: format, File: o.Output}}
 		}
 		return nil
 	}
 
 	var stdoutCount int
+	parsed := make([]FormatSink, 0)
+	files := make(map[string]bool)
 	for _, rawPart := range strings.Split(spec, ",") {
 		part := strings.TrimSpace(rawPart)
 		if part == "" {
-			continue
+			return fmt.Errorf("invalid --format %q: empty entry", spec)
 		}
 		name, file, hasFile := strings.Cut(part, "=")
-		name = canonicalFormat(strings.TrimSpace(name))
+		name = canonicalFormat(strings.ToLower(strings.TrimSpace(name)))
 		file = strings.TrimSpace(file)
 		if name == "" {
 			return fmt.Errorf("invalid --format entry %q: empty format name", part)
@@ -147,42 +182,46 @@ func (o *FormatOptions) ParseFormatSpec() error {
 		if hasFile && file == "" {
 			return fmt.Errorf("invalid --format entry %q: empty file path after '='", part)
 		}
+		if incompatibleStructure(o.Tree, o.Table, name) {
+			return fmt.Errorf("--%s is incompatible with --format %s", map[bool]string{true: "tree", false: "table"}[o.Tree], name)
+		}
+		if hasFile {
+			absolute, err := filepath.Abs(file)
+			if err != nil {
+				return fmt.Errorf("invalid output path %q: %w", file, err)
+			}
+			if files[absolute] {
+				return fmt.Errorf("invalid --format: two sinks target the same output file %q", file)
+			}
+			files[absolute] = true
+		}
 		if !hasFile {
 			stdoutCount++
 			if stdoutCount > 1 {
 				return fmt.Errorf("invalid --format %q: more than one stdout format specified", spec)
 			}
 		}
-		o.Sinks = append(o.Sinks, FormatSink{Format: name, File: file})
+		parsed = append(parsed, FormatSink{Format: name, File: file})
 	}
+	if o.Output != "" {
+		if len(parsed) != 1 || parsed[0].File != "" {
+			return fmt.Errorf("--output requires a single stdout --format entry")
+		}
+		parsed[0].File = o.Output
+	}
+	o.Sinks = parsed
 	return nil
 }
 
-// legacyBoolFormat returns the format name selected by the legacy mutually
-// exclusive booleans on FormatOptions, or "" if none is set. Used as a
-// fallback when Format is empty so pre-existing call sites keep working.
-func legacyBoolFormat(o *FormatOptions) string {
-	switch {
-	case o.JSON:
-		return "json"
-	case o.YAML:
-		return "yaml"
-	case o.CSV:
-		return "csv"
-	case o.HTML:
-		return "html"
-	case o.Markdown:
-		return "markdown"
-	case o.LLM:
-		return "llm"
-	case o.PDF:
-		return "pdf"
-	case o.Slack:
-		return "slack"
-	case o.Pretty:
-		return "pretty"
+func incompatibleStructure(tree, table bool, format string) bool {
+	switch format {
+	case "json", "ndjson", "yaml", "toon", "clicky-json":
+		return tree || table
+	case "csv", "excel":
+		return tree
+	default:
+		return false
 	}
-	return ""
 }
 
 func (o FormatOptions) SkipTable() bool {
