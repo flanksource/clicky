@@ -4,7 +4,6 @@ import (
 	"context"
 	"net/http"
 	"strconv"
-	"strings"
 
 	"github.com/flanksource/clicky/api"
 	"github.com/flanksource/clicky/formatters"
@@ -239,7 +238,7 @@ func SetCORSHeaders(w http.ResponseWriter) {
 		// origin's copy to another.
 		header.Add("Vary", "Origin")
 	}
-	header.Set("Access-Control-Expose-Headers", strings.Join(append(ExportHeaderNames(), ErrorTraceHeader), ", "))
+	ExposeHeaders(header, append(ExportHeaderNames(), ErrorTraceHeader)...)
 }
 
 // DeclaresTruncatedTrailer reports whether this response has to declare

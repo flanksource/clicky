@@ -58,6 +58,16 @@ var _ = Describe("Export headers", func() {
 		Expect(exposed).To(Equal(append(ExportHeaderNames(), ErrorTraceHeader)))
 	})
 
+	It("keeps a header a middleware exposed before the handler set CORS", func() {
+		const correlation = "X-Debug-Id"
+		w := httptest.NewRecorder()
+		ExposeHeaders(w.Header(), correlation)
+		SetCORSHeaders(w)
+
+		exposed := strings.Split(w.Header().Get("Access-Control-Expose-Headers"), ", ")
+		Expect(exposed).To(Equal(append([]string{correlation}, append(ExportHeaderNames(), ErrorTraceHeader)...)))
+	})
+
 	It("documents every header for OpenAPI with a description and a type", func() {
 		docs := ExportResponseHeaders()
 
