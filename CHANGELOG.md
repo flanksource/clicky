@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.21.82](https://github.com/flanksource/clicky/compare/v1.21.81...v1.21.82) (2026-10-18)
+
+
+### 🐛 Bug Fixes
+
+* **entity:** preserve existing Access-Control-Expose-Headers when setting CORS ([b269b7e](https://github.com/flanksource/clicky/commit/b269b7ef005fdfc0d6113e4b512b9efb082a0027))
+
 ## [1.21.81](https://github.com/flanksource/clicky/compare/v1.21.80...v1.21.81) (2026-10-18)
 
 
