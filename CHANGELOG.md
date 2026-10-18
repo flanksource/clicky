@@ -5,6 +5,22 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.21.81](https://github.com/flanksource/clicky/compare/v1.21.80...v1.21.81) (2026-10-18)
+
+
+### ⚠ BREAKING CHANGES
+
+* **format:** PrintAndWriteSinks now returns an error and callers must check it. Combining --format with legacy boolean format flags (e.g. --format json --csv) is now an error.
+* **api:** TableRows returns an error when the filter expression does not evaluate to a boolean.
+Adds cel-go and its transitive modules to the uber_demo and valkey go.mod/go.sum files.
+* **process:** Environment now takes EnvironmentOptions. Descriptors takes variadic pids and returns map[int][]Descriptor. parseSnapshot now returns an error, and Discover propagates malformed ps output as an error.
+
+### ✨ Features
+
+* **api:** add typed CEL row filtering for map rows ([023cf17](https://github.com/flanksource/clicky/commit/023cf17e6dd08413e08780691632b7db7574fb0f))
+* **format:** validate format specs up front and propagate sink errors ([03419af](https://github.com/flanksource/clicky/commit/03419af38d517c013c4aa8e854d15c39ad5e6faf))
+* **process:** add cumulative CPU time, interval CPU%, and batched lsof to process ([48fb32e](https://github.com/flanksource/clicky/commit/48fb32e879a1816fa81274fe8ee2ff461df8def6))
+
 ## [1.21.80](https://github.com/flanksource/clicky/compare/v1.21.79...v1.21.80) (2026-10-16)
 
 
