@@ -267,6 +267,15 @@ func cloneErrorResponse(response ErrorResponse) ErrorResponse {
 	return response
 }
 
+// ExposeHeaders adds names to Access-Control-Expose-Headers, keeping whatever a
+// middleware or an earlier handler already exposed. Setting the header outright
+// would hide those from a browser.
+func ExposeHeaders(header http.Header, names ...string) {
+	for _, name := range names {
+		exposeHeader(header, name)
+	}
+}
+
 func exposeHeader(header http.Header, name string) {
 	for _, exposed := range strings.Split(header.Get("Access-Control-Expose-Headers"), ",") {
 		if strings.EqualFold(strings.TrimSpace(exposed), name) {
