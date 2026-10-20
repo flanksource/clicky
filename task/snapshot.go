@@ -58,6 +58,7 @@ type TaskSnapshot struct {
 	// for a task GroupID links it to its parent run so the SSE/JSON clients can
 	// key on a stable id rather than the human-facing name.
 	GroupID         string            `json:"groupId,omitempty"`
+	DependencyIDs   []string          `json:"dependencyIds,omitempty"`
 	Kind            string            `json:"kind,omitempty"`
 	Labels          map[string]string `json:"labels,omitempty"`
 	Owner           string            `json:"owner,omitempty"`
@@ -83,12 +84,24 @@ func SnapshotTask(t *Task, group *Group) TaskSnapshot {
 		Type:   "task",
 		Status: string(t.Status()),
 	}
+	t.mu.Lock()
+	dependencies := append([]*Task(nil), t.dependencies...)
+	t.mu.Unlock()
+	for _, dependency := range dependencies {
+		snap.DependencyIDs = append(snap.DependencyIDs, dependency.ID())
+	}
 	if group != nil {
 		snap.Group = group.Name()
 		snap.GroupID = group.ID()
 	}
 	if d := t.Duration(); d > 0 {
 		snap.Duration = text.HumanizeDuration(d)
+	}
+	if started := t.StartTime(); !started.IsZero() {
+		snap.StartedAt = started.UTC().Format(time.RFC3339Nano)
+	}
+	if finished := t.EndTime(); !finished.IsZero() {
+		snap.FinishedAt = finished.UTC().Format(time.RFC3339Nano)
 	}
 	if err := t.Error(); err != nil {
 		snap.Error = err.Error()
