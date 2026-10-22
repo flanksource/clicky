@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"strings"
 	"time"
 
 	"github.com/flanksource/clicky/task"
@@ -54,6 +55,13 @@ func (c *processTaskController) WriteStdin(data []byte) error {
 }
 
 func bindProcessTask(ctx flanksourceContext.Context, t *task.Task, p *Process) func() {
+	p.WithTask(t)
+	done := make(chan struct{})
+	go killProcessOnCancellation(ctx, p, done)
+	return func() { close(done) }
+}
+
+func (p *Process) bindTask(t *task.Task) {
 	if p.captureOutput == nil {
 		p.captureOutput = NewExecLogger()
 	}
@@ -61,24 +69,31 @@ func bindProcessTask(ctx flanksourceContext.Context, t *task.Task, p *Process) f
 	t.SetOutputProvider(func() task.OutputSnapshot {
 		return task.OutputSnapshot{Stdout: p.GetStdout(), Stderr: p.GetStderr()}
 	})
-	t.SetDetailsProvider(func() any {
-		result := p.Result()
-		return ExecTaskDetails{
-			Command:  result.Command,
-			Args:     append([]string(nil), result.Args...),
-			Cwd:      p.Cwd,
-			PID:      result.PID,
-			Status:   result.Status,
-			ExitCode: result.ExitCode,
-			Started:  result.Started,
-			Duration: result.Duration,
-		}
-	})
+	t.SetDetailsProvider(func() any { return p.taskDetails() })
 	t.SetController(&processTaskController{process: p, task: t})
+}
 
-	done := make(chan struct{})
-	go killProcessOnCancellation(ctx, p, done)
-	return func() { close(done) }
+func (p *Process) taskDetails() ExecTaskDetails {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	details := ExecTaskDetails{Command: p.Cmd, Args: append([]string(nil), p.Args...), Cwd: p.Cwd, PID: p.pid, Started: p.Started, ExitCode: -1, Status: "pending"}
+	if p.exitCode != nil {
+		details.ExitCode = *p.exitCode
+	}
+	switch {
+	case p.Err != nil && strings.Contains(p.Err.Error(), "timed out"):
+		details.Status = "timeout"
+	case p.Err != nil || p.completed && details.ExitCode != 0:
+		details.Status = "failed"
+	case p.completed:
+		details.Status = "success"
+	case p.running:
+		details.Status = "running"
+	}
+	if p.Started != nil {
+		details.Duration = time.Since(*p.Started)
+	}
+	return details
 }
 
 func killProcessOnCancellation(ctx context.Context, p *Process, done <-chan struct{}) {

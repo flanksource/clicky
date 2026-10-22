@@ -79,7 +79,7 @@ func (p *Process) WithCwd(cwd string) *Process {
 }
 
 func (p *Process) WithTask(task *task.Task) *Process {
-	p.task = task
+	p.bindTask(task)
 	return p
 }
 
