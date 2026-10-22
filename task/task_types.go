@@ -122,11 +122,14 @@ type WaitResult struct {
 // RetryConfig holds configuration for task retry behavior
 type RetryConfig struct {
 	RetryableErrors []string // Error message patterns that should trigger retries
-	BaseDelay       time.Duration
-	MaxDelay        time.Duration
-	BackoffFactor   float64
-	JitterFactor    float64
-	MaxRetries      int
+	// Retryable, when set, decides retryability on its own (e.g. errors.Is
+	// against a sentinel); RetryableErrors is then not consulted.
+	Retryable     func(error) bool
+	BaseDelay     time.Duration
+	MaxDelay      time.Duration
+	BackoffFactor float64
+	JitterFactor  float64
+	MaxRetries    int
 }
 
 // DefaultRetryConfig returns sensible default retry configuration
