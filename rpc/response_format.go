@@ -10,6 +10,7 @@ import (
 
 	"github.com/flanksource/clicky"
 	"github.com/flanksource/clicky/formatters"
+	rpchttp "github.com/flanksource/clicky/rpc/http"
 )
 
 func (s *SwaggerServer) writeFormattedResponse(w http.ResponseWriter, r *http.Request, data any, options formatOptions, statusCode int) {
@@ -24,8 +25,11 @@ func (s *SwaggerServer) writeFormattedResponse(w http.ResponseWriter, r *http.Re
 		}
 	}
 
-	output, err := formatters.NewFormatManager().FormatWithContext(r, formatters.FormatOptions{
-		Format: options.Format, Page: options.Page, Limit: options.Limit,
+	finishSetup := rpchttp.Track(r.Context(), "format_setup")
+	manager := formatters.NewFormatManager(formatters.ManagerOptions{NoColor: true})
+	finishSetup()
+	output, err := manager.FormatWithContext(r, formatters.FormatOptions{
+		Format: options.Format, Page: options.Page, Limit: options.Limit, NoColor: true,
 	}, data)
 	if err != nil {
 		if s.structuredErrorResponses() {
