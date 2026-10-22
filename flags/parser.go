@@ -68,6 +68,17 @@ func parseStructFieldsRecursive(structType reflect.Type, fieldPath []int, fields
 
 		// Extract flag metadata
 		cliFileRead, rpcFileRead := parseFileReadTag(field.Tag.Get("clicky"))
+		literalSlice := false
+		if raw := field.Tag.Get("split"); raw != "" {
+			split, err := strconv.ParseBool(raw)
+			if err != nil {
+				return fmt.Errorf("field %s: invalid split tag %q", field.Name, raw)
+			}
+			if field.Type.Kind() != reflect.Slice || field.Type.Elem().Kind() != reflect.String {
+				return fmt.Errorf("field %s: split applies only to []string fields", field.Name)
+			}
+			literalSlice = !split
+		}
 		info := FieldInfo{
 			FieldName:    field.Name,
 			FieldPath:    currentPath,
@@ -80,6 +91,7 @@ func parseStructFieldsRecursive(structType reflect.Type, fieldPath []int, fields
 			Hidden:       field.Tag.Get("hidden") == "true",
 			IsStdin:      isStdin,
 			IsArgs:       isArgs,
+			LiteralSlice: literalSlice,
 			CLIFileRead:  cliFileRead,
 			RPCFileRead:  rpcFileRead,
 			Enum:         splitEnumTag(field.Tag.Get("enum")),
