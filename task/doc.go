@@ -217,9 +217,21 @@ Tasks support automatic retry with exponential backoff:
 		MaxRetries:     3,
 	}
 
-	task := task.StartTaskWithOptions("Flaky Operation", taskFunc,
-		task.WithRetry(retryConfig),
+	task := task.StartTask("Flaky Operation", taskFunc,
+		task.WithRetryConfig(retryConfig),
 	)
+
+RetryableErrors matches error message substrings. Set Retryable to decide by
+identity instead; when set, RetryableErrors is not consulted:
+
+	retryConfig.Retryable = func(err error) bool { return errors.Is(err, ErrInputsChanged) }
+
+RetryConfig.Delay(attempt) exposes the backoff, and Retry applies the same
+policy to code that is not a task:
+
+	err := task.Retry(ctx, retryConfig, func(ctx context.Context, attempt int) error {
+		return indexModule(ctx)
+	})
 
 # Fatal Errors
 
