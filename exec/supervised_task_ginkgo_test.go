@@ -170,6 +170,23 @@ var _ = Describe("Supervised process task runs", func() {
 		}, 5*time.Second).Should(Equal(string(task.StatusCancelled)))
 	})
 
+	It("finishes a deliberately stopped background process as a success, not a cancellation", func() {
+		label := fmt.Sprintf("background-stop-%d", time.Now().UnixNano())
+		supervisor := NewExec("while :; do sleep 1; done").WithProcessGroup().Supervise(SuperviseOptions{
+			Task: SupervisedTaskOptions{Background: true, Labels: map[string]string{"spec": label}},
+		})
+		supervisor.Start()
+		Eventually(supervisor.Status, 5*time.Second).Should(Equal(StatusRunning))
+
+		supervisor.Stop()
+
+		runs := task.Runs(task.RunFilter{Labels: map[string]string{"spec": label}})
+		Expect(runs).To(HaveLen(1))
+		snapshot := task.SnapshotByID(runs[0].ID)[0]
+		Expect([]string{snapshot.Status, snapshot.Error}).To(Equal([]string{string(task.StatusSuccess), ""}))
+		Expect(supervisor.Status()).To(Equal(StatusStopped))
+	})
+
 	It("re-evaluates caller metadata on every snapshot", func() {
 		phase := "generate"
 		group := task.StartGroup[ExecResult]("annotated agent")
