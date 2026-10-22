@@ -85,7 +85,9 @@ func BindFlag(cmd *cobra.Command, info FieldInfo) *FlagValue {
 			var val []string
 			fv.StringSlicePtr = &val
 			if info.FlagName != "" {
-				if info.ShortFlag != "" {
+				if info.LiteralSlice {
+					cmd.Flags().StringArrayVarP(fv.StringSlicePtr, info.FlagName, info.ShortFlag, val, info.Help)
+				} else if info.ShortFlag != "" {
 					cmd.Flags().StringSliceVarP(fv.StringSlicePtr, info.FlagName, info.ShortFlag, val, info.Help)
 				} else {
 					cmd.Flags().StringSliceVar(fv.StringSlicePtr, info.FlagName, val, info.Help)
