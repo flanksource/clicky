@@ -2,6 +2,7 @@ package formatters
 
 import (
 	"context"
+	"github.com/charmbracelet/x/ansi"
 
 	rpchttp "github.com/flanksource/clicky/rpc/http"
 )
@@ -10,13 +11,18 @@ import (
 // forwarded to registered format callbacks.
 func (f *FormatManager) FormatWithContext(ctx any, options FormatOptions, data ...any) (string, error) {
 	defer rpchttp.Track(callerContext(ctx), "format")()
+	options.NoColor = options.NoColor || f.noColor
 	before := collapseFormatInput(data...)
 	before = f.applyBeforeFormatCallbacks(ctx, options, before)
 	output, err := f.formatWithOptions(options, expandFormatInput(before)...)
 	if err != nil {
 		return "", err
 	}
-	return f.applyAfterFormatCallbacks(ctx, options, before, output), nil
+	output = f.applyAfterFormatCallbacks(ctx, options, before, output)
+	if options.NoColor {
+		output = ansi.Strip(output)
+	}
+	return output, nil
 }
 
 func callerContext(value any) context.Context {
