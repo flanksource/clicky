@@ -44,6 +44,7 @@ type FieldInfo struct {
 	Hidden       bool
 	IsStdin      bool
 	IsArgs       bool
+	LiteralSlice bool
 	// CLIFileRead and RPCFileRead opt the field into `@file`/`@url` expansion,
 	// from `clicky:"cli-file-read"` and `clicky:"rpc-file-read"`. They are
 	// separate because the two paths read from different machines: the CLI

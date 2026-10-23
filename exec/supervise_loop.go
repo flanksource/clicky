@@ -231,7 +231,8 @@ func (s *SupervisedProcess) runLoop() {
 		res := proc.Result()
 
 		s.mu.Lock()
-		if s.limitError != nil {
+		limited := s.limitError != nil
+		if limited {
 			res.Error = s.limitError
 			res.Status = "failed"
 		}
@@ -250,7 +251,14 @@ func (s *SupervisedProcess) runLoop() {
 			(s.opts.MaxRestarts <= 0 || restarts < s.opts.MaxRestarts)
 		var taskStatus task.Status
 		var lifecycle Status
+		taskErr := res.Error
 		switch {
+		case (stopping || !desired) && s.opts.Task.Background && !limited:
+			// A background server outlives the work it serves, so a deliberate
+			// Stop() is its normal shutdown; the exit signal it dies on is ours.
+			taskStatus = task.StatusSuccess
+			taskErr = nil
+			lifecycle = StatusStopped
 		case stopping || !desired:
 			taskStatus = task.StatusCancelled
 			lifecycle = StatusStopped
@@ -273,7 +281,7 @@ func (s *SupervisedProcess) runLoop() {
 			}
 		}
 		s.setStatus(lifecycle)
-		s.finishTaskGeneration(taskRun, taskStatus, res.Error)
+		s.finishTaskGeneration(taskRun, taskStatus, taskErr)
 
 		s.mu.Lock()
 		s.current = nil

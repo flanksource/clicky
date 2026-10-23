@@ -7,9 +7,26 @@ import (
 	. "github.com/onsi/gomega"
 
 	"github.com/flanksource/clicky/task"
+	flanksourceContext "github.com/flanksource/commons/context"
 )
 
 var _ = Describe("Exec task details", func() {
+	It("exposes a running process attached with WithTask", func() {
+		process := NewExec("sleep 30").WithProcessGroup()
+		group := task.StartGroup[ExecResult]("attached process")
+		handle := group.Add("sleep", func(_ flanksourceContext.Context, t *task.Task) (ExecResult, error) {
+			return *process.WithTask(t).Run().Result(), nil
+		})
+		DeferCleanup(func() { _ = process.KillTree(); handle.WaitFor() })
+		Eventually(process.Pid, 5*time.Second).Should(BeNumerically(">", 0))
+		details := task.SnapshotByID(group.ID())[1].Details
+		Expect(details).To(BeAssignableToTypeOf(ExecTaskDetails{}))
+		metadata := details.(ExecTaskDetails)
+		Expect(metadata.PID).To(Equal(process.Pid()))
+		Expect(metadata.Status).To(Equal("running"))
+		Expect(metadata.Started).NotTo(BeNil())
+		Expect(metadata.ExitCode).To(Equal(-1))
+	})
 	It("projects ExecResult output into an attached task group", func() {
 		group := task.StartGroup[ExecResult]("commit", task.WithKind("gavel-commit"))
 		process := NewExec("printf stdout; printf stderr >&2")

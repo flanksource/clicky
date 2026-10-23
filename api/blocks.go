@@ -62,7 +62,7 @@ func (h Heading) ANSI() string {
 	if h.Content == nil {
 		return ""
 	}
-	return Text{Content: h.Content.String(), Style: "font-bold"}.ANSI()
+	return formatANSI(h.Content.ANSI(), TailwindStyle{Bold: true})
 }
 
 func (h Heading) HTML() string {

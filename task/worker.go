@@ -248,7 +248,7 @@ func (w *worker) executeWithRetry(task *Task) {
 				task.getBufferedLogger().Warnf("Attempt %d failed, retrying: %v", task.retryCount, err)
 
 				// Calculate backoff delay
-				delay := calculateBackoffDelay(task.retryCount, task.retryConfig)
+				delay := task.retryConfig.Delay(task.retryCount)
 
 				// Wait for delay or cancellation
 				select {
@@ -277,6 +277,9 @@ func shouldRetryError(err error, config RetryConfig) bool {
 	if err == nil {
 		return false
 	}
+	if config.Retryable != nil {
+		return config.Retryable(err)
+	}
 
 	errMsg := strings.ToLower(err.Error())
 	for _, pattern := range config.RetryableErrors {
@@ -287,13 +290,14 @@ func shouldRetryError(err error, config RetryConfig) bool {
 	return false
 }
 
-// calculateBackoffDelay calculates the delay for the next retry with exponential backoff and jitter
-func calculateBackoffDelay(retryCount int, config RetryConfig) time.Duration {
+// Delay returns the wait before retry number attempt (1-based): BaseDelay *
+// BackoffFactor^(attempt-1), capped at MaxDelay, with ±JitterFactor jitter.
+func (config RetryConfig) Delay(attempt int) time.Duration {
 	// Calculate exponential backoff
-	delay := float64(config.BaseDelay) * math.Pow(config.BackoffFactor, float64(retryCount-1))
+	delay := float64(config.BaseDelay) * math.Pow(config.BackoffFactor, float64(attempt-1))
 
 	// Apply maximum delay cap
-	if delay > float64(config.MaxDelay) {
+	if config.MaxDelay > 0 && delay > float64(config.MaxDelay) {
 		delay = float64(config.MaxDelay)
 	}
 

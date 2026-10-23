@@ -14,6 +14,7 @@ description: Tags read from ListOpts, action flags and row types.
 | `required` | `required:"true"` | required flag |
 | `hidden` | `hidden:"true"` | hidden from help |
 | `enum` | `enum:"asc,desc"` | allowed values |
+| `split` | `split:"false"` | repeatable literal `[]string` values; preserves quotes and commas instead of parsing CSV |
 | `args` | `args:"true"` | bind positional arguments |
 | `stdin` | `stdin:"true"` | receives piped stdin (one field per struct) |
 | `clicky` | `clicky:"cli-file-read"` · `clicky:"rpc-file-read"` | opt into `@file` / `@url` expansion |
