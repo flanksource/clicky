@@ -3,7 +3,6 @@ package process
 import (
 	"context"
 	"os"
-	"runtime"
 	"sync/atomic"
 	"time"
 
@@ -110,17 +109,29 @@ var _ = Describe("IntervalCPUPercent", func() {
 
 	It("reads a busy process as busy over the sampled interval", func() {
 		var stop atomic.Bool
-		defer stop.Store(true)
+		started, done := make(chan struct{}), make(chan struct{})
+		DeferCleanup(func() {
+			stop.Store(true)
+			<-done
+		})
 		go func() {
-			runtime.LockOSThread()
+			defer close(done)
+			close(started)
 			for !stop.Load() {
 			}
 		}()
-		first := discoverSelf()
-		time.Sleep(1500 * time.Millisecond)
-		percent, err := IntervalCPUPercent(&first, discoverSelf())
-		Expect(err).NotTo(HaveOccurred())
-		Expect(percent).To(HaveValue(BeNumerically(">", 40)))
+		<-started
+
+		// Linux ps truncates CPU time to seconds; CI contention can leave a
+		// busy process below that resolution for an entire sampling interval.
+		var previous *CPUSample
+		Eventually(func() *float64 {
+			current := discoverSelf()
+			percent, err := IntervalCPUPercent(previous, current)
+			Expect(err).NotTo(HaveOccurred())
+			previous = &current
+			return percent
+		}, 15*time.Second, 2*time.Second).Should(HaveValue(BeNumerically(">", 40)))
 	})
 })
 
