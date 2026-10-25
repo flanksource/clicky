@@ -5,6 +5,7 @@ import (
 	"os"
 	"runtime"
 	"sync/atomic"
+	"testing"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -49,7 +50,7 @@ var _ = Describe("cumulative CPU time", func() {
 	)
 
 	It("fails loudly on a ps row with an unparsable numeric column", func() {
-		_, err := parseSnapshot([]byte("9000 1 x.y 2.0 1024 S 0:01.00 Mon Sep  8 10:00:00 2026 agent"), time.UTC)
+		_, err := parseSnapshot([]byte("9000 1 x.y 2.0 1024 S 0:01.00 Mon Sep  8 10:00:00 2026 501 acme agent"), time.UTC)
 		Expect(err).To(MatchError(And(ContainSubstring("pcpu"), ContainSubstring("x.y"))))
 	})
 
@@ -132,4 +133,9 @@ func discoverSelf() CPUSample {
 	self, found := snapshot.Get(os.Getpid())
 	Expect(found).To(BeTrue())
 	return CPUSample{Process: self, At: at}
+}
+
+func TestProcess(t *testing.T) {
+	RegisterFailHandler(Fail)
+	RunSpecs(t, "Process Snapshot")
 }

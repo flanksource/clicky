@@ -474,6 +474,42 @@ func (s *SupervisedProcess) prune(live []int32) {
 	}
 }
 
+// SuperviseOptions configures the supervision loop.
+type SuperviseOptions struct {
+	// ForceStop kills the owned process tree immediately instead of waiting for StopGrace.
+	ForceStop bool
+	// Limits bounds resource usage; zero values disable individual limits.
+	Limits ResourceLimits
+	// RestartPolicy controls restart-on-exit; defaults to RestartNo.
+	RestartPolicy RestartPolicy
+	// MaxRestarts caps automatic restarts (0 = unlimited).
+	MaxRestarts int
+	// StopGrace is the SIGTERM→SIGKILL window on Stop; defaults to 5s.
+	StopGrace time.Duration
+	// DetectPorts runs the lsof port-watch loop after each start.
+	DetectPorts bool
+	// CaptureLimit bounds the in-memory stdout/stderr each generation retains.
+	// Zero applies defaultCaptureLimit; negative keeps the capture unbounded.
+	// Only the snapshot buffer is bounded — Stream and WithStdioPipe
+	// destinations still receive every byte, so a tee'd log file stays complete.
+	CaptureLimit int
+	// OnStart, if set, is called before each (re)start (e.g. to write a log header).
+	OnStart func()
+	// OnStarted, if set, is called after each (re)start once the child is running
+	// and is the current process — i.e. its Stdin()/StdoutReader() are available.
+	// Used by JSON-RPC providers to (re)bind their client to the fresh child's
+	// stdio and re-send the initialize handshake. It is invoked synchronously on
+	// the supervise loop, so blocking work (e.g. awaiting a handshake response)
+	// MUST be done in a goroutine, otherwise resource monitoring stalls.
+	OnStarted func(*Process)
+	// OnExit, if set, is called once when the supervise loop ends permanently
+	// (the process exited and will not be restarted, or it was stopped).
+	OnExit func()
+	// Task customizes the automatic task run created for every process
+	// generation. Zero values use the supervised-process defaults.
+	Task SupervisedTaskOptions
+}
+
 func (s *SupervisedProcess) store(snap ResourceSnapshot, tree []ProcessSample) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

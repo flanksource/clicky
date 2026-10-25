@@ -176,6 +176,7 @@ var _ = Describe("Supervised process task runs", func() {
 			Task: SupervisedTaskOptions{Background: true, Labels: map[string]string{"spec": label}},
 		})
 		supervisor.Start()
+		DeferCleanup(supervisor.Stop)
 		Eventually(supervisor.Status, 5*time.Second).Should(Equal(StatusRunning))
 
 		supervisor.Stop()

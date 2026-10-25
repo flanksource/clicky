@@ -22,6 +22,7 @@ func (p *Process) Result() *ExecResult {
 	started := p.Started
 	pid := p.pid
 	completed := p.completed
+	duration := p.durationLocked()
 	exitCode := -1
 	if p.exitCode != nil {
 		exitCode = *p.exitCode
@@ -34,6 +35,7 @@ func (p *Process) Result() *ExecResult {
 		ExitCode: exitCode,
 		Error:    procErr,
 		Started:  started,
+		Duration: duration,
 		Command:  p.Cmd,
 		Args:     p.Args,
 		process:  p,
@@ -53,10 +55,15 @@ func (p *Process) Result() *ExecResult {
 		result.Status = "failed"
 	}
 	result.PID = pid
-	if started != nil {
-		result.Duration = time.Since(*started)
-	}
 	return result
+}
+
+// durationLocked requires p.mu to be held for reading.
+func (p *Process) durationLocked() time.Duration {
+	if p.running && p.Started != nil {
+		return time.Since(*p.Started)
+	}
+	return p.duration
 }
 
 func (e *ExecResult) Refresh() *ExecResult { return e.process.Result() }

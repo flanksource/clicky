@@ -11,6 +11,26 @@ import (
 )
 
 var _ = Describe("Exec task details", func() {
+	It("freezes process duration while its attached task continues", func() {
+		process := NewExec("true").WithoutShell()
+		group := task.StartGroup[ExecResult]("completed process")
+		release, finished := make(chan struct{}), make(chan ExecResult, 1)
+		handle := group.Add("process and follow-up", func(_ flanksourceContext.Context, t *task.Task) (ExecResult, error) {
+			result := *process.WithTask(t).Run().Result()
+			finished <- result
+			<-release
+			return result, nil
+		})
+		DeferCleanup(func() { close(release); handle.WaitFor() })
+		var result ExecResult
+		Eventually(finished, 5*time.Second).Should(Receive(&result))
+		Expect(result.Duration).To(BeNumerically(">", 0))
+		Expect(handle.Status()).To(Equal(task.StatusRunning))
+		Consistently(func() time.Duration {
+			return task.SnapshotByID(group.ID())[1].Details.(ExecTaskDetails).Duration
+		}, 50*time.Millisecond).Should(Equal(result.Duration))
+	})
+
 	It("exposes a running process attached with WithTask", func() {
 		process := NewExec("sleep 30").WithProcessGroup()
 		group := task.StartGroup[ExecResult]("attached process")

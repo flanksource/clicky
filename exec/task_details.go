@@ -90,9 +90,7 @@ func (p *Process) taskDetails() ExecTaskDetails {
 	case p.running:
 		details.Status = "running"
 	}
-	if p.Started != nil {
-		details.Duration = time.Since(*p.Started)
-	}
+	details.Duration = p.durationLocked()
 	return details
 }
 

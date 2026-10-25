@@ -23,6 +23,10 @@ func groupPids(root int32) ([]int32, bool) {
 	if err != nil || pgid != int(root) {
 		return nil, false
 	}
+	return processGroupPids(pgid)
+}
+
+func processGroupPids(pgid int) ([]int32, bool) {
 	all, err := gops.Pids()
 	if err != nil {
 		return nil, false
