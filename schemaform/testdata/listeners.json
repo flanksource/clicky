@@ -1,0 +1,62 @@
+{
+  "$comment": "Ported from clicky-ui JsonSchemaFormListeners.stories.tsx (listenersSchema); the demo expression is written in CEL and guards the absent value.",
+  "type": "object",
+  "required": ["MemberClassGroupOption"],
+  "properties": {
+    "MemberClassGroupOption": {
+      "type": "string",
+      "title": "Member class group",
+      "enum": ["01", "02"],
+      "x-enum-labels": { "01": "Add", "02": "Update" },
+      "x-on-change": [
+        {
+          "when": { "const": "01" },
+          "show": ["NewMemberClassGroup"],
+          "require": ["NewMemberClassGroup"],
+          "hide": ["CurrentMemberClassGroup", "ChangeReason"],
+          "reset": ["CurrentMemberClassGroup", "ChangeReason"],
+          "else": {
+            "hide": ["NewMemberClassGroup"],
+            "show": ["CurrentMemberClassGroup", "ChangeReason"],
+            "require": ["CurrentMemberClassGroup"],
+            "reset": ["NewMemberClassGroup"],
+            "set": { "ChangeReason": "Amendment" }
+          }
+        }
+      ]
+    },
+    "NewMemberClassGroup": { "type": "string", "title": "New member class group" },
+    "CurrentMemberClassGroup": { "type": "string", "title": "Current member class group" },
+    "ChangeReason": { "type": "string", "title": "Change reason" },
+    "LoanOverride": {
+      "type": "string",
+      "title": "Loan override",
+      "enum": ["00", "01"],
+      "x-enum-labels": { "00": "No", "01": "Yes" },
+      "x-on-change": [
+        {
+          "when": { "const": "01" },
+          "show": ["LoanAmount"],
+          "require": ["LoanAmount"],
+          "enable": ["LoanRate"],
+          "set": { "LoanAmount": 1000 },
+          "else": { "hide": ["LoanAmount"], "disable": ["LoanRate"], "reset": ["LoanAmount", "LoanRate"] }
+        }
+      ]
+    },
+    "LoanAmount": {
+      "type": "number",
+      "title": "Loan amount",
+      "x-on-change": [
+        {
+          "when": { "expr": "value != null && value > 100000" },
+          "show": ["ApprovalCode"],
+          "require": ["ApprovalCode"],
+          "else": { "hide": ["ApprovalCode"], "reset": ["ApprovalCode"] }
+        }
+      ]
+    },
+    "LoanRate": { "type": "number", "title": "Loan rate", "default": 3.5 },
+    "ApprovalCode": { "type": "string", "title": "Approval code" }
+  }
+}
