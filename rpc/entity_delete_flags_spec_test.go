@@ -77,7 +77,7 @@ var _ = Describe("entity delete with flags over HTTP", func() {
 		Expect(operation.Method).To(Equal(http.MethodDelete))
 		Expect(operation.Path).To(Equal("/api/v1/" + name + "/{id}"))
 		Expect(operation.Parameters).To(ConsistOf(
-			RPCParameter{Name: "id", Type: "string", Description: "Positional argument from command", Required: true, In: "path"},
+			RPCParameter{Name: "id", Type: "string", Description: "Positional argument from command", Required: true, In: "path", Positional: true},
 			RPCParameter{Name: "dry-run", Type: "boolean", Description: "Preview the delete without applying it", In: "query", Default: false},
 			RPCParameter{Name: "fingerprint", Type: "string", Description: "Fingerprint returned by the preview", In: "query"},
 		))

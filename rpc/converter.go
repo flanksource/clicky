@@ -100,7 +100,7 @@ func addPositionalParameter(cmd *cobra.Command, schema *Schema, parameters []RPC
 		schema.Required = append(schema.Required, name)
 	}
 	// In is updated to "path" later if the parameter appears in the URL.
-	return append(parameters, RPCParameter{Name: name, Type: typ, Description: description, Required: required, In: "query"})
+	return append(parameters, RPCParameter{Name: name, Type: typ, Description: description, Required: required, In: "query", Positional: true})
 }
 
 // addFlagParameters publishes the command's own flags. LocalNonPersistentFlags

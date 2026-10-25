@@ -284,18 +284,10 @@ func (e *CommandExecutor) ExtractRequestFromHTTP(r *http.Request, op *RPCOperati
 
 			// Handle flat JSON structure where each field is a flag or args
 			for key, value := range bodyData {
-				switch key {
-				case "args":
-					// Convert args to []string
-					if argsArray, ok := value.([]interface{}); ok {
-						for _, arg := range argsArray {
-							req.Args = append(req.Args, fmt.Sprintf("%v", arg))
-						}
-					} else if argStr, ok := value.(string); ok {
-						// Single string argument
-						req.Args = append(req.Args, argStr)
-					}
-				case "flags":
+				switch {
+				case isPositionalArgument(op, key):
+					req.Args = append(req.Args, operationArgs(value)...)
+				case key == "flags":
 					// Handle nested flags structure for backward compatibility
 					if flagsMap, ok := value.(map[string]interface{}); ok {
 						for flagName, flagValue := range flagsMap {
@@ -310,69 +302,73 @@ func (e *CommandExecutor) ExtractRequestFromHTTP(r *http.Request, op *RPCOperati
 		}
 	}
 
-	// Extract query parameters LAST (so they take precedence over JSON body)
-	// First, handle "args" specially since it's a common parameter
-	if r.URL.Query().Has("args") {
-		value := r.URL.Query().Get("args")
-		// Special handling for args parameter - goes to Args array, not Flags map
-		req.Args = []string{} // Clear existing args for precedence
-		if value != "" {
-			// Handle comma-separated values or single value
-			req.Args = strings.Split(value, ",")
-			// Trim whitespace from each arg
-			for i := range req.Args {
-				req.Args[i] = strings.TrimSpace(req.Args[i])
+	// Extract query parameters LAST (so they take precedence over JSON body).
+	// The positional argument — "args" or the name Use gives it — replaces the
+	// body's args; its value may be comma-separated.
+	query := r.URL.Query()
+	for name := range query {
+		if !isPositionalArgument(op, name) {
+			continue
+		}
+		req.Args = []string{}
+		if value := query.Get(name); value != "" {
+			for _, arg := range strings.Split(value, ",") {
+				req.Args = append(req.Args, strings.TrimSpace(arg))
 			}
 		}
 	}
 
 	// Then handle all other query parameters defined in the operation
 	for _, param := range op.Parameters {
-		if param.In == "query" {
-			value := r.URL.Query().Get(param.Name)
-			// Skip "args" since we already handled it above
-			if param.Name == "args" {
-				continue
-			}
-			// Always check if the parameter exists in the query, even if empty
-			if r.URL.Query().Has(param.Name) {
-				req.Flags[param.Name] = value // Override body value, even if empty
-			}
+		if param.In == "query" && !isPositionalArgument(op, param.Name) && query.Has(param.Name) {
+			req.Flags[param.Name] = query.Get(param.Name) // Override body value, even if empty
 		}
 	}
 
 	// A missing required parameter still returns the extracted request, so the
 	// error response can echo the input the caller actually sent.
+	return req, missingRequiredParameter(req, op)
+}
+
+// isPositionalArgument reports whether a request field carries the operation's
+// positional args: the generic "args", or a non-path parameter marked Positional.
+// Path parameters reach Args through the URL template instead.
+func isPositionalArgument(op *RPCOperation, name string) bool {
+	if name == "args" {
+		return true
+	}
 	for _, param := range op.Parameters {
-		if param.Required {
-			if param.Name == "args" && len(req.Args) == 0 {
-				return req, fmt.Errorf("required parameter %s is missing", param.Name)
-			}
-			if _, exists := req.Flags[param.Name]; !exists && param.Name != "args" {
-				return req, fmt.Errorf("required parameter %s is missing", param.Name)
-			}
+		if param.Name == name {
+			return param.Positional && param.In != "path"
 		}
 	}
+	return false
+}
 
-	return req, nil
+func missingRequiredParameter(req *ExecutionRequest, op *RPCOperation) error {
+	for _, param := range op.Parameters {
+		if !param.Required {
+			continue
+		}
+		if param.Positional || param.Name == "args" {
+			if len(req.Args) == 0 {
+				return fmt.Errorf("required parameter %s is missing", param.Name)
+			}
+			continue
+		}
+		if _, exists := req.Flags[param.Name]; !exists {
+			return fmt.Errorf("required parameter %s is missing", param.Name)
+		}
+	}
+	return nil
 }
 
 // ValidateParameters validates request parameters against operation schema
 func (e *CommandExecutor) ValidateParameters(req *ExecutionRequest, op *RPCOperation) error {
+	if err := missingRequiredParameter(req, op); err != nil {
+		return err
+	}
 	for _, param := range op.Parameters {
-		if param.Required {
-			if param.Name == "args" {
-				if len(req.Args) == 0 {
-					return fmt.Errorf("required parameter %s is missing", param.Name)
-				}
-				continue
-			}
-
-			if _, exists := req.Flags[param.Name]; !exists {
-				return fmt.Errorf("required parameter %s is missing", param.Name)
-			}
-		}
-
 		// Type validation for flags
 		if value, exists := req.Flags[param.Name]; exists {
 			if err := e.validateParameterType(value, param.Type); err != nil {
