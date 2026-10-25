@@ -5,6 +5,73 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.21.83](https://github.com/flanksource/clicky/compare/v1.21.82...v1.21.83) (2026-10-25)
+
+
+### ⚠ BREAKING CHANGES
+
+* **flags:** @http(s) and .xlsx file references fail unless the binary calls
+urlfetch.Use() or excel.Use(). NewCELEngine now takes cel.EnvOption extras instead
+of bundling gomplate functions. Help section titles changed (e.g. "Logging:"
+replaces "Logging flags:").
+
+Claude-Session-Id: 1119232f-07be-4e85-b3e4-581b0d241731
+* **api:** applications that use --filter, TableRows/TreeNode, or the
+excel/pdf formats must call celfilter.Use() (or gomplatefilter.Use()),
+excel.Use(), and pdf.Use() at startup. ExcelFormatter, ExcelWorkbook, ExcelSheet,
+FormatManager.Excel/ExcelToFile/ExcelExport/Pdf/HTMLPDF, and PrettyMixin are
+removed. Use excel.Formatter, excel.Workbook, and excel.Sheet instead.
+
+Claude-Session-Id: 1119232f-07be-4e85-b3e4-581b0d241731
+* repeatable flags with a default now emit a JSON array default in the RPC schema instead of the pflag string form "[a,b]". Clients that parsed the string must accept an array.
+
+Claude-Session-Id: 1119232f-07be-4e85-b3e4-581b0d241731
+* **ai:** the ai package is removed. Imports of github.com/flanksource/clicky/ai
+and its cache subpackage (including ai.NewAgentManager, ai.DefaultConfig,
+ai.BindFlags, ai.ExecutePromptTyped, and ai.CleanupJSONResponse) will no longer compile.
+The --agent, --ai-* and related flags are no longer registered by BindFlags.
+
+Claude-Session-Id: 1119232f-07be-4e85-b3e4-581b0d241731
+
+### ♻️ Code Refactoring
+
+* **ai:** remove ai package with agents, response cache, and cost tracking ([259e0f8](https://github.com/flanksource/clicky/commit/259e0f8e13e114aa22160bd0b7791dbde8812404))
+* **api:** make CEL filter engine and Excel/PDF formats opt-in via Use() registration ([5252a5a](https://github.com/flanksource/clicky/commit/5252a5ab8b7f34c7abaf6f23786ccb3bb2095679))
+* **flags:** make URL and spreadsheet file readers opt-in via registration ([33cd089](https://github.com/flanksource/clicky/commit/33cd0890955ce0b69b0744281c3688d44cde2237))
+
+
+### ✅ Tests
+
+* **schemaform:** add conditionals and listeners fixtures plus example clihelp schema ([9994983](https://github.com/flanksource/clicky/commit/9994983b67e88a7e2e5a3af15ed7e0c851efc361))
+
+
+### ✨ Features
+
+* add --timings report and split exec Run into focused steps ([b4ad7eb](https://github.com/flanksource/clicky/commit/b4ad7ebecad38691806fad1800ba34bb8225bbbf))
+* add clicky logo kit and document interactive forms and grouped CLI help ([26c4a04](https://github.com/flanksource/clicky/commit/26c4a049e16bc24342259335276abdd8011ab52d))
+* add grouped CLI help, interactive flag forms, and entity id completion ([5dd7d44](https://github.com/flanksource/clicky/commit/5dd7d44ee967b879ccf5ba8c8cb61784d72f7ae8))
+* **flags:** support literal repeated string values ([9e6dc29](https://github.com/flanksource/clicky/commit/9e6dc292f3152db25e2c16f748beae0d461948d7))
+* **formatters:** add NoColor option to format manager for non-terminal output ([c160188](https://github.com/flanksource/clicky/commit/c160188b484fb88499aeb5d45cee91865bc2da87))
+* **schemaform:** add interactive JSON Schema forms and a -i flag for commands ([7436670](https://github.com/flanksource/clicky/commit/7436670dd4b6a28117e42a35faa68c44229e66e2))
+* **task:** add planned steps and expose dependency and timing in task snapshots ([17dfe67](https://github.com/flanksource/clicky/commit/17dfe6789f1f0f31fe3a6d4fdc1058d7695122ba))
+* **task:** retry by error identity and share backoff with non-task callers ([c22033b](https://github.com/flanksource/clicky/commit/c22033bd4a3f0437afd919520f0eb4446eff635d))
+
+
+### 🐛 Bug Fixes
+
+* **api:** preserve authored colors and styles in heading ANSI output ([da1ef00](https://github.com/flanksource/clicky/commit/da1ef00c9788eee9188e0d64842ffc8bda5fdd91))
+* **exec:** expose attached process details ([5841254](https://github.com/flanksource/clicky/commit/5841254dce3f04d159c4ec1f78672b563d175f3d))
+* **exec:** finish deliberately stopped background processes as success ([77e7ea2](https://github.com/flanksource/clicky/commit/77e7ea2b354ff9d2826fb50c35629deab4c9585b))
+* **process:** record unreadable process disk I/O as ioError instead of failing snapshot ([503c6ca](https://github.com/flanksource/clicky/commit/503c6ca55f0dda9714ec17e8619e5dcbf2133ef0))
+* **rpc:** deliver named positional arguments as args instead of flags ([17a2f1f](https://github.com/flanksource/clicky/commit/17a2f1ffcc2f25b7717799ea123e7709ab39b84d))
+* **rpc:** disable ANSI color codes in swagger formatted responses ([90151b8](https://github.com/flanksource/clicky/commit/90151b82e509c414d8bbbd6be45211adfb49867c))
+* **task:** stop retries after context cancellation and ignore zero task start times ([f35ab3a](https://github.com/flanksource/clicky/commit/f35ab3a3609038c588d46626d4da64d679b401df))
+
+
+### 🔧 Maintenance
+
+* update generated and lock files ([f9fa690](https://github.com/flanksource/clicky/commit/f9fa69045a02c1cf2de249131dace495b30b9711))
+
 ## [1.21.82](https://github.com/flanksource/clicky/compare/v1.21.81...v1.21.82) (2026-10-18)
 
 
