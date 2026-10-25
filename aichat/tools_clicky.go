@@ -128,7 +128,10 @@ func (p *CobraToolProvider) ToolSet(ctx context.Context) (capchat.ToolSet, error
 		if err != nil {
 			return capchat.ToolSet{}, fmt.Errorf("operation %q response schema: %w", op.Name, err)
 		}
-		if rpc.IsListOperation(op) {
+		// A PagedFunc list streams rows that follow no response type, so its only
+		// output is the Markdown preview. Every other list returns its typed page as
+		// structured data alongside that preview, and the schema describes the page.
+		if rpc.IsListOperation(op) && op.PagedFunc != nil {
 			outputSchema = map[string]any{"type": "string", "description": "Markdown list preview, up to 25 full rows, with paging information"}
 		}
 		set.Definitions = append(set.Definitions, definition)
@@ -261,7 +264,11 @@ func (p *CobraToolProvider) handlerFor(op *rpc.RPCOperation, scope context.Conte
 			if op.PagedFunc != nil {
 				return data, nil
 			}
-			return formatters.NewFormatManager().FormatWithOptions(formatters.FormatOptions{Format: "llm"}, data)
+			preview, err := formatters.NewFormatManager().FormatWithOptions(formatters.FormatOptions{Format: "llm"}, data)
+			if err != nil {
+				return nil, fmt.Errorf("render %s for the model: %w", op.Name, err)
+			}
+			return api.StructuredToolResult{Content: preview, Structured: data}, nil
 		}
 		return data, nil
 	}
