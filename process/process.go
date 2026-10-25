@@ -9,6 +9,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	gops "github.com/shirou/gopsutil/v4/process"
@@ -35,12 +36,16 @@ type Process struct {
 	CPUPercent float64 `json:"cpuPercent,omitempty"`
 	// CPUTime is the cumulative user+system CPU time the process has used
 	// (JSON: nanoseconds). Resolution is 1s on linux ps, 10ms on darwin ps.
-	CPUTime          time.Duration     `json:"cpuTime,omitempty"`
-	MemoryPercent    float64           `json:"memoryPercent,omitempty"`
-	RSSBytes         uint64            `json:"rssBytes,omitempty"`
-	IO               *ProcessIO        `json:"io,omitempty"`
-	IOError          string            `json:"ioError,omitempty"`
-	StartedAt       *time.Time        `json:"startedAt,omitempty"`
+	CPUTime       time.Duration `json:"cpuTime,omitempty"`
+	MemoryPercent float64       `json:"memoryPercent,omitempty"`
+	RSSBytes      uint64        `json:"rssBytes,omitempty"`
+	IO            *ProcessIO    `json:"io,omitempty"`
+	IOError       string        `json:"ioError,omitempty"`
+	StartedAt     *time.Time    `json:"startedAt,omitempty"`
+	// UID is the process's owner and User its name, which linux ps cuts to
+	// 8 characters.
+	UID              int               `json:"uid"`
+	User             string            `json:"user,omitempty"`
 	Command          string            `json:"command,omitempty"`
 	CWD              string            `json:"cwd,omitempty"`
 	CWDError         string            `json:"cwdError,omitempty"`
@@ -194,6 +199,18 @@ func (s *Snapshot) PopulateWorkingDirectories(ctx context.Context, pids []int) {
 }
 
 func (s *Snapshot) PopulateIO(ctx context.Context, pids []int) error {
+	return s.populateIO(ctx, pids, readProcessIO)
+}
+
+func readProcessIO(ctx context.Context, pid int) (*gops.IOCountersStat, error) {
+	handle, err := gops.NewProcessWithContext(ctx, int32(pid))
+	if err != nil {
+		return nil, err
+	}
+	return handle.IOCountersWithContext(ctx)
+}
+
+func (s *Snapshot) populateIO(ctx context.Context, pids []int, readIO func(context.Context, int) (*gops.IOCountersStat, error)) error {
 	for _, pid := range pids {
 		item, found := s.processes[pid]
 		// A zombie reads as all-zero counters and an exiting process as EPERM:
@@ -201,22 +218,23 @@ func (s *Snapshot) PopulateIO(ctx context.Context, pids []int) error {
 		if !found || item.Status == "zombie" || item.Status == "exiting" {
 			continue
 		}
-		handle, err := gops.NewProcessWithContext(ctx, int32(pid))
+		counters, err := readIO(ctx, pid)
 		if err == nil {
-			var counters *gops.IOCountersStat
-			counters, err = handle.IOCountersWithContext(ctx)
-			if err == nil {
-				item.IO = &ProcessIO{DiskReadBytes: counters.DiskReadBytes, DiskWriteBytes: counters.DiskWriteBytes}
-				s.processes[pid] = item
-				continue
-			}
+			item.IO = &ProcessIO{DiskReadBytes: counters.DiskReadBytes, DiskWriteBytes: counters.DiskWriteBytes}
+			item.IOError = ""
+			s.processes[pid] = item
+			continue
 		}
 		if errors.Is(err, gops.ErrorProcessNotRunning) || errors.Is(err, os.ErrNotExist) {
 			continue
 		}
 		// Another user's or a setuid process (ps, sudo) cannot be read by the
-		// caller: that is the process's reading, not the snapshot's failure.
-		if errors.Is(err, gops.ErrorNotPermitted) || errors.Is(err, os.ErrPermission) {
+		// caller, and any other errno the kernel gives is about that one
+		// process too: that is the process's reading, not the snapshot's
+		// failure.
+		var errno syscall.Errno
+		if errors.Is(err, gops.ErrorNotPermitted) || errors.Is(err, os.ErrPermission) || errors.As(err, &errno) {
+			item.IO = nil
 			item.IOError = fmt.Sprintf("read disk I/O: %v", err)
 			s.processes[pid] = item
 			continue
@@ -245,9 +263,10 @@ func parseSnapshot(output []byte, location *time.Location) (*Snapshot, error) {
 	return NewSnapshot(processes), nil
 }
 
-// parseProcessLine parses one row of psFormat; lstart spans five fields.
+// parseProcessLine parses one row of psFormat; lstart spans five fields,
+// and user one, as owner names hold no spaces.
 func parseProcessLine(line string, location *time.Location) (Process, error) {
-	const commandField = 12
+	const uidField, userField, commandField = 12, 13, 14
 	fields := strings.Fields(line)
 	if len(fields) <= commandField {
 		return Process{}, fmt.Errorf("ps row has %d fields, want more than %d: %q", len(fields), commandField, line)
@@ -258,9 +277,11 @@ func parseProcessLine(line string, location *time.Location) (Process, error) {
 	memory, memoryErr := strconv.ParseFloat(fields[3], 64)
 	rssKB, rssErr := strconv.ParseUint(fields[4], 10, 64)
 	cpuTime, cpuTimeErr := parseCPUTime(fields[6])
-	started, startedErr := time.ParseInLocation("Mon Jan 2 15:04:05 2006", strings.Join(fields[7:commandField], " "), location)
+	started, startedErr := time.ParseInLocation("Mon Jan 2 15:04:05 2006", strings.Join(fields[7:uidField], " "), location)
+	uid, uidErr := strconv.Atoi(fields[uidField])
 	if err := errors.Join(columnError("pid", pidErr), columnError("ppid", ppidErr), columnError("pcpu", cpuErr),
-		columnError("pmem", memoryErr), columnError("rss", rssErr), columnError("time", cpuTimeErr), columnError("lstart", startedErr)); err != nil {
+		columnError("pmem", memoryErr), columnError("rss", rssErr), columnError("time", cpuTimeErr), columnError("lstart", startedErr),
+		columnError("uid", uidErr)); err != nil {
 		return Process{}, fmt.Errorf("ps row %q: %w", line, err)
 	}
 	status, active := processStatus(fields[5])
@@ -268,7 +289,7 @@ func parseProcessLine(line string, location *time.Location) (Process, error) {
 	return Process{
 		PID: pid, PPID: ppid, Status: status, Active: active,
 		CPUPercent: cpu, CPUTime: cpuTime, MemoryPercent: memory, RSSBytes: rssKB * 1024,
-		StartedAt: &started, Command: strings.Join(fields[commandField:], " "),
+		StartedAt: &started, UID: uid, User: fields[userField], Command: strings.Join(fields[commandField:], " "),
 	}, nil
 }
 

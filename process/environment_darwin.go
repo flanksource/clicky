@@ -22,6 +22,10 @@ func readEnvironment(ctx context.Context, pid int) ([]string, error) {
 	return parseDarwinEnvironment(raw)
 }
 
+// parseDarwinEnvironment reads the environment out of a kern.procargs2
+// payload: argc, the executable path and its NUL padding, argc arguments,
+// the environment, an empty string ending it, then the apple strings
+// (executable_file=, ptr_munge=, ...) the kernel passes, which are none of it.
 func parseDarwinEnvironment(raw []byte) ([]string, error) {
 	if len(raw) < 4 {
 		return nil, fmt.Errorf("kern.procargs2 returned %d bytes", len(raw))
@@ -32,15 +36,13 @@ func parseDarwinEnvironment(raw []byte) ([]string, error) {
 	if index == len(parts) {
 		return nil, fmt.Errorf("kern.procargs2 omitted executable path")
 	}
-	index = firstNonEmpty(parts, index+1)
-	for skipped := 0; skipped < argumentCount && index < len(parts); skipped++ {
-		index = firstNonEmpty(parts, index+1)
+	index = firstNonEmpty(parts, index+1) + argumentCount
+	if index > len(parts) {
+		return nil, fmt.Errorf("kern.procargs2 holds fewer than its %d arguments", argumentCount)
 	}
-	entries := make([]string, 0, len(parts)-index)
-	for ; index < len(parts); index++ {
-		if len(parts[index]) > 0 {
-			entries = append(entries, string(parts[index]))
-		}
+	var entries []string
+	for ; index < len(parts) && len(parts[index]) > 0; index++ {
+		entries = append(entries, string(parts[index]))
 	}
 	return entries, nil
 }

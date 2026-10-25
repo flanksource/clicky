@@ -3,6 +3,7 @@ package exec
 import (
 	"os"
 	"strings"
+	"testing"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
@@ -47,4 +48,9 @@ func environmentMap(output string) map[string]string {
 		}
 	}
 	return env
+}
+
+func TestExec(t *testing.T) {
+	RegisterFailHandler(Fail)
+	RunSpecs(t, "Process")
 }

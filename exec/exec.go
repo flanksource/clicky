@@ -86,6 +86,7 @@ type Process struct {
 	// true only for a clean zero-exit.
 	completed bool
 	succeeded bool
+	duration  time.Duration
 
 	Started *time.Time
 	cmd     *exec.Cmd
@@ -284,30 +285,84 @@ func (p *Process) parseCommand() (binary string, args []string, err error) {
 }
 
 // Run executes the process and captures its output and exit status
-
 func (p *Process) Run() *Process {
-	// Close done channel when Run completes
 	if p.done != nil {
 		defer close(p.done)
 	}
-
 	// Close the parent-side stdio pipe ends when Run returns so they do not leak
 	// across supervised restarts (the child has already exited / EOF'd by then).
 	if p.wantStdioPipe {
-		defer func() {
-			p.mu.Lock()
-			sin, sout := p.stdin, p.stdoutR
-			p.stdin, p.stdoutR = nil, nil
-			p.mu.Unlock()
-			if sin != nil {
-				_ = sin.Close()
-			}
-			if c, ok := sout.(io.Closer); ok && c != nil {
-				_ = c.Close()
-			}
-		}()
+		defer p.closeParentStdio()
+	}
+	p.prepareRun()
+
+	// A context that is already canceled (or has an expired deadline) must
+	// prevent the child from ever starting.
+	if p.ctx != nil && p.ctx.Err() != nil {
+		p.setErr(p.ctx.Err())
+		return p
 	}
 
+	cmd, child, err := p.buildCmd()
+	if err != nil {
+		p.setErr(err)
+		return p
+	}
+
+	p.log.Tracef("%s", api.Text{}.Append("run", "text-muted").Append(icons.MinimalArrow, "text-muted").Space().Add(p.PrettyShort()).ANSI())
+
+	started := time.Now()
+	p.mu.Lock()
+	p.Started = &started
+	p.cmd = cmd
+	p.mu.Unlock()
+
+	launch, err := p.startCmd(cmd, child)
+	if err != nil {
+		p.setErr(err)
+		return p
+	}
+	p.finishRun(cmd, launch, p.waitCmd(cmd), started)
+	return p
+}
+
+// childStdio holds the child-side ends of the stdio pipes; the parent must
+// close them right after Start() so the child gets EOF on its stdin when
+// p.stdin is closed and the parent's reader sees EOF when the child exits.
+// Both stay nil unless WithStdioPipe was set.
+type childStdio struct {
+	stdinR, stdoutW *os.File
+}
+
+func (c childStdio) close() {
+	if c.stdinR != nil {
+		_ = c.stdinR.Close()
+	}
+	if c.stdoutW != nil {
+		_ = c.stdoutW.Close()
+	}
+}
+
+func (p *Process) setErr(err error) {
+	p.mu.Lock()
+	p.Err = err
+	p.mu.Unlock()
+}
+
+func (p *Process) closeParentStdio() {
+	p.mu.Lock()
+	sin, sout := p.stdin, p.stdoutR
+	p.stdin, p.stdoutR = nil, nil
+	p.mu.Unlock()
+	if sin != nil {
+		_ = sin.Close()
+	}
+	if c, ok := sout.(io.Closer); ok && c != nil {
+		_ = c.Close()
+	}
+}
+
+func (p *Process) prepareRun() {
 	if p.log == nil {
 		p.log = logger.GetLogger("exec")
 	}
@@ -317,84 +372,32 @@ func (p *Process) Run() *Process {
 	p.captureOutput.Reset()
 
 	if !p.exactEnvironment && (properties.On(false, "exec.debug") || strings.Contains(os.Getenv("DEBUG"), "exec")) {
-		p = p.Debug()
+		p.Debug()
 	}
+}
 
-	// A context that is already canceled (or has an expired deadline) must
-	// prevent the child from ever starting.
-	if p.ctx != nil {
-		if ctxErr := p.ctx.Err(); ctxErr != nil {
-			p.mu.Lock()
-			p.Err = ctxErr
-			p.mu.Unlock()
-			return p
-		}
-	}
-
-	var cmd *exec.Cmd
-
+func (p *Process) buildCmd() (*exec.Cmd, childStdio, error) {
 	path, args, err := p.parseCommand()
-
 	if err != nil {
-		p.mu.Lock()
-		p.Err = err
-		p.mu.Unlock()
-		return p
+		return nil, childStdio{}, err
 	}
-
 	// The launcher's status descriptor follows the caller's extra files, so
 	// their child descriptor numbers are unchanged.
 	path, args, err = p.runtimeCommand(path, args, 3+len(p.extraFiles))
 	if err != nil {
-		p.mu.Lock()
-		p.Err = err
-		p.mu.Unlock()
-		return p
+		return nil, childStdio{}, err
 	}
-	cmd = exec.Command(path, args...)
-
+	cmd := exec.Command(path, args...)
 	if p.Cwd != "" {
 		cmd.Dir = p.Cwd
 	}
-
 	cmd.Env = p.environment()
 	cmd.ExtraFiles = p.extraFiles
-
 	cmd.Stderr = p.captureOutput.GetStderrWriter()
 
-	// childStdinR / childStdoutW are the child-side ends of the stdio pipes; the
-	// parent must close them right after Start() so the child gets EOF on its
-	// stdin when p.stdin is closed and the parent's reader sees EOF when the
-	// child exits. They stay nil unless WithStdioPipe was set.
-	var childStdinR, childStdoutW *os.File
-	if p.wantStdioPipe {
-		var perr error
-		var stdinW *os.File
-		childStdinR, stdinW, perr = os.Pipe()
-		if perr != nil {
-			p.Err = fmt.Errorf("stdin pipe: %w", perr)
-			return p
-		}
-		var stdoutR *os.File
-		stdoutR, childStdoutW, perr = os.Pipe()
-		if perr != nil {
-			_ = childStdinR.Close()
-			_ = stdinW.Close()
-			p.Err = fmt.Errorf("stdout pipe: %w", perr)
-			return p
-		}
-		cmd.Stdin = childStdinR
-		cmd.Stdout = childStdoutW
-		p.mu.Lock()
-		p.stdin = stdinW
-		p.stdoutR = capturingReadCloser{
-			Reader: io.TeeReader(stdoutR, p.captureOutput.GetStdoutWriter()),
-			Closer: stdoutR,
-		}
-		p.mu.Unlock()
-	} else {
-		cmd.Stdin = p.input
-		cmd.Stdout = p.captureOutput.GetStdoutWriter()
+	child, err := p.attachStdio(cmd)
+	if err != nil {
+		return nil, childStdio{}, err
 	}
 
 	applyProcessGroup(cmd, p.newProcessGroup, p.keepTerminal)
@@ -404,52 +407,64 @@ func (p *Process) Run() *Process {
 		// still hold them open. Go 1.20+ feature.
 		cmd.WaitDelay = 2 * time.Second
 	}
+	return cmd, child, nil
+}
 
-	p.log.Tracef("%s", api.Text{}.Append("run", "text-muted").Append(icons.MinimalArrow, "text-muted").Space().Add(p.PrettyShort()).ANSI())
-
-	now := time.Now()
+func (p *Process) attachStdio(cmd *exec.Cmd) (childStdio, error) {
+	if !p.wantStdioPipe {
+		cmd.Stdin = p.input
+		cmd.Stdout = p.captureOutput.GetStdoutWriter()
+		return childStdio{}, nil
+	}
+	stdinR, stdinW, err := os.Pipe()
+	if err != nil {
+		return childStdio{}, fmt.Errorf("stdin pipe: %w", err)
+	}
+	stdoutR, stdoutW, err := os.Pipe()
+	if err != nil {
+		_ = stdinR.Close()
+		_ = stdinW.Close()
+		return childStdio{}, fmt.Errorf("stdout pipe: %w", err)
+	}
+	cmd.Stdin = stdinR
+	cmd.Stdout = stdoutW
 	p.mu.Lock()
-	p.Started = &now
-	p.cmd = cmd
+	p.stdin = stdinW
+	p.stdoutR = capturingReadCloser{
+		Reader: io.TeeReader(stdoutR, p.captureOutput.GetStdoutWriter()),
+		Closer: stdoutR,
+	}
 	p.mu.Unlock()
+	return childStdio{stdinR: stdinR, stdoutW: stdoutW}, nil
+}
 
-	// Start (not Run) so the pid is published the moment os/exec sets
-	// cmd.Process, before the blocking Wait(). This lets probes read p.pid
-	// (a clicky-owned field) instead of cmd.Process, which os/exec mutates
-	// without a lock we control.
-	var runErr error
+// startCmd uses Start (not Run) so the pid is published the moment os/exec
+// sets cmd.Process, before the blocking Wait(). This lets probes read p.pid
+// (a clicky-owned field) instead of cmd.Process, which os/exec mutates
+// without a lock we control.
+func (p *Process) startCmd(cmd *exec.Cmd, child childStdio) (*launchStatus, error) {
 	var launch *launchStatus
-	var startErr error
+	var err error
 	if p.usesLauncher() {
-		launch, startErr = newLaunchStatus()
+		launch, err = newLaunchStatus()
 	}
 	if launch != nil {
 		cmd.ExtraFiles = append(slices.Clone(p.extraFiles), launch.writer)
 	}
-	if startErr == nil {
-		startErr = cmd.Start()
+	if err == nil {
+		err = cmd.Start()
 	}
 	if launch != nil {
 		launch.started()
 	}
-	if startErr != nil {
+	if err != nil {
 		if launch != nil {
 			_ = launch.reader.Close()
 		}
-		// Close the child-side pipe ends the parent still holds; the deferred
-		// cleanup only closes the parent-side ends, so without this the two
-		// child-side descriptors leak on every failed start (e.g. a restart
-		// policy retrying a bad path).
-		if childStdinR != nil {
-			_ = childStdinR.Close()
-		}
-		if childStdoutW != nil {
-			_ = childStdoutW.Close()
-		}
-		p.mu.Lock()
-		p.Err = startErr
-		p.mu.Unlock()
-		return p
+		// The deferred cleanup only closes the parent-side ends, so without this
+		// the child-side descriptors leak on every failed start.
+		child.close()
+		return nil, err
 	}
 	p.mu.Lock()
 	p.running = true
@@ -461,19 +476,16 @@ func (p *Process) Run() *Process {
 	// Close the parent's copies of the child-side pipe ends now that the child
 	// has inherited them: without this the parent's StdoutReader never sees EOF
 	// (the parent still holds a write end) and the child never sees stdin EOF.
-	if childStdinR != nil {
-		_ = childStdinR.Close()
-	}
-	if childStdoutW != nil {
-		_ = childStdoutW.Close()
-	}
+	child.close()
+	return launch, nil
+}
 
-	// Wait for completion. The lock is intentionally NOT held across Wait():
-	// probes (IsRunning/Pid/KillTree) must stay responsive for the whole
-	// subprocess lifetime. Run() is the ONLY reaper of the child: the
-	// goroutine below owns the sole cmd.Wait() call, and the timeout /
-	// cancellation branches drain resultChan instead of waiting on the
-	// process themselves.
+// waitCmd does not hold the lock across Wait(): probes (IsRunning/Pid/KillTree)
+// must stay responsive for the whole subprocess lifetime. Run() is the ONLY
+// reaper of the child: the goroutine below owns the sole cmd.Wait() call, and
+// the timeout / cancellation branches drain resultChan instead of waiting on
+// the process themselves.
+func (p *Process) waitCmd(cmd *exec.Cmd) error {
 	resultChan := make(chan error, 1)
 	go func() {
 		resultChan <- cmd.Wait()
@@ -489,11 +501,14 @@ func (p *Process) Run() *Process {
 	if p.ctx != nil {
 		ctxDone = p.ctx.Done()
 	}
+	return p.waitRuntime(resultChan, timeoutChan, ctxDone)
+}
 
-	runErr = p.waitRuntime(resultChan, timeoutChan, ctxDone)
+func (p *Process) finishRun(cmd *exec.Cmd, launch *launchStatus, runErr error, started time.Time) {
+	finished := time.Now()
 
-	// Classify the error before publishing. Reading ProcessState here is safe:
-	// cmd.Wait() has returned, so os/exec is done mutating it.
+	// Reading ProcessState here is safe: cmd.Wait() has returned, so os/exec is
+	// done mutating it.
 	var exitCode *int
 	completed, succeeded := false, false
 	if cmd.ProcessState != nil {
@@ -504,15 +519,30 @@ func (p *Process) Run() *Process {
 	if runErr != nil {
 		p.log.Debugf("%s", api.Text{}.Add(p.PrettyShort()).Append(" finished with ").Append(runErr, "text-red-500").ANSI())
 	}
+	runErr = p.classifyRunErr(runErr, exitCode, launch)
+
+	// Publish terminal state under the lock so concurrent readers observe a
+	// consistent (running=false, Err, exitCode, exited, succeeded) tuple.
+	p.mu.Lock()
+	p.running = false
+	p.Err = runErr
+	p.exitCode = exitCode
+	p.completed = completed
+	p.succeeded = succeeded
+	p.duration = finished.Sub(started)
+	p.mu.Unlock()
+
+	p.log.Tracef("%s", p.Pretty().ANSI())
+}
+
+func (p *Process) classifyRunErr(runErr error, exitCode *int, launch *launchStatus) error {
 	if v, ok := runErr.(*exec.ExitError); ok {
 		switch {
 		case p.SucceedOnNonZero:
-			// non-zero exit codes are not considered errors
 			runErr = nil
 		case exitCode != nil:
 			runErr = fmt.Errorf("exit code: %d: %w", *exitCode, v)
 		}
-		// Enhance fork/exec permission errors with better messages
 		if v.ExitCode() == 126 {
 			runErr = fmt.Errorf("permission denied: %s", p.Cmd)
 		}
@@ -524,21 +554,8 @@ func (p *Process) Run() *Process {
 	// exit status and SucceedOnNonZero must not clear it.
 	if launch != nil {
 		if launchErr := launch.err(); launchErr != nil {
-			runErr = launchErr
+			return launchErr
 		}
 	}
-
-	// Publish terminal state under the lock so concurrent readers observe a
-	// consistent (running=false, Err, exitCode, exited, succeeded) tuple.
-	p.mu.Lock()
-	p.running = false
-	p.Err = runErr
-	p.exitCode = exitCode
-	p.completed = completed
-	p.succeeded = succeeded
-	p.mu.Unlock()
-
-	p.log.Tracef("%s", p.Pretty().ANSI())
-
-	return p
+	return runErr
 }

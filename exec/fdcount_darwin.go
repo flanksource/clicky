@@ -34,7 +34,11 @@ func openFilesByPid(pids []int32) map[int32]int {
 	if err != nil && !errors.As(err, &exitErr) {
 		return nil
 	}
-	counts := make(map[int32]int, len(pids))
+	return parseOpenFileCounts(out, len(pids))
+}
+
+func parseOpenFileCounts(out []byte, capacity int) map[int32]int {
+	counts := make(map[int32]int, capacity)
 	if len(out) == 0 {
 		return counts
 	}

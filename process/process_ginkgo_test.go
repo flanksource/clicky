@@ -3,19 +3,24 @@ package process
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"os"
 	"os/exec"
+	"os/user"
+	"syscall"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	gops "github.com/shirou/gopsutil/v4/process"
 )
 
 const processFixture = `
-9000 1 1.5 2.0 1024 S 0:01.50 Mon Sep  8 10:00:00 2026 agent --session-id root
-9001 9000 2.5 3.0 2048 R 00:00:02 Mon Sep  8 10:01:00 2026 browser child
-9002 9001 4.0 5.0 4096 Z 1-00:00:00 Mon Sep  8 10:02:00 2026 browser grandchild
-9100 1 0.5 1.0 512 T 0:00.00 Mon Sep  8 10:03:00 2026 unrelated
+9000 1 1.5 2.0 1024 S 0:01.50 Mon Sep  8 10:00:00 2026 501 acme agent --session-id root
+9001 9000 2.5 3.0 2048 R 00:00:02 Mon Sep  8 10:01:00 2026 501 acme browser child
+9002 9001 4.0 5.0 4096 Z 1-00:00:00 Mon Sep  8 10:02:00 2026 501 acme browser grandchild
+9100 1 0.5 1.0 512 T 0:00.00 Mon Sep  8 10:03:00 2026 260 _acmed unrelated
 `
 
 var _ = Describe("process snapshots", func() {
@@ -23,10 +28,10 @@ var _ = Describe("process snapshots", func() {
 		snapshot := mustParseSnapshot(processFixture)
 
 		Expect(snapshot.All()).To(Equal([]Process{
-			{PID: 9000, PPID: 1, Status: "sleeping", Active: true, CPUPercent: 1.5, CPUTime: 1500 * time.Millisecond, MemoryPercent: 2, RSSBytes: 1024 * 1024, StartedAt: utcTime(2026, time.September, 8, 10, 0), Command: "agent --session-id root"},
-			{PID: 9001, PPID: 9000, Status: "active", Active: true, CPUPercent: 2.5, CPUTime: 2 * time.Second, MemoryPercent: 3, RSSBytes: 2048 * 1024, StartedAt: utcTime(2026, time.September, 8, 10, 1), Command: "browser child"},
-			{PID: 9002, PPID: 9001, Status: "zombie", CPUPercent: 4, CPUTime: 24 * time.Hour, MemoryPercent: 5, RSSBytes: 4096 * 1024, StartedAt: utcTime(2026, time.September, 8, 10, 2), Command: "browser grandchild"},
-			{PID: 9100, PPID: 1, Status: "stopped", CPUPercent: .5, MemoryPercent: 1, RSSBytes: 512 * 1024, StartedAt: utcTime(2026, time.September, 8, 10, 3), Command: "unrelated"},
+			{PID: 9000, PPID: 1, Status: "sleeping", Active: true, CPUPercent: 1.5, CPUTime: 1500 * time.Millisecond, MemoryPercent: 2, RSSBytes: 1024 * 1024, StartedAt: utcTime("2026-09-08T10:00:00Z"), UID: 501, User: "acme", Command: "agent --session-id root"},
+			{PID: 9001, PPID: 9000, Status: "active", Active: true, CPUPercent: 2.5, CPUTime: 2 * time.Second, MemoryPercent: 3, RSSBytes: 2048 * 1024, StartedAt: utcTime("2026-09-08T10:01:00Z"), UID: 501, User: "acme", Command: "browser child"},
+			{PID: 9002, PPID: 9001, Status: "zombie", CPUPercent: 4, CPUTime: 24 * time.Hour, MemoryPercent: 5, RSSBytes: 4096 * 1024, StartedAt: utcTime("2026-09-08T10:02:00Z"), UID: 501, User: "acme", Command: "browser grandchild"},
+			{PID: 9100, PPID: 1, Status: "stopped", CPUPercent: .5, MemoryPercent: 1, RSSBytes: 512 * 1024, StartedAt: utcTime("2026-09-08T10:03:00Z"), UID: 260, User: "_acmed", Command: "unrelated"},
 		}))
 		Expect(snapshot.Subtree(9000)).To(Equal(snapshot.All()[:3]))
 		Expect(snapshot.Ancestors(9002)).To(Equal([]Process{snapshot.All()[1], snapshot.All()[0]}))
@@ -45,8 +50,8 @@ var _ = Describe("process snapshots", func() {
 	})
 
 	It("stops tree walks when the process graph contains a cycle", func() {
-		snapshot := mustParseSnapshot(`8000 8001 1 1 1 R 0:00.00 Mon Sep 8 10:00:00 2026 first
-8001 8000 1 1 1 R 0:00.00 Mon Sep 8 10:00:00 2026 second`)
+		snapshot := mustParseSnapshot(`8000 8001 1 1 1 R 0:00.00 Mon Sep 8 10:00:00 2026 501 acme first
+8001 8000 1 1 1 R 0:00.00 Mon Sep 8 10:00:00 2026 501 acme second`)
 		Expect(snapshot.Subtree(8000)).To(HaveLen(2))
 		Expect(snapshot.Ancestors(8000)).To(Equal([]Process{snapshot.All()[1]}))
 	})
@@ -58,6 +63,9 @@ var _ = Describe("process snapshots", func() {
 		self, found := snapshot.Get(os.Getpid())
 		Expect(found).To(BeTrue(), "the caller itself is still listed")
 		Expect(self.PID).To(Equal(os.Getpid()))
+		owner, err := user.Current()
+		Expect(err).NotTo(HaveOccurred())
+		Expect([]any{self.UID, self.User}).To(Equal([]any{os.Getuid(), owner.Username}), "the caller is listed with its owner")
 	})
 
 	It("omits environment data unless capture is requested", func() {
@@ -92,14 +100,41 @@ var _ = Describe("process snapshots", func() {
 		Expect(observed.IO).To(BeNil())
 	})
 
-	It("records an unreadable process's disk I/O error instead of failing the snapshot", func() {
-		Expect(os.Geteuid()).NotTo(BeZero(), "pid 1 is readable as root, so this cannot observe EPERM")
-		const rootOwned = 1
-		snapshot := NewSnapshot([]Process{{PID: rootOwned, Status: "sleeping", Active: true}})
-		Expect(snapshot.PopulateIO(context.Background(), []int{rootOwned})).To(Succeed())
-		observed, _ := snapshot.Get(rootOwned)
-		Expect(observed.IO).To(BeNil())
-		Expect(observed.IOError).To(ContainSubstring("operation not permitted"))
+	DescribeTable("records the errors the kernel gives about one process as its reading, replacing stale readings on every read",
+		func(permission error) {
+			const unreadable, readable = 9000, 9001
+			snapshot := NewSnapshot([]Process{{PID: unreadable, IO: &ProcessIO{DiskReadBytes: 10}}, {PID: readable}})
+			readErr := fmt.Errorf("disk counters: %w", permission)
+			readIO := func(_ context.Context, pid int) (*gops.IOCountersStat, error) {
+				if pid == unreadable && readErr != nil {
+					return nil, readErr
+				}
+				return &gops.IOCountersStat{DiskReadBytes: 20}, nil
+			}
+			Expect(snapshot.populateIO(context.Background(), []int{unreadable, readable}, readIO)).To(Succeed())
+			observed, _ := snapshot.Get(unreadable)
+			Expect(observed.IO).To(BeNil())
+			Expect(observed.IOError).To(Equal("read disk I/O: " + readErr.Error()))
+			other, _ := snapshot.Get(readable)
+			Expect(other.IO).To(Equal(&ProcessIO{DiskReadBytes: 20}))
+
+			readErr = nil
+			Expect(snapshot.populateIO(context.Background(), []int{unreadable}, readIO)).To(Succeed())
+			observed, _ = snapshot.Get(unreadable)
+			Expect(observed.IO).To(Equal(&ProcessIO{DiskReadBytes: 20}))
+			Expect(observed.IOError).To(BeEmpty())
+		},
+		Entry("OS permission denied", os.ErrPermission),
+		Entry("gopsutil operation not permitted", gops.ErrorNotPermitted),
+		Entry("another errno proc_pid_rusage gives for the process", fmt.Errorf("proc_pid_rusage failed for pid 9000: %w", syscall.ETIMEDOUT)),
+	)
+
+	It("fails the snapshot for an error that is no answer about one process", func() {
+		snapshot := NewSnapshot([]Process{{PID: 9000}})
+		broken := errors.New("load libproc: symbol not found")
+		readIO := func(context.Context, int) (*gops.IOCountersStat, error) { return nil, broken }
+
+		Expect(snapshot.populateIO(context.Background(), []int{9000}, readIO)).To(MatchError(broken))
 	})
 
 	It("filters environment variables by exact key and prefix", func() {
@@ -131,7 +166,8 @@ func mustParseSnapshot(output string) *Snapshot {
 	return snapshot
 }
 
-func utcTime(year int, month time.Month, day, hour, minute int) *time.Time {
-	value := time.Date(year, month, day, hour, minute, 0, 0, time.UTC)
+func utcTime(rfc3339 string) *time.Time {
+	value, err := time.Parse(time.RFC3339, rfc3339)
+	Expect(err).NotTo(HaveOccurred())
 	return &value
 }
