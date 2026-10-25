@@ -10,6 +10,8 @@ import (
 
 	clicky "github.com/flanksource/clicky"
 	"github.com/flanksource/clicky/markdown"
+	"github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
 )
 
 func TestParseCanonicalFrontmatterAndSourceLines(t *testing.T) {
@@ -347,4 +349,9 @@ func findNode(node markdown.Node, match func(markdown.Node) bool) markdown.Node 
 		}
 	}
 	return markdown.Node{}
+}
+
+func TestMarkdown(t *testing.T) {
+	RegisterFailHandler(ginkgo.Fail)
+	ginkgo.RunSpecs(t, "Markdown Suite")
 }

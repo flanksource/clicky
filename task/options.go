@@ -1,6 +1,7 @@
 package task
 
 import (
+	"context"
 	"flag"
 	"time"
 
@@ -190,6 +191,29 @@ func BindManagerFlags(flags *flag.FlagSet, options *ManagerOptions) {
 		"Maximum retry attempts for failed tasks")
 	flags.DurationVar(&options.RetryDelay, "retry-delay", options.RetryDelay,
 		"Base delay between retry attempts")
+}
+
+// WithContext links task cancellation and deadlines to its owner before enqueue.
+// Multiple owners (a run group and a request, for example) all remain effective.
+func WithContext(parent context.Context) Option {
+	if parent == nil {
+		panic("task: parent context is required")
+	}
+	return func(t *Task) {
+		previous, previousCancel := t.ctx, t.cancel
+		ctx, cancel := context.WithCancelCause(parent)
+		stop := context.AfterFunc(previous, func() { cancel(context.Cause(previous)) })
+		if err := previous.Err(); err != nil {
+			cancel(context.Cause(previous))
+		}
+		t.ctx = flanksourceContext.NewContext(ctx)
+		t.flanksourceCtx = t.ctx
+		t.cancel = func() {
+			stop()
+			cancel(context.Canceled)
+			previousCancel()
+		}
+	}
 }
 
 // BindManagerPFlags adds TaskManager flags to pflag set (for Cobra)

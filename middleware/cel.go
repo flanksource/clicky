@@ -5,7 +5,6 @@ import (
 	"reflect"
 	"time"
 
-	"github.com/flanksource/gomplate/v3"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/cel-go/cel"
 	"github.com/google/cel-go/common/types"
@@ -18,14 +17,11 @@ type CELEngine struct {
 	env *cel.Env
 }
 
-// NewCELEngine creates a new CEL engine with custom functions for middleware processing
-func NewCELEngine() (*CELEngine, error) {
-	// Get base environment from flanksource/gomplate with CEL extensions
-	gomplateFuncs := gomplate.GetCelEnv(make(map[string]any))
-
-	// Create CEL environment with gomplate functions and custom middleware functions
+// NewCELEngine creates a new CEL engine with custom functions for middleware processing.
+// extra adds function libraries, e.g. gomplatefilter.EnvOptions().
+func NewCELEngine(extra ...cel.EnvOption) (*CELEngine, error) {
 	env, err := cel.NewEnv(
-		append(gomplateFuncs,
+		append(extra,
 			// Request/Response variables
 			cel.Variable("request", cel.DynType),
 			cel.Variable("response", cel.DynType),

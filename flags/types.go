@@ -38,6 +38,7 @@ type FieldInfo struct {
 	FieldType    reflect.Type
 	FlagName     string
 	Help         string
+	Category     string
 	DefaultValue string
 	ShortFlag    string
 	Required     bool

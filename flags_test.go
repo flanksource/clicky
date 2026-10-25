@@ -22,11 +22,7 @@ func TestBindAllFlagsToCommand_GroupsHelpOutput(t *testing.T) {
 
 	out := buf.String()
 
-	wantSections := []string{
-		"Logging flags:",
-		"Tasks flags:",
-		"Format flags:",
-	}
+	wantSections := []string{"Formatting:", "Logging:", "Tasks:"}
 	for _, s := range wantSections {
 		if !strings.Contains(out, s) {
 			t.Errorf("expected section %q in help output, got:\n%s", s, out)
@@ -36,12 +32,12 @@ func TestBindAllFlagsToCommand_GroupsHelpOutput(t *testing.T) {
 	cases := []struct {
 		section, flag string
 	}{
-		{"Logging flags:", "--log-level"},
-		{"Logging flags:", "--json-logs"},
-		{"Tasks flags:", "--max-concurrent"},
-		{"Tasks flags:", "--no-progress"},
-		{"Format flags:", "--format"},
-		{"Format flags:", "--json"},
+		{"Logging:", "--log-level"},
+		{"Logging:", "--json-logs"},
+		{"Tasks:", "--max-concurrent"},
+		{"Tasks:", "--no-progress"},
+		{"Formatting:", "--format"},
+		{"Formatting:", "--json"},
 	}
 	for _, tc := range cases {
 		section := flagSection(out, tc.section)
@@ -51,9 +47,7 @@ func TestBindAllFlagsToCommand_GroupsHelpOutput(t *testing.T) {
 	}
 }
 
-// flagSection returns the lines belonging to heading. It stops at the next
-// flags heading instead of relying on blank-line separators, so the assertions
-// fail if flags slide into a later group.
+// flagSection stops at the next unindented heading.
 func flagSection(help, heading string) string {
 	lines := strings.Split(help, "\n")
 	start := -1
@@ -70,7 +64,7 @@ func flagSection(help, heading string) string {
 	out := []string{lines[start]}
 	for _, line := range lines[start+1:] {
 		trimmed := strings.TrimSpace(line)
-		if strings.HasSuffix(trimmed, "flags:") {
+		if line == trimmed && strings.HasSuffix(trimmed, ":") {
 			break
 		}
 		out = append(out, line)

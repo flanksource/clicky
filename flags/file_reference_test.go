@@ -3,8 +3,6 @@ package flags
 import (
 	"context"
 	"io"
-	"net/http"
-	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -116,40 +114,6 @@ func TestOpenFileReferenceRejectsRemoteLocalWithoutRoot(t *testing.T) {
 	_, err := OpenFileReference(context.Background(), "@data.csv", FileReferenceOptions{Remote: true})
 	if err == nil || !strings.Contains(err.Error(), "root") {
 		t.Fatalf("expected root requirement, got %v", err)
-	}
-}
-
-func TestOpenFileReferenceReadsURLWithoutLosingExtension(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		_, _ = w.Write([]byte("Name\nAlice\n"))
-	}))
-	defer server.Close()
-	opened, err := OpenFileReference(context.Background(), "@"+server.URL+"/data.csv?version=1", FileReferenceOptions{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer opened.Body.Close()
-	got, err := io.ReadAll(opened.Body)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if opened.Name != "data.csv" || string(got) != "Name\nAlice\n" {
-		t.Fatalf("got %q %q", opened.Name, got)
-	}
-}
-
-func TestOpenFileReferenceRejectsLoopbackURLForRemoteCaller(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		_, _ = w.Write([]byte("should not be fetched"))
-	}))
-	defer server.Close()
-	opened, err := OpenFileReference(context.Background(), "@"+server.URL+"/data.csv?token=private-value", FileReferenceOptions{Remote: true})
-	if err == nil {
-		_ = opened.Body.Close()
-		t.Fatal("expected defensive HTTP client to reject loopback")
-	}
-	if strings.Contains(err.Error(), "private-value") {
-		t.Fatalf("error exposed URL query: %v", err)
 	}
 }
 

@@ -12,9 +12,7 @@ import (
 	"reflect"
 	"strings"
 
-	commonshttp "github.com/flanksource/commons/http"
 	"github.com/flanksource/commons/logger"
-	"github.com/xuri/excelize/v2"
 )
 
 const ARGS = "__args__"
@@ -167,21 +165,11 @@ func loadFromFileOrURL(path string, policy FileReadPolicy) (string, error) {
 // which is what applies the opt-in and the protected-path rules.
 func fetchFileOrURL(path string, policy FileReadPolicy) (string, error) {
 	if strings.HasPrefix(path, "http://") || strings.HasPrefix(path, "https://") {
-		var resp *http.Response
-		var err error
-		if policy.Remote {
-			ctx := policy.ctx
-			if ctx == nil {
-				ctx = context.Background()
-			}
-			response, requestErr := commonshttp.NewDefensive().R(ctx).Get(path)
-			if response != nil {
-				resp = response.Response
-			}
-			err = requestErr
-		} else {
-			resp, err = http.Get(path)
+		ctx := policy.ctx
+		if ctx == nil {
+			ctx = context.Background()
 		}
+		resp, err := fetchURL(ctx, path, policy.Remote)
 		if err != nil {
 			return "", err
 		}
@@ -340,25 +328,9 @@ func loadColumnFromExcel(path, column string) ([]string, error) {
 		}
 	}()
 
-	f, err := excelize.OpenReader(file)
+	sheet, rows, err := readSpreadsheet(file)
 	if err != nil {
-		return nil, fmt.Errorf("opening %s: %w", path, err)
-	}
-	defer func() {
-		if cerr := f.Close(); cerr != nil {
-			logger.Errorf("failed to close excel file %s: %v", path, cerr)
-		}
-	}()
-
-	sheets := f.GetSheetList()
-	if len(sheets) == 0 {
-		return nil, fmt.Errorf("excel file %s has no sheets", path)
-	}
-	sheet := sheets[0]
-
-	rows, err := f.GetRows(sheet)
-	if err != nil {
-		return nil, fmt.Errorf("reading sheet %q from %s: %w", sheet, path, err)
+		return nil, fmt.Errorf("reading %s: %w", path, err)
 	}
 	if len(rows) == 0 {
 		return nil, nil

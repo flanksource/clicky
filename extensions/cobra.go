@@ -56,10 +56,21 @@ func (c *CobraExtension) DocsCommandWithConfig(config *docs.DocsConfig) *CobraEx
 	return c
 }
 
-// All adds OpenAPI, MCP, and docs commands with default configuration
+// Interactive adds the persistent -i/--interactive flag: any runnable command
+// then collects its arguments in a form (huh on a terminal, JsonSchemaForm on a
+// dashboard prompt sink) before running. Call it after the command tree is
+// complete — commands added later are not wired.
+// Usage: extensions.CobraExtensions(rootCmd).Interactive()
+func (c *CobraExtension) Interactive() *CobraExtension {
+	rpc.InstallInteractive(c.rootCmd)
+	return c
+}
+
+// All adds OpenAPI, MCP, and docs commands with default configuration, then
+// wires --interactive across the tree.
 // Usage: extensions.CobraExtensions(rootCmd).All()
 func (c *CobraExtension) All() *CobraExtension {
-	return c.OpenAPICommand().MCPCommand().DocsCommand()
+	return c.OpenAPICommand().MCPCommand().DocsCommand().Interactive()
 }
 
 // ServeCommand adds OpenAPI serve functionality for Swagger UI documentation
@@ -75,7 +86,8 @@ func (c *CobraExtension) ServeCommandWithConfig(config *rpc.OpenAPIConfig) *Cobr
 	return c
 }
 
-// AllWithConfig adds OpenAPI, MCP, and docs commands with custom configurations
+// AllWithConfig adds OpenAPI, MCP, and docs commands with custom configurations,
+// then wires --interactive across the tree.
 func (c *CobraExtension) AllWithConfig(openAPIConfig *rpc.OpenAPIConfig, mcpConfig *mcp.Config) *CobraExtension {
-	return c.OpenAPICommandWithConfig(openAPIConfig).MCPCommandWithConfig(mcpConfig).DocsCommand()
+	return c.OpenAPICommandWithConfig(openAPIConfig).MCPCommandWithConfig(mcpConfig).DocsCommand().Interactive()
 }

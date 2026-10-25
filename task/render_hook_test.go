@@ -8,10 +8,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/flanksource/commons/logger"
-
+	"github.com/charmbracelet/lipgloss"
 	"github.com/flanksource/clicky/api"
 	"github.com/flanksource/clicky/text"
+	"github.com/flanksource/commons/logger"
 )
 
 // fakeLiveRenderer returns fixed content so tests can assert the manager draws
@@ -211,5 +211,30 @@ func TestLiveRenderer_LoggerLinesBufferedForNextTick(t *testing.T) {
 	tm.bufferMutex.Unlock()
 	if !strings.Contains(next.String(), "between-ticks log line") {
 		t.Errorf("FlushPending must emit the buffered logger line, got %q", next.String())
+	}
+}
+
+func TestInteractiveRenderUsesCustomFinalContent(t *testing.T) {
+	tm := newTestManager(1)
+	t.Cleanup(func() { close(tm.shutdown) })
+	tm.isInteractive.Store(true)
+
+	buf := &syncBuffer{}
+	tm.renderer = lipgloss.NewRenderer(buf)
+	tm.setLiveRenderer(&fakeLiveRenderer{live: "LIVE-ONLY", final: "FINAL-SUMMARY"})
+	addCompletedTask(tm, "fixture")
+
+	rows := tm.interactiveRender(0, false)
+	tm.interactiveRender(rows, true)
+
+	output := buf.String()
+	if strings.Count(output, "LIVE-ONLY") != 1 {
+		t.Fatalf("final render must not repeat live content, got %q", output)
+	}
+	if !strings.Contains(output, "FINAL-SUMMARY") {
+		t.Fatalf("final render must use RenderFinal content, got %q", output)
+	}
+	if !strings.Contains(output, "\x1b[2K\rFINAL-SUMMARY") {
+		t.Fatalf("final render must restart at the first terminal column, got %q", output)
 	}
 }

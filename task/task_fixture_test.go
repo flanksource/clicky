@@ -5,13 +5,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"testing"
 
+	"github.com/flanksource/clicky/task"
 	flanksourceContext "github.com/flanksource/commons/context"
 	"github.com/flanksource/commons/logger"
 	"github.com/flanksource/gomplate/v3"
-
-	"github.com/flanksource/clicky/task"
-
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"gopkg.in/yaml.v3"
@@ -167,3 +166,8 @@ var _ = Describe("Task fixtures", func() {
 		})
 	}
 })
+
+func TestTask(t *testing.T) {
+	RegisterFailHandler(Fail)
+	RunSpecs(t, "Task Suite")
+}
