@@ -1,0 +1,67 @@
+# `-i` and clicky.PromptForm at a real terminal: each step runs the
+# interactive_form.go demo under a pty, fills its inline form by keystroke,
+# and checks what the command received.
+#
+#   gavel fixtures examples/testdata/interactive-form.fixture.yaml
+#
+# The form shows one row per field and opens only the focused field's editor,
+# marking it `› <label>`; a select, multi-select or text area opens on enter.
+# Each input waits for that marker before typing: keys sent before a field
+# has focus would land in the previous one.
+kind: Fixture
+name: interactive inline forms over operation arguments and JSON Schema
+defaults:
+  timeout: 3m
+steps:
+  # deploy's <service> arg and env are required, so they lead; dry-run and
+  # replicas have values, tag follows. shift+tab goes back from tag to
+  # replicas to change it again, and enter on the last field submits. env is
+  # required, so it has no (none) row: down, down from dev is prod.
+  - id: deploy
+    kind: exec
+    terminal: pty
+    cwd: "{{.fixture.dir}}/.."
+    script: go run interactive_form.go deploy -i
+    input:
+      - { expect: "› service", send: "billing", keys: [enter] }
+      - { expect: "› env", keys: [enter, down, down, enter] }
+      - { expect: "› dry-run", keys: [enter] }
+      - { expect: "› replicas", send: "\x7f4", keys: [enter] }
+      - { expect: "› tag", send: "\e[Z" }
+      - { expect: "› replicas", send: "\x7f5", keys: [enter] }
+      - { expect: "› tag", send: "\rv3\r" }
+    cel: >-
+      exitCode == 0 &&
+      stdout.contains('deploying billing to prod with 5 replicas, tags=[v3], dry-run=false')
+
+  # A JSON Schema through clicky.PromptForm. The discriminator leads; Email
+  # brings in Recipients, and critical severity reveals and requires Pager,
+  # which is promoted to the row after Minimum severity.
+  - id: configure
+    kind: exec
+    terminal: pty
+    cwd: "{{.fixture.dir}}/.."
+    script: go run interactive_form.go configure
+    input:
+      - { expect: "› Channel", keys: [enter, down, enter] }
+      - { expect: "› Name", send: "ops-alerts", keys: [enter] }
+      - { expect: "› Minimum severity", keys: [enter, down, enter] }
+      - { expect: "› Pager rotation", send: "primary", keys: [enter] }
+      - { expect: "› Retries", keys: [enter] }
+      - { expect: "› Labels", send: "\rteam=sre\r" }
+      - { expect: "› Recipients", send: "\ra@example.com\r" }
+    cel: >-
+      exitCode == 0 &&
+      stdout.contains('"kind": "email"') && stdout.contains('"name": "ops-alerts"') &&
+      stdout.contains('"severity": "critical"') && stdout.contains('"pager": "primary"') &&
+      stdout.contains('"retries": 2') && stdout.contains('"team": "sre"') &&
+      stdout.contains('"a@example.com"') && !stdout.contains('"url"')
+
+  # Without a terminal there is nothing to draw the form on: -i fails loudly
+  # instead of running the command with whatever flags it had.
+  - id: deploy-no-tty
+    kind: exec
+    cwd: "{{.fixture.dir}}/.."
+    script: go run interactive_form.go deploy -i < /dev/null
+    exitCode: 1
+    cel: stderr.contains('interactive terminal required') && !stdout.contains('deploying')

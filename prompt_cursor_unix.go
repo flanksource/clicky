@@ -14,24 +14,14 @@ func readPromptCursorResponse(fd int, timeout time.Duration) ([]byte, bool) {
 	tmp := []byte{0}
 
 	for time.Now().Before(deadline) {
-		remaining := time.Until(deadline)
-		timeoutMillis := 1
-		if remaining > 0 {
-			timeoutMillis = int(remaining / time.Millisecond)
-			if timeoutMillis < 1 {
-				timeoutMillis = 1
-			}
-		}
-
-		pollfds := []unix.PollFd{{Fd: int32(fd), Events: unix.POLLIN}}
-		ready, err := unix.Poll(pollfds, timeoutMillis)
+		ready, err := promptInputReady(fd, time.Until(deadline))
 		if err != nil {
 			if err == unix.EINTR {
 				continue
 			}
 			return nil, false
 		}
-		if ready == 0 || pollfds[0].Revents&unix.POLLIN == 0 {
+		if !ready {
 			continue
 		}
 
@@ -53,4 +43,17 @@ func readPromptCursorResponse(fd int, timeout time.Duration) ([]byte, bool) {
 	}
 
 	return nil, false
+}
+
+func promptInputReady(fd int, remaining time.Duration) (bool, error) {
+	timeoutMillis := 1
+	if remaining > 0 {
+		timeoutMillis = int(remaining / time.Millisecond)
+		if timeoutMillis < 1 {
+			timeoutMillis = 1
+		}
+	}
+	pollfds := []unix.PollFd{{Fd: int32(fd), Events: unix.POLLIN}}
+	ready, err := unix.Poll(pollfds, timeoutMillis)
+	return ready > 0 && pollfds[0].Revents&unix.POLLIN != 0, err
 }

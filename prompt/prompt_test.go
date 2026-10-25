@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"testing"
 	"time"
 )
@@ -236,5 +237,45 @@ func TestSelectSchemaShape(t *testing.T) {
 	}
 	if choice["x-enum-display"] != "radio" {
 		t.Fatalf("expected radio display, got %v", choice["x-enum-display"])
+	}
+}
+
+func TestFormViaManagerWithScope(t *testing.T) {
+	m := NewManager(NewMemory(MemoryConfig{}))
+	ctx := WithScope(context.Background(), Scope{Owner: "todo-form"})
+	schema := json.RawMessage(`{"type":"object","required":["env"],"properties":{"env":{"type":"string","enum":["dev","prod"]}}}`)
+	type result struct {
+		values map[string]any
+		ok     bool
+		err    error
+	}
+	got := make(chan result, 1)
+	go func() {
+		values, ok, err := m.Form(ctx, FormOptions{Title: "Deploy", Description: "Pick a target", Schema: schema, Default: map[string]any{"env": "dev"}})
+		got <- result{values, ok, err}
+	}()
+
+	var snap PromptSnapshot
+	for i := 0; i < 200; i++ {
+		if ps := m.List(Filter{Owner: "todo-form", Kind: "form"}); len(ps) == 1 {
+			snap = ps[0]
+			break
+		}
+		time.Sleep(time.Millisecond)
+	}
+	if snap.ID == "" {
+		t.Fatal("scoped form prompt never appeared under its owner filter")
+	}
+	if !reflect.DeepEqual(snap.Value, map[string]any{"env": "dev"}) || snap.Description != "Pick a target" {
+		t.Fatalf("form prompt lost its default/description: %+v", snap)
+	}
+	if err := m.Resolve(snap.ID, Answer{Values: map[string]any{"env": "staging"}}); err == nil {
+		t.Fatal("expected the schema to reject an answer outside the enum")
+	}
+	if err := m.Resolve(snap.ID, Answer{Values: map[string]any{"env": "prod"}}); err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	if r := <-got; r.err != nil || !r.ok || !reflect.DeepEqual(r.values, map[string]any{"env": "prod"}) {
+		t.Fatalf("expected {env: prod}, got %+v", r)
 	}
 }
