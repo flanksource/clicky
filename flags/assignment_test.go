@@ -1,13 +1,14 @@
 package flags
 
 import (
+	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"reflect"
 	"testing"
 
 	"github.com/spf13/cobra"
-	"github.com/xuri/excelize/v2"
 )
 
 // allowFileRead is the opt-in a field carries via clicky:"cli-file-read"; the
@@ -142,31 +143,28 @@ func TestLoadLinesFromFileOrURL_XLSXColumn(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "policies.xlsx")
 
-	f := excelize.NewFile()
-	// Default sheet is "Sheet1"
-	headers := []any{"PolicyNumber", "Amount"}
-	rows := [][]any{
-		{"P001", 100},
-		{"P002", 200},
-		{"", 300}, // blank policy number — must be skipped
-		{"P003", 400},
+	const workbookBytes = "xlsx bytes"
+	if err := os.WriteFile(path, []byte(workbookBytes), 0o600); err != nil {
+		t.Fatal(err)
 	}
-	if err := f.SetSheetRow("Sheet1", "A1", &headers); err != nil {
-		t.Fatalf("write headers: %v", err)
-	}
-	for i, row := range rows {
-		cell := "A" + itoa(i+2)
-		r := row
-		if err := f.SetSheetRow("Sheet1", cell, &r); err != nil {
-			t.Fatalf("write row: %v", err)
-		}
-	}
-	if err := f.SaveAs(path); err != nil {
-		t.Fatalf("save xlsx: %v", err)
-	}
-	_ = f.Close()
+	var read string
+	SetSpreadsheetReader(func(r io.Reader) (string, [][]string, error) {
+		data, err := io.ReadAll(r)
+		read = string(data)
+		return "Sheet1", [][]string{
+			{"PolicyNumber", "Amount"},
+			{"P001", "100"},
+			{"P002", "200"},
+			{"", "300"}, // blank policy number — must be skipped
+			{"P003", "400"},
+		}, err
+	})
+	t.Cleanup(func() { SetSpreadsheetReader(nil) })
 
 	lines, err := loadLinesFromFileOrURL("@"+path+":PolicyNumber", allowFileRead)
+	if read != workbookBytes {
+		t.Fatalf("reader got %q, want the file's bytes", read)
+	}
 	if err != nil {
 		t.Fatalf("loadLinesFromFileOrURL: %v", err)
 	}
@@ -176,13 +174,16 @@ func TestLoadLinesFromFileOrURL_XLSXColumn(t *testing.T) {
 	}
 }
 
-// itoa is an alloc-free integer-to-string for small values used only by the
-// test to build Excel cell references.
-func itoa(i int) string {
-	if i < 10 {
-		return string('0' + byte(i))
+func TestLoadLinesFromFileOrURL_XLSXWithoutReader(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "policies.xlsx")
+	if err := os.WriteFile(path, []byte("xlsx bytes"), 0o600); err != nil {
+		t.Fatal(err)
 	}
-	return string('0'+byte(i/10)) + string('0'+byte(i%10))
+	SetSpreadsheetReader(nil)
+	_, err := loadLinesFromFileOrURL("@"+path+":PolicyNumber", allowFileRead)
+	if !errors.Is(err, ErrNoSpreadsheetReader) {
+		t.Fatalf("expected ErrNoSpreadsheetReader, got %v", err)
+	}
 }
 
 // cliPathOpts mirrors the repomap `deps`/`images` path field: a positional arg

@@ -85,6 +85,7 @@ func parseStructFieldsRecursive(structType reflect.Type, fieldPath []int, fields
 			FieldType:    field.Type,
 			FlagName:     flagName,
 			Help:         field.Tag.Get("help"),
+			Category:     field.Tag.Get("category"),
 			DefaultValue: field.Tag.Get("default"),
 			ShortFlag:    shortFlag,
 			Required:     field.Tag.Get("required") == "true",

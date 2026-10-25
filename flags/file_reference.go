@@ -2,6 +2,7 @@ package flags
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -10,8 +11,6 @@ import (
 	"path"
 	"path/filepath"
 	"strings"
-
-	commonshttp "github.com/flanksource/commons/http"
 )
 
 // FileReferenceOptions controls binary @file/@url access.
@@ -55,22 +54,12 @@ func openURLFileReference(ctx context.Context, ref string, remote bool) (FileRef
 	if err != nil || parsed.User != nil || parsed.Host == "" {
 		return FileReference{}, fmt.Errorf("invalid file reference URL")
 	}
-	var response *http.Response
-	if remote {
-		result, fetchErr := commonshttp.NewDefensive().R(ctx).Get(ref)
-		if fetchErr != nil {
-			return FileReference{}, fileReferenceRequestError(fetchErr, ref, parsed)
-		}
-		response = result.Response
-	} else {
-		request, err := http.NewRequestWithContext(ctx, http.MethodGet, ref, nil)
-		if err != nil {
-			return FileReference{}, fileReferenceRequestError(err, ref, parsed)
-		}
-		response, err = http.DefaultClient.Do(request)
-		if err != nil {
-			return FileReference{}, fileReferenceRequestError(err, ref, parsed)
-		}
+	response, err := fetchURL(ctx, ref, remote)
+	if errors.Is(err, ErrNoURLFetcher) {
+		return FileReference{}, err
+	}
+	if err != nil {
+		return FileReference{}, fileReferenceRequestError(err, ref, parsed)
 	}
 	if response.StatusCode != http.StatusOK {
 		_ = response.Body.Close()

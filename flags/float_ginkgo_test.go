@@ -2,6 +2,7 @@ package flags
 
 import (
 	"reflect"
+	"testing"
 
 	"github.com/flanksource/commons/duration"
 	. "github.com/onsi/ginkgo/v2"
@@ -62,3 +63,8 @@ var _ = Describe("float64 option binding", func() {
 		Expect(fields).To(HaveLen(4))
 	})
 })
+
+func TestFlags(t *testing.T) {
+	RegisterFailHandler(Fail)
+	RunSpecs(t, "Flags Suite")
+}

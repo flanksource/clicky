@@ -4,13 +4,13 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"testing"
 	"time"
-
-	. "github.com/onsi/ginkgo/v2"
-	. "github.com/onsi/gomega"
 
 	"github.com/flanksource/clicky/metrics"
 	"github.com/flanksource/clicky/route"
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
 )
 
 // base is a fixed reference time so specs never depend on wall-clock now.
@@ -122,3 +122,28 @@ var _ = Describe("HTTP handler", func() {
 		Expect(resp.StatusCode).To(Equal(http.StatusBadRequest))
 	})
 })
+
+func TestMetrics(t *testing.T) {
+	RegisterFailHandler(Fail)
+	RunSpecs(t, "Metrics Suite")
+}
+
+func BenchmarkMemoryRecordInOrderSingleSeries(b *testing.B) {
+	ts := metrics.NewMemory(metrics.MemoryConfig{
+		Retention: 365 * 24 * time.Hour,
+		MaxPoints: 1_000_000,
+	})
+	start := time.Date(2026, 6, 2, 12, 0, 0, 0, time.UTC)
+
+	i := 0
+	for b.Loop() {
+		if err := ts.Record(metrics.RecordRequest{
+			ID:    "cpu",
+			At:    start.Add(time.Duration(i) * time.Millisecond),
+			Value: float64(i),
+		}); err != nil {
+			b.Fatal(err)
+		}
+		i++
+	}
+}

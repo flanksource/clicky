@@ -9,7 +9,6 @@ import (
 	"github.com/samber/lo"
 
 	"github.com/flanksource/clicky/api"
-	"github.com/flanksource/clicky/formatters"
 )
 
 // prettyWithLogOffset renders the task's status line with buffered-log
@@ -26,7 +25,7 @@ func (t *Task) prettyWithLogOffset(from int) (api.Text, int) {
 		}
 	}
 
-	if pretty, ok := t.result.(formatters.PrettyMixin); ok {
+	if pretty, ok := t.result.(api.Pretty); ok {
 		rv := reflect.ValueOf(pretty)
 		if rv.Kind() != reflect.Pointer || (!rv.IsNil() && rv.Pointer() != reflect.ValueOf(t).Pointer()) {
 			return pretty.Pretty(), from

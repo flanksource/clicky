@@ -24,6 +24,17 @@ type terminalFlags struct {
 	lflag uint64
 }
 
+func getTerminalFlags(t *testing.T, fd int) terminalFlags {
+	t.Helper()
+	termios, err := unix.IoctlGetTermios(fd, terminalGetAttributes)
+	require.NoError(t, err, "failed to get termios")
+	return terminalFlags{
+		iflag: uint64(termios.Iflag),
+		oflag: uint64(termios.Oflag),
+		lflag: uint64(termios.Lflag),
+	}
+}
+
 // Critical flags that MakeRaw disables
 const criticalLflagMask = unix.ISIG | unix.ICANON | unix.ECHO | unix.IEXTEN
 const criticalIflagMask = unix.ICRNL | unix.IXON | unix.BRKINT

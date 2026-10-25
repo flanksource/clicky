@@ -5,6 +5,8 @@ import (
 	"time"
 
 	"github.com/labstack/echo/v4"
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -405,4 +407,9 @@ func TestApplyProxyGatewayMiddleware(t *testing.T) {
 	require.NotPanics(t, func() {
 		ApplyProxyGatewayMiddleware(e)
 	}, "ApplyProxyGatewayMiddleware should not panic")
+}
+
+func TestMiddleware(t *testing.T) {
+	RegisterFailHandler(Fail)
+	RunSpecs(t, "Middleware Suite")
 }

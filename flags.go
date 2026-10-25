@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strings"
 
+	flagmeta "github.com/flanksource/clicky/flags"
 	"github.com/flanksource/clicky/formatters"
 	"github.com/flanksource/commons/collections"
 	"github.com/flanksource/commons/logger"
@@ -16,6 +17,7 @@ import (
 type AllFlags struct {
 	TaskManagerOptions
 	FormatOptions
+	TimingsOptions
 	logger.Flags
 }
 
@@ -33,22 +35,25 @@ var Flags *AllFlags = &AllFlags{
 
 // FlagCategoryAnnotation is the pflag annotation key used to tag flags with
 // a display category, so the usage template can render them in grouped sections.
-const FlagCategoryAnnotation = "clicky_category"
+const FlagCategoryAnnotation = flagmeta.CategoryAnnotation
 
 // Flag category labels rendered as section headers in --help output.
 const (
-	CategoryLogging = "Logging"
-	CategoryTasks   = "Tasks"
-	CategoryFormat  = "Format"
+	CategoryLogging = flagmeta.CategoryLogging
+	CategoryTasks   = flagmeta.CategoryTasks
+	CategoryFormat  = flagmeta.CategoryFormatting
 )
 
 // categoryOrder defines the rendering order for known flag categories. Any
 // category not in this list is appended alphabetically after these.
-var categoryOrder = []string{CategoryLogging, CategoryTasks, CategoryFormat}
+var categoryOrder = []string{
+	flagmeta.CategoryModelSelection, flagmeta.CategoryModelPermissions,
+	flagmeta.CategoryModelRuntime, CategoryFormat, CategoryLogging, CategoryTasks,
+}
 
 // setCategory tags a flag with its display category for grouped usage rendering.
 func setCategory(fs *pflag.FlagSet, name, category string) {
-	_ = fs.SetAnnotation(name, FlagCategoryAnnotation, []string{category})
+	flagmeta.SetCategory(fs.Lookup(name), category)
 }
 
 // BindAllFlags adds clicky's logging, task and format flags to the given pflag set.
@@ -60,7 +65,8 @@ func BindAllFlags(flags *pflag.FlagSet, filters ...string) *AllFlags {
 	flags.BoolVar(&Flags.JsonLogs, "json-logs", false, "Print logs in json format to stderr")
 	flags.BoolVar(&Flags.ReportCaller, "report-caller", false, "Report log caller info")
 	flags.BoolVar(&Flags.LogToStderr, "log-to-stderr", true, "Log to stderr instead of stdout")
-	for _, n := range []string{"loglevel", "log-level", "json-logs", "report-caller", "log-to-stderr"} {
+	Flags.BindFlags(flags)
+	for _, n := range []string{"loglevel", "log-level", "json-logs", "report-caller", "log-to-stderr", "timings"} {
 		setCategory(flags, n, CategoryLogging)
 	}
 
@@ -117,7 +123,7 @@ func BindAllFlags(flags *pflag.FlagSet, filters ...string) *AllFlags {
 
 // BindAllFlagsToCommand binds clicky's flags to cmd's persistent flag set and
 // installs a grouped usage template so --help renders flags in titled sections
-// (Logging, Tasks, Format, then any uncategorized flags under "Flags").
+// with command-specific flags first and reusable categories below them.
 func BindAllFlagsToCommand(cmd *cobra.Command, filters ...string) *AllFlags {
 	f := BindAllFlags(cmd.PersistentFlags(), filters...)
 	SetGroupedUsage(cmd)
@@ -126,9 +132,8 @@ func BindAllFlagsToCommand(cmd *cobra.Command, filters ...string) *AllFlags {
 
 // SetGroupedUsage installs a usage function on cmd that renders flags in
 // sections grouped by their FlagCategoryAnnotation. Flags without a category
-// fall under a generic "Flags" heading. The function is also propagated as the
-// usage template inheritance chain expects, so subcommands display the same
-// grouping for inherited flags.
+// fall under "Command flags" or "Global flags". Cobra's usage-function
+// inheritance gives subcommands the same grouping for inherited flags.
 func SetGroupedUsage(cmd *cobra.Command) {
 	cmd.SetUsageFunc(func(c *cobra.Command) error {
 		return renderGroupedUsage(c, c.OutOrStderr())
@@ -164,13 +169,7 @@ func renderGroupedUsage(c *cobra.Command, w io.Writer) error {
 		}
 	}
 
-	if c.HasAvailableLocalFlags() {
-		writeGroupedFlags(w, "Flags", c.LocalFlags())
-	}
-
-	if c.HasAvailableInheritedFlags() {
-		writeGroupedFlags(w, "Global Flags", c.InheritedFlags())
-	}
+	writeGroupedFlags(w, c)
 
 	if c.HasHelpSubCommands() {
 		fmt.Fprintln(w, "\nAdditional help topics:")
@@ -188,40 +187,64 @@ func renderGroupedUsage(c *cobra.Command, w io.Writer) error {
 	return nil
 }
 
-// writeGroupedFlags renders a flag set under a heading, partitioned by the
-// FlagCategoryAnnotation. Uncategorized flags appear under the base heading;
-// each known category gets its own subsection.
-func writeGroupedFlags(w io.Writer, heading string, fs *pflag.FlagSet) {
-	groups := map[string]*pflag.FlagSet{}
-	uncategorized := pflag.NewFlagSet("uncategorized", pflag.ContinueOnError)
+// FlagGroup is one nonempty section of a command's visible flags.
+type FlagGroup struct {
+	Title string
+	Flags *pflag.FlagSet
+}
 
-	fs.VisitAll(func(f *pflag.Flag) {
-		if f.Hidden {
-			return
-		}
-		cats := f.Annotations[FlagCategoryAnnotation]
-		if len(cats) == 0 {
-			uncategorized.AddFlag(f)
-			return
-		}
-		cat := cats[0]
-		g, ok := groups[cat]
-		if !ok {
-			g = pflag.NewFlagSet(cat, pflag.ContinueOnError)
-			groups[cat] = g
-		}
-		g.AddFlag(f)
-	})
-
-	if uncategorized.HasAvailableFlags() {
-		fmt.Fprintf(w, "\n%s:\n%s", heading, strings.TrimRight(uncategorized.FlagUsages(), " \n"))
-		fmt.Fprintln(w)
+func writeGroupedFlags(w io.Writer, cmd *cobra.Command) {
+	for _, group := range CommandFlagGroups(cmd) {
+		writeFlagSection(w, group.Title, group.Flags)
 	}
+}
 
+// CommandFlagGroups groups local and inherited flags for standard and custom help.
+func CommandFlagGroups(cmd *cobra.Command) []FlagGroup {
+	groups := map[string]*pflag.FlagSet{}
+	command := pflag.NewFlagSet("command", pflag.ContinueOnError)
+	global := pflag.NewFlagSet("global", pflag.ContinueOnError)
+	cmd.LocalFlags().VisitAll(func(flag *pflag.Flag) {
+		uncategorized := command
+		if cmd.PersistentFlags().Lookup(flag.Name) == flag {
+			uncategorized = global
+		}
+		collectGroupedFlag(flag, uncategorized, groups)
+	})
+	cmd.InheritedFlags().VisitAll(func(flag *pflag.Flag) {
+		collectGroupedFlag(flag, global, groups)
+	})
+	var sections []FlagGroup
+	if command.HasAvailableFlags() {
+		sections = append(sections, FlagGroup{Title: "Command flags", Flags: command})
+	}
 	for _, cat := range orderedCategories(groups) {
-		g := groups[cat]
-		fmt.Fprintf(w, "\n%s %s:\n%s", cat, strings.ToLower(heading), strings.TrimRight(g.FlagUsages(), " \n"))
-		fmt.Fprintln(w)
+		sections = append(sections, FlagGroup{Title: cat, Flags: groups[cat]})
+	}
+	if global.HasAvailableFlags() {
+		sections = append(sections, FlagGroup{Title: "Global flags", Flags: global})
+	}
+	return sections
+}
+
+func collectGroupedFlag(flag *pflag.Flag, uncategorized *pflag.FlagSet, groups map[string]*pflag.FlagSet) {
+	if flag.Hidden {
+		return
+	}
+	category := flagmeta.Category(flag)
+	if category == "" {
+		uncategorized.AddFlag(flag)
+		return
+	}
+	if groups[category] == nil {
+		groups[category] = pflag.NewFlagSet(category, pflag.ContinueOnError)
+	}
+	groups[category].AddFlag(flag)
+}
+
+func writeFlagSection(w io.Writer, heading string, fs *pflag.FlagSet) {
+	if fs.HasAvailableFlags() {
+		fmt.Fprintf(w, "\n%s:\n%s\n", heading, strings.TrimRight(fs.FlagUsages(), " \n"))
 	}
 }
 

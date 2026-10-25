@@ -7,6 +7,7 @@ import (
 
 	"github.com/flanksource/commons/duration"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
 // BindFlag creates and binds a flag to a Cobra command based on field info
@@ -21,49 +22,41 @@ func BindFlag(cmd *cobra.Command, info FieldInfo) *FlagValue {
 		IsArgs:       info.IsArgs,
 		CLIFileRead:  info.CLIFileRead,
 	}
+	bindFlagValue(cmd.Flags(), info, fv)
+	if info.FlagName != "" {
+		annotateFlag(cmd, info)
+	}
+	return fv
+}
 
-	// Bind flag based on type (skip flag registration if no flag name)
+// bindFlagValue allocates the value fv holds for info's type and, when info
+// names a flag, registers it. pflag's XVar is XVarP with an empty shorthand.
+func bindFlagValue(fs *pflag.FlagSet, info FieldInfo, fv *FlagValue) {
+	register := info.FlagName != ""
 	switch info.FieldType.Kind() {
 	case reflect.String:
-		var val string
-		if info.DefaultValue != "" {
-			val = info.DefaultValue
-		}
+		val := info.DefaultValue
 		fv.StringPtr = &val
-		if info.FlagName != "" {
-			if info.ShortFlag != "" {
-				cmd.Flags().StringVarP(fv.StringPtr, info.FlagName, info.ShortFlag, val, info.Help)
-			} else {
-				cmd.Flags().StringVar(fv.StringPtr, info.FlagName, val, info.Help)
-			}
+		if register {
+			fs.StringVarP(fv.StringPtr, info.FlagName, info.ShortFlag, val, info.Help)
 		}
-
 	case reflect.Int:
 		var val int
 		if info.DefaultValue != "" {
 			val, _ = strconv.Atoi(info.DefaultValue)
 		}
 		fv.IntPtr = &val
-		if info.FlagName != "" {
-			if info.ShortFlag != "" {
-				cmd.Flags().IntVarP(fv.IntPtr, info.FlagName, info.ShortFlag, val, info.Help)
-			} else {
-				cmd.Flags().IntVar(fv.IntPtr, info.FlagName, val, info.Help)
-			}
+		if register {
+			fs.IntVarP(fv.IntPtr, info.FlagName, info.ShortFlag, val, info.Help)
 		}
-
 	case reflect.Float64:
 		var val float64
 		if info.DefaultValue != "" {
 			val, _ = strconv.ParseFloat(info.DefaultValue, 64)
 		}
 		fv.Float64Ptr = &val
-		if info.FlagName != "" {
-			if info.ShortFlag != "" {
-				cmd.Flags().Float64VarP(fv.Float64Ptr, info.FlagName, info.ShortFlag, val, info.Help)
-			} else {
-				cmd.Flags().Float64Var(fv.Float64Ptr, info.FlagName, val, info.Help)
-			}
+		if register {
+			fs.Float64VarP(fv.Float64Ptr, info.FlagName, info.ShortFlag, val, info.Help)
 		}
 	case reflect.Bool:
 		var val bool
@@ -71,89 +64,87 @@ func BindFlag(cmd *cobra.Command, info FieldInfo) *FlagValue {
 			val, _ = strconv.ParseBool(info.DefaultValue)
 		}
 		fv.BoolPtr = &val
-		if info.FlagName != "" {
-			if info.ShortFlag != "" {
-				cmd.Flags().BoolVarP(fv.BoolPtr, info.FlagName, info.ShortFlag, val, info.Help)
-			} else {
-				cmd.Flags().BoolVar(fv.BoolPtr, info.FlagName, val, info.Help)
-			}
+		if register {
+			fs.BoolVarP(fv.BoolPtr, info.FlagName, info.ShortFlag, val, info.Help)
 		}
-
 	case reflect.Slice:
-		switch info.FieldType.Elem().Kind() {
-		case reflect.String:
-			var val []string
-			fv.StringSlicePtr = &val
-			if info.FlagName != "" {
-				if info.LiteralSlice {
-					cmd.Flags().StringArrayVarP(fv.StringSlicePtr, info.FlagName, info.ShortFlag, val, info.Help)
-				} else if info.ShortFlag != "" {
-					cmd.Flags().StringSliceVarP(fv.StringSlicePtr, info.FlagName, info.ShortFlag, val, info.Help)
-				} else {
-					cmd.Flags().StringSliceVar(fv.StringSlicePtr, info.FlagName, val, info.Help)
-				}
-			}
-
-		case reflect.Int:
-			var val []int
-			fv.IntSlicePtr = &val
-			if info.FlagName != "" {
-				if info.ShortFlag != "" {
-					cmd.Flags().IntSliceVarP(fv.IntSlicePtr, info.FlagName, info.ShortFlag, val, info.Help)
-				} else {
-					cmd.Flags().IntSliceVar(fv.IntSlicePtr, info.FlagName, val, info.Help)
-				}
-			}
-		}
-
+		bindSliceFlag(fs, info, fv)
 	default:
-		// Handle special types by name
-		typeName := info.FieldType.String()
-		switch typeName {
-		case "duration.Duration":
-			var val duration.Duration
-			if info.DefaultValue != "" {
-				val, _ = duration.ParseDuration(info.DefaultValue)
-			}
-			fv.DurationPtr = &val
-			if info.FlagName != "" {
-				cmd.Flags().Var(&durationValue{d: fv.DurationPtr}, info.FlagName, info.Help)
-				if info.ShortFlag != "" {
-					cmd.Flags().Lookup(info.FlagName).Shorthand = info.ShortFlag
-				}
-			}
+		bindNamedTypeFlag(fs, info, fv)
+	}
+}
 
-		case "time.Time":
-			var val time.Time
-			if info.DefaultValue != "" {
-				val, _ = parseTime(info.DefaultValue)
-			}
-			fv.TimePtr = &val
-			if info.FlagName != "" {
-				cmd.Flags().Var(&timeValue{t: fv.TimePtr}, info.FlagName, info.Help)
-				if info.ShortFlag != "" {
-					cmd.Flags().Lookup(info.FlagName).Shorthand = info.ShortFlag
-				}
-			}
+func bindSliceFlag(fs *pflag.FlagSet, info FieldInfo, fv *FlagValue) {
+	register := info.FlagName != ""
+	switch info.FieldType.Elem().Kind() {
+	case reflect.String:
+		var val []string
+		fv.StringSlicePtr = &val
+		if !register {
+			return
+		}
+		if info.LiteralSlice {
+			fs.StringArrayVarP(fv.StringSlicePtr, info.FlagName, info.ShortFlag, val, info.Help)
+		} else {
+			fs.StringSliceVarP(fv.StringSlicePtr, info.FlagName, info.ShortFlag, val, info.Help)
+		}
+	case reflect.Int:
+		var val []int
+		fv.IntSlicePtr = &val
+		if register {
+			fs.IntSliceVarP(fv.IntSlicePtr, info.FlagName, info.ShortFlag, val, info.Help)
 		}
 	}
+}
 
-	if info.Required && info.FlagName != "" {
+func bindNamedTypeFlag(fs *pflag.FlagSet, info FieldInfo, fv *FlagValue) {
+	var value pflag.Value
+	switch info.FieldType.String() {
+	case "duration.Duration":
+		var val duration.Duration
+		if info.DefaultValue != "" {
+			val, _ = duration.ParseDuration(info.DefaultValue)
+		}
+		fv.DurationPtr = &val
+		value = &durationValue{d: fv.DurationPtr}
+	case "time.Time":
+		var val time.Time
+		if info.DefaultValue != "" {
+			val, _ = parseTime(info.DefaultValue)
+		}
+		fv.TimePtr = &val
+		value = &timeValue{t: fv.TimePtr}
+	default:
+		return
+	}
+	if info.FlagName == "" {
+		return
+	}
+	fs.Var(value, info.FlagName, info.Help)
+	if info.ShortFlag != "" {
+		fs.Lookup(info.FlagName).Shorthand = info.ShortFlag
+	}
+}
+
+func annotateFlag(cmd *cobra.Command, info FieldInfo) {
+	if info.Required {
 		_ = cmd.MarkFlagRequired(info.FlagName)
 	}
 
 	// Hidden flags stay usable on the CLI but are dropped from --help and from
 	// generated tool/OpenAPI schemas (the RPC converter skips flag.Hidden).
-	if info.Hidden && info.FlagName != "" {
+	if info.Hidden {
 		_ = cmd.Flags().MarkHidden(info.FlagName)
 	}
 
 	// An `enum:` tag rides on the same annotation the sort/order flags use, so
 	// the RPC converter publishes it as the parameter's enum without knowing
 	// anything about struct tags.
-	if len(info.Enum) > 0 && info.FlagName != "" {
+	if len(info.Enum) > 0 {
 		SetAllowedValues(cmd.Flags().Lookup(info.FlagName), info.Enum...)
 	}
 
-	return fv
+	if info.Category != "" {
+		SetCategory(cmd.Flags().Lookup(info.FlagName), info.Category)
+	}
 }

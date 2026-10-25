@@ -11,8 +11,8 @@ import (
 // renderer currently owns the TTY, in which case the write is buffered and
 // flushed to os.Stderr right after the renderer releases the terminal
 // (stopRender's teardown calls flushGatedStderr). Used by callers that emit
-// log-style content to stderr (e.g. clicky.Infof's logWriter, ai/cache
-// debug prints) so their output cannot corrupt the renderer's in-place
+// log-style content to stderr (e.g. clicky.Infof's logWriter) so their
+// output cannot corrupt the renderer's in-place
 // frame yet is never lost.
 //
 // Content arrives already secret-redacted — clicky's logWriter wraps this

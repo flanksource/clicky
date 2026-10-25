@@ -4,6 +4,9 @@ import (
 	"context"
 	"testing"
 	"time"
+
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
 )
 
 func TestAddTimingSumsByName(t *testing.T) {
@@ -43,4 +46,9 @@ func TestAddTimingNoAccumulatorIsNoop(t *testing.T) {
 	// Must not panic on the CLI path where no accumulator was installed.
 	AddTiming(context.Background(), TimingMetric{Name: "parse", Duration: time.Millisecond})
 	Track(context.Background(), "parse")()
+}
+
+func TestServerTiming(t *testing.T) {
+	RegisterFailHandler(Fail)
+	RunSpecs(t, "HTTP Server Timing Suite")
 }

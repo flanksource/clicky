@@ -4,12 +4,12 @@ import (
 	"context"
 	"errors"
 	"slices"
+	"testing"
 	"time"
 
+	"github.com/flanksource/clicky/cache"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-
-	"github.com/flanksource/clicky/cache"
 )
 
 var _ = Describe("In-memory cache.Store", func() {
@@ -177,3 +177,8 @@ var _ = Describe("In-memory cache.Store", func() {
 		})
 	})
 })
+
+func TestCache(t *testing.T) {
+	RegisterFailHandler(Fail)
+	RunSpecs(t, "Cache Browser Suite")
+}

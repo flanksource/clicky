@@ -71,6 +71,22 @@ var _ = Describe("HTTP server timing counters", func() {
 		}))
 	})
 
+	It("keeps the largest value of a max counter while summing the others", func() {
+		ctx, timings := WithTimings(context.Background())
+		const small, large = int64(40 << 20), int64(190 << 20)
+
+		for _, rss := range []int64{small, large, small} {
+			AddTiming(ctx, TimingMetric{Name: "git", Counters: []TimingCounter{
+				{Name: "ops", Value: 1}, {Name: "max_rss_bytes", Value: rss, Aggregate: AggregateMax},
+			}})
+		}
+
+		Expect(timings.Metrics()).To(Equal([]TimingMetric{{Name: "git", Counters: []TimingCounter{
+			{Name: "ops", Value: 3}, {Name: "max_rss_bytes", Value: large, Aggregate: AggregateMax},
+		}}}))
+		Expect(timings.Header()).To(Equal(`git;dur=0.0;desc="ops=3 max_rss_bytes=199229440"`))
+	})
+
 	It("reports a single counter and duration by name", func() {
 		ctx, timings := WithTimings(context.Background())
 

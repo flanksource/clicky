@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"testing"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -308,3 +309,8 @@ var _ = Describe("multiplexed events hub", func() {
 		Expect(func() { hub.Register(http.NewServeMux(), mux) }).To(PanicWith(ContainSubstring("already registered")))
 	})
 })
+
+func TestSSE(t *testing.T) {
+	RegisterFailHandler(Fail)
+	RunSpecs(t, "SSE Suite")
+}

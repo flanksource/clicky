@@ -10,6 +10,7 @@ package rpchttp
 import (
 	"context"
 	"fmt"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -23,7 +24,19 @@ type timingsKey struct{}
 type TimingCounter struct {
 	Name  string
 	Value int64
+	// Aggregate is how contributions combine; the zero value sums them.
+	Aggregate Aggregate
 }
+
+// Aggregate combines the contributions of one counter.
+type Aggregate int
+
+const (
+	// AggregateSum adds every contribution (counts, CPU time, bytes).
+	AggregateSum Aggregate = iota
+	// AggregateMax keeps the largest contribution (peak memory).
+	AggregateMax
+)
 
 // TimingMetric is one contribution to a request-scoped server timing metric.
 type TimingMetric struct {
@@ -36,6 +49,7 @@ type timingTotal struct {
 	duration     time.Duration
 	counterOrder []string
 	counters     map[string]int64
+	aggregates   map[string]Aggregate
 }
 
 // Timings is a request-scoped, insertion-ordered accumulator of named metrics.
@@ -81,16 +95,22 @@ func (t *Timings) add(metric TimingMetric) {
 	defer t.mu.Unlock()
 	total, seen := t.metrics[metric.Name]
 	if !seen {
-		total = &timingTotal{counters: make(map[string]int64)}
+		total = &timingTotal{counters: make(map[string]int64), aggregates: make(map[string]Aggregate)}
 		t.metrics[metric.Name] = total
 		t.order = append(t.order, metric.Name)
 	}
 	total.duration += metric.Duration
 	for _, counter := range metric.Counters {
-		if _, seen := total.counters[counter.Name]; !seen {
+		current, seen := total.counters[counter.Name]
+		if !seen {
 			total.counterOrder = append(total.counterOrder, counter.Name)
+			total.aggregates[counter.Name] = counter.Aggregate
 		}
-		total.counters[counter.Name] += counter.Value
+		if total.aggregates[counter.Name] == AggregateMax {
+			total.counters[counter.Name] = max(current, counter.Value)
+		} else {
+			total.counters[counter.Name] = current + counter.Value
+		}
 	}
 }
 
@@ -105,7 +125,7 @@ func (t *Timings) Metrics() []TimingMetric {
 		total := t.metrics[name]
 		metric := TimingMetric{Name: name, Duration: total.duration}
 		for _, counter := range total.counterOrder {
-			metric.Counters = append(metric.Counters, TimingCounter{Name: counter, Value: total.counters[counter]})
+			metric.Counters = append(metric.Counters, TimingCounter{Name: counter, Value: total.counters[counter], Aggregate: total.aggregates[counter]})
 		}
 		metrics = append(metrics, metric)
 	}
@@ -169,4 +189,13 @@ func formatMetric(name string, d time.Duration, description string) string {
 	}
 	description = strings.NewReplacer(`\`, `\\`, `"`, `\"`).Replace(description)
 	return metric + `;desc="` + description + `"`
+}
+
+// MaxRSSBytes converts getrusage's ru_maxrss to bytes for a max_rss_bytes
+// counter: Linux reports KiB, Darwin and the BSDs bytes.
+func MaxRSSBytes(maxrss int64) int64 {
+	if runtime.GOOS == "linux" {
+		return maxrss * 1024
+	}
+	return maxrss
 }
