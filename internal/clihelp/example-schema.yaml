@@ -1,0 +1,108 @@
+# Example Clicky Schema
+# This demonstrates all available features
+
+fields:
+  # Simple string field with styling
+  - name: "id"
+    type: "string"
+    style: "text-blue-600 font-bold"
+    label: "Order ID"
+
+  # Nested struct field
+  - name: "customer"
+    type: "struct"
+    style: "text-gray-700"
+    fields:
+      - name: "name"
+        type: "string"
+        style: "font-semibold"
+      - name: "email"
+        type: "string"
+        style: "text-blue-500 underline"
+      - name: "account_type"
+        type: "string"
+        style: "uppercase"
+        color_options:
+          green: "premium"
+          yellow: "standard"
+          gray: "basic"
+
+  # Field with dynamic coloring
+  - name: "status"
+    type: "string"
+    style: "font-bold uppercase"
+    color_options:
+      green: "completed"
+      yellow: "processing"
+      orange: "pending"
+      red: "canceled"
+
+  # Currency field
+  - name: "total_amount"
+    type: "float"
+    format: "currency"
+    style: "text-green-600 font-bold text-lg"
+
+  # Date field with epoch format
+  - name: "order_date"
+    type: "string"
+    format: "date"
+    style: "text-indigo-600"
+    format_options:
+      format: "epoch"
+
+  # Array displayed as table
+  - name: "items"
+    type: "array"
+    format: "table"
+    format_options:
+      sort: "price"
+      dir: "desc"
+    table_options:
+      title: "Order Items"
+      header_style: "bg-blue-50 text-blue-900 font-bold uppercase"
+      fields:
+        - name: "product_name"
+          type: "string"
+          style: "font-medium"
+        - name: "quantity"
+          type: "int"
+          style: "text-center"
+        - name: "price"
+          type: "float"
+          format: "currency"
+          style: "text-green-600"
+        - name: "discount"
+          type: "float"
+          format: "float"
+          format_options:
+            digits: "1"
+          style: "text-red-500"
+        - name: "warranty_months"
+          type: "int"
+          color_options:
+            green: ">=36"
+            yellow: ">=24"
+            red: "<24"
+
+  # Field with multiple style classes
+  - name: "alert_message"
+    type: "string"
+    style: "uppercase text-red-600 bg-red-100 font-bold underline px-2 py-1 rounded"
+
+  # Boolean field
+  - name: "is_expedited"
+    type: "boolean"
+    style: "font-semibold"
+    color_options:
+      green: "true"
+      gray: "false"
+
+  # Tree structure field
+  - name: "category_tree"
+    type: "struct"
+    format: "tree"
+    tree_options:
+      label_field: "name"
+      children_field: "subcategories"
+      style: "text-gray-700"

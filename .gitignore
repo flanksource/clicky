@@ -81,6 +81,8 @@ clicky
 # Re-include tracked config/build files
 !task/testdata/tasks/*.yaml
 !examples/testdata/*.fixture.yaml
+!internal/clihelp/example-schema.yaml
+!schemaform/testdata/*.json
 !task/ui/package.json
 !task/ui/package-lock.json
 !task/ui/tsconfig.json
