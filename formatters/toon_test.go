@@ -1,9 +1,12 @@
 package formatters
 
 import (
+	"encoding/csv"
+	"regexp"
 	"strings"
 
-	"github.com/onsi/ginkgo/v2"
+	"github.com/flanksource/clicky/api"
+	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
 
@@ -13,13 +16,13 @@ type toonRow struct {
 	Region *string `json:"region"`
 }
 
-var _ = ginkgo.Describe("toon", func() {
+var _ = Describe("toon", func() {
 	Formatter := NewFormatManager()
 	rows := []toonRow{{ID: 1, Name: "alpha"}, {ID: 2, Name: "beta"}}
 
 	// The tabular block is the whole point of TOON: naming the fields once
 	// instead of once per row is where the token saving over JSON comes from.
-	ginkgo.It("renders uniform rows as a single tabular block", func() {
+	It("renders uniform rows as a single tabular block", func() {
 		out, err := Formatter.FormatWithOptions(FormatOptions{Format: "toon"}, rows)
 		Expect(err).NotTo(HaveOccurred())
 
@@ -33,27 +36,27 @@ var _ = ginkgo.Describe("toon", func() {
 	// gotoon's own struct walker takes the whole json tag as the key and ignores
 	// omitempty and MarshalJSON, so a struct has to reach it already decoded or
 	// the output carries keys like "name,omitempty" that no consumer can read.
-	ginkgo.It("names fields the way --format json does", func() {
+	It("names fields the way --format json does", func() {
 		out, err := Formatter.FormatWithOptions(FormatOptions{Format: "toon"}, rows)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(out).NotTo(ContainSubstring("omitempty"))
 		Expect(out).NotTo(ContainSubstring("ID"))
 	})
 
-	ginkgo.It("indents nested objects under their key", func() {
+	It("indents nested objects under their key", func() {
 		out, err := Formatter.FormatWithOptions(FormatOptions{Format: "toon"},
 			map[string]any{"tags": map[string]any{"env": "prod"}})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(out).To(Equal("tags:\n  env: prod\n"))
 	})
 
-	ginkgo.It("renders an empty collection as a zero-length array", func() {
+	It("renders an empty collection as a zero-length array", func() {
 		out, err := Formatter.FormatWithOptions(FormatOptions{Format: "toon"}, []toonRow{})
 		Expect(err).NotTo(HaveOccurred())
 		Expect(out).To(Equal("[0]:\n"))
 	})
 
-	ginkgo.It("does not silently fall back to a pretty table", func() {
+	It("does not silently fall back to a pretty table", func() {
 		out, err := Formatter.FormatWithOptions(FormatOptions{Format: "toon"}, rows)
 		Expect(err).NotTo(HaveOccurred())
 		Expect(out).NotTo(ContainSubstring("│"))
@@ -61,7 +64,7 @@ var _ = ginkgo.Describe("toon", func() {
 
 	// --format validates against knownFormats before anything renders, so a
 	// format the manager understands but the spec parser rejects is unreachable.
-	ginkgo.It("is accepted by the --format spec parser", func() {
+	It("is accepted by the --format spec parser", func() {
 		opts := FormatOptions{Format: "toon"}
 		Expect(opts.ParseFormatSpec()).To(Succeed())
 		Expect(opts.Sinks).To(Equal([]FormatSink{{Format: "toon"}}))
@@ -71,7 +74,81 @@ var _ = ginkgo.Describe("toon", func() {
 		Expect(fileOpts.Sinks).To(ContainElement(FormatSink{Format: "toon", File: "out.toon"}))
 	})
 
-	ginkgo.It("is listed in the --format help", func() {
+	It("is listed in the --format help", func() {
 		Expect(FormatSpecHelp).To(ContainSubstring("toon"))
 	})
+})
+
+var gridjsTableID = regexp.MustCompile(`gridjs-table-\d+`)
+
+func normalizeTableIDs(html string) string {
+	return gridjsTableID.ReplaceAllString(html, "gridjs-table")
+}
+
+type textableRow struct {
+	ID   int
+	Name string
+}
+
+func (r textableRow) Columns() []api.ColumnDef {
+	return []api.ColumnDef{
+		{Name: "id", Label: "ID", Type: "number"},
+		{Name: "name", Label: "Name"},
+	}
+}
+
+func (r textableRow) Row() map[string]any {
+	return map[string]any{"id": r.ID, "name": r.Name}
+}
+
+var _ = Describe("Textable formatting", func() {
+	table := api.NewTableFrom([]textableRow{{ID: 1, Name: "alpha"}, {ID: 2, Name: "beta"}})
+
+	// api.TextTable is what every Table()/Pretty() producer hands the formatter, so
+	// a format it cannot reach is a format the caller cannot use.
+	DescribeTable("renders a TextTable in formats formatTextable does not implement",
+		func(format string, assert func(string)) {
+			output, err := NewFormatManager().FormatWithOptions(FormatOptions{Format: format}, table)
+			Expect(err).NotTo(HaveOccurred())
+			assert(output)
+		},
+		Entry("csv", "csv", func(output string) {
+			records, err := csv.NewReader(strings.NewReader(output)).ReadAll()
+			Expect(err).NotTo(HaveOccurred())
+			Expect(records[0]).To(Equal([]string{"ID", "Name"}))
+			Expect(records[2]).To(Equal([]string{"2", "beta"}))
+		}),
+		Entry("ndjson", "ndjson", func(output string) {
+			Expect(strings.Count(strings.TrimSuffix(output, "\n"), "\n")).To(Equal(0))
+			Expect(output).To(ContainSubstring("alpha"))
+		}),
+		Entry("toon", "toon", func(output string) {
+			Expect(output).To(HavePrefix("[2]{"))
+			Expect(output).To(ContainSubstring("alpha"))
+		}),
+		Entry("tree", "tree", func(output string) {
+			Expect(output).NotTo(BeEmpty())
+		}),
+	)
+
+	// The formats formatTextable does implement must keep going through it, or
+	// widening the fall-through would quietly rewrite every existing output.
+	DescribeTable("leaves formats formatTextable owns untouched",
+		func(format string) {
+			expected, err := formatTextable(table, FormatOptions{Format: format})
+			Expect(err).NotTo(HaveOccurred())
+
+			output, err := NewFormatManager().FormatWithOptions(FormatOptions{Format: format}, table)
+			Expect(err).NotTo(HaveOccurred())
+			// The Grid.js mount id is deliberately unique per render, so two renders of
+			// the same table never match byte-for-byte; the rest must be identical.
+			Expect(normalizeTableIDs(output)).To(Equal(normalizeTableIDs(expected)))
+		},
+		Entry("json", "json"),
+		Entry("yaml", "yaml"),
+		Entry("markdown", "markdown"),
+		Entry("pretty", "pretty"),
+		Entry("html", "html"),
+		Entry("slack", "slack"),
+	)
 })

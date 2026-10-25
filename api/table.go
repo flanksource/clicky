@@ -1,6 +1,8 @@
 package api
 
-import "strings"
+import (
+	"strings"
+)
 
 // WithoutEmptyColumns returns a copy of the table with columns removed where
 // every row has an empty value. Used by display renderers (ANSI, HTML, PDF)
@@ -120,3 +122,17 @@ func (t *TextTable) cellStrings(withColors bool) (headers []string, rows [][]str
 	}
 	return headers, rows
 }
+
+// PageInfo describes a buffered list window. A negative Total means unknown.
+type PageInfo struct {
+	Limit  int   `json:"limit"`
+	Offset int   `json:"offset"`
+	Total  int64 `json:"total"`
+}
+
+type Paged interface {
+	PageMetadata() PageInfo
+	PageRows() any
+}
+
+const LLMPageSize = 25

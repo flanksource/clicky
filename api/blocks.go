@@ -62,7 +62,24 @@ func (h Heading) ANSI() string {
 	if h.Content == nil {
 		return ""
 	}
-	return formatANSI(h.Content.ANSI(), TailwindStyle{Bold: true})
+	content := h.Content.ANSI()
+	var output strings.Builder
+	for i := 0; i < len(content); {
+		if content[i] == '\x1b' && i+1 < len(content) && content[i+1] == '[' {
+			sequence, consumed, sgr := consumeCSI(content[i:])
+			if consumed > 0 && sgr {
+				output.WriteString(sequence)
+				i += consumed
+				if i < len(content) {
+					output.WriteString("\x1b[1m")
+				}
+				continue
+			}
+		}
+		output.WriteByte(content[i])
+		i++
+	}
+	return formatANSI(output.String(), TailwindStyle{Bold: true})
 }
 
 func (h Heading) HTML() string {

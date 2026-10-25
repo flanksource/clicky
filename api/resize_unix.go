@@ -15,9 +15,11 @@ import (
 func watchTerminalResize() {
 	ch := make(chan os.Signal, 1)
 	signal.Notify(ch, unix.SIGWINCH)
-	go func() {
-		for range ch {
-			InvalidateTerminalSize()
-		}
-	}()
+	go invalidateTerminalSizeOnResize(ch)
+}
+
+func invalidateTerminalSizeOnResize(ch <-chan os.Signal) {
+	for range ch {
+		InvalidateTerminalSize()
+	}
 }

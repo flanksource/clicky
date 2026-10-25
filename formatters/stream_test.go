@@ -10,13 +10,13 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/flanksource/clicky/api"
-	"github.com/xuri/excelize/v2"
 	"gopkg.in/yaml.v3"
 )
 
@@ -167,22 +167,50 @@ func TestWriteTableStreamStructuredColumns(t *testing.T) {
 	}
 }
 
-func TestWriteTableStreamExcel(t *testing.T) {
+func TestWriteTableStreamUnregisteredExcelNamesUse(t *testing.T) {
+	streamWritersMu.Lock()
+	saved := streamWriters
+	streamWriters = map[string]StreamWriterFunc{}
+	streamWritersMu.Unlock()
+	t.Cleanup(func() {
+		streamWritersMu.Lock()
+		streamWriters = saved
+		streamWritersMu.Unlock()
+	})
+
 	var output bytes.Buffer
-	rows := &sliceRowIterator{
-		columns: []api.ColumnDef{{Name: "name"}, {Name: "count"}},
-		rows:    []map[string]any{{"name": "alpha", "count": 3}},
+	_, err := WriteTableStream(context.Background(), &output, &sliceRowIterator{rows: []map[string]any{{"name": "alpha"}}}, StreamOptions{Format: "xlsx"})
+	if err == nil || !strings.Contains(err.Error(), "excel.Use() from github.com/flanksource/clicky/formatters/excel") {
+		t.Fatalf("expected registration hint, got %v", err)
 	}
-	if _, err := WriteTableStream(context.Background(), &output, rows, StreamOptions{Format: "xlsx"}); err != nil {
-		t.Fatal(err)
+}
+
+func TestWriteTableStreamRegisteredWriterReceivesEveryRow(t *testing.T) {
+	const format = "test-registered"
+	var got []map[string]any
+	var gotColumns []api.ColumnDef
+	RegisterStreamWriter(format, func(ctx context.Context, _ io.Writer, table *TableStream) (int64, error) {
+		gotColumns = table.Columns
+		return table.Each(ctx, func(row map[string]any) error {
+			got = append(got, row)
+			return nil
+		})
+	})
+	t.Cleanup(func() {
+		streamWritersMu.Lock()
+		delete(streamWriters, format)
+		streamWritersMu.Unlock()
+	})
+	columns := []api.ColumnDef{{Name: "name"}}
+	rows := []map[string]any{{"name": "alpha"}, {"name": "beta"}}
+
+	count, err := WriteTableStream(context.Background(), io.Discard, &sliceRowIterator{columns: columns, rows: rows}, StreamOptions{Format: format})
+
+	if err != nil || count != 2 {
+		t.Fatalf("count=%d err=%v", count, err)
 	}
-	book, err := excelize.OpenReader(bytes.NewReader(output.Bytes()))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer book.Close()
-	if cell, _ := book.GetCellValue("Sheet1", "A2"); cell != "alpha" {
-		t.Fatalf("unexpected cell A2: %q", cell)
+	if !reflect.DeepEqual(got, rows) || !reflect.DeepEqual(gotColumns, columns) {
+		t.Fatalf("writer got columns %v rows %v", gotColumns, got)
 	}
 }
 
@@ -428,34 +456,6 @@ func TestWriteTableStreamStructuredFormatsKeepFormulaText(t *testing.T) {
 				t.Fatalf("%s must not spreadsheet-escape values: %s", format, output.String())
 			}
 		})
-	}
-}
-
-func TestWriteTableStreamExcelEscapesFormulasButKeepsNumbers(t *testing.T) {
-	columns := []api.ColumnDef{{Name: "note"}, {Name: "delta", Type: "number"}}
-	rows := []map[string]any{{"note": "=1+1", "delta": -5}}
-
-	var output bytes.Buffer
-	if _, err := WriteTableStream(context.Background(), &output, &sliceRowIterator{columns: columns, rows: rows}, StreamOptions{Format: "excel"}); err != nil {
-		t.Fatal(err)
-	}
-	book, err := excelize.OpenReader(bytes.NewReader(output.Bytes()))
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer book.Close()
-	if note, _ := book.GetCellValue("Sheet1", "A2"); note != "'=1+1" {
-		t.Fatalf("formula cell was not neutralised: %q", note)
-	}
-	if delta, _ := book.GetCellValue("Sheet1", "B2"); delta != "-5" {
-		t.Fatalf("numeric cell must stay a number, got %q", delta)
-	}
-	deltaType, err := book.GetCellType("Sheet1", "B2")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if deltaType == excelize.CellTypeInlineString || deltaType == excelize.CellTypeSharedString {
-		t.Fatalf("negative number was written as text (%v)", deltaType)
 	}
 }
 

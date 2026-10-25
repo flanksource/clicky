@@ -1,21 +1,23 @@
-package formatters
+package excel
 
 import (
 	"fmt"
 	"strconv"
 
-	"github.com/flanksource/clicky/api"
 	"github.com/xuri/excelize/v2"
+
+	"github.com/flanksource/clicky/api"
+	"github.com/flanksource/clicky/formatters"
 )
 
-// ExcelFormatter handles Excel file generation
-type ExcelFormatter struct {
+// Formatter handles Excel file generation
+type Formatter struct {
 	SheetName string
 }
 
-// NewExcelFormatter creates a new Excel formatter
-func NewExcelFormatter() *ExcelFormatter {
-	return &ExcelFormatter{
+// NewFormatter creates a new Excel formatter
+func NewFormatter() *Formatter {
+	return &Formatter{
 		SheetName: "Sheet1",
 	}
 }
@@ -25,16 +27,19 @@ func NewExcelFormatter() *ExcelFormatter {
 // The string is binary, not text — callers write it verbatim (FormatToFile does,
 // and a --format excel sink is a file). It is a string because that is the
 // FormatterFunc contract every other format shares.
-func (f *ExcelFormatter) Format(data interface{}) (string, error) {
-	if workbook, ok := data.(ExcelWorkbook); ok {
-		return formatExcelWorkbook(workbook)
-	}
+func (f *Formatter) Format(data interface{}) (string, error) {
 	// Unwrap single-element varargs slices, as the other formatters do.
 	if slice, ok := data.([]interface{}); ok && len(slice) == 1 {
 		data = slice[0]
 	}
+	if workbook, ok := data.(Workbook); ok {
+		return formatWorkbook(workbook)
+	}
+	if prettyData, ok := data.(*api.PrettyData); ok {
+		return f.FormatPrettyData(prettyData)
+	}
 
-	prettyData, err := ToPrettyData(data)
+	prettyData, err := formatters.ToPrettyData(data)
 	if err != nil {
 		return "", fmt.Errorf("failed to convert data to PrettyData: %w", err)
 	}
@@ -42,9 +47,9 @@ func (f *ExcelFormatter) Format(data interface{}) (string, error) {
 }
 
 // FormatToFile creates an Excel file and saves it to the specified path
-func (f *ExcelFormatter) FormatToFile(data interface{}, filename string) error {
+func (f *Formatter) FormatToFile(data interface{}, filename string) error {
 	// Convert data to PrettyData for consistent handling
-	prettyData, err := ToPrettyData(data)
+	prettyData, err := formatters.ToPrettyData(data)
 	if err != nil {
 		return fmt.Errorf("failed to convert data to PrettyData: %w", err)
 	}
@@ -58,7 +63,7 @@ func (f *ExcelFormatter) FormatToFile(data interface{}, filename string) error {
 }
 
 // FormatPrettyDataToFile formats PrettyData into file and saves it to filename.
-func (f *ExcelFormatter) FormatPrettyDataToFile(data *api.PrettyData, filename string, file *excelize.File) error {
+func (f *Formatter) FormatPrettyDataToFile(data *api.PrettyData, filename string, file *excelize.File) error {
 	if err := f.writeSheet(data, file); err != nil {
 		return err
 	}
@@ -73,7 +78,7 @@ func (f *ExcelFormatter) FormatPrettyDataToFile(data *api.PrettyData, filename s
 // The guard admits a nil Schema: every table-shaped PrettyData has one, because
 // api.TryTypedValue populates TypedValue.Table and leaves Schema alone. Rejecting
 // it turned away exactly the data this formatter exists to write.
-func (f *ExcelFormatter) writeSheet(data *api.PrettyData, file *excelize.File) error {
+func (f *Formatter) writeSheet(data *api.PrettyData, file *excelize.File) error {
 	if data == nil || (data.Schema == nil && data.FirstTable() == nil) {
 		return fmt.Errorf("no data to format")
 	}
@@ -151,7 +156,7 @@ func (f *ExcelFormatter) writeSheet(data *api.PrettyData, file *excelize.File) e
 }
 
 // FormatPrettyData formats PrettyData to Excel bytes (for in-memory operations)
-func (f *ExcelFormatter) FormatPrettyData(data *api.PrettyData) (string, error) {
+func (f *Formatter) FormatPrettyData(data *api.PrettyData) (string, error) {
 	file := excelize.NewFile()
 	defer func() {
 		_ = file.Close() // ignore error on close
@@ -171,7 +176,7 @@ func (f *ExcelFormatter) FormatPrettyData(data *api.PrettyData) (string, error) 
 }
 
 // createHeaderStyle creates a header cell style
-func (f *ExcelFormatter) createHeaderStyle(file *excelize.File) (int, error) {
+func (f *Formatter) createHeaderStyle(file *excelize.File) (int, error) {
 	return file.NewStyle(&excelize.Style{
 		Font: &excelize.Font{
 			Bold: true,
@@ -192,12 +197,12 @@ func (f *ExcelFormatter) createHeaderStyle(file *excelize.File) (int, error) {
 }
 
 // getCellReference returns Excel cell reference (e.g., A1, B2)
-func (f *ExcelFormatter) getCellReference(col, row int) string {
+func (f *Formatter) getCellReference(col, row int) string {
 	return f.getColumnName(col) + strconv.Itoa(row)
 }
 
 // getColumnName converts column number to Excel column name (1=A, 2=B, 27=AA)
-func (f *ExcelFormatter) getColumnName(col int) string {
+func (f *Formatter) getColumnName(col int) string {
 	name := ""
 	for col > 0 {
 		col-- // Convert to 0-based
@@ -205,10 +210,4 @@ func (f *ExcelFormatter) getColumnName(col int) string {
 		col /= 26
 	}
 	return name
-}
-
-// FormatValue is not needed as we use fieldValue.Plain() for formatted text
-// This is kept for interface compatibility if needed
-func (f *ExcelFormatter) FormatValue(value interface{}) (string, error) {
-	return fmt.Sprintf("%v", value), nil
 }

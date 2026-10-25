@@ -136,24 +136,6 @@ func TestAllFormatters(t *testing.T) {
 		// CSVFormatter is skipped - it requires table/array data, not single records.
 		// CSV formatting is tested in table-specific tests.
 		{
-			Name:      "PDFFormatter",
-			Formatter: NewPDFFormatter(),
-			Validate: func(t *testing.T, output string) {
-				// PDF files start with %PDF header
-				if !strings.HasPrefix(output, "%PDF") {
-					t.Errorf("PDF formatter should produce valid PDF starting with %%PDF header")
-				}
-				// Check that it's a reasonable size for a PDF
-				if len(output) < 1000 {
-					t.Errorf("PDF output seems too small: %d bytes", len(output))
-				}
-				// Check for PDF structure markers
-				if !strings.Contains(output, "endobj") {
-					t.Errorf("PDF should contain PDF object markers")
-				}
-			},
-		},
-		{
 			Name:      "MarkdownFormatter",
 			Formatter: NewMarkdownFormatter(),
 			Validate: func(t *testing.T, output string) {
@@ -190,10 +172,6 @@ func TestAllFormatters(t *testing.T) {
 	// Run tests for each formatter
 	for _, tc := range testCases {
 		t.Run(tc.Name, func(t *testing.T) {
-			if tc.Name == "PDFFormatter" {
-				t.Skip("Playwright 1.57.0 driver artifact is unavailable from upstream mirrors")
-			}
-
 			var output string
 			var err error
 
@@ -222,8 +200,6 @@ func TestAllFormatters(t *testing.T) {
 					Parser: parser,
 				}
 				output, err = sf.FormatData(prettyData, FormatOptions{Format: "csv"})
-			case *PDFFormatter:
-				output, err = f.Format(prettyData)
 			case *MarkdownFormatter:
 				// Markdown formatter uses different interface
 				// Skip validation in switch, handled in test case

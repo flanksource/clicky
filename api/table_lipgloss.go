@@ -7,7 +7,6 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/lipgloss/table"
-
 	"github.com/flanksource/clicky/api/tailwind"
 )
 
@@ -186,4 +185,8 @@ func parseTailwindToLipgloss(tailwindStyle string) lipgloss.Style {
 	}
 
 	return style
+}
+
+func (t TextTable) MarkdownWithOptions(options MarkdownOptions) string {
+	return t.plainMarkdown(options)
 }

@@ -3,6 +3,9 @@ package api
 import (
 	"strings"
 	"testing"
+
+	"github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
 )
 
 func TestTextBuilder(t *testing.T) {
@@ -168,4 +171,9 @@ func TestChildBuilder(t *testing.T) {
 	if result.Children[0].String() != "Child" {
 		t.Errorf("expected child content %q, got %q", "Child", result.Children[0].String())
 	}
+}
+
+func TestAPI(t *testing.T) {
+	RegisterFailHandler(ginkgo.Fail)
+	ginkgo.RunSpecs(t, "API Suite")
 }
