@@ -107,8 +107,11 @@ func (p Prompt) snapshot() PromptSnapshot {
 		Description: p.Description,
 		Schema:      p.Schema,
 		State:       string(StatePending),
-		Owner:       p.Owner,
-		Labels:      p.Labels,
-		CreatedAt:   created.UTC().Format(time.RFC3339),
+		// A pending prompt's value is its pre-fill: clicky-ui's PromptDialog
+		// seeds the form from it. Resolving replaces it with the answer.
+		Value:     p.Default,
+		Owner:     p.Owner,
+		Labels:    p.Labels,
+		CreatedAt: created.UTC().Format(time.RFC3339),
 	}
 }

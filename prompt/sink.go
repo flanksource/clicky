@@ -2,6 +2,7 @@ package prompt
 
 import (
 	"context"
+	"encoding/json"
 	"sync"
 	"time"
 )
@@ -120,6 +121,30 @@ func (m *Manager) Select(ctx context.Context, title string, labels []string, opt
 		return []int{i}, true
 	}
 	return nil, false
+}
+
+// FormOptions configures Manager.Form.
+type FormOptions struct {
+	Title       string
+	Description string
+	Schema      json.RawMessage
+	Default     map[string]any
+}
+
+// Form asks the user to fill a caller-supplied JSON-schema form (rendered by
+// clicky-ui's JsonSchemaForm) and returns its values. ok is false when the
+// prompt was cancelled; err reports a prompt that could not be asked or whose
+// context ended. The prompt inherits any Scope on ctx.
+func (m *Manager) Form(ctx context.Context, opts FormOptions) (map[string]any, bool, error) {
+	p := Prompt{Kind: "form", Title: opts.Title, Description: opts.Description, Schema: opts.Schema, Default: opts.Default, CreatedAt: time.Now()}.withScope(ScopeFrom(ctx))
+	ans, err := m.Ask(ctx, p)
+	if err != nil {
+		return nil, false, err
+	}
+	if ans.Cancelled {
+		return nil, false, nil
+	}
+	return ans.Values, true, nil
 }
 
 // Text asks the user for a free-text value. ok is false when cancelled.
