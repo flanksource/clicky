@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	. "github.com/onsi/ginkgo/v2"
+	. "github.com/onsi/gomega"
 	"github.com/spf13/cobra"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -595,4 +597,9 @@ func TestWriteFormattedResponseWithoutFilenameStaysInline(t *testing.T) {
 	require.Equal(t, http.StatusOK, w.Code)
 	assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
 	assert.Empty(t, w.Header().Get("Content-Disposition"))
+}
+
+func TestServerTiming(t *testing.T) {
+	RegisterFailHandler(Fail)
+	RunSpecs(t, "RPC Server Timing Suite")
 }

@@ -86,7 +86,7 @@ func TestBuildLookupFunc_SearchableHeadReportsTruncatedAndTotal(t *testing.T) {
 	if err != nil {
 		t.Fatalf("lookup returned error: %v", err)
 	}
-	resp := data.(entityLookupResponse)
+	resp := data.(LookupResponse)
 	plan := resp.Filters["plan"]
 
 	if plan.Total != 250 {
@@ -115,7 +115,7 @@ func TestBuildLookupFunc_SearchableQueryFindsBeyondHead(t *testing.T) {
 	if err != nil {
 		t.Fatalf("lookup returned error: %v", err)
 	}
-	resp := data.(entityLookupResponse)
+	resp := data.(LookupResponse)
 	plan := resp.Filters["plan"]
 
 	if _, ok := plan.Options["plan-0225"]; !ok {
@@ -143,7 +143,7 @@ func TestBuildLookupFunc_StripsReservedParamsFromOpts(t *testing.T) {
 	}
 }
 
-func keysOf(m map[string]clickyNode) []string {
+func keysOf(m map[string]LookupNode) []string {
 	out := make([]string, 0, len(m))
 	for k := range m {
 		out = append(out, k)

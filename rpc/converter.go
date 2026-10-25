@@ -1,6 +1,9 @@
 package rpc
 
 import (
+	"encoding/csv"
+	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/flanksource/clicky"
@@ -37,114 +40,13 @@ func (c *Converter) ConvertCommand(cmd *cobra.Command) (*RPCOperation, error) {
 	}
 
 	var parameters []RPCParameter
-
-	// Add positional arguments
-	// Extract parameter name from Use field if available
-	positionalParamName := ""
 	if clicky.AcceptsPositionalArgs(cmd) && (commandMeta == nil || !commandMeta.OptionalID) {
-		positionalParamName = extractParameterName(cmd.Use)
-		if positionalParamName != "" {
-			// Add named path parameter for single positional arg
-			argParam := RPCParameter{
-				Name:        positionalParamName,
-				Type:        "string",
-				Description: "Positional argument from command",
-				Required:    false,
-				In:          "query", // Will be updated to "path" later if in URL
-			}
-			parameters = append(parameters, argParam)
-
-			schema.Properties[positionalParamName] = Property{
-				Type:        "string",
-				Description: "Positional argument from command",
-			}
-		} else {
-			// Fallback to generic args array
-			argParam := RPCParameter{
-				Name:        "args",
-				Type:        "array",
-				Description: "Positional arguments for the command",
-				Required:    false,
-				In:          "query",
-			}
-			parameters = append(parameters, argParam)
-
-			schema.Properties["args"] = Property{
-				Type:        "array",
-				Description: "Positional arguments for the command",
-			}
-		}
+		parameters = addPositionalParameter(cmd, &schema, parameters)
 	}
-
-	// Process flags. Use LocalNonPersistentFlags so only this command's own
-	// operation flags become schema parameters — never the inherited persistent
-	// globals (format/log-level/properties/config/company/entity/limit/...) that
-	// cobra folds into Flags(), nor the command's own persistent flags which
-	// exist to cascade to children rather than parameterize this operation.
-	cmd.LocalNonPersistentFlags().VisitAll(func(flag *pflag.Flag) {
-		if flag.Hidden {
-			return
-		}
-
-		prop := Property{
-			Description: flag.Usage,
-		}
-
-		param := RPCParameter{
-			Name:        flag.Name,
-			Description: flag.Usage,
-			Required:    false,
-			In:          "query",
-		}
-		prop.Enum = flags.AllowedValues(flag)
-		param.Enum = flags.AllowedValues(flag)
-
-		// Determine type based on flag type
-		switch flag.Value.Type() {
-		case "bool":
-			prop.Type = "boolean"
-			param.Type = "boolean"
-			if flag.DefValue != "" {
-				prop.Default = flag.DefValue == "true"
-				param.Default = flag.DefValue == "true"
-			}
-		case "int", "int8", "int16", "int32", "int64":
-			prop.Type = "integer"
-			param.Type = "integer"
-			if flag.DefValue != "" {
-				prop.Default = flag.DefValue
-				param.Default = flag.DefValue
-			}
-		case "float32", "float64":
-			prop.Type = "number"
-			param.Type = "number"
-			if flag.DefValue != "" {
-				prop.Default = flag.DefValue
-				param.Default = flag.DefValue
-			}
-		default:
-			prop.Type = "string"
-			param.Type = "string"
-			// pflag renders an empty slice default as the literal "[]". Emitting
-			// that as a schema default puts the two characters "[]" in every
-			// generated form field, and a client that posts the pre-filled value
-			// back sends a one-element slice containing "[]". A repeatable flag
-			// with no default simply has none.
-			if flag.DefValue != "" && (!isSliceFlag(flag) || flag.DefValue != "[]") {
-				prop.Default = flag.DefValue
-				param.Default = flag.DefValue
-			}
-		}
-
-		// Check if flag is required (skip for boolean flags since they always have defaults)
-		if flag.Value.Type() != "bool" && c.isFlagRequired(cmd, flag.Name) {
-			schema.Required = append(schema.Required, flag.Name)
-			param.Required = true
-		}
-
-		schema.Properties[flag.Name] = prop
-		parameters = append(parameters, param)
-	})
+	parameters, err := c.addFlagParameters(cmd, &schema, parameters)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", cmdPath, err)
+	}
 
 	// Generate HTTP method based on command semantics
 	method := c.inferHTTPMethod(cmd, cmdPath)
@@ -177,41 +79,143 @@ func (c *Converter) ConvertCommand(cmd *cobra.Command) (*RPCOperation, error) {
 	operation.Clicky = &ClickyOperationMeta{
 		Command: strings.ReplaceAll(cmdPath, " ", "/"),
 	}
-	if meta := commandMeta; meta != nil {
-		operation.Clicky.SurfaceID = clickySurfaceID(meta.Entity, meta.Parent, meta.Admin)
-		operation.Clicky.Entity = meta.Entity
-		operation.Clicky.Parent = meta.Parent
-		operation.Clicky.Aliases = append([]string(nil), meta.Aliases...)
-		operation.Clicky.Admin = meta.Admin
-		operation.Clicky.Icon = meta.Icon
-		operation.Clicky.Path = meta.Path
-		operation.Clicky.Title = meta.Title
-		operation.Clicky.Verb = meta.Verb
-		operation.Clicky.Scope = meta.Scope
-		if meta.Verb == "" && meta.Entity != "" {
-			operation.Clicky.Verb = "list"
-			operation.Clicky.Scope = "collection"
-		}
-		operation.Clicky.ActionName = meta.ActionName
-		if !meta.OptionalID {
-			operation.Clicky.IDParam = meta.IDParam
-		}
-		operation.Clicky.SupportsLookup = meta.SupportsLookup
-		operation.Clicky.SupportsFilterMode = meta.SupportsFilterMode
-		operation.Clicky.Schedule = meta.Schedule
-		hints := meta.ToolHints
-		if hints.Group == "" {
-			hints.Group = meta.ToolGroup
-		}
-		operation.ToolHints = hints
-		operation.Clicky.ToolHints = hints
-		if !hints.IsZero() {
-			operation.Clicky.OpenAPIToolHints = &hints
-		}
-		operation.Clicky.Group = hints.Group
-		operation.Group = hints.Group
+	if commandMeta != nil {
+		applyCommandMeta(operation, commandMeta)
 	}
+	attachCommandFuncs(operation, cmd)
+	return operation, nil
+}
 
+// addPositionalParameter publishes the command's positional argument: a named
+// string parameter when Use names one, otherwise a generic args array.
+func addPositionalParameter(cmd *cobra.Command, schema *Schema, parameters []RPCParameter) []RPCParameter {
+	name, typ, description := extractParameterName(cmd.Use), "string", "Positional argument from command"
+	if name == "" {
+		name, typ, description = "args", "array", "Positional arguments for the command"
+	}
+	// cobra validates args itself: a command that rejects none requires one.
+	required := cmd.Args != nil && cmd.Args(cmd, nil) != nil
+	schema.Properties[name] = Property{Type: typ, Description: description}
+	if required {
+		schema.Required = append(schema.Required, name)
+	}
+	// In is updated to "path" later if the parameter appears in the URL.
+	return append(parameters, RPCParameter{Name: name, Type: typ, Description: description, Required: required, In: "query"})
+}
+
+// addFlagParameters publishes the command's own flags. LocalNonPersistentFlags
+// keeps out the inherited persistent globals (format/log-level/properties/...)
+// that cobra folds into Flags(), and the command's own persistent flags, which
+// exist to cascade to children rather than parameterize this operation.
+func (c *Converter) addFlagParameters(cmd *cobra.Command, schema *Schema, parameters []RPCParameter) ([]RPCParameter, error) {
+	var flagErr error
+	cmd.LocalNonPersistentFlags().VisitAll(func(flag *pflag.Flag) {
+		// cobra's own --help/--version are not operation arguments; they join the
+		// command's local flags once it has been executed.
+		if flag.Hidden || len(flag.Annotations[cobra.FlagSetByCobraAnnotation]) > 0 {
+			return
+		}
+		param, err := flagParameter(flag)
+		if err != nil && flagErr == nil {
+			flagErr = err
+		}
+		// Boolean flags always have defaults, so they are never required.
+		if flag.Value.Type() != "bool" && c.isFlagRequired(cmd, flag.Name) {
+			schema.Required = append(schema.Required, flag.Name)
+			param.Required = true
+		}
+		schema.Properties[flag.Name] = Property{Type: param.Type, Description: flag.Usage, Default: param.Default, Enum: flags.AllowedValues(flag)}
+		parameters = append(parameters, param)
+	})
+	return parameters, flagErr
+}
+
+// flagParameter maps a flag's pflag type and default onto a query parameter.
+// A malformed slice default is reported, but the parameter is still returned.
+func flagParameter(flag *pflag.Flag) (RPCParameter, error) {
+	param := RPCParameter{
+		Name:        flag.Name,
+		Description: flag.Usage,
+		In:          "query",
+		Enum:        flags.AllowedValues(flag),
+	}
+	switch flag.Value.Type() {
+	case "bool":
+		param.Type = "boolean"
+		if flag.DefValue != "" {
+			param.Default = flag.DefValue == "true"
+		}
+	case "int", "int8", "int16", "int32", "int64", "float32", "float64":
+		param.Type = "number"
+		if strings.HasPrefix(flag.Value.Type(), "int") {
+			param.Type = "integer"
+		}
+		if n, err := strconv.ParseFloat(flag.DefValue, 64); err == nil {
+			param.Default = n
+		}
+	case "stringSlice", "stringArray", "intSlice", "int32Slice", "int64Slice", "uintSlice",
+		"float32Slice", "float64Slice", "boolSlice", "durationSlice":
+		param.Type = "array"
+		values, err := sliceDefault(flag.DefValue)
+		if len(values) > 0 {
+			param.Default = values
+		}
+		if err != nil {
+			return param, fmt.Errorf("--%s: %w", flag.Name, err)
+		}
+	default:
+		param.Type = "string"
+		// pflag renders an empty slice default as the literal "[]". Emitting
+		// that as a schema default puts the two characters "[]" in every
+		// generated form field, and a client that posts the pre-filled value
+		// back sends a one-element slice containing "[]". A repeatable flag
+		// with no default simply has none.
+		if flag.DefValue != "" && (!isSliceFlag(flag) || flag.DefValue != "[]") {
+			param.Default = flag.DefValue
+		}
+	}
+	return param, nil
+}
+
+// applyCommandMeta copies a command's OpenAPI annotations onto the operation.
+func applyCommandMeta(operation *RPCOperation, meta *clicky.CommandOpenAPIMeta) {
+	operation.Clicky.SurfaceID = clickySurfaceID(meta.Entity, meta.Parent, meta.Admin)
+	operation.Clicky.Entity = meta.Entity
+	operation.Clicky.Parent = meta.Parent
+	operation.Clicky.Aliases = append([]string(nil), meta.Aliases...)
+	operation.Clicky.Admin = meta.Admin
+	operation.Clicky.Icon = meta.Icon
+	operation.Clicky.Path = meta.Path
+	operation.Clicky.Title = meta.Title
+	operation.Clicky.Verb = meta.Verb
+	operation.Clicky.Scope = meta.Scope
+	if meta.Verb == "" && meta.Entity != "" {
+		operation.Clicky.Verb = "list"
+		operation.Clicky.Scope = "collection"
+	}
+	operation.Clicky.ActionName = meta.ActionName
+	if !meta.OptionalID {
+		operation.Clicky.IDParam = meta.IDParam
+	}
+	operation.Clicky.SupportsLookup = meta.SupportsLookup
+	operation.Clicky.SupportsFilterMode = meta.SupportsFilterMode
+	operation.Clicky.Schedule = meta.Schedule
+	hints := meta.ToolHints
+	if hints.Group == "" {
+		hints.Group = meta.ToolGroup
+	}
+	operation.ToolHints = hints
+	operation.Clicky.ToolHints = hints
+	if !hints.IsZero() {
+		operation.Clicky.OpenAPIToolHints = &hints
+	}
+	operation.Clicky.Group = hints.Group
+	operation.Group = hints.Group
+}
+
+// attachCommandFuncs wires the command's registered data, stream and lookup
+// handlers and its declared media and response shape onto the operation.
+func attachCommandFuncs(operation *RPCOperation, cmd *cobra.Command) {
 	if df := clicky.GetDataFunc(cmd); df != nil {
 		operation.DataFunc = df
 	}
@@ -236,8 +240,6 @@ func (c *Converter) ConvertCommand(cmd *cobra.Command) (*RPCOperation, error) {
 		operation.ResponsePaged = meta.Paged
 		operation.ResponseEntityID = meta.EntityID
 	}
-
-	return operation, nil
 }
 
 func clickySurfaceID(entity string, parent string, admin bool) string {
@@ -487,37 +489,30 @@ func (c *Converter) generateRESTPath(cmd *cobra.Command, cmdPath string) string 
 	if positionalOperandCount(cmd.Use) > 1 {
 		return strings.Join(pathParts, "/")
 	}
-	if cmd.Parent() != nil && cmd.Parent().Parent() != nil && (bulkAction || !isCRUDOperation(cmd.Name())) {
-		paramName := extractParameterName(cmd.Use)
-		if paramName != "" {
+	if cmd.Parent() != nil && cmd.Parent().Parent() != nil && (bulkAction || !isCRUDOperation(cmd.Name())) && len(pathParts) >= 2 {
+		if paramName := actionIDParam(cmd); paramName != "" {
 			// Insert {id} before the action verb
-			if len(pathParts) >= 2 {
-				newParts := make([]string, 0, len(pathParts)+1)
-				newParts = append(newParts, pathParts[:len(pathParts)-1]...)
-				newParts = append(newParts, "{"+paramName+"}")
-				newParts = append(newParts, pathParts[len(pathParts)-1:]...)
-				pathParts = newParts
-			}
-		} else {
-			// Check for common ID flags that should be path parameters
-			parentName := cmd.Parent().Name()
-			idFlagNames := []string{parentName, parentName + "Number", "id"}
-			for _, flagName := range idFlagNames {
-				if flag := cmd.Flags().Lookup(flagName); flag != nil {
-					if len(pathParts) >= 2 {
-						newParts := make([]string, 0, len(pathParts)+1)
-						newParts = append(newParts, pathParts[:len(pathParts)-1]...)
-						newParts = append(newParts, "{"+flagName+"}")
-						newParts = append(newParts, pathParts[len(pathParts)-1:]...)
-						pathParts = newParts
-						break
-					}
-				}
-			}
+			last := len(pathParts) - 1
+			pathParts = append(pathParts[:last:last], "{"+paramName+"}", pathParts[last])
 		}
 	}
 
 	return strings.Join(pathParts, "/")
+}
+
+// actionIDParam names the id an action lifts into its path: the positional
+// named in Use, else the first common id flag (<parent>, <parent>Number, id).
+func actionIDParam(cmd *cobra.Command) string {
+	if paramName := extractParameterName(cmd.Use); paramName != "" {
+		return paramName
+	}
+	parentName := cmd.Parent().Name()
+	for _, flagName := range []string{parentName, parentName + "Number", "id"} {
+		if cmd.Flags().Lookup(flagName) != nil {
+			return flagName
+		}
+	}
+	return ""
 }
 
 // extractParameterName extracts parameter name from Use field
@@ -627,6 +622,24 @@ func (c *Converter) getParentCommandName(cmd *cobra.Command) string {
 		return cmd.Parent().Name()
 	}
 	return ""
+}
+
+// sliceDefault parses pflag's rendering of a slice flag default ("[a,b]") into
+// its values; the empty slice "[]" has none.
+func sliceDefault(defValue string) ([]any, error) {
+	inner := strings.TrimSuffix(strings.TrimPrefix(defValue, "["), "]")
+	if inner == "" {
+		return nil, nil
+	}
+	record, err := csv.NewReader(strings.NewReader(inner)).Read()
+	if err != nil {
+		return nil, fmt.Errorf("slice default %q: %w", defValue, err)
+	}
+	values := make([]any, len(record))
+	for i, v := range record {
+		values[i] = v
+	}
+	return values, nil
 }
 
 // isSliceFlag reports whether a flag holds multiple values, i.e. whether pflag

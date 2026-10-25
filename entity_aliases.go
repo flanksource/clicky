@@ -32,6 +32,7 @@ type (
 	EntityInfo            = entity.EntityInfo
 	EntityOperation       = entity.EntityOperation
 	ActionInfo            = entity.ActionInfo
+	FlagSchema            = entity.FlagSchema
 	BulkActionInfo        = entity.BulkActionInfo
 	ActionFlags           = entity.ActionFlags
 	EntityAction          = entity.EntityAction
@@ -156,6 +157,14 @@ func ActionWithFlagsAndContext[R any](name string, flags entity.ActionFlags, fn 
 
 func TypedActionWithContext[Opts entity.ActionFlags, R any](name string, opts Opts, fn func(context.Context, string, Opts) (R, error)) *entity.ActionSpec[R] {
 	return entity.TypedActionWithContext(name, opts, fn)
+}
+
+func WithActionFilters[Opts entity.ActionFlags, R any](action *entity.ActionSpec[R], filters []entity.Filter[Opts]) *entity.ActionSpec[R] {
+	return entity.WithActionFilters(action, filters)
+}
+
+func WithActionFlagSchema[R any](action *entity.ActionSpec[R], flag string, schema entity.FlagSchema) *entity.ActionSpec[R] {
+	return entity.WithActionFlagSchema(action, flag, schema)
 }
 
 func BulkAction[R any](name string, fn func(ids []string, flags map[string]string) (R, error)) *entity.BulkActionSpec[R] {

@@ -123,6 +123,8 @@ type ClickyParameterMeta struct {
 	//   - "offset"     — drives DataTable pagination's page.
 	//   - "time-from"  — left edge of a time-range picker.
 	//   - "time-to"    — right edge of a time-range picker.
+	//   - "positional" — the command's positional argument (operation input
+	//                    schemas only); the terminal form always shows it.
 	Role string `json:"role,omitempty"`
 }
 
@@ -436,27 +438,8 @@ func (g *OpenAPIGenerator) convertOperationToOpenAPI(op RPCOperation) OpenAPIOpe
 		openAPIOp.Clicky = &meta
 	}
 
-	// Convert parameters
 	for _, param := range op.Parameters {
-		openAPIParam := OpenAPIParameter{
-			Name:        param.Name,
-			In:          param.In,
-			Description: param.Description,
-			Required:    param.Required,
-			Schema: g.convertPropertyToOpenAPI(Property{
-				Type:        param.Type,
-				Description: param.Description,
-				Default:     param.Default,
-				Enum:        param.Enum,
-			}),
-		}
-		if role := ParamRole(op, param); role != "" {
-			openAPIParam.Clicky = &ClickyParameterMeta{Role: role}
-			if role == "filter" {
-				openAPIParam.Lookup = g.filterLookupMeta(op, param.Name)
-			}
-		}
-		openAPIOp.Parameters = append(openAPIOp.Parameters, openAPIParam)
+		openAPIOp.Parameters = append(openAPIOp.Parameters, g.convertParameter(op, param))
 	}
 
 	// Add request body for POST/PUT operations. A declared media type replaces
@@ -528,6 +511,32 @@ func (g *OpenAPIGenerator) convertOperationToOpenAPI(op RPCOperation) OpenAPIOpe
 	}
 
 	return openAPIOp
+}
+
+// convertParameter converts one operation parameter, with its x-clicky role
+// and, for a named-filter parameter, its x-clicky-lookup. It is shared by the
+// OpenAPI document and OperationInputSchema so web and terminal forms see the
+// same field.
+func (g *OpenAPIGenerator) convertParameter(op RPCOperation, param RPCParameter) OpenAPIParameter {
+	openAPIParam := OpenAPIParameter{
+		Name:        param.Name,
+		In:          param.In,
+		Description: param.Description,
+		Required:    param.Required,
+		Schema: g.convertPropertyToOpenAPI(Property{
+			Type:        param.Type,
+			Description: param.Description,
+			Default:     param.Default,
+			Enum:        param.Enum,
+		}),
+	}
+	if role := ParamRole(op, param); role != "" {
+		openAPIParam.Clicky = &ClickyParameterMeta{Role: role}
+		if role == "filter" {
+			openAPIParam.Lookup = g.filterLookupMeta(op, param.Name)
+		}
+	}
+	return openAPIParam
 }
 
 // filterLookupMeta builds the x-clicky-lookup extension for a filter parameter
@@ -989,6 +998,8 @@ func (g *OpenAPIGenerator) enhanceArraySchema(schema *OpenAPISchema, prop Proper
 	schema.Items = &OpenAPISchema{
 		Type: "string",
 	}
+	// An enum on a repeatable flag constrains each value, not the list.
+	schema.Items.Enum, schema.Enum = schema.Enum, nil
 
 	// Try to infer item type from description
 	descLower := strings.ToLower(prop.Description)

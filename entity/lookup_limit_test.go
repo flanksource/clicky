@@ -55,7 +55,7 @@ func (c *countingFilter) filter() DynamicFilter {
 	}
 }
 
-func resolveFilters(t *testing.T, flags map[string]string, filters ...DynamicFilter) entityLookupResponse {
+func resolveFilters(t *testing.T, flags map[string]string, filters ...DynamicFilter) LookupResponse {
 	t.Helper()
 	response, err := resolveDynamicLookup(context.Background(), filters, flags)
 	if err != nil {
@@ -219,7 +219,7 @@ func TestTypedFilterCarriesItsLimitThrough(t *testing.T) {
 	if err != nil {
 		t.Fatalf("lookup: %v", err)
 	}
-	entry := data.(entityLookupResponse).Filters["plan"]
+	entry := data.(LookupResponse).Filters["plan"]
 
 	if inner.lastLimit != 25 {
 		t.Fatalf("expected the declared limit 25 to reach the filter, got %d", inner.lastLimit)
@@ -230,7 +230,7 @@ func TestTypedFilterCarriesItsLimitThrough(t *testing.T) {
 	}
 }
 
-func filterKeys(response entityLookupResponse) []string {
+func filterKeys(response LookupResponse) []string {
 	out := make([]string, 0, len(response.Filters))
 	for key := range response.Filters {
 		out = append(out, key)

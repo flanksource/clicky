@@ -20,7 +20,7 @@ import (
 	capapi "github.com/flanksource/captain/pkg/api"
 	"github.com/flanksource/clicky"
 	clickyaichat "github.com/flanksource/clicky/aichat"
-	"github.com/flanksource/clicky/formatters"
+	"github.com/flanksource/clicky/formatters/excel"
 	"github.com/flanksource/clicky/markdown"
 	"github.com/flanksource/clicky/route"
 	"github.com/flanksource/clicky/rpc"
@@ -374,8 +374,7 @@ func serveMarkdownPreviewExcel(w http.ResponseWriter, rows []markdownPreviewRow)
 	defer os.RemoveAll(tmpDir)
 
 	output := filepath.Join(tmpDir, "markdown-preview.xlsx")
-	manager := formatters.NewFormatManager()
-	if err := manager.ExcelToFile(rows, output); err != nil {
+	if err := excel.WriteFile(rows, output); err != nil {
 		http.Error(w, fmt.Sprintf("failed to render excel preview: %v", err), http.StatusInternalServerError)
 		return
 	}

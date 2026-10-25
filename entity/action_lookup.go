@@ -20,6 +20,20 @@ type ActionContextSetter interface {
 	SetClickyActionContext(ctx context.Context, id string)
 }
 
+// WithActionFilters attaches the filters of an action's flags struct to an
+// action built from a raw flag map (ActionWithFlags*): they serve the action's
+// lookup (`?__lookup=filters`, the web and terminal forms) and its flags' shell
+// completion, exactly as TypedActionWithContext wires them for a typed action.
+func WithActionFilters[Opts ActionFlags, R any](action *ActionSpec[R], filters []Filter[Opts]) *ActionSpec[R] {
+	if len(filters) == 0 {
+		return action
+	}
+	action.lookupFunc = buildActionLookupFunc(filters)
+	action.contextLookupFunc = buildActionLookupFuncWithContext(filters)
+	action.bindCompletions = buildActionFilterCompletionBinder(filters)
+	return action
+}
+
 func buildActionFilterCompletionBinder[T any](filters []Filter[T]) func(cmd *cobra.Command) {
 	return buildFilterCompletionBinderWithOptions(filters, func(ctx context.Context, args []string, opts *T) {
 		setActionContext(ctx, opts, actionIDFrom(nil, args))
@@ -30,9 +44,9 @@ func buildActionLookupFunc[T any](filters []Filter[T]) func(flags map[string]str
 	if len(filters) == 0 {
 		return nil
 	}
-	lookupMetadata := buildLookupMetadata[T]()
+	spec := newLookupSpec(filters)
 	return func(flagMap map[string]string, args []string) (any, error) {
-		return resolveActionLookup(context.Background(), filters, lookupMetadata, flagMap, args)
+		return resolveActionLookup(context.Background(), spec, flagMap, args)
 	}
 }
 
@@ -40,29 +54,20 @@ func buildActionLookupFuncWithContext[T any](filters []Filter[T]) func(ctx conte
 	if len(filters) == 0 {
 		return nil
 	}
-	lookupMetadata := buildLookupMetadata[T]()
+	spec := newLookupSpec(filters)
 	return func(ctx context.Context, flagMap map[string]string, args []string) (any, error) {
-		return resolveActionLookup(ctx, filters, lookupMetadata, flagMap, args)
+		return resolveActionLookup(ctx, spec, flagMap, args)
 	}
 }
 
-func resolveActionLookup[T any](
-	ctx context.Context,
-	filters []Filter[T],
-	lookupMetadata map[string]entityLookupMetadata,
-	flagMap map[string]string,
-	args []string,
-) (any, error) {
-	searchKey := flagMap[lookupFilterKeyParam]
-	searchQuery := flagMap[lookupQueryParam]
-	delete(flagMap, lookupFilterKeyParam)
-	delete(flagMap, lookupQueryParam)
+func resolveActionLookup[T any](ctx context.Context, spec lookupSpec[T], flagMap map[string]string, args []string) (any, error) {
+	search := takeLookupSearch(flagMap)
 	opts, err := buildOpts[T](flagMap)
 	if err != nil {
 		return nil, err
 	}
 	setActionContext(ctx, &opts, actionIDFrom(flagMap, args))
-	return resolveLookupOptions(ctx, filters, lookupMetadata, opts, searchKey, searchQuery)
+	return resolveLookupOptions(ctx, spec, opts, search)
 }
 
 func resolveActionOpts[T any](ctx context.Context, id string, flagMap map[string]string, filters []Filter[T]) (T, error) {

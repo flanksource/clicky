@@ -24,12 +24,20 @@ func TestAnActionWithoutAPathDeclaresNone(t *testing.T) {
 
 func TestDeclaredPathReachesTheGeneratedCommand(t *testing.T) {
 	parent := &cobra.Command{Use: "cycle-run"}
-	generateIDCommand(parent, "cancel", "Cancel a level", EntityOperation{
-		Verb:      "cancel",
-		Method:    "POST",
-		RoutePath: "/api/v1/cycle-runs/{id}/levels/{level}/cancel",
-		DataFunc:  func(map[string]string, []string) (any, error) { return nil, nil },
-	}, nil, "action", "", "entity", "cancel", "id", false, false, false, MCPToolHints{})
+	generateIDCommand(parent, idCommand{
+		Verb:  "cancel",
+		Short: "Cancel a level",
+		Op: EntityOperation{
+			Verb:      "cancel",
+			Method:    "POST",
+			RoutePath: "/api/v1/cycle-runs/{id}/levels/{level}/cancel",
+			DataFunc:  func(map[string]string, []string) (any, error) { return nil, nil },
+		},
+		MetaVerb:   "action",
+		Scope:      "entity",
+		ActionName: "cancel",
+		IDParam:    "id",
+	})
 
 	var child *cobra.Command
 	for _, candidate := range parent.Commands() {

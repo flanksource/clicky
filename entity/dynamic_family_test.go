@@ -91,7 +91,7 @@ func TestResolveDynamicLookup_AnswersFromASpecThatWasNeverRegistered(t *testing.
 
 	head, err := ResolveDynamicLookup(context.Background(), spec, map[string]string{})
 	require.NoError(t, err)
-	response, ok := head.(entityLookupResponse)
+	response, ok := head.(LookupResponse)
 	require.True(t, ok)
 	assert.Len(t, response.Filters["env"].Options, 2)
 	assert.Equal(t, "Environment", response.Filters["env"].Label)
@@ -101,6 +101,6 @@ func TestResolveDynamicLookup_AnswersFromASpecThatWasNeverRegistered(t *testing.
 		lookupQueryParam:     "pr",
 	})
 	require.NoError(t, err)
-	assert.Len(t, searched.(entityLookupResponse).Filters["env"].Options, 1,
+	assert.Len(t, searched.(LookupResponse).Filters["env"].Options, 1,
 		"__lookup_filter/__lookup_q reach the filter that searches on them")
 }

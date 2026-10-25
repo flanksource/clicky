@@ -94,9 +94,12 @@ func TestConvertCommand_OmitsEmptySliceDefaults(t *testing.T) {
 	assert.Nil(t, op.Schema.Properties["param"].Default,
 		"the schema property must not carry the empty-slice default either")
 
-	// A slice flag with real defaults, and every scalar flag, keep theirs.
-	assert.Equal(t, "[a,b]", defaults["tag"])
+	// A slice flag with real defaults keeps them as a list; a scalar keeps its own.
+	assert.Equal(t, []any{"a", "b"}, defaults["tag"])
 	assert.Equal(t, "fallback", defaults["name"])
+	for _, name := range []string{"param", "header", "tag"} {
+		assert.Equal(t, "array", op.Schema.Properties[name].Type, "repeatable flag %s must be an array", name)
+	}
 }
 
 func TestConvertCommand_MarksRequiredFlagParameters(t *testing.T) {
