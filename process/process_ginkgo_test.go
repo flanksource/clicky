@@ -92,6 +92,16 @@ var _ = Describe("process snapshots", func() {
 		Expect(observed.IO).To(BeNil())
 	})
 
+	It("records an unreadable process's disk I/O error instead of failing the snapshot", func() {
+		Expect(os.Geteuid()).NotTo(BeZero(), "pid 1 is readable as root, so this cannot observe EPERM")
+		const rootOwned = 1
+		snapshot := NewSnapshot([]Process{{PID: rootOwned, Status: "sleeping", Active: true}})
+		Expect(snapshot.PopulateIO(context.Background(), []int{rootOwned})).To(Succeed())
+		observed, _ := snapshot.Get(rootOwned)
+		Expect(observed.IO).To(BeNil())
+		Expect(observed.IOError).To(ContainSubstring("operation not permitted"))
+	})
+
 	It("filters environment variables by exact key and prefix", func() {
 		environment := filterEnvironment([]string{
 			"CMUX_SURFACE_ID=surface-1",

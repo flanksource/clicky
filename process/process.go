@@ -39,7 +39,8 @@ type Process struct {
 	MemoryPercent    float64           `json:"memoryPercent,omitempty"`
 	RSSBytes         uint64            `json:"rssBytes,omitempty"`
 	IO               *ProcessIO        `json:"io,omitempty"`
-	StartedAt        *time.Time        `json:"startedAt,omitempty"`
+	IOError          string            `json:"ioError,omitempty"`
+	StartedAt       *time.Time        `json:"startedAt,omitempty"`
 	Command          string            `json:"command,omitempty"`
 	CWD              string            `json:"cwd,omitempty"`
 	CWDError         string            `json:"cwdError,omitempty"`
@@ -211,6 +212,13 @@ func (s *Snapshot) PopulateIO(ctx context.Context, pids []int) error {
 			}
 		}
 		if errors.Is(err, gops.ErrorProcessNotRunning) || errors.Is(err, os.ErrNotExist) {
+			continue
+		}
+		// Another user's or a setuid process (ps, sudo) cannot be read by the
+		// caller: that is the process's reading, not the snapshot's failure.
+		if errors.Is(err, gops.ErrorNotPermitted) || errors.Is(err, os.ErrPermission) {
+			item.IOError = fmt.Sprintf("read disk I/O: %v", err)
+			s.processes[pid] = item
 			continue
 		}
 		return fmt.Errorf("read disk I/O for process %d: %w", pid, err)
