@@ -4,7 +4,7 @@ GOLANGCI_LINT ?= $(LOCALBIN)/golangci-lint
 PKGSITE ?= $(LOCALBIN)/pkgsite
 
 ## Tool Versions
-GOLANGCI_LINT_VERSION ?= v2.8.0
+GOLANGCI_LINT_VERSION ?= v2.10.1
 PKGSITE_VERSION ?= v0.1.0
 
 ## Docs server
@@ -95,9 +95,10 @@ lint-clicky-ui:
 	cd examples/enitity/webapp && pnpm install --frozen-lockfile && pnpm run lint:clicky-ui
 
 .PHONY: golangci-lint
-golangci-lint: $(GOLANGCI_LINT) ## Download golangci-lint locally if necessary.
-$(GOLANGCI_LINT): $(LOCALBIN)
-	test -s $(LOCALBIN)/golangci-lint || curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh | sh -s -- -b $(LOCALBIN) $(GOLANGCI_LINT_VERSION)
+golangci-lint: $(LOCALBIN)/golangci-lint-$(GOLANGCI_LINT_VERSION)/golangci-lint ## Download the pinned golangci-lint locally if necessary.
+	ln -sf $(abspath $<) $(GOLANGCI_LINT)
+$(LOCALBIN)/golangci-lint-$(GOLANGCI_LINT_VERSION)/golangci-lint:
+	curl -sSfL https://golangci-lint.run/install.sh | sh -s -- -b $(dir $@) $(GOLANGCI_LINT_VERSION)
 
 
 # Go module directories (each has its own go.mod)

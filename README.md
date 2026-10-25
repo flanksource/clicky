@@ -1,3 +1,10 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/brand/source/clicky-horizontal-reversed.svg">
+    <img src="assets/brand/source/clicky-horizontal.svg" alt="clicky" width="320">
+  </picture>
+</p>
+
 # Clicky
 
 Clicky is a Go toolkit for turning structured data and Cobra CLIs into polished command-line, web, and AI-facing interfaces. It includes:
