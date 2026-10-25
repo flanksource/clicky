@@ -66,7 +66,7 @@ func executionRequestFromValues(
 		if err := validateOperationValue(parameter, value); err != nil {
 			return nil, fmt.Errorf("operation %s: invalid type for argument %q: %w", operationID(operation), name, err)
 		}
-		if name == "args" {
+		if isPositionalArgument(operation, name) {
 			request.Args = operationArgs(value)
 			continue
 		}

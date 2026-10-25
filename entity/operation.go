@@ -128,6 +128,9 @@ type RPCParameter struct {
 	Default     interface{} `json:"default,omitempty"`
 	In          string      `json:"in,omitempty"` // "query", "path", "header" for REST
 	Enum        []string    `json:"enum,omitempty"`
+	// Positional marks the command's positional argument ("args", or the name
+	// Use gives it); its values are passed as args, never as a --flag.
+	Positional bool `json:"positional,omitempty"`
 }
 
 // RPCService represents a collection of RPC operations.

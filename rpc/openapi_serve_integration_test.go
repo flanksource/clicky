@@ -747,7 +747,9 @@ func TestOpenAPIServe_E2E_WithBinary(t *testing.T) {
 			err = json.Unmarshal(respBody, &response)
 			require.NoError(t, err, "Response should be valid JSON")
 			assert.False(t, response.Success, "Command should fail with empty args")
-			assert.Contains(t, response.Error, "requires at least 1 arg", "Should fail due to missing args")
+			// pretty's <file> positional is a required parameter, so the request is
+			// rejected before the command runs.
+			assert.Contains(t, response.Error, "required parameter file is missing", "Should fail due to missing args")
 
 			// Verify input shows empty args from query precedence
 			if response.Input != nil {

@@ -161,9 +161,9 @@ func withPositional(cmd *cobra.Command, op *RPCOperation) {
 			return
 		}
 	}
-	param := RPCParameter{Name: "args", Type: "array", Description: "Positional arguments for the command", In: "query"}
+	param := RPCParameter{Name: "args", Type: "array", Description: "Positional arguments for the command", In: "query", Positional: true}
 	if name := extractParameterName(cmd.Use); name != "" {
-		param = RPCParameter{Name: name, Type: "string", Description: "Positional argument from command", In: "query"}
+		param = RPCParameter{Name: name, Type: "string", Description: "Positional argument from command", In: "query", Positional: true}
 	}
 	op.Parameters = append([]RPCParameter{param}, op.Parameters...)
 }

@@ -51,7 +51,7 @@ func TestEntityBulkActionPreservesLegacyRouteAndCatalog(t *testing.T) {
 	assert.Equal(t, http.MethodPost, bulkOperation.Method)
 	assert.Equal(t, "/api/v1/"+entityName+"/{id}/archive", bulkOperation.Path)
 	assert.Contains(t, bulkOperation.Parameters, RPCParameter{
-		Name: "id", Type: "string", Description: "Positional argument from command", Required: true, In: "path",
+		Name: "id", Type: "string", Description: "Positional argument from command", Required: true, In: "path", Positional: true,
 	})
 
 	snapshot := EntitySnapshot()
