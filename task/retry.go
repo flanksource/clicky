@@ -12,6 +12,9 @@ import (
 // matches it. Cancelling ctx while waiting returns context.Cause(ctx).
 func Retry(ctx context.Context, config RetryConfig, run func(ctx context.Context, attempt int) error) error {
 	for attempt := 1; ; attempt++ {
+		if ctx.Err() != nil {
+			return context.Cause(ctx)
+		}
 		err := run(ctx, attempt)
 		if err == nil || !shouldRetryError(err, config) {
 			return err

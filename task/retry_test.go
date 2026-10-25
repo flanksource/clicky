@@ -29,6 +29,18 @@ var _ = Describe("Retry", func() {
 		return task.RetryConfig{Retryable: isInputsChanged, MaxRetries: maxRetries, BaseDelay: tinyDelay, BackoffFactor: 1}
 	}
 
+	It("returns the cancellation cause without invoking an attempt", func() {
+		ctx, cancel := context.WithCancelCause(context.Background())
+		cancel(errStopped)
+		calls := 0
+		err := task.Retry(ctx, fastConfig(), func(context.Context, int) error {
+			calls++
+			return nil
+		})
+		Expect(errors.Is(err, errStopped)).To(BeTrue())
+		Expect(calls).To(BeZero())
+	})
+
 	It("lets the Retryable predicate decide over matching RetryableErrors patterns", func() {
 		config := fastConfig()
 		config.RetryableErrors = []string{"timeout"}
@@ -47,7 +59,7 @@ var _ = Describe("Retry", func() {
 			attempts = append(attempts, attempt)
 			return fmt.Errorf("index module: %w", errInputsChanged)
 		})
-		Expect(err).To(MatchError(errInputsChanged))
+		Expect(errors.Is(err, errInputsChanged)).To(BeTrue())
 		Expect(err.Error()).To(HavePrefix(fmt.Sprintf("failed after %d attempts", maxRetries+1)))
 		Expect(attempts).To(Equal([]int{1, 2, 3}), "attempts are 1-based and total MaxRetries+1")
 	})
@@ -75,7 +87,7 @@ var _ = Describe("Retry", func() {
 			cancel(errStopped)
 			return errInputsChanged
 		})
-		Expect(err).To(MatchError(errStopped))
+		Expect(errors.Is(err, errStopped)).To(BeTrue())
 		Expect(calls).To(Equal(1))
 	})
 

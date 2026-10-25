@@ -11,14 +11,18 @@ import (
 var _ = Describe("task snapshot dependencies", func() {
 	It("starts planned steps only after their prerequisite finishes and records timestamps", func() {
 		group := clicky.StartGroup[struct{}]("planned steps", task.WithNoRender())
+		started := group.StartedAt()
 		first := group.Group.PlanStep("Connect database")
 		next := group.Group.PlanStep("Resolve schemas", task.WithDependencies(first.Task()))
 		DeferCleanup(func() { first.Finish(nil); next.Finish(nil) })
 		pending := task.SnapshotTask(next.Task(), group.Group)
 		Expect(pending.StartedAt).To(BeEmpty())
 		Expect(pending.MaxValue).To(BeZero())
+		Expect(group.StartedAt()).To(Equal(started))
+		Expect(task.SnapshotGroup(group.Group).StartedAt).NotTo(BeEmpty())
 		Expect(next.Start()).To(MatchError(ContainSubstring("waiting for Connect database")))
 		Expect(first.Start()).To(Succeed())
+		Expect(group.StartedAt()).To(Equal(started))
 		Expect(first.Start()).To(MatchError(ContainSubstring("cannot start from")))
 		first.Finish(nil)
 		Expect(next.Start()).To(Succeed())
