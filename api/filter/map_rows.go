@@ -2,43 +2,28 @@ package filter
 
 import (
 	"fmt"
-	"regexp"
-
-	"github.com/google/cel-go/cel"
 )
 
-var celIdentifier = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
-
 type MapPredicate struct {
-	program cel.Program
+	predicate Predicate
 }
 
+// CompileMapPredicate compiles expression for map rows with the given keys.
+// Values are untyped; "row" holds every column so keys with spaces stay addressable.
 func CompileMapPredicate(keys []string, expression string) (*MapPredicate, error) {
 	if expression == "" {
 		return nil, nil
 	}
-	declarations := []cel.EnvOption{cel.Variable("row", cel.MapType(cel.StringType, cel.DynType))}
+	sample := make(map[string]any, len(keys)+1)
 	for _, key := range keys {
-		if key != "row" && celIdentifier.MatchString(key) {
-			declarations = append(declarations, cel.Variable(key, cel.DynType))
-		}
+		sample[key] = nil
 	}
-	env, err := cel.NewEnv(declarations...)
+	sample["row"] = map[string]any{}
+	predicate, err := Compile(expression, sample)
 	if err != nil {
-		return nil, fmt.Errorf("create row filter: %w", err)
+		return nil, fmt.Errorf("compile row filter: %w", err)
 	}
-	ast, issues := env.Compile(expression)
-	if issues != nil && issues.Err() != nil {
-		return nil, fmt.Errorf("compile row filter %q: %w", expression, issues.Err())
-	}
-	if ast.OutputType() != cel.BoolType {
-		return nil, fmt.Errorf("row filter %q must return a boolean", expression)
-	}
-	program, err := env.Program(ast)
-	if err != nil {
-		return nil, fmt.Errorf("create row filter program: %w", err)
-	}
-	return &MapPredicate{program: program}, nil
+	return &MapPredicate{predicate: predicate}, nil
 }
 
 func (predicate *MapPredicate) Match(row map[string]any) (bool, error) {
@@ -46,21 +31,11 @@ func (predicate *MapPredicate) Match(row map[string]any) (bool, error) {
 		return true, nil
 	}
 	variables := make(map[string]any, len(row)+1)
-	variables["row"] = row
 	for key, value := range row {
-		if key != "row" && celIdentifier.MatchString(key) {
-			variables[key] = value
-		}
+		variables[key] = value
 	}
-	value, _, err := predicate.program.Eval(variables)
-	if err != nil {
-		return false, err
-	}
-	match, ok := value.Value().(bool)
-	if !ok {
-		return false, fmt.Errorf("row filter returned %T, expected boolean", value.Value())
-	}
-	return match, nil
+	variables["row"] = row
+	return predicate.predicate.Match(variables)
 }
 
 func MapRows(rows []map[string]any, expression string) ([]map[string]any, error) {

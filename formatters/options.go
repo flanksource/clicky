@@ -7,11 +7,12 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/google/cel-go/cel"
 	"github.com/spf13/pflag"
 	"golang.org/x/term"
 
 	"github.com/flanksource/clicky/api"
+	"github.com/flanksource/clicky/api/filter"
+	flagmeta "github.com/flanksource/clicky/flags"
 )
 
 // knownFormats is the set of format names accepted in --format specs
@@ -60,10 +61,6 @@ func canonicalFormat(f string) string {
 type FormatSink struct {
 	Format string
 	File   string
-}
-
-type PrettyMixin interface {
-	Pretty() api.Text
 }
 
 // FormatOptions contains options for formatting operations
@@ -138,14 +135,8 @@ func (o *FormatOptions) ParseFormatSpec() error {
 	if o.Tree && o.Table {
 		return fmt.Errorf("--tree and --table cannot be combined")
 	}
-	if o.Filter != "" {
-		env, err := cel.NewEnv()
-		if err != nil {
-			return fmt.Errorf("prepare --filter parser: %w", err)
-		}
-		if _, issues := env.Parse(o.Filter); issues != nil && issues.Err() != nil {
-			return fmt.Errorf("invalid --filter: %w", issues.Err())
-		}
+	if err := filter.Validate(o.Filter); err != nil {
+		return fmt.Errorf("invalid --filter: %w", err)
 	}
 	spec := strings.TrimSpace(o.Format)
 	if spec == "" {
@@ -362,6 +353,12 @@ func BindPFlags(flags *pflag.FlagSet, options *FormatOptions) {
 	// Display structure flags (additive with format)
 	flags.BoolVar(&options.Tree, "tree", false, "Display in tree structure (additive with format)")
 	flags.BoolVar(&options.Table, "table", false, "Display in table structure (additive with format)")
+	for _, name := range []string{
+		"format", "output", "no-color", "dump-schema", "filter",
+		"json", "yaml", "csv", "markdown", "llm", "pretty", "html", "pdf", "slack", "tree", "table",
+	} {
+		flagmeta.SetCategory(flags.Lookup(name), flagmeta.CategoryFormatting)
+	}
 }
 
 // ResolveFormat resolves the output format from format-specific flags

@@ -1,89 +1,35 @@
-// Package filter applies CEL expressions to api table rows and tree nodes.
+// Package filter applies filter expressions to api table rows, tree nodes and
+// map rows through the configured Adapter.
 package filter
 
 import (
+	"errors"
 	"fmt"
 	"reflect"
-	"strings"
 
 	"github.com/flanksource/clicky/api"
 	"github.com/flanksource/commons/logger"
-	"github.com/flanksource/gomplate/v3"
-	"github.com/google/cel-go/cel"
-	"github.com/google/cel-go/common/types/ref"
 )
 
-// boolVal is a simple wrapper for boolean CEL values
-type boolVal struct {
-	value bool
-}
-
-func (b *boolVal) Value() interface{} {
-	return b.value
-}
-
-func (b *boolVal) Type() ref.Type {
-	return nil
-}
-
-func (b *boolVal) ConvertToNative(typeDesc reflect.Type) (interface{}, error) {
-	return b.value, nil
-}
-
-func (b *boolVal) ConvertToType(typeValue ref.Type) ref.Val {
-	return b
-}
-
-func (b *boolVal) Equal(other ref.Val) ref.Val {
-	return b
-}
-
-// TableRows filters table rows using a CEL expression.
-// Field values are injected directly into the CEL context (no "row." prefix).
-// Returns filtered rows or error if CEL expression is invalid.
+// TableRows filters table rows using an expression.
+// Field values are injected directly into the expression context (no "row." prefix).
 func TableRows(rows []api.PrettyDataRow, filterExpr string) ([]api.PrettyDataRow, error) {
-	if filterExpr == "" {
+	if filterExpr == "" || len(rows) == 0 {
 		return rows, nil
 	}
 
-	if len(rows) == 0 {
-		return rows, nil
-	}
-
-	// Get variable declarations from the first row
-	variableDecls := getVariableDeclarationsFromRow(rows[0])
-
-	// Create CEL environment with dynamic variables
-	env, err := createCELEnvironment(variableDecls)
+	predicate, err := Compile(filterExpr, rowVariables(rows[0]))
 	if err != nil {
-		return nil, fmt.Errorf("failed to create CEL environment: %w", err)
-	}
-
-	// Compile expression once
-	ast, issues := env.Compile(filterExpr)
-	if issues != nil && issues.Err() != nil {
-		return nil, fmt.Errorf("failed to compile CEL expression '%s': %w", filterExpr, issues.Err())
-	}
-
-	prg, err := env.Program(ast)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create CEL program: %w", err)
+		return nil, err
 	}
 
 	filtered := make([]api.PrettyDataRow, 0, len(rows))
 	for i, row := range rows {
-		variables := rowToCELMap(row)
-
-		out, _, err := prg.Eval(variables)
+		match, err := predicate.Match(rowVariables(row))
 		if err != nil {
-			return nil, fmt.Errorf("failed to evaluate filter expression at row %d: %w", i, err)
+			return nil, fmt.Errorf("failed to evaluate filter expression at row %d: %w", i+1, err)
 		}
-
-		boolResult, ok := out.Value().(bool)
-		if !ok {
-			return nil, fmt.Errorf("filter expression at row %d returned %T, expected boolean", i+1, out.Value())
-		}
-		if boolResult {
+		if match {
 			filtered = append(filtered, row)
 		}
 	}
@@ -92,128 +38,82 @@ func TableRows(rows []api.PrettyDataRow, filterExpr string) ([]api.PrettyDataRow
 	return filtered, nil
 }
 
-// TreeNode recursively filters tree nodes using a CEL expression.
-// Field values from node content are injected directly into the CEL context.
-// Returns filtered tree or error if CEL expression is invalid.
+// TreeNode recursively filters tree nodes using an expression.
+// Field values from node content are injected directly into the expression context.
 func TreeNode(node api.TreeNode, filterExpr string) (api.TreeNode, error) {
 	if filterExpr == "" || node == nil {
 		return node, nil
 	}
 
-	// Collect all unique variable declarations from the entire tree
-	variableDecls := collectTreeVariableDeclarations(node)
-
-	// Create CEL environment with dynamic variables
-	env, err := createCELEnvironment(variableDecls)
+	sample := map[string]any{}
+	collectTreeVariables(node, sample)
+	predicate, err := Compile(filterExpr, sample)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create CEL environment: %w", err)
+		return nil, err
 	}
 
-	// Compile expression once
-	ast, issues := env.Compile(filterExpr)
-	if issues != nil && issues.Err() != nil {
-		return nil, fmt.Errorf("failed to compile CEL expression '%s': %w", filterExpr, issues.Err())
-	}
-
-	prg, err := env.Program(ast)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create CEL program: %w", err)
-	}
-
-	return filterTreeNodeRecursive(node, prg)
+	return filterTreeNodeRecursive(node, predicate)
 }
 
-// filterTreeNodeRecursive recursively filters tree nodes
-func filterTreeNodeRecursive(node api.TreeNode, prg cel.Program) (api.TreeNode, error) {
+func filterTreeNodeRecursive(node api.TreeNode, predicate Predicate) (api.TreeNode, error) {
 	if node == nil {
 		return nil, nil
 	}
 
-	// Convert node content to CEL variables
-	variables := nodeToCELMap(node)
-
-	// Evaluate filter for this node
-	out, _, err := prg.Eval(variables)
-	if err != nil {
-		// If evaluation fails due to missing attribute, treat as non-match
-		// This can happen when a node doesn't have metadata fields that other nodes have
-		if strings.Contains(err.Error(), "no such attribute") {
-			// Node doesn't have the required field - treat as non-match
-			out = &boolVal{value: false}
-		} else {
-			return nil, fmt.Errorf("failed to evaluate filter expression: %w", err)
-		}
+	match, err := predicate.Match(nodeVariables(node))
+	// A node without metadata fields that other nodes have is a non-match.
+	if err != nil && !errors.Is(err, ErrMissingVariable) {
+		return nil, fmt.Errorf("failed to evaluate filter expression: %w", err)
 	}
 
-	match := false
-	if boolResult, ok := out.Value().(bool); ok {
-		match = boolResult
-	}
-
-	// If node doesn't match, check children
 	children := node.GetChildren()
 	if !match && len(children) == 0 {
-		// Leaf node doesn't match - exclude it
 		return nil, nil
 	}
 
-	// Process children recursively
 	var filteredChildren []api.TreeNode
-	if len(children) > 0 {
-		for _, child := range children {
-			filteredChild, err := filterTreeNodeRecursive(child, prg)
-			if err != nil {
-				return nil, err
-			}
-			if filteredChild != nil {
-				filteredChildren = append(filteredChildren, filteredChild)
-			}
+	for _, child := range children {
+		filteredChild, err := filterTreeNodeRecursive(child, predicate)
+		if err != nil {
+			return nil, err
+		}
+		if filteredChild != nil {
+			filteredChildren = append(filteredChildren, filteredChild)
 		}
 	}
 
-	// If node doesn't match but has matching children, include it with filtered children
 	if !match && len(filteredChildren) > 0 {
 		return &api.ConcreteBranchNode{
 			Children: filteredChildren,
 		}, nil
 	}
 
-	// If node matches, include it with filtered children
 	if match {
 		if len(filteredChildren) > 0 {
-			// Create a new node with filtered children
 			simple := api.TreeNodeToSimple(node)
 			simple.Children = filteredChildren
 			return simple, nil
 		}
-		// Leaf node that matches - return as-is
 		return node, nil
 	}
 
-	// Node doesn't match and has no matching children
 	return nil, nil
 }
 
-// rowToCELMap converts an api.PrettyDataRow to a flat map for CEL evaluation.
-// Field names become variable names (no "row." prefix).
-// Uses Primitive() to extract typed values for accurate CEL comparisons.
-func rowToCELMap(row api.PrettyDataRow) map[string]interface{} {
-	result := make(map[string]interface{})
+// rowVariables converts an api.PrettyDataRow to a flat variable map.
+// Field names become variable names (no "row." prefix); "row" holds every
+// field, so keys that aren't identifiers stay addressable as row["Total Amount"].
+// FilterValue keeps typed values (int64, float64, bool, time.Time) for accurate comparisons.
+func rowVariables(row api.PrettyDataRow) map[string]any {
+	result := make(map[string]any, len(row)+1)
 	for key, fieldValue := range row {
-		// Use Primitive() to get strongly-typed value
-		// This ensures CEL expressions work with proper types:
-		// - int64 for integers
-		// - float64 for floats
-		// - bool for booleans
-		// - string for strings
-		// - time.Time for dates
 		if fieldValue.FilterValue != nil {
 			result[key] = fieldValue.FilterValue
 		} else {
 			result[key] = fieldValue.String()
 		}
 	}
-	rowValues := make(map[string]interface{}, len(result))
+	rowValues := make(map[string]any, len(result))
 	for key, value := range result {
 		rowValues[key] = value
 	}
@@ -221,21 +121,19 @@ func rowToCELMap(row api.PrettyDataRow) map[string]interface{} {
 	return result
 }
 
-// nodeToCELMap converts an api.TreeNode's Pretty text to CEL variables.
+// nodeVariables converts an api.TreeNode's Pretty text to variables.
 // For SimpleTreeNode, extracts label and metadata fields.
-func nodeToCELMap(node api.TreeNode) map[string]interface{} {
-	result := make(map[string]interface{})
+func nodeVariables(node api.TreeNode) map[string]any {
+	result := make(map[string]any)
 
-	// Get the Pretty() text content
 	text := node.Pretty()
 	result["label"] = text.Content
-	result["content"] = text.Content // Alias for label
+	result["content"] = text.Content
 
 	if text.Style != "" {
 		result["style"] = text.Style
 	}
 
-	// If it's a SimpleTreeNode, extract additional fields
 	if simple, ok := node.(*api.SimpleTreeNode); ok {
 		result["label"] = simple.Label
 
@@ -246,7 +144,6 @@ func nodeToCELMap(node api.TreeNode) map[string]interface{} {
 			result["style"] = simple.Style
 		}
 
-		// Include metadata fields at top level for easy access
 		for key, value := range simple.Metadata {
 			result[key] = value
 		}
@@ -255,93 +152,22 @@ func nodeToCELMap(node api.TreeNode) map[string]interface{} {
 	return result
 }
 
-// createCELEnvironment creates a CEL environment with dynamic variable declarations
-func createCELEnvironment(variableDecls []cel.EnvOption) (*cel.Env, error) {
-	// Get base gomplate functions
-	gomplateFuncs := gomplate.GetCelEnv(make(map[string]any))
-
-	// Combine gomplate functions with variable declarations
-	envOptions := append(gomplateFuncs, variableDecls...)
-
-	return cel.NewEnv(envOptions...)
-}
-
-// getVariableDeclarationsFromRow creates CEL variable declarations from a row's fields
-func getVariableDeclarationsFromRow(row api.PrettyDataRow) []cel.EnvOption {
-	decls := []cel.EnvOption{cel.Variable("row", cel.MapType(cel.StringType, cel.DynType))}
-
-	for key, fieldValue := range row {
-		if key == "row" || !celIdentifier.MatchString(key) {
-			continue
-		}
-		value := any(fieldValue.String())
-		if fieldValue.FilterValue != nil {
-			value = fieldValue.FilterValue
-		}
-		decls = append(decls, cel.Variable(key, inferCELTypeFromValue(value)))
-	}
-
-	return decls
-}
-
-// collectTreeVariableDeclarations collects all unique variable names from an entire tree
-func collectTreeVariableDeclarations(node api.TreeNode) []cel.EnvOption {
-	if node == nil {
-		return nil
-	}
-
-	// Use a map to track unique variable names and their types
-	vars := make(map[string]*cel.Type)
-
-	// Recursively collect variables from this node and all children
-	collectTreeVariables(node, vars)
-
-	// Convert map to CEL variable declarations
-	var decls []cel.EnvOption
-	for name, celType := range vars {
-		decls = append(decls, cel.Variable(name, celType))
-	}
-
-	return decls
-}
-
-// collectTreeVariables recursively collects variable names from a tree node and its children
-func collectTreeVariables(node api.TreeNode, vars map[string]*cel.Type) {
+// collectTreeVariables merges the variables of every node into sample.
+// A variable whose Go type differs across nodes is stored as nil (untyped).
+func collectTreeVariables(node api.TreeNode, sample map[string]any) {
 	if node == nil {
 		return
 	}
 
-	// Get variables from this node
-	nodeVars := nodeToCELMap(node)
-	for key, value := range nodeVars {
-		celType := inferCELTypeFromValue(value)
-		// If variable already exists, use DynType to allow different types across nodes
-		if existingType, exists := vars[key]; exists && existingType != celType {
-			vars[key] = cel.DynType
-		} else {
-			vars[key] = celType
+	for key, value := range nodeVariables(node) {
+		if existing, exists := sample[key]; exists && reflect.TypeOf(existing) != reflect.TypeOf(value) {
+			sample[key] = nil
+		} else if !exists {
+			sample[key] = value
 		}
 	}
 
-	// Recursively collect from children
 	for _, child := range node.GetChildren() {
-		collectTreeVariables(child, vars)
-	}
-}
-
-// inferCELTypeFromValue infers the CEL type from a Go value
-func inferCELTypeFromValue(value interface{}) *cel.Type {
-	switch value.(type) {
-	case string:
-		return cel.StringType
-	case int, int8, int16, int32, int64, uint, uint8, uint16, uint32, uint64:
-		return cel.IntType
-	case float32, float64:
-		return cel.DoubleType
-	case bool:
-		return cel.BoolType
-	default:
-		// Use DynType for unknown types (time.Time, etc.)
-		return cel.DynType
+		collectTreeVariables(child, sample)
 	}
 }

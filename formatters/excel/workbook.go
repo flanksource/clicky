@@ -1,31 +1,34 @@
-package formatters
+package excel
 
 import (
 	"fmt"
 
-	"github.com/flanksource/clicky/api"
 	"github.com/xuri/excelize/v2"
+
+	"github.com/flanksource/clicky/api"
+	"github.com/flanksource/clicky/formatters"
 )
 
-type ExcelSheet struct {
+type Sheet struct {
 	Name       string
 	Provenance string
 	Table      api.TextTable
 }
 
-type ExcelWorkbook struct {
-	Sheets []ExcelSheet
+// Workbook renders as one worksheet per Sheet when passed to the excel format.
+type Workbook struct {
+	Sheets []Sheet
 }
 
-func formatExcelWorkbook(workbook ExcelWorkbook) (string, error) {
+func formatWorkbook(workbook Workbook) (string, error) {
 	if len(workbook.Sheets) == 0 {
-		return "", fmt.Errorf("Excel workbook has no result sets")
+		return "", fmt.Errorf("excel workbook has no result sets")
 	}
 	file := excelize.NewFile()
 	defer func() { _ = file.Close() }()
 	for index, sheet := range workbook.Sheets {
 		if sheet.Name == "" {
-			return "", fmt.Errorf("Excel sheet %d has no name", index+1)
+			return "", fmt.Errorf("excel sheet %d has no name", index+1)
 		}
 		if index == 0 {
 			if err := file.SetSheetName("Sheet1", sheet.Name); err != nil {
@@ -43,7 +46,7 @@ func formatExcelWorkbook(workbook ExcelWorkbook) (string, error) {
 		}
 		headers := make([]any, len(sheet.Table.Headers))
 		for i, header := range sheet.Table.Headers {
-			headers[i] = escapeSpreadsheetFormula(header.String())
+			headers[i] = formatters.EscapeSpreadsheetFormula(header.String())
 		}
 		if err := writer.SetRow("A2", headers); err != nil {
 			return "", err
@@ -58,7 +61,7 @@ func formatExcelWorkbook(workbook ExcelWorkbook) (string, error) {
 				cell := row[key]
 				switch value := cell.FilterValue.(type) {
 				case string:
-					values[columnIndex] = escapeSpreadsheetFormula(value)
+					values[columnIndex] = formatters.EscapeSpreadsheetFormula(value)
 				case nil:
 					values[columnIndex] = cell.String()
 				default:

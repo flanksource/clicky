@@ -11,7 +11,6 @@ import (
 	"github.com/flanksource/clicky/api"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"github.com/xuri/excelize/v2"
 )
 
 type percentageTableRow struct {
@@ -97,7 +96,7 @@ var _ = Describe("Column format serialization", func() {
 		Expect(document.Node.Rows[0].Cells["ratio"].FilterValue).To(Equal(0.42))
 	})
 
-	It("formats text exports but preserves raw JSON and Excel values", func() {
+	It("formats text exports but preserves raw JSON values", func() {
 		columns := []api.ColumnDef{{Name: "ratio", Type: "number", Unit: api.ColumnUnitPercentUnit}}
 		rows := []map[string]any{{"ratio": 0.42}}
 
@@ -114,15 +113,5 @@ var _ = Describe("Column format serialization", func() {
 		var decoded []map[string]any
 		Expect(json.Unmarshal(jsonOutput.Bytes(), &decoded)).To(Succeed())
 		Expect(decoded[0]["ratio"]).To(Equal(0.42))
-
-		var excelOutput bytes.Buffer
-		_, err = WriteTableStream(context.Background(), &excelOutput, &sliceRowIterator{columns: columns, rows: rows}, StreamOptions{Format: "excel"})
-		Expect(err).NotTo(HaveOccurred())
-		book, err := excelize.OpenReader(bytes.NewReader(excelOutput.Bytes()))
-		Expect(err).NotTo(HaveOccurred())
-		DeferCleanup(book.Close)
-		value, err := book.GetCellValue("Sheet1", "A2")
-		Expect(err).NotTo(HaveOccurred())
-		Expect(value).To(Equal("0.42"))
 	})
 })

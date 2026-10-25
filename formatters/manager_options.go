@@ -29,6 +29,6 @@ func NewFormatManager(options ...ManagerOptions) *FormatManager {
 		jsonFormatter: NewJSONFormatter(), yamlFormatter: NewYAMLFormatter(),
 		csvFormatter: NewCSVFormatter(), markdownFormatter: NewMarkdownFormatter(),
 		prettyFormatter: pretty, treeFormatter: NewTreeFormatter(theme, noColor, nil),
-		excelFormatter: NewExcelFormatter(), slackFormatter: NewSlackFormatter(), toonFormatter: NewTOONFormatter(),
+		slackFormatter: NewSlackFormatter(), toonFormatter: NewTOONFormatter(),
 	}
 }

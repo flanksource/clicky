@@ -12,9 +12,9 @@ import (
 	"reflect"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/flanksource/clicky/api"
-	"github.com/xuri/excelize/v2"
 	"gopkg.in/yaml.v3"
 )
 
@@ -52,8 +52,8 @@ type StreamOptions struct {
 }
 
 // WriteTableStream writes rows incrementally in a Clicky-supported tabular
-// format. Text formats keep only the current row in memory. Excel uses
-// excelize's streaming worksheet writer; PDF deliberately buffers no more than
+// format. Text formats keep only the current row in memory. Excel streams
+// through the writer formatters/excel registers; PDF deliberately buffers no more than
 // MaxRows so the existing Chromium formatter can render a bounded document.
 func WriteTableStream(ctx context.Context, w io.Writer, rows RowIterator, opts StreamOptions) (count int64, err error) {
 	defer func() {
@@ -92,11 +92,15 @@ func WriteTableStream(ctx context.Context, w io.Writer, rows RowIterator, opts S
 		return writeMarkdownStream(ctx, w, rows, columns, first, ok, opts)
 	case "html":
 		return writeHTMLStream(ctx, w, rows, columns, first, ok, opts)
-	case "excel":
-		return writeExcelStream(ctx, w, rows, columns, first, ok, opts)
 	case "pdf":
 		return writePDFStream(ctx, w, rows, columns, first, ok, opts)
 	default:
+		if writer, registered := registeredStreamWriter(format); registered {
+			return writer(ctx, w, &TableStream{Columns: columns, Options: opts, rows: rows, first: first, hasFirst: ok})
+		}
+		if hint, optional := optionalFormatPackages[format]; optional {
+			return 0, fmt.Errorf("%s streaming not registered: call %s", format, hint)
+		}
 		return 0, fmt.Errorf("unsupported streaming format: %s", format)
 	}
 }
@@ -218,11 +222,11 @@ func flushStream(w io.Writer) error {
 	return nil
 }
 
-// escapeSpreadsheetFormula neutralises a cell that Excel, LibreOffice or Sheets
+// EscapeSpreadsheetFormula neutralises a cell that Excel, LibreOffice or Sheets
 // would evaluate as a formula. Row values come from backends the operator does
 // not control, and these exports are opened as downloads; a leading single
 // quote forces the cell to be read as literal text.
-func escapeSpreadsheetFormula(text string) string {
+func EscapeSpreadsheetFormula(text string) string {
 	if text == "" {
 		return text
 	}
@@ -240,7 +244,7 @@ func escapeSpreadsheetCell(value any, rendered string) string {
 	if isSpreadsheetNumber(value) {
 		return rendered
 	}
-	return escapeSpreadsheetFormula(rendered)
+	return EscapeSpreadsheetFormula(rendered)
 }
 
 // isSpreadsheetNumber reports whether the sheet holds the value as a number (or
@@ -343,7 +347,7 @@ func writeCSVStream(ctx context.Context, w io.Writer, rows RowIterator, columns 
 	writer := csv.NewWriter(w)
 	headers := make([]string, len(columns))
 	for i, column := range columns {
-		headers[i] = escapeSpreadsheetFormula(column.DisplayLabel())
+		headers[i] = EscapeSpreadsheetFormula(column.DisplayLabel())
 	}
 	if err := writer.Write(headers); err != nil {
 		return 0, err
@@ -424,49 +428,42 @@ func writeHTMLStream(ctx context.Context, w io.Writer, rows RowIterator, columns
 	return count, err
 }
 
-func writeExcelStream(ctx context.Context, w io.Writer, rows RowIterator, columns []api.ColumnDef, first map[string]any, ok bool, opts StreamOptions) (int64, error) {
-	file := excelize.NewFile()
-	defer file.Close()
-	stream, err := file.NewStreamWriter("Sheet1")
-	if err != nil {
-		return 0, err
-	}
-	headers := make([]any, len(columns))
-	for i, column := range columns {
-		headers[i] = escapeSpreadsheetFormula(column.DisplayLabel())
-	}
-	if err := stream.SetRow("A1", headers); err != nil {
-		return 0, err
-	}
-	rowNumber := 2
-	// excelize writes strings as inline strings, which Excel does not evaluate,
-	// but the quote also survives a re-export of the sheet to CSV where it would.
-	count, err := streamRows(ctx, rows, first, ok, opts.MaxRows, func(row map[string]any) error {
-		values := make([]any, len(columns))
-		for i, column := range columns {
-			value := row[column.Name]
-			if api.IsStructuredColumnType(column.Type) {
-				values[i] = escapeSpreadsheetFormula(api.ColumnString(column, value))
-			} else if text, isText := value.(string); isText {
-				values[i] = escapeSpreadsheetFormula(text)
-			} else {
-				values[i] = value
-			}
-		}
-		cell, err := excelize.CoordinatesToCellName(1, rowNumber)
-		if err != nil {
-			return err
-		}
-		rowNumber++
-		return stream.SetRow(cell, values)
-	})
-	if err != nil {
-		return count, err
-	}
-	if err := stream.Flush(); err != nil {
-		return count, err
-	}
-	return count, file.Write(w)
+// TableStream is the row source handed to a registered StreamWriterFunc.
+type TableStream struct {
+	Columns []api.ColumnDef
+	Options StreamOptions
+
+	rows     RowIterator
+	first    map[string]any
+	hasFirst bool
+}
+
+// Each calls emit for every row, enforcing Options.MaxRows.
+func (s *TableStream) Each(ctx context.Context, emit func(map[string]any) error) (int64, error) {
+	return streamRows(ctx, s.rows, s.first, s.hasFirst, s.Options.MaxRows, emit)
+}
+
+// StreamWriterFunc writes a table stream in one format and returns the row count.
+type StreamWriterFunc func(ctx context.Context, w io.Writer, table *TableStream) (int64, error)
+
+var (
+	streamWritersMu sync.RWMutex
+	streamWriters   = map[string]StreamWriterFunc{}
+)
+
+// RegisterStreamWriter adds a WriteTableStream format whose writer lives
+// outside this package, e.g. excel from formatters/excel.
+func RegisterStreamWriter(format string, fn StreamWriterFunc) {
+	streamWritersMu.Lock()
+	defer streamWritersMu.Unlock()
+	streamWriters[strings.ToLower(format)] = fn
+}
+
+func registeredStreamWriter(format string) (StreamWriterFunc, bool) {
+	streamWritersMu.RLock()
+	defer streamWritersMu.RUnlock()
+	fn, ok := streamWriters[format]
+	return fn, ok
 }
 
 func writePDFStream(ctx context.Context, w io.Writer, rows RowIterator, columns []api.ColumnDef, first map[string]any, ok bool, opts StreamOptions) (int64, error) {

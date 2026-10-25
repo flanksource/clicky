@@ -20,10 +20,8 @@ type FormatManager struct {
 	markdownFormatter   *MarkdownFormatter
 	prettyFormatter     *PrettyFormatter
 	treeFormatter       *TreeFormatter
-	excelFormatter      *ExcelFormatter
 	htmlFormatter       *HTMLFormatter
 	htmlStaticFormatter *HTMLFormatter
-	htmlPdf             *HTMLPDFFormatter
 	slackFormatter      *SlackFormatter
 	toonFormatter       *TOONFormatter
 }
@@ -112,14 +110,6 @@ func (f *FormatManager) HTMLStatic(data interface{}) (string, error) {
 	return f.htmlStaticFormatter.Format(data, FormatOptions{})
 }
 
-// HTMLPDF implements api.FormatManager.
-func (f *FormatManager) HTMLPDF(data interface{}) (string, error) {
-	if f.htmlPdf == nil {
-		f.htmlPdf = NewHTMLPDFFormatter()
-	}
-	return f.htmlPdf.Format(data, FormatOptions{})
-}
-
 // Slack formats data as Slack Block Kit JSON.
 func (f *FormatManager) Slack(data interface{}) (string, error) {
 	if f.slackFormatter == nil {
@@ -136,20 +126,21 @@ func (f *FormatManager) Tree(data interface{}) (string, error) {
 	return f.treeFormatter.Format(data)
 }
 
-// Excel formats data as Excel file (requires file output)
-func (f *FormatManager) Excel(data interface{}) (string, error) {
-	if f.excelFormatter == nil {
-		f.excelFormatter = NewExcelFormatter()
-	}
-	return f.excelFormatter.Format(data)
+// optionalFormatPackages names the Use() call that registers each format whose
+// renderer lives outside this package because of its dependency weight.
+var optionalFormatPackages = map[string]string{
+	"pdf":      "pdf.Use() from github.com/flanksource/clicky/formatters/pdf",
+	"html-pdf": "pdf.Use() from github.com/flanksource/clicky/formatters/pdf",
+	"excel":    "excel.Use() from github.com/flanksource/clicky/formatters/excel",
+	"xlsx":     "excel.Use() from github.com/flanksource/clicky/formatters/excel",
 }
 
-// ExcelToFile formats data as Excel file and saves to specified path
-func (f *FormatManager) ExcelToFile(data interface{}, filename string) error {
-	if f.excelFormatter == nil {
-		f.excelFormatter = NewExcelFormatter()
+// formatOptional renders an optional (registered) format or explains how to register it.
+func formatOptional(format string, data any, options FormatOptions) (string, error) {
+	if formatter, ok := GetCustomFormatter(format); ok {
+		return formatter(data, options)
 	}
-	return f.excelFormatter.FormatToFile(data, filename)
+	return "", fmt.Errorf("%s format not registered: call %s", format, optionalFormatPackages[format])
 }
 
 // Format implements a generic format method that delegates to specific formatters
@@ -174,12 +165,10 @@ func (f *FormatManager) Format(format string, data interface{}) (string, error) 
 		return f.HTML(data)
 	case "html-static":
 		return f.HTMLStatic(data)
-	case "html-pdf", "pdf":
-		return f.HTMLPDF(data)
+	case "html-pdf", "pdf", "excel", "xlsx":
+		return formatOptional(format, data, FormatOptions{Format: format})
 	case "slack":
 		return f.Slack(data)
-	case "excel", "xlsx":
-		return f.Excel(data)
 	case "pretty":
 		return f.Pretty(data)
 	case "tree":
@@ -352,11 +341,13 @@ func (f *FormatManager) formatWithOptions(options FormatOptions, data ...any) (s
 		}
 		return f.slackFormatter.FormatPrettyData(prettyData, options)
 
-	case "html", "html-static", "html-pdf", "pdf":
+	case "html", "html-static":
 		if formatter, ok := GetCustomFormatter(format); ok {
 			return formatter(data, options)
 		}
 		return "", fmt.Errorf("html formatter not registered, register using 'import _ github.com/flanksource/clicky/formatters/html'")
+	case "html-pdf", "pdf", "excel", "xlsx":
+		return formatOptional(format, data, options)
 	case "table":
 		if f.prettyFormatter == nil {
 			f.prettyFormatter = NewPrettyFormatter()
@@ -375,12 +366,6 @@ func (f *FormatManager) formatWithOptions(options FormatOptions, data ...any) (s
 			f.treeFormatter = NewTreeFormatter(api.DefaultTheme(), options.NoColor, nil)
 		}
 		return f.treeFormatter.Format(d)
-
-	case "excel", "xlsx":
-		if f.excelFormatter == nil {
-			f.excelFormatter = NewExcelFormatter()
-		}
-		return f.excelFormatter.Format(d)
 
 	case "pretty":
 		// Convert to PrettyData first
@@ -444,21 +429,6 @@ func (f *FormatManager) FormatToFileWithContext(ctx any, options FormatOptions, 
 	}
 
 	return nil
-}
-
-// ExcelExport exports data to Excel format using filename
-func (f *FormatManager) ExcelExport(data interface{}, filename string) error {
-	if f.excelFormatter == nil {
-		f.excelFormatter = NewExcelFormatter()
-	}
-	return f.excelFormatter.FormatToFile(data, filename)
-}
-
-// Pdf exports data to PDF format
-func (f *FormatManager) Pdf(data interface{}, filename string) error {
-	// PDF generation would require a library like gofpdf
-	// For now, we'll return an error indicating it's not implemented
-	return fmt.Errorf("PDF export is not yet implemented")
 }
 
 func (f *FormatManager) ParseSchema(data interface{}) (*api.PrettyObject, error) {

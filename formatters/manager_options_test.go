@@ -7,6 +7,35 @@ import (
 )
 
 var _ = Describe("Non-terminal format manager", func() {
+	DescribeTable("preserves binary bytes with NoColor on both formatting paths",
+		func(format string) {
+			const binary = "binary\x00\xff\x1b[31mpayload\x1b[0m"
+			AddFormatCallback(FormatCallback{AfterFormat: func(_ any, _ *FormatManager, _ FormatOptions, _ any, _ string) string {
+				return binary
+			}})
+			DeferCleanup(ClearFormatCallbacks)
+			previous, registered := GetCustomFormatter(format)
+			RegisterFormatter(format, func(any, FormatOptions) (string, error) { return binary, nil })
+			DeferCleanup(func() {
+				if registered {
+					RegisterFormatter(format, previous)
+				} else {
+					UnregisterFormatter(format)
+				}
+			})
+			manager := NewFormatManager(ManagerOptions{NoColor: true})
+			options := FormatOptions{Format: format}
+			output, err := manager.FormatWithContext(nil, options, "example")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(output).To(Equal(binary))
+			output, err = manager.FormatWithSchemaContext(nil, &api.PrettyData{Original: "example"}, options)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(output).To(Equal(binary))
+		},
+		Entry("PDF", "pdf"), Entry("HTML PDF", "html-pdf"),
+		Entry("Excel", "excel"), Entry("XLSX alias", "xlsx"),
+	)
+
 	It("constructs plain formatters before rendering and keeps output plain", func() {
 		manager := NewFormatManager(ManagerOptions{NoColor: true})
 		Expect(manager.prettyFormatter.NoColor).To(BeTrue())
