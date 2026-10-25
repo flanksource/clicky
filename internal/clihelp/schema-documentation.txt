@@ -1,0 +1,90 @@
+CLICKY SCHEMA DOCUMENTATION
+===========================
+
+The clicky schema is a YAML file that defines how to format and display structured data.
+
+## Basic Structure
+
+fields:
+  - name: "field_name"        # Required: name of the field in your data
+    type: "string"             # Optional: field type (string, int, float, boolean, struct, array)
+    format: "format_type"      # Optional: special formatting (currency, date, table, etc.)
+    style: "tailwind_classes"  # Optional: Tailwind CSS classes for styling
+    label: "Display Label"     # Optional: custom label for display
+
+## Field Types
+
+- string: Text values
+- int: Integer numbers
+- float: Decimal numbers
+- boolean: true/false values
+- struct: Nested objects
+- array: Lists of items
+- date: Date/time values
+
+## Format Types
+
+- currency: Format as currency (e.g., $1,234.56)
+- date: Format as date/time
+- float: Format with specific decimal places
+- table: Display array as a table
+- tree: Display as a tree structure
+
+## Styling
+
+Use Tailwind CSS classes for styling:
+- Colors: text-red-500, bg-blue-100
+- Typography: font-bold, italic, uppercase
+- Spacing: px-2, py-1
+- Decorations: underline, line-through
+
+## Color Options
+
+Dynamic coloring based on values:
+
+color_options:
+  green: "completed"    # Use green when value is "completed"
+  red: "failed"         # Use red when value is "failed"
+  yellow: ">= 50"       # Use yellow for numeric comparisons
+
+## Table Options
+
+For array fields with format: "table":
+
+table_options:
+  title: "Table Title"
+  header_style: "bg-blue-50 font-bold"
+  fields:
+    - name: "column1"
+      type: "string"
+      style: "text-gray-700"
+
+## Format Options
+
+Additional formatting parameters:
+
+format_options:
+  format: "epoch"       # For dates: parse from epoch timestamp
+  digits: "2"           # For floats: decimal places
+  sort: "field_name"    # For tables: sort by field
+  dir: "desc"           # Sort direction: asc/desc
+
+## Nested Fields
+
+For struct types, define nested fields:
+
+fields:
+  - name: "address"
+    type: "struct"
+    fields:
+      - name: "street"
+        type: "string"
+      - name: "city"
+        type: "string"
+
+## Example Usage
+
+clicky --schema my-schema.yaml data.json
+clicky pretty --schema my-schema.yaml --format html data.json
+clicky schema validate my-schema.yaml
+clicky schema example -o example-schema.yaml

@@ -59,5 +59,7 @@ and the executor-backed OpenAPI serve mode from the same registrations.`,
 			WithFormat(formatters.FormatOptions{Markdown: true, NoColor: true}).
 			Command(),
 	)
+	// Any command can now collect its flags and args in a form: `stack list -i`.
+	extensions.CobraExtensions(rootCmd).Interactive()
 	return rootCmd
 }

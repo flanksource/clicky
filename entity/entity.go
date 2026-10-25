@@ -3,17 +3,12 @@ package entity
 import (
 	"context"
 	"encoding/csv"
-	"encoding/json"
 	"fmt"
-	"io"
-	"os"
 	"reflect"
-	"sort"
 	"strings"
 	"sync"
 
 	"github.com/flanksource/clicky/api"
-	"github.com/flanksource/clicky/flags"
 	"github.com/samber/lo"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -72,7 +67,10 @@ type EntityInfo struct {
 	Actions       []ActionInfo
 	BulkActions   []BulkActionInfo
 	ValidArgs     func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective)
-	IsAdmin       bool
+	// IDOptions lists the ids the <id> argument offers, with their names and
+	// descriptions (nil when the entity declares its own ValidArgs).
+	IDOptions IDOptionsFunc
+	IsAdmin   bool
 	// ServedOnly keeps the generated commands off the CLI; see Entity.ServedOnly.
 	ServedOnly bool
 	// FilterRefs maps a list filter's flag key to the name of the reusable named
@@ -112,12 +110,14 @@ type EntityOperation struct {
 	// executor prefers it over LookupFunc, feeding the request context.
 	ContextLookupFunc ContextLookupFunc
 	BindCompletions   func(cmd *cobra.Command)
-	ResponseType      reflect.Type
-	ResponseArray     bool
-	ResponsePaged     bool
-	ResponseEntityID  bool
-	Sort              *SortSpec
-	Schedule          *OperationScheduleMeta
+	// FlagSchemas shape JSON-object flags from the other arguments.
+	FlagSchemas      map[string]FlagSchema
+	ResponseType     reflect.Type
+	ResponseArray    bool
+	ResponsePaged    bool
+	ResponseEntityID bool
+	Sort             *SortSpec
+	Schedule         *OperationScheduleMeta
 }
 
 // ActionInfo is the type-erased representation of a single-entity action.
@@ -137,6 +137,9 @@ type ActionInfo struct {
 	LookupFunc        func(flags map[string]string, args []string) (any, error)
 	ContextLookupFunc ContextLookupFunc
 	BindCompletions   func(cmd *cobra.Command)
+	// FlagSchemas shape JSON-object flags from the other arguments
+	// (WithActionFlagSchema).
+	FlagSchemas map[string]FlagSchema
 	// FlagsType, if non-nil, is the struct type whose `flag:"..."` tagged
 	// fields are registered as cobra flags on the generated action command
 	// and populated into the flag map passed to DataFunc.
@@ -247,6 +250,14 @@ type SearchableFilter[ListOpts any] interface {
 // fall back to the plain Options() path unchanged.
 type ContextFilter[ListOpts any] interface {
 	OptionsWithContext(ctx context.Context, opts ListOpts) map[string]api.Textable
+}
+
+// FallibleFilter is an OPTIONAL extension for a filter whose options come
+// from a source that can fail (a database, a config catalog). Lookups and
+// shell completion prefer it over Options/OptionsWithContext, and its error
+// fails the lookup instead of leaving an empty option set.
+type FallibleFilter[ListOpts any] interface {
+	LookupOptions(ctx context.Context, opts ListOpts) (map[string]api.Textable, error)
 }
 
 // ContextSearchableFilter is the context-aware counterpart of
@@ -366,8 +377,12 @@ func (l liftedFilter[Outer, Inner]) OptionsWithQueryAndContext(ctx context.Conte
 }
 
 func (l liftedFilter[Outer, Inner]) lookupOptions(ctx context.Context, opts Outer, query string, limit int) (FilterOptions, error) {
-	inner := *l.project(&opts)
-	return typedFilterOptions(ctx, l.inner, inner, filterIsSearchable(l.inner), query, limit)
+	return typedFilterOptions(ctx, l.inner, filterOptionsRequest[Inner]{
+		Opts:       *l.project(&opts),
+		Searchable: filterIsSearchable(l.inner),
+		Query:      query,
+		Limit:      limit,
+	})
 }
 
 // EntityAction is the type-erased registration surface for custom entity
@@ -387,6 +402,7 @@ type ActionSpec[R any] struct {
 	lookupFunc        DataFunc
 	contextLookupFunc ContextLookupFunc
 	bindCompletions   func(cmd *cobra.Command)
+	flagSchemas       map[string]FlagSchema
 	optionalID        bool
 	toolGroup         string
 	toolHints         MCPToolHints
@@ -451,12 +467,7 @@ func TypedActionWithContext[Opts ActionFlags, R any](name string, opts Opts, fn 
 		}
 		return fn(ctx, id, resolved)
 	})
-	if len(actionFilters) > 0 {
-		action.lookupFunc = buildActionLookupFunc(actionFilters)
-		action.contextLookupFunc = buildActionLookupFuncWithContext(actionFilters)
-		action.bindCompletions = buildActionFilterCompletionBinder(actionFilters)
-	}
-	return action
+	return WithActionFilters(action, actionFilters)
 }
 
 func (a *ActionSpec[R]) WithShort(short string) *ActionSpec[R] {
@@ -557,6 +568,7 @@ func (a *ActionSpec[R]) actionInfo() ActionInfo {
 		LookupFunc:        a.lookupFunc,
 		ContextLookupFunc: a.contextLookupFunc,
 		BindCompletions:   a.bindCompletions,
+		FlagSchemas:       a.flagSchemas,
 	}
 	if a.runCtx != nil {
 		info.ContextDataFunc = func(ctx context.Context, flagMap map[string]string, args []string) (any, error) {
@@ -1019,7 +1031,8 @@ func RegisterEntity[T EntityItem, ListOpts any, R any](e Entity[T, ListOpts, R])
 		Path:       e.Path,
 		Type:       reflect.TypeOf((*T)(nil)).Elem(),
 		ListType:   reflect.TypeOf((*ListOpts)(nil)).Elem(),
-		ValidArgs:  e.ValidArgs,
+		ValidArgs:  entityIDCompletion(e),
+		IDOptions:  entityIDOptions(e),
 		ServedOnly: e.ServedOnly,
 		FilterRefs: entityFilterRefs(e.Filters),
 		ToolGroup:  e.ToolGroup,
@@ -1039,85 +1052,124 @@ func RegisterEntity[T EntityItem, ListOpts any, R any](e Entity[T, ListOpts, R])
 		info.Operations = append(info.Operations, op)
 	}
 
-	if e.CreateWithContext != nil || e.Create != nil {
-		op := EntityOperation{Verb: "create", ResponseType: responseTypeOf[R]()}
-		if e.CreateWithContext != nil {
-			op.ContextDataFunc = func(ctx context.Context, flagMap map[string]string, args []string) (any, error) {
-				return dataOrError(e.CreateWithContext(ctx, entityBody(flagMap)))
-			}
-		} else {
-			op.DataFunc = func(flagMap map[string]string, args []string) (any, error) {
-				return dataOrError(e.Create(entityBody(flagMap)))
-			}
+	for _, build := range []func(Entity[T, ListOpts, R]) (EntityOperation, bool){
+		entityCreateOperation[T, ListOpts, R],
+		entityUpdateOperation[T, ListOpts, R],
+		entityDeleteOperation[T, ListOpts, R],
+	} {
+		if op, ok := build(e); ok {
+			info.Operations = append(info.Operations, op)
 		}
-		info.Operations = append(info.Operations, op)
-	}
-
-	if e.UpdateWithContext != nil || e.Update != nil {
-		op := EntityOperation{Verb: "update", ResponseType: responseTypeOf[R]()}
-		if e.UpdateWithContext != nil {
-			op.ContextDataFunc = func(ctx context.Context, flagMap map[string]string, args []string) (any, error) {
-				id, err := entityIDFrom(flagMap, args)
-				if err != nil {
-					return nil, err
-				}
-				return dataOrError(e.UpdateWithContext(ctx, id, entityBodyExcludingID(flagMap)))
-			}
-		} else {
-			op.DataFunc = func(flagMap map[string]string, args []string) (any, error) {
-				id, err := entityIDFrom(flagMap, args)
-				if err != nil {
-					return nil, err
-				}
-				return dataOrError(e.Update(id, entityBodyExcludingID(flagMap)))
-			}
-		}
-		info.Operations = append(info.Operations, op)
-	}
-
-	if e.DeleteWithFlagsAndContext != nil || e.DeleteWithContext != nil || e.Delete != nil {
-		op := EntityOperation{Verb: "delete"}
-		switch {
-		case e.DeleteWithFlagsAndContext != nil:
-			op.FlagsType = actionFlagsType(e.DeleteFlags)
-			op.ResponseType = responseTypeOf[any]()
-			op.ContextDataFunc = func(ctx context.Context, flagMap map[string]string, args []string) (any, error) {
-				id, err := entityIDFrom(flagMap, args)
-				if err != nil {
-					return nil, err
-				}
-				return dataOrError(e.DeleteWithFlagsAndContext(ctx, id, flagMap))
-			}
-		case e.DeleteWithContext != nil:
-			op.ContextDataFunc = func(ctx context.Context, flagMap map[string]string, args []string) (any, error) {
-				id, err := entityIDFrom(flagMap, args)
-				if err != nil {
-					return nil, err
-				}
-				return nil, e.DeleteWithContext(ctx, id)
-			}
-		default:
-			op.DataFunc = func(flagMap map[string]string, args []string) (any, error) {
-				id, err := entityIDFrom(flagMap, args)
-				if err != nil {
-					return nil, err
-				}
-				return nil, e.Delete(id)
-			}
-		}
-		info.Operations = append(info.Operations, op)
 	}
 
 	if e.PrimaryAction != nil {
 		primary := e.PrimaryAction.actionInfo()
 		info.PrimaryAction = &primary
 	}
+	info.Actions = entityActionInfos(name, e.Actions)
+	info.BulkActions = entityBulkActionInfos(e)
 
-	// An action's verb becomes a subcommand name, so two actions sharing one are a
-	// wiring bug: cobra keeps whichever was added first and the other silently
-	// never runs, however different their routes are.
-	verbs := make(map[string]bool, len(e.Actions))
-	for _, action := range e.Actions {
+	if e.Admin != nil {
+		registerAdminEntity(e, info)
+	}
+
+	// The parent's own operations; the admin sub-entity applied its own above.
+	applyRouteOverrides(info.Operations, e.Routes)
+	storeEntityInfo(info)
+}
+
+func storeEntityInfo(info EntityInfo) {
+	observeEntity(&info)
+	entityRegistryMu.Lock()
+	entityRegistry = append(entityRegistry, info)
+	entityRegistryMu.Unlock()
+}
+
+func entityCreateOperation[T EntityItem, ListOpts any, R any](e Entity[T, ListOpts, R]) (EntityOperation, bool) {
+	op := EntityOperation{Verb: "create", ResponseType: responseTypeOf[R]()}
+	switch {
+	case e.CreateWithContext != nil:
+		op.ContextDataFunc = func(ctx context.Context, flagMap map[string]string, args []string) (any, error) {
+			return dataOrError(e.CreateWithContext(ctx, entityBody(flagMap)))
+		}
+	case e.Create != nil:
+		op.DataFunc = func(flagMap map[string]string, args []string) (any, error) {
+			return dataOrError(e.Create(entityBody(flagMap)))
+		}
+	default:
+		return EntityOperation{}, false
+	}
+	return op, true
+}
+
+func entityUpdateOperation[T EntityItem, ListOpts any, R any](e Entity[T, ListOpts, R]) (EntityOperation, bool) {
+	op := EntityOperation{Verb: "update", ResponseType: responseTypeOf[R]()}
+	switch {
+	case e.UpdateWithContext != nil:
+		op.ContextDataFunc = func(ctx context.Context, flagMap map[string]string, args []string) (any, error) {
+			id, err := entityIDFrom(flagMap, args)
+			if err != nil {
+				return nil, err
+			}
+			return dataOrError(e.UpdateWithContext(ctx, id, entityBodyExcludingID(flagMap)))
+		}
+	case e.Update != nil:
+		op.DataFunc = func(flagMap map[string]string, args []string) (any, error) {
+			id, err := entityIDFrom(flagMap, args)
+			if err != nil {
+				return nil, err
+			}
+			return dataOrError(e.Update(id, entityBodyExcludingID(flagMap)))
+		}
+	default:
+		return EntityOperation{}, false
+	}
+	return op, true
+}
+
+func entityDeleteOperation[T EntityItem, ListOpts any, R any](e Entity[T, ListOpts, R]) (EntityOperation, bool) {
+	op := EntityOperation{Verb: "delete"}
+	switch {
+	case e.DeleteWithFlagsAndContext != nil:
+		op.FlagsType = actionFlagsType(e.DeleteFlags)
+		op.ResponseType = responseTypeOf[any]()
+		op.ContextDataFunc = func(ctx context.Context, flagMap map[string]string, args []string) (any, error) {
+			id, err := entityIDFrom(flagMap, args)
+			if err != nil {
+				return nil, err
+			}
+			return dataOrError(e.DeleteWithFlagsAndContext(ctx, id, flagMap))
+		}
+	case e.DeleteWithContext != nil:
+		op.ContextDataFunc = func(ctx context.Context, flagMap map[string]string, args []string) (any, error) {
+			id, err := entityIDFrom(flagMap, args)
+			if err != nil {
+				return nil, err
+			}
+			return nil, e.DeleteWithContext(ctx, id)
+		}
+	case e.Delete != nil:
+		op.DataFunc = func(flagMap map[string]string, args []string) (any, error) {
+			id, err := entityIDFrom(flagMap, args)
+			if err != nil {
+				return nil, err
+			}
+			return nil, e.Delete(id)
+		}
+	default:
+		return EntityOperation{}, false
+	}
+	return op, true
+}
+
+// entityActionInfos resolves an entity's actions. An action's verb becomes a
+// subcommand name, so two actions sharing one are a wiring bug: cobra keeps
+// whichever was added first and the other silently never runs, however
+// different their routes are.
+func entityActionInfos(name string, actions []EntityAction) []ActionInfo {
+	var infos []ActionInfo
+	verbs := make(map[string]bool, len(actions))
+	for _, action := range actions {
 		if action == nil {
 			continue
 		}
@@ -1126,9 +1178,13 @@ func RegisterEntity[T EntityItem, ListOpts any, R any](e Entity[T, ListOpts, R])
 			panic("clicky.RegisterEntity: entity " + name + " declares two actions with the verb " + actionInfo.Name)
 		}
 		verbs[actionInfo.Name] = true
-		info.Actions = append(info.Actions, actionInfo)
+		infos = append(infos, actionInfo)
 	}
+	return infos
+}
 
+func entityBulkActionInfos[T EntityItem, ListOpts any, R any](e Entity[T, ListOpts, R]) []BulkActionInfo {
+	var infos []BulkActionInfo
 	listType := reflect.TypeOf((*ListOpts)(nil)).Elem()
 	for _, ba := range e.BulkActions {
 		if ba == nil {
@@ -1145,55 +1201,46 @@ func RegisterEntity[T EntityItem, ListOpts any, R any](e Entity[T, ListOpts, R])
 			bai.ContextLookupFunc = buildLookupFuncWithContext[ListOpts](e.Filters)
 			bai.BindCompletions = buildFilterCompletionBinder[ListOpts](e.Filters)
 		}
-		info.BulkActions = append(info.BulkActions, bai)
+		infos = append(infos, bai)
 	}
+	return infos
+}
 
-	if e.Admin != nil {
-		admin := *e.Admin
-		if admin.Name == "" || admin.Name == name {
-			admin.Name = name
-		}
-		adminValidArgs := admin.ValidArgs
-		if adminValidArgs == nil {
-			adminValidArgs = e.ValidArgs
-		}
-		// Store as admin sub-entity — GenerateCLI nests under "admin" parent
-		adminInfo := EntityInfo{
-			Name:      admin.Name,
-			Type:      info.Type,
-			ListType:  info.ListType,
-			ValidArgs: adminValidArgs,
-			IsAdmin:   true,
-		}
-		if op, ok := entityListOperation(admin); ok {
-			adminInfo.Operations = append(adminInfo.Operations, op)
-		}
-		if op, ok := entityGetOperation(admin); ok {
-			adminInfo.Operations = append(adminInfo.Operations, op)
-		}
-		for _, action := range admin.Actions {
-			if action == nil {
-				continue
-			}
-			adminInfo.Actions = append(adminInfo.Actions, action.actionInfo())
-		}
-		// The admin sub-entity is registered separately from its parent, so its
-		// own overrides have to be applied here; the parent's call below never
-		// sees these operations.
-		applyRouteOverrides(adminInfo.Operations, admin.Routes)
-		observeEntity(&adminInfo)
-		entityRegistryMu.Lock()
-		entityRegistry = append(entityRegistry, adminInfo)
-		entityRegistryMu.Unlock()
+// registerAdminEntity stores e.Admin as a sub-entity of parent; GenerateCLI
+// nests it under an "admin" command.
+func registerAdminEntity[T EntityItem, ListOpts any, R any](e Entity[T, ListOpts, R], parent EntityInfo) {
+	admin := *e.Admin
+	if admin.Name == "" || admin.Name == parent.Name {
+		admin.Name = parent.Name
 	}
-
-	// The parent's own operations; the admin sub-entity applied its own above.
-	applyRouteOverrides(info.Operations, e.Routes)
-
-	observeEntity(&info)
-	entityRegistryMu.Lock()
-	entityRegistry = append(entityRegistry, info)
-	entityRegistryMu.Unlock()
+	adminValidArgs := admin.ValidArgs
+	if adminValidArgs == nil {
+		adminValidArgs = e.ValidArgs
+	}
+	adminInfo := EntityInfo{
+		Name:      admin.Name,
+		Type:      parent.Type,
+		ListType:  parent.ListType,
+		ValidArgs: adminValidArgs,
+		IsAdmin:   true,
+	}
+	if op, ok := entityListOperation(admin); ok {
+		adminInfo.Operations = append(adminInfo.Operations, op)
+	}
+	if op, ok := entityGetOperation(admin); ok {
+		adminInfo.Operations = append(adminInfo.Operations, op)
+	}
+	for _, action := range admin.Actions {
+		if action == nil {
+			continue
+		}
+		adminInfo.Actions = append(adminInfo.Actions, action.actionInfo())
+	}
+	// The admin sub-entity is registered separately from its parent, so its
+	// own overrides have to be applied here; the parent's call never sees these
+	// operations.
+	applyRouteOverrides(adminInfo.Operations, admin.Routes)
+	storeEntityInfo(adminInfo)
 }
 
 // GetEntities returns all registered entities.
@@ -1243,1262 +1290,4 @@ func entityFilterRefs[ListOpts any](filters []Filter[ListOpts]) map[string]strin
 		return nil
 	}
 	return refs
-}
-
-// GenerateCLI creates cobra subcommands for all registered entities under parent.
-// Admin entities are nested under a shared "admin" parent command.
-// Entities with a Parent set are nested under a shared parent cobra command,
-// created lazily if it does not already exist.
-func GenerateCLI(parent *cobra.Command) {
-	adminCmds := make(map[string]*cobra.Command)
-	for _, entity := range GetEntities() {
-		target := parent
-		if entity.Parent != "" {
-			target = findOrCreateChild(parent, entity.Parent)
-		}
-		if entity.IsAdmin {
-			key := target.CommandPath()
-			adminCmd := adminCmds[key]
-			if adminCmd == nil {
-				adminCmd = &cobra.Command{
-					Use:   "admin",
-					Short: "Administrative operations",
-				}
-				target.AddCommand(adminCmd)
-				adminCmds[key] = adminCmd
-			}
-			generateEntityCLI(adminCmd, entity)
-		} else {
-			generateEntityCLI(target, entity)
-		}
-	}
-
-	flushPendingSubCommands(parent)
-}
-
-// findOrCreateChild returns the child command of parent named name. If no
-// matching child exists, a thin parent command is created and attached.
-// findOrCreateEntityCommand returns the command an entity's operations hang
-// from, reusing one the application already registered under that name.
-func findOrCreateEntityCommand(parent *cobra.Command, entity EntityInfo) (cmd *cobra.Command, created bool) {
-	for _, candidate := range parent.Commands() {
-		if candidate.Name() == entity.Name {
-			annotateEntityCommand(candidate, entity)
-			return candidate, false
-		}
-	}
-	cmd = &cobra.Command{
-		Use:     entity.Name,
-		Aliases: entity.Aliases,
-		Short:   fmt.Sprintf("Manage %s resources", entity.Name),
-	}
-	annotateEntityCommand(cmd, entity)
-	parent.AddCommand(cmd)
-	return cmd, true
-}
-
-// commandSet snapshots which subcommands a command already has.
-func commandSet(cmd *cobra.Command) map[*cobra.Command]bool {
-	set := map[*cobra.Command]bool{}
-	for _, child := range cmd.Commands() {
-		set[child] = true
-	}
-	return set
-}
-
-func findOrCreateChild(parent *cobra.Command, name string) *cobra.Command {
-	for _, c := range parent.Commands() {
-		if c.Name() == name {
-			return c
-		}
-	}
-	child := &cobra.Command{
-		Use:   name,
-		Short: fmt.Sprintf("%s operations", name),
-	}
-	parent.AddCommand(child)
-	return child
-}
-
-func generateEntityCLI(parent *cobra.Command, entity EntityInfo) {
-	// An application may already have a command group of this name carrying
-	// commands the entity does not own. Joining it keeps one group in help;
-	// adding a second would leave the user two, only one of which works.
-	entityCmd, ownsGroup := findOrCreateEntityCommand(parent, entity)
-	existing := commandSet(entityCmd)
-
-	for _, op := range entity.Operations {
-		generateEntitySubcommand(entityCmd, entity, op)
-	}
-
-	if entity.PrimaryAction != nil {
-		generatePrimaryAction(entityCmd, *entity.PrimaryAction)
-	} else {
-		promoteListToEntityRoot(entityCmd)
-	}
-
-	for _, action := range entity.Actions {
-		scope := "entity"
-		if action.OptionalID {
-			scope = "collection"
-		}
-		generateIDCommand(entityCmd, action.Name, action.Short, EntityOperation{
-			Verb:              action.Name,
-			Method:            action.Method,
-			RoutePath:         action.RoutePath,
-			DataFunc:          action.DataFunc,
-			ContextDataFunc:   action.ContextDataFunc,
-			LookupFunc:        action.LookupFunc,
-			ContextLookupFunc: action.ContextLookupFunc,
-			BindCompletions:   action.BindCompletions,
-			FlagsType:         action.FlagsType,
-			ResponseType:      action.ResponseType,
-			Schedule:          action.Schedule,
-		}, entity.ValidArgs, "action", "", scope, action.Name, "id", action.LookupFunc != nil || action.ContextLookupFunc != nil, false, action.OptionalID, action.ToolHints)
-	}
-
-	for _, ba := range entity.BulkActions {
-		generateBulkActionCommand(entityCmd, ba)
-	}
-
-	if entity.ServedOnly {
-		// Only the commands this call produced: a shared group's other commands
-		// belong to the application, and hiding them would be a regression.
-		for _, generated := range entityCmd.Commands() {
-			if !existing[generated] {
-				MarkServedOnly(generated)
-			}
-		}
-		// A group this entity created holds nothing else, so leaving it visible
-		// would advertise a command with no subcommands under it.
-		if ownsGroup {
-			MarkServedOnly(entityCmd)
-		}
-	}
-}
-
-// promoteListToEntityRoot makes the bare entity command (`xero-cli accounts`)
-// run its own `list` subcommand, so the entity root mirrors the CLI's natural
-// "type the entity, get the collection" UX and the RPC converter exposes it as
-// the canonical GET /api/v1/<entity> (it then skips the now-redundant `list`
-// endpoint — see rpc.Converter.shouldIncludeCommand).
-//
-// Only the list command's LOCAL flags (its ListOpts filters) are copied onto
-// the root. The root already inherits every persistent flag through cobra's
-// flag chain, so copying the merged set would re-declare globals like --format
-// /--config/--loglevel as local flags — which the RPC converter would then
-// surface as bogus query parameters on the operation. Copy locals only.
-func promoteListToEntityRoot(entityCmd *cobra.Command) {
-	var listCmd *cobra.Command
-	for _, sub := range entityCmd.Commands() {
-		if meta := GetCommandOpenAPIMeta(sub); meta != nil && meta.Verb == "list" {
-			listCmd = sub
-			break
-		}
-	}
-	if listCmd == nil {
-		return
-	}
-
-	entityCmd.RunE = listCmd.RunE
-	entityCmd.Args = listCmd.Args
-	entityCmd.ValidArgsFunction = listCmd.ValidArgsFunction
-	entityCmd.Flags().AddFlagSet(listCmd.LocalNonPersistentFlags())
-
-	// The root keeps its entity annotations with NO operation verb: the RPC
-	// converter detects "runnable entity-root, no verb" to map it to GET
-	// /api/v1/<entity> and to skip the redundant `list` subcommand. Only the
-	// lookup-support flag is forwarded so the spec still advertises filter
-	// lookups for the promoted endpoint.
-	if listMeta := GetCommandOpenAPIMeta(listCmd); listMeta != nil && listMeta.SupportsLookup {
-		setCommandAnnotation(entityCmd, annotationClickySupportsLookup, "true")
-	}
-	// The promoted root IS the list operation, so it inherits list's declared
-	// permission and its safety hints. The hints matter more than they used to:
-	// with verb defaults gone, they are what lets a consumer's policy resolve an
-	// unset permission to auto-run. Forwarding only the permission would leave the
-	// root looking like an unannotated command and silently downgrade it to "ask".
-	for _, annotation := range []string{
-		annotationClickyToolPermission,
-		annotationClickyToolReadOnlyHint,
-		annotationClickyToolDestructive,
-		annotationClickyToolIdempotent,
-	} {
-		if entityCmd.Annotations[annotation] == "" {
-			setCommandAnnotation(entityCmd, annotation, listCmd.Annotations[annotation])
-		}
-	}
-
-	if df := GetDataFunc(listCmd); df != nil {
-		dataFuncRegistry.Store(entityCmd, df)
-	}
-	if cdf := GetContextDataFunc(listCmd); cdf != nil {
-		contextDataFuncRegistry.Store(entityCmd, cdf)
-	}
-	if lf := GetLookupFunc(listCmd); lf != nil {
-		lookupFuncRegistry.Store(entityCmd, lf)
-	}
-	if clf := GetContextLookupFunc(listCmd); clf != nil {
-		contextLookupFuncRegistry.Store(entityCmd, clf)
-	}
-	if meta := GetCommandResponseMeta(listCmd); meta != nil {
-		SetCommandResponseMeta(entityCmd, *meta)
-	}
-}
-
-func generateEntitySubcommand(parent *cobra.Command, entity EntityInfo, op EntityOperation) {
-	switch op.Verb {
-	case "list":
-		generateListCommand(parent, entity, op)
-	case "get":
-		generateIDCommand(
-			parent,
-			"get",
-			fmt.Sprintf("Get a %s by ID", entity.Name),
-			op,
-			entity.ValidArgs,
-			"get",
-			"",
-			"entity",
-			"",
-			"id",
-			false,
-			false,
-			false,
-			MCPToolHints{},
-		)
-	case "create":
-		generateBodyCommand(parent, "create", fmt.Sprintf("Create a %s", entity.Name), op)
-	case "update":
-		generateBodyCommand(parent, "update", fmt.Sprintf("Update a %s", entity.Name), op)
-	case "delete":
-		generateIDCommand(
-			parent,
-			"delete",
-			fmt.Sprintf("Delete a %s", entity.Name),
-			op,
-			entity.ValidArgs,
-			"delete",
-			"",
-			"entity",
-			"",
-			"id",
-			false,
-			false,
-			false,
-			MCPToolHints{},
-		)
-	}
-}
-
-// runEntityOp invokes the operation's data function on the CLI path, preferring
-// the context-aware variant (fed cmd.Context()) when present.
-func runEntityOp(c *cobra.Command, op EntityOperation, flagMap map[string]string, args []string) (any, error) {
-	var (
-		result any
-		err    error
-	)
-	if op.ContextDataFunc != nil {
-		result, err = op.ContextDataFunc(ContextWithOperationSurface(c.Context(), "cli"), flagMap, args)
-	} else {
-		result, err = op.DataFunc(flagMap, args)
-	}
-	if err != nil {
-		return nil, err
-	}
-	return result, nil
-}
-
-// storeEntityDataFuncs records the operation's data closures against the command
-// so the RPC converter can wire them onto the generated RPCOperation. The
-// context-aware variant is stored separately and preferred downstream.
-func storeEntityDataFuncs(cmd *cobra.Command, op EntityOperation) {
-	if op.ContextDataFunc != nil {
-		contextDataFuncRegistry.Store(cmd, ContextDataFunc(op.ContextDataFunc))
-	}
-	if op.DataFunc != nil {
-		dataFuncRegistry.Store(cmd, op.DataFunc)
-	}
-}
-
-func generateListCommand(parent *cobra.Command, entity EntityInfo, op EntityOperation) {
-	cmd := &cobra.Command{
-		Use:   "list",
-		Short: fmt.Sprintf("List %s resources", entity.Name),
-		RunE: func(c *cobra.Command, args []string) error {
-			flagMap := make(map[string]string)
-			c.Flags().Visit(func(f *pflag.Flag) {
-				flagMap[f.Name] = flagMapValue(f)
-			})
-			result, err := runEntityOp(c, op, flagMap, args)
-			if err != nil {
-				return err
-			}
-			return RenderResult(result)
-		},
-	}
-
-	// Bind filter flags from the ListOpts type
-	bindTypeFlags(cmd, entity.ListType)
-	bindSortFlags(cmd, op.Sort)
-	if op.BindCompletions != nil {
-		op.BindCompletions(cmd)
-	}
-
-	annotateEntityOperationCommand(cmd, parent, "list", op.Method, "collection", "", "", op.LookupFunc != nil, false, false, MCPToolHints{})
-	setCommandAnnotation(cmd, annotationClickyOperationPath, op.RoutePath)
-	parent.AddCommand(cmd)
-	storeEntityDataFuncs(cmd, op)
-	SetCommandResponseMeta(cmd, ResponseOpenAPIMeta{
-		Type:     op.ResponseType,
-		Array:    op.ResponseArray,
-		Paged:    op.ResponsePaged,
-		EntityID: op.ResponseEntityID,
-	})
-	if op.LookupFunc != nil {
-		lookupFuncRegistry.Store(cmd, op.LookupFunc)
-	}
-	if op.ContextLookupFunc != nil {
-		contextLookupFuncRegistry.Store(cmd, op.ContextLookupFunc)
-	}
-}
-
-func bindSortFlags(cmd *cobra.Command, spec *SortSpec) {
-	if spec == nil {
-		return
-	}
-	for _, name := range []string{"sort", "order"} {
-		if cmd.Flags().Lookup(name) != nil {
-			panic(fmt.Sprintf("clicky sortable entity list options must not declare --%s", name))
-		}
-	}
-	cmd.Flags().String("sort", spec.Default.Key, "Sort by a response column")
-	cmd.Flags().String("order", string(spec.Default.Direction), "Sort direction")
-	flags.SetAllowedValues(cmd.Flags().Lookup("sort"), spec.Keys()...)
-	flags.SetAllowedValues(cmd.Flags().Lookup("order"), string(SortDirectionAsc), string(SortDirectionDesc))
-}
-
-func generateIDCommand(
-	parent *cobra.Command,
-	verb string,
-	short string,
-	op EntityOperation,
-	validArgs func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective),
-	metaVerb string,
-	method string,
-	scope string,
-	actionName string,
-	idParam string,
-	supportsLookup bool,
-	supportsFilterMode bool,
-	optionalID bool,
-	toolHints MCPToolHints,
-) {
-	hasFlags := op.FlagsType != nil
-	idToken := "<id>"
-	args := cobra.ExactArgs(1)
-	if optionalID {
-		idToken = "[id]"
-		args = cobra.MaximumNArgs(1)
-	}
-	use := fmt.Sprintf("%s %s", verb, idToken)
-	if hasFlags {
-		use = fmt.Sprintf("%s %s [flags]", verb, idToken)
-	}
-	cmd := &cobra.Command{
-		Use:   use,
-		Short: short,
-		Args:  args,
-		RunE: func(c *cobra.Command, args []string) error {
-			var flagMap map[string]string
-			if hasFlags {
-				flagMap = make(map[string]string)
-				c.Flags().Visit(func(f *pflag.Flag) {
-					flagMap[f.Name] = flagMapValue(f)
-				})
-			}
-			result, err := runEntityOp(c, op, flagMap, args)
-			if err != nil {
-				return renderCommandError(verb, err)
-			}
-			if result != nil {
-				return RenderResult(result)
-			}
-			return nil
-		},
-	}
-	if verb == "get" {
-		cmd.Aliases = []string{"inspect"}
-	}
-	if validArgs != nil {
-		cmd.ValidArgsFunction = validArgs
-	}
-	if hasFlags {
-		bindTypeFlags(cmd, op.FlagsType)
-	}
-	if op.BindCompletions != nil {
-		op.BindCompletions(cmd)
-	}
-	if method == "" {
-		method = op.Method
-	}
-	annotateEntityOperationCommand(cmd, parent, metaVerb, method, scope, actionName, idParam, supportsLookup, supportsFilterMode, optionalID, toolHints)
-	// Threaded through the operation rather than the already-long parameter
-	// list: only operations that declare a path carry one.
-	setCommandAnnotation(cmd, annotationClickyOperationPath, op.RoutePath)
-	if op.Schedule != nil {
-		AnnotateSchedule(cmd, *op.Schedule)
-	}
-	parent.AddCommand(cmd)
-	storeEntityDataFuncs(cmd, op)
-	if op.LookupFunc != nil {
-		lookupFuncRegistry.Store(cmd, op.LookupFunc)
-	}
-	if op.ContextLookupFunc != nil {
-		contextLookupFuncRegistry.Store(cmd, op.ContextLookupFunc)
-	}
-	SetCommandResponseMeta(cmd, ResponseOpenAPIMeta{
-		Type:     op.ResponseType,
-		Array:    op.ResponseArray,
-		Paged:    op.ResponsePaged,
-		EntityID: op.ResponseEntityID,
-	})
-}
-
-// actionFlagsType resolves an ActionFlags implementer to its concrete
-// struct reflect.Type, dereferencing a pointer if the caller handed one in.
-// Returns nil when the action declared no flags.
-func actionFlagsType(f ActionFlags) reflect.Type {
-	if f == nil {
-		return nil
-	}
-	t := reflect.TypeOf(f)
-	for t.Kind() == reflect.Pointer {
-		t = t.Elem()
-	}
-	return t
-}
-
-func generateBodyCommand(parent *cobra.Command, verb, short string, op EntityOperation) {
-	use, argsValidator := fmt.Sprintf("%s [key=value ...]", verb), cobra.ArbitraryArgs
-	if verb == "update" {
-		use, argsValidator = "update <id> [key=value ...]", cobra.MinimumNArgs(1)
-	}
-	cmd := &cobra.Command{
-		Use:   use,
-		Short: short,
-		Args:  argsValidator,
-		RunE: func(c *cobra.Command, args []string) error {
-			flagMap := make(map[string]string)
-			c.Flags().Visit(func(f *pflag.Flag) {
-				flagMap[f.Name] = flagMapValue(f)
-			})
-
-			// For update, first arg is ID
-			callArgs := args
-			if verb == "update" {
-				flagMap["id"] = args[0]
-				callArgs = args[1:]
-			}
-
-			if len(callArgs) > 0 {
-				parsed, err := ParseArgs(callArgs)
-				if err != nil {
-					return err
-				}
-				for k, v := range parsed {
-					flagMap[k] = fmt.Sprintf("%v", v)
-				}
-			} else if isStdinAvailable() {
-				data, err := io.ReadAll(os.Stdin)
-				if err != nil {
-					return fmt.Errorf("reading stdin: %w", err)
-				}
-				var body map[string]any
-				if err := json.Unmarshal(data, &body); err != nil {
-					return fmt.Errorf("parsing JSON from stdin: %w", err)
-				}
-				for k, v := range body {
-					flagMap[k] = fmt.Sprintf("%v", v)
-				}
-			}
-			if verb == "update" && flagMap["id"] != args[0] {
-				return fmt.Errorf("update body id %q conflicts with positional id %q", flagMap["id"], args[0])
-			}
-
-			result, err := runEntityOp(c, op, flagMap, args)
-			if err != nil {
-				return err
-			}
-			if result != nil {
-				return RenderResult(result)
-			}
-			return nil
-		},
-	}
-	scope := "collection"
-	idParam := ""
-	if verb == "update" {
-		scope = "entity"
-		idParam = "id"
-	}
-	annotateEntityOperationCommand(cmd, parent, verb, op.Method, scope, "", idParam, false, false, false, MCPToolHints{})
-	setCommandAnnotation(cmd, annotationClickyOperationPath, op.RoutePath)
-	parent.AddCommand(cmd)
-	storeEntityDataFuncs(cmd, op)
-	SetCommandResponseMeta(cmd, ResponseOpenAPIMeta{
-		Type:     op.ResponseType,
-		Array:    op.ResponseArray,
-		Paged:    op.ResponsePaged,
-		EntityID: op.ResponseEntityID,
-	})
-}
-
-func generateBulkActionCommand(parent *cobra.Command, ba BulkActionInfo) {
-	execute := func(ctx context.Context, flagMap map[string]string, args []string) (any, error) {
-		if flagMap["filter"] != "" {
-			if ba.ContextFilterFunc != nil {
-				return ba.ContextFilterFunc(ctx, flagMap, args)
-			}
-			if ba.FilterFunc != nil {
-				return ba.FilterFunc(flagMap, args)
-			}
-		}
-		if ba.ContextDataFunc != nil {
-			return ba.ContextDataFunc(ctx, flagMap, args)
-		}
-		return ba.DataFunc(flagMap, args)
-	}
-
-	cmd := &cobra.Command{
-		// The first id is written as an operand rather than folded into the
-		// variadic tail because it is what the REST path is derived from: the
-		// route is /entity/{id}/action and the selection rides comma-joined in
-		// that segment. A bare "[id...]" is not a named operand, and the action
-		// then generates a collection route with nowhere to put the selection.
-		Use:   fmt.Sprintf("%s <id> [id...]", ba.Name),
-		Short: ba.Short,
-		Args:  cobra.ArbitraryArgs,
-		RunE: func(c *cobra.Command, args []string) error {
-			flagMap := make(map[string]string)
-			c.Flags().Visit(func(f *pflag.Flag) {
-				flagMap[f.Name] = flagMapValue(f)
-			})
-			if len(args) == 0 && flagMap["filter"] == "" {
-				if ba.FilterFunc == nil && ba.ContextFilterFunc == nil {
-					return fmt.Errorf("bulk action %q requires one or more ids", ba.Name)
-				}
-				return fmt.Errorf("bulk action %q requires one or more ids or --filter", ba.Name)
-			}
-
-			// Use filter mode if --filter flag is set and FilterFunc exists
-			ctx := c.Context()
-			if ctx == nil {
-				ctx = context.Background()
-			}
-			result, err := execute(ContextWithOperationSurface(ctx, "cli"), flagMap, args)
-			if err != nil {
-				return err
-			}
-			if result != nil {
-				return RenderResult(result)
-			}
-			return nil
-		},
-	}
-
-	if ba.FilterFunc != nil || ba.ContextFilterFunc != nil {
-		bindTypeFlags(cmd, ba.ListType)
-		if ba.BindCompletions != nil {
-			ba.BindCompletions(cmd)
-		}
-	}
-	// The action's own parameters bind after the selection flags, skipping any
-	// name the ListOpts already claimed: pflag panics on a redefined flag, and a
-	// selector and an operation can legitimately both want e.g. `--status`. The
-	// selector wins because it is the one the entity declared.
-	bindTypeFlagsSkippingExisting(cmd, ba.FlagsType)
-
-	annotateEntityOperationCommand(cmd, parent, "action", "", "collection", ba.Name, "id", ba.LookupFunc != nil, ba.FilterFunc != nil || ba.ContextFilterFunc != nil, false, ba.ToolHints)
-	parent.AddCommand(cmd)
-	if ba.ContextDataFunc != nil || ba.ContextFilterFunc != nil {
-		contextDataFuncRegistry.Store(cmd, ContextDataFunc(execute))
-	}
-	dataFuncRegistry.Store(cmd, func(flagMap map[string]string, args []string) (any, error) {
-		return execute(context.Background(), flagMap, args)
-	})
-	SetCommandResponseMeta(cmd, ResponseOpenAPIMeta{Type: ba.ResponseType})
-	if ba.LookupFunc != nil {
-		lookupFuncRegistry.Store(cmd, ba.LookupFunc)
-	}
-	if ba.ContextLookupFunc != nil {
-		contextLookupFuncRegistry.Store(cmd, ba.ContextLookupFunc)
-	}
-}
-
-// bindTypeFlags registers cobra flags from a struct type's field tags.
-func bindTypeFlags(cmd *cobra.Command, t reflect.Type) {
-	for _, info := range mustParseFlagFields(t) {
-		flags.BindFlag(cmd, info)
-	}
-}
-
-// bindTypeFlagsSkippingExisting is bindTypeFlags for a second struct bound onto
-// the same command, dropping fields whose flag name is already registered.
-// pflag panics rather than reports on a redefinition, so a bulk action whose
-// parameters happen to overlap its entity's filters would take the process down
-// at startup instead of at the call site that could fix it.
-func bindTypeFlagsSkippingExisting(cmd *cobra.Command, t reflect.Type) {
-	if t == nil {
-		return
-	}
-	for _, info := range mustParseFlagFields(t) {
-		if info.FlagName != "" && cmd.Flags().Lookup(info.FlagName) != nil {
-			continue
-		}
-		flags.BindFlag(cmd, info)
-	}
-}
-
-// mustParseFlagFields panics on malformed flag tags: they are programmer errors
-// in a registered type, and CLI generation has no error path to report them.
-func mustParseFlagFields(t reflect.Type) []flags.FieldInfo {
-	fieldInfos, err := flags.ParseStructFields(t)
-	if err != nil {
-		panic(fmt.Sprintf("failed to parse flag fields of %s: %v", t, err))
-	}
-	return fieldInfos
-}
-
-func buildFilterCompletionBinder[T any](filters []Filter[T]) func(cmd *cobra.Command) {
-	return buildFilterCompletionBinderWithOptions(filters, nil)
-}
-
-func buildFilterCompletionBinderWithOptions[T any](filters []Filter[T], prepare func(context.Context, []string, *T)) func(cmd *cobra.Command) {
-	if len(filters) == 0 {
-		return nil
-	}
-
-	return func(cmd *cobra.Command) {
-		for _, filter := range filters {
-			if cmd.Flag(filter.Key()) == nil {
-				continue
-			}
-			if _, exists := cmd.GetFlagCompletionFunc(filter.Key()); exists {
-				continue
-			}
-
-			filter := filter
-			_ = cmd.RegisterFlagCompletionFunc(filter.Key(), func(cmd *cobra.Command, args []string, toComplete string) ([]string, cobra.ShellCompDirective) {
-				flagMap := make(map[string]string)
-				cmd.Flags().Visit(func(f *pflag.Flag) {
-					if f.Name == filter.Key() {
-						return
-					}
-					flagMap[f.Name] = flagMapValue(f)
-				})
-
-				opts, err := buildOpts[T](flagMap)
-				if err != nil {
-					return nil, cobra.ShellCompDirectiveError
-				}
-				if prepare != nil {
-					prepare(cmd.Context(), args, &opts)
-				}
-				if _, err := applyEntityFilters(&opts, filters); err != nil {
-					return nil, cobra.ShellCompDirectiveError
-				}
-
-				options := filter.Options(opts)
-				if len(options) == 0 {
-					return nil, cobra.ShellCompDirectiveNoFileComp
-				}
-
-				keys := make([]string, 0, len(options))
-				for key := range options {
-					if strings.HasPrefix(key, toComplete) {
-						keys = append(keys, key)
-					}
-				}
-				sort.Strings(keys)
-
-				completions := make([]string, 0, len(keys))
-				for _, key := range keys {
-					description := sanitizeCompletionDescription(options[key].String())
-					if description == "" || description == key {
-						completions = append(completions, key)
-						continue
-					}
-					completions = append(completions, cobra.CompletionWithDesc(key, description))
-				}
-
-				return completions, cobra.ShellCompDirectiveNoFileComp
-			})
-		}
-	}
-}
-
-func sanitizeCompletionDescription(value string) string {
-	value = strings.TrimSpace(value)
-	value = strings.ReplaceAll(value, "\t", " ")
-	value = strings.ReplaceAll(value, "\n", " ")
-	return value
-}
-
-// BuildOpts creates an instance of T and populates it from a flag map, using
-// the same `flag:`/`default:` tags the CLI binding reads.
-//
-// It is exported as the companion to WithFlags: an action that declares typed
-// parameters is handed the raw map, and decoding it by hand would mean
-// repeating every flag name the struct already declares — which is exactly the
-// drift the typed flags exist to prevent.
-func BuildOpts[T any](flagMap map[string]string) (T, error) {
-	return buildOpts[T](flagMap)
-}
-
-// buildOpts creates an instance of T and populates it from a flag map.
-func buildOpts[T any](flagMap map[string]string) (T, error) {
-	var zero T
-	t := reflect.TypeOf((*T)(nil)).Elem()
-	if t.Kind() != reflect.Struct {
-		return zero, fmt.Errorf("expected struct options, got %s", t.Kind())
-	}
-
-	cmd := &cobra.Command{Use: "opts"}
-	fieldInfos, err := flags.ParseStructFields(t)
-	if err != nil {
-		return zero, err
-	}
-	flagValues := make([]*flags.FlagValue, 0, len(fieldInfos))
-	for _, info := range fieldInfos {
-		if fv := flags.BindFlag(cmd, info); fv != nil {
-			flagValues = append(flagValues, fv)
-		}
-	}
-
-	for name, val := range flagMap {
-		flag := cmd.Flags().Lookup(name)
-		if flag == nil {
-			continue
-		}
-		if err := flag.Value.Set(val); err != nil {
-			return zero, fmt.Errorf("setting flag %s: %w", name, err)
-		}
-		flag.Changed = true
-	}
-
-	v := reflect.New(t).Elem()
-	for _, fv := range flagValues {
-		if err := flags.AssignFieldValue(v, fv, nil, false); err != nil {
-			return zero, err
-		}
-	}
-
-	return v.Interface().(T), nil
-}
-
-func resolveEntityOpts[T any](flagMap map[string]string, filters []Filter[T]) (T, error) {
-	opts, err := buildOpts[T](flagMap)
-	if err != nil {
-		return opts, err
-	}
-	_, err = applyEntityFilters(&opts, filters)
-	return opts, err
-}
-
-// lookupOptionsLimit caps the number of options a single lookup filter returns,
-// both for the head set and per-search. SearchableFilter implementations enumerate
-// only this many; the UI shows "… and N more" against the reported total and
-// re-queries as the user types.
-//
-// It is a ceiling rather than a target: a filter that knows its own cardinality
-// says so with its own smaller Limit, and this is what remains for the ones that
-// do not.
-const lookupOptionsLimit = 200
-
-// MaxLookupOptions is lookupOptionsLimit exported, so a caller declaring a
-// per-filter Limit can validate it against the ceiling rather than discovering
-// at request time that it was silently reduced.
-const MaxLookupOptions = lookupOptionsLimit
-
-// Reserved flag keys the lookup handler injects from the request query so a
-// single filter can be searched server-side. They never collide with entity
-// flags because of the __lookup_ prefix.
-const (
-	lookupFilterKeyParam = "__lookup_filter"
-	lookupQueryParam     = "__lookup_q"
-)
-
-func buildLookupFunc[T any](filters []Filter[T]) func(flags map[string]string, args []string) (any, error) {
-	if len(filters) == 0 {
-		return nil
-	}
-	lookupMetadata := buildLookupMetadata[T]()
-	return func(flagMap map[string]string, args []string) (any, error) {
-		return resolveLookup(context.Background(), filters, lookupMetadata, flagMap)
-	}
-}
-
-// buildLookupFuncWithContext is the context-aware variant of buildLookupFunc.
-// The closure threads the request ctx into each filter, so a filter that
-// implements ContextFilter/ContextSearchableFilter can resolve request-scoped
-// state (e.g. the per-request database handle). Filters that don't implement
-// the context-aware interfaces behave exactly as under buildLookupFunc.
-func buildLookupFuncWithContext[T any](filters []Filter[T]) func(ctx context.Context, flags map[string]string, args []string) (any, error) {
-	if len(filters) == 0 {
-		return nil
-	}
-	lookupMetadata := buildLookupMetadata[T]()
-	return func(ctx context.Context, flagMap map[string]string, args []string) (any, error) {
-		return resolveLookup(ctx, filters, lookupMetadata, flagMap)
-	}
-}
-
-// resolveLookup builds the entity lookup response for one request. It strips
-// the reserved search params, resolves opts + selected values, then fills each
-// filter's option set — preferring the context-aware Options methods when the
-// filter implements them, otherwise the plain Options/OptionsWithQuery.
-func resolveLookup[T any](
-	ctx context.Context,
-	filters []Filter[T],
-	lookupMetadata map[string]entityLookupMetadata,
-	flagMap map[string]string,
-) (any, error) {
-	searchKey := flagMap[lookupFilterKeyParam]
-	searchQuery := flagMap[lookupQueryParam]
-	// The reserved params aren't entity flags; strip them from the flag map
-	// before buildOpts so they never leak into the filter ListOpts.
-	delete(flagMap, lookupFilterKeyParam)
-	delete(flagMap, lookupQueryParam)
-
-	opts, err := buildOpts[T](flagMap)
-	if err != nil {
-		return nil, err
-	}
-	return resolveLookupOptions(ctx, filters, lookupMetadata, opts, searchKey, searchQuery)
-}
-
-func resolveLookupOptions[T any](
-	ctx context.Context,
-	filters []Filter[T],
-	lookupMetadata map[string]entityLookupMetadata,
-	opts T,
-	searchKey string,
-	searchQuery string,
-) (any, error) {
-
-	selected, err := applyEntityFilters(&opts, filters)
-	if err != nil {
-		return nil, err
-	}
-
-	bound := make([]boundFilter, 0, len(filters))
-	for _, filter := range filters {
-		meta := lookupMetadata[filter.Key()]
-		if typed, ok := filter.(TypedFilter[T]); ok {
-			if lookupType := typed.LookupType(); lookupType != "" {
-				meta.Type = lookupType
-			}
-		}
-		if unit, ok := filter.(UnitFilter); ok {
-			meta.Unit = unit.LookupUnit()
-		}
-		if operator, ok := filter.(DefaultOperatorFilter); ok {
-			meta.DefaultOperator = operator.LookupDefaultOperator()
-		}
-		if err := validateDefaultOperator(meta.Type, meta.DefaultOperator); err != nil {
-			return nil, fmt.Errorf("filter %q: %w", filter.Key(), err)
-		}
-		f := filter
-		searchable := filterIsSearchable(f)
-		limit := 0
-		if limited, ok := filter.(LimitedFilter); ok {
-			limit = limited.LookupLimit()
-		}
-		bound = append(bound, boundFilter{
-			Key:             f.Key(),
-			Label:           f.Label(),
-			Type:            meta.Type,
-			Unit:            meta.Unit,
-			DefaultOperator: meta.DefaultOperator,
-			Multi:           meta.Multi,
-			Searchable:      searchable,
-			Limit:           limit,
-			Selected:        selected[f.Key()],
-			Options: func(query string, limit int) (FilterOptions, error) {
-				return typedFilterOptions(ctx, f, opts, searchable, query, limit)
-			},
-		})
-	}
-
-	return resolveLookupCore(bound, searchKey, searchQuery)
-}
-
-// typedFilterOptions answers one typed filter's lookup. A named filter attached
-// with Use answers from its source, so the source's counts and errors reach the
-// response; every other typed filter only has a map of options to give.
-type filterOptionsProvider[T any] interface {
-	lookupOptions(ctx context.Context, opts T, query string, limit int) (FilterOptions, error)
-}
-
-func typedFilterOptions[T any](ctx context.Context, filter Filter[T], opts T, searchable bool, query string, limit int) (FilterOptions, error) {
-	if provider, ok := filter.(filterOptionsProvider[T]); ok {
-		return provider.lookupOptions(ctx, opts, query, limit)
-	}
-	if searchable {
-		options, total := filterOptionsWithQuery(ctx, filter, opts, query, limit)
-		return FilterOptions{Options: options, Total: total}, nil
-	}
-	options := filterOptions(ctx, filter, opts)
-	return FilterOptions{Options: options, Total: len(options)}, nil
-}
-
-// filterIsSearchable reports whether filter exposes a head/search option set,
-// via either the plain or the context-aware searchable interface.
-func filterIsSearchable[T any](filter Filter[T]) bool {
-	if _, ok := filter.(SearchableFilter[T]); ok {
-		return true
-	}
-	_, ok := filter.(ContextSearchableFilter[T])
-	return ok
-}
-
-// filterOptions resolves a filter's option map, preferring its context-aware
-// OptionsWithContext when implemented so it can reach request-scoped state.
-func filterOptions[T any](ctx context.Context, filter Filter[T], opts T) map[string]api.Textable {
-	if c, ok := filter.(ContextFilter[T]); ok {
-		return c.OptionsWithContext(ctx, opts)
-	}
-	return filter.Options(opts)
-}
-
-// filterOptionsWithQuery resolves a searchable filter's head/search results,
-// preferring the context-aware interface, then the plain searchable one.
-func filterOptionsWithQuery[T any](ctx context.Context, filter Filter[T], opts T, query string, limit int) (map[string]api.Textable, int) {
-	if c, ok := filter.(ContextSearchableFilter[T]); ok {
-		return c.OptionsWithQueryAndContext(ctx, opts, query, limit)
-	}
-	if s, ok := filter.(SearchableFilter[T]); ok {
-		return s.OptionsWithQuery(opts, query, limit)
-	}
-	options := filterOptions(ctx, filter, opts)
-	return options, len(options)
-}
-
-type entityLookupMetadata struct {
-	Multi           bool
-	Type            string
-	Unit            string
-	DefaultOperator string
-}
-
-func buildLookupMetadata[T any]() map[string]entityLookupMetadata {
-	structType := reflect.TypeOf((*T)(nil)).Elem()
-	if structType.Kind() != reflect.Struct {
-		return nil
-	}
-
-	fields, err := flags.ParseStructFields(structType)
-	if err != nil {
-		return nil
-	}
-
-	metadata := make(map[string]entityLookupMetadata, len(fields))
-	for _, field := range fields {
-		if field.FlagName == "" || field.FlagName == "-" {
-			continue
-		}
-		metadata[field.FlagName] = describeLookupField(field)
-	}
-
-	return metadata
-}
-
-func describeLookupField(field flags.FieldInfo) entityLookupMetadata {
-	fieldType := field.FieldType
-	for fieldType.Kind() == reflect.Pointer {
-		fieldType = fieldType.Elem()
-	}
-
-	meta := entityLookupMetadata{
-		Multi: fieldType.Kind() == reflect.Slice,
-	}
-
-	switch {
-	case fieldType == multiFilterType:
-		meta.Type = "multi-filter"
-	case fieldType.Kind() == reflect.Bool:
-		meta.Type = "bool"
-	case isNumericKind(fieldType.Kind()):
-		meta.Type = "number"
-	case fieldType.String() == "time.Time":
-		switch {
-		case isRangeStartFlag(field.FlagName):
-			meta.Type = "from"
-		case isRangeEndFlag(field.FlagName):
-			meta.Type = "to"
-		default:
-			meta.Type = "date"
-		}
-	}
-
-	return meta
-}
-
-func isNumericKind(kind reflect.Kind) bool {
-	switch kind {
-	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
-		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64,
-		reflect.Float32, reflect.Float64:
-		return true
-	default:
-		return false
-	}
-}
-
-func isRangeStartFlag(name string) bool {
-	return name == "from" || strings.HasSuffix(name, "-from")
-}
-
-func isRangeEndFlag(name string) bool {
-	return name == "to" || strings.HasSuffix(name, "-to")
-}
-
-func applyEntityFilters[T any](opts *T, filters []Filter[T]) (map[string]map[string]api.Textable, error) {
-	selected := make(map[string]map[string]api.Textable, len(filters))
-	for _, filter := range filters {
-		values, err := filter.Lookup(opts)
-		if err != nil {
-			return nil, fmt.Errorf("%s: %w", filter.Key(), err)
-		}
-		if len(values) > 0 {
-			selected[filter.Key()] = values
-		}
-	}
-	return selected, nil
-}
-
-// withEntityIDs wraps each EntityItem in the slice to include a _id field in JSON output.
-func withEntityIDs[T EntityItem](items []T) []entityWithID[T] {
-	result := make([]entityWithID[T], len(items))
-	for i, item := range items {
-		result[i] = entityWithID[T]{ID: item.GetID(), Inner: item}
-	}
-	return result
-}
-
-type entityWithID[T EntityItem] struct {
-	ID    string `json:"_id"`
-	Inner T
-}
-
-func (e entityWithID[T]) GetID() string   { return e.ID }
-func (e entityWithID[T]) GetName() string { return e.Inner.GetName() }
-
-func (e entityWithID[T]) Columns() []api.ColumnDef {
-	withID := func(columns []api.ColumnDef) []api.ColumnDef {
-		columns = api.MustMergeSortableColumns(reflect.TypeFor[T](), columns)
-		for _, column := range columns {
-			if column.Name == "_id" {
-				return columns
-			}
-		}
-		return append([]api.ColumnDef{api.Column("_id").Hidden().Build()}, columns...)
-	}
-
-	if tp, ok := any(e.Inner).(api.TableProvider); ok {
-		return withID(tp.Columns())
-	}
-
-	if prettyRow, ok := entityPrettyRow(any(e.Inner), nil); ok {
-		columns := columnsFromPrettyRow(prettyRow)
-		if len(columns) > 0 {
-			return withID(columns)
-		}
-	}
-
-	columns, _, ok := columnsAndRowFromStruct(any(e.Inner))
-	if !ok {
-		return nil
-	}
-	return withID(columns)
-}
-
-func (e entityWithID[T]) Row() map[string]any {
-	withID := func(row map[string]any) map[string]any {
-		next := make(map[string]any, len(row)+1)
-		next["_id"] = e.ID
-		for key, value := range row {
-			next[key] = value
-		}
-		return next
-	}
-
-	if tp, ok := any(e.Inner).(api.TableProvider); ok {
-		return withID(tp.Row())
-	}
-
-	if prettyRow, ok := entityPrettyRow(any(e.Inner), nil); ok {
-		row := make(map[string]any, len(prettyRow))
-		for key, value := range prettyRow {
-			row[key] = value
-		}
-		return withID(row)
-	}
-
-	_, row, ok := columnsAndRowFromStruct(any(e.Inner))
-	if !ok {
-		return nil
-	}
-	return withID(row)
-}
-
-func (e entityWithID[T]) PrettyRow(opts interface{}) map[string]api.Text {
-	if row, ok := entityPrettyRow(any(e.Inner), opts); ok {
-		next := make(map[string]api.Text, len(row)+1)
-		next["_id"] = api.Text{Content: e.ID}
-		for key, value := range row {
-			next[key] = value
-		}
-		return next
-	}
-
-	rowData := e.Row()
-	if len(rowData) == 0 {
-		return nil
-	}
-
-	row := make(map[string]api.Text)
-	order := 1
-	for _, col := range e.Columns() {
-		if col.Hidden {
-			continue
-		}
-		cell := api.Text{Style: fmt.Sprintf("order-%d %s", order, col.Style)}
-		if value, ok := rowData[col.Name]; ok {
-			cell = addPrettyRowValue(cell, value)
-		}
-		row[col.DisplayLabel()] = cell
-		order++
-	}
-	return row
-}
-
-func entityPrettyRow(inner any, opts interface{}) (map[string]api.Text, bool) {
-	if pr, ok := inner.(api.PrettyRow); ok {
-		if row := pr.PrettyRow(opts); len(row) > 0 {
-			return row, true
-		}
-	}
-	return nil, false
-}
-
-func columnsFromPrettyRow(prettyRow map[string]api.Text) []api.ColumnDef {
-	type orderedColumn struct {
-		name  string
-		style string
-		order int
-	}
-
-	columns := make([]orderedColumn, 0, len(prettyRow))
-	for name, text := range prettyRow {
-		columns = append(columns, orderedColumn{
-			name:  name,
-			style: text.Style,
-			order: api.ExtractOrderValue(text.Style),
-		})
-	}
-
-	sort.Slice(columns, func(i, j int) bool {
-		if columns[i].order != columns[j].order {
-			return columns[i].order < columns[j].order
-		}
-		return columns[i].name < columns[j].name
-	})
-
-	defs := make([]api.ColumnDef, 0, len(columns))
-	for _, col := range columns {
-		defs = append(defs, api.ColumnDef{
-			Name:  col.name,
-			Label: col.name,
-			Style: col.style,
-		})
-	}
-	return defs
-}
-
-func columnsAndRowFromStruct(inner any) ([]api.ColumnDef, map[string]any, bool) {
-	parser := api.NewStructParser()
-	val := reflect.ValueOf(inner)
-	if !val.IsValid() {
-		return nil, nil, false
-	}
-
-	for val.Kind() == reflect.Pointer {
-		if val.IsNil() {
-			return nil, nil, false
-		}
-		val = val.Elem()
-	}
-
-	fields, err := parser.GetTableFields(val)
-	if err != nil {
-		return nil, nil, false
-	}
-
-	typedRow, err := parser.StructToRow(val)
-	if err != nil {
-		return nil, nil, false
-	}
-
-	columns := make([]api.ColumnDef, 0, len(fields))
-	row := make(map[string]any, len(fields))
-	for _, field := range fields {
-		columns = append(columns, api.ColumnDef{
-			Name:          field.Name,
-			Label:         field.Label,
-			Style:         field.Style,
-			HeaderStyle:   field.LabelStyle,
-			Type:          field.Type,
-			Format:        field.Format,
-			SortKey:       field.SortKey,
-			FormatOptions: field.FormatOptions,
-		})
-		if value, ok := typedRow[field.Name]; ok {
-			row[field.Name] = value.Value()
-		}
-	}
-
-	return columns, row, true
-}
-
-func addPrettyRowValue(cell api.Text, value any) api.Text {
-	switch v := value.(type) {
-	case api.PrettyShort:
-		return cell.Add(v.PrettyShort())
-	case api.Textable:
-		return cell.Add(v)
-	case api.Pretty:
-		return cell.Add(v.Pretty())
-	default:
-		return cell.Add(api.Human(v))
-	}
-}
-
-func (e entityWithID[T]) MarshalJSON() ([]byte, error) {
-	data, err := json.Marshal(e.Inner)
-	if err != nil {
-		return nil, err
-	}
-	if len(data) < 2 || data[0] != '{' {
-		return data, nil
-	}
-	idJSON, err := json.Marshal(e.ID)
-	if err != nil {
-		return nil, err
-	}
-	prefix := []byte(`{"_id":`)
-	prefix = append(prefix, idJSON...)
-	prefix = append(prefix, ',')
-	return append(prefix, data[1:]...), nil
 }

@@ -142,7 +142,7 @@ func buildDynamicLookup(filters []DynamicFilter) func(map[string]string, []strin
 	}
 }
 
-func resolveDynamicLookup(ctx context.Context, filters []DynamicFilter, flagMap map[string]string) (entityLookupResponse, error) {
+func resolveDynamicLookup(ctx context.Context, filters []DynamicFilter, flagMap map[string]string) (LookupResponse, error) {
 	searchKey := flagMap[lookupFilterKeyParam]
 	searchQuery := flagMap[lookupQueryParam]
 	delete(flagMap, lookupFilterKeyParam)
@@ -158,7 +158,7 @@ func resolveDynamicLookup(ctx context.Context, filters []DynamicFilter, flagMap 
 	bound := make([]boundFilter, 0, len(filters))
 	for _, df := range filters {
 		if err := validateDefaultOperator(df.Type, df.DefaultOperator); err != nil {
-			return entityLookupResponse{}, fmt.Errorf("filter %q: %w", df.Key, err)
+			return LookupResponse{}, fmt.Errorf("filter %q: %w", df.Key, err)
 		}
 		df := df
 		var selected map[string]api.Textable
@@ -166,7 +166,7 @@ func resolveDynamicLookup(ctx context.Context, filters []DynamicFilter, flagMap 
 			var err error
 			selected, err = df.Selected(ctx, flagMap)
 			if err != nil {
-				return entityLookupResponse{}, err
+				return LookupResponse{}, err
 			}
 		}
 		bound = append(bound, boundFilter{

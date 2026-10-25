@@ -82,17 +82,17 @@ func describeBoundFilter(f boundFilter) (string, bool) { return f.Key, f.Searcha
 // resolveLookupCore renders bound filters into the lookup response, applying the
 // searchable head/search/total logic uniformly. It is the single place the
 // lookup wire shape is built, shared by the typed and dynamic entity paths.
-func resolveLookupCore(filters []boundFilter, searchKey, searchQuery string) (entityLookupResponse, error) {
+func resolveLookupCore(filters []boundFilter, searchKey, searchQuery string) (LookupResponse, error) {
 	if target := searchTarget(filters, describeBoundFilter, searchKey, searchQuery); target >= 0 {
 		filters = filters[target : target+1]
 	}
-	response := entityLookupResponse{
-		Filters: make(map[string]entityLookupFilter, len(filters)),
+	response := LookupResponse{
+		Filters: make(map[string]LookupFilter, len(filters)),
 	}
 	for _, f := range filters {
 		entry, err := lookupEntry(f, searchKey, searchQuery)
 		if err != nil {
-			return entityLookupResponse{}, err
+			return LookupResponse{}, err
 		}
 		response.Filters[f.Key] = entry
 	}
@@ -102,11 +102,11 @@ func resolveLookupCore(filters []boundFilter, searchKey, searchQuery string) (en
 // lookupEntry resolves one filter's options into its wire entry. Only a
 // searchable filter reports a total: an unsearchable one enumerates in full, so
 // its option set is the answer rather than a head of one.
-func lookupEntry(f boundFilter, searchKey, searchQuery string) (entityLookupFilter, error) {
+func lookupEntry(f boundFilter, searchKey, searchQuery string) (LookupFilter, error) {
 	query, limit := f.optionsRequest(searchKey, searchQuery)
 	result, err := f.Options(query, limit)
 	if err != nil {
-		return entityLookupFilter{}, err
+		return LookupFilter{}, err
 	}
 	// The counts are read by option value, so one keyed by a value the filter
 	// does not offer has nowhere to render: only a source that mixed up its keys
@@ -115,13 +115,13 @@ func lookupEntry(f boundFilter, searchKey, searchQuery string) (entityLookupFilt
 	// render the bad value to the reader as if it were real.
 	for value, count := range result.Counts {
 		if _, offered := result.Options[value]; !offered {
-			return entityLookupFilter{}, fmt.Errorf("filter %q counted %q, which is not among the options it offered", f.Key, value)
+			return LookupFilter{}, fmt.Errorf("filter %q counted %q, which is not among the options it offered", f.Key, value)
 		}
 		if count < 0 {
-			return entityLookupFilter{}, fmt.Errorf("filter %q counted %d rows for %q, which is not a row count", f.Key, count, value)
+			return LookupFilter{}, fmt.Errorf("filter %q counted %d rows for %q, which is not a row count", f.Key, count, value)
 		}
 	}
-	entry := entityLookupFilter{
+	entry := LookupFilter{
 		Label:           f.Label,
 		Options:         toClickyNodeMap(result.Options),
 		Counts:          result.Counts,

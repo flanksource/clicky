@@ -276,7 +276,7 @@ func TestLiftedFiltersPreserveTypedLookupOverrides(t *testing.T) {
 	if err != nil {
 		t.Fatalf("lookup func returned error: %v", err)
 	}
-	lookup := lookupAny.(entityLookupResponse)
+	lookup := lookupAny.(LookupResponse)
 
 	if lookup.Filters["amount"].Type != "number" {
 		t.Fatalf("expected lifted typed filter to preserve type override, got %#v", lookup.Filters["amount"])
@@ -292,11 +292,12 @@ func TestLiftedFiltersPreserveTypedLookupOverrides(t *testing.T) {
 	}
 }
 
-func TestEntityListFiltersResolveAndLookup(t *testing.T) {
+func registerFilteredEntityList(t *testing.T) (*cobra.Command, *entityFilterTestOpts) {
+	t.Helper()
 	resetEntityRegistry(t)
-	defer resetEntityRegistry(t)
+	t.Cleanup(func() { resetEntityRegistry(t) })
 
-	var received entityFilterTestOpts
+	received := &entityFilterTestOpts{}
 
 	RegisterEntity(Entity[entityFilterTestEntity, entityFilterTestOpts, entityFilterTestEntity]{
 		Name: "filtered-entity",
@@ -311,7 +312,7 @@ func TestEntityListFiltersResolveAndLookup(t *testing.T) {
 			toEntityFilter{},
 		},
 		List: func(opts entityFilterTestOpts) ([]entityFilterTestEntity, error) {
-			received = opts
+			*received = opts
 			return []entityFilterTestEntity{{ID: "1", Name: "alpha"}}, nil
 		},
 	})
@@ -323,6 +324,11 @@ func TestEntityListFiltersResolveAndLookup(t *testing.T) {
 	if err != nil || listCmd == nil {
 		t.Fatalf("expected to find list command, got err=%v", err)
 	}
+	return listCmd, received
+}
+
+func TestEntityListFiltersResolve(t *testing.T) {
+	listCmd, received := registerFilteredEntityList(t)
 
 	dataFunc := GetDataFunc(listCmd)
 	if dataFunc == nil {
@@ -354,6 +360,10 @@ func TestEntityListFiltersResolveAndLookup(t *testing.T) {
 	if time.Duration(received.Window) != 48*time.Hour {
 		t.Fatalf("expected resolved window to be 48h, got %s", received.Window)
 	}
+}
+
+func TestEntityListFiltersLookup(t *testing.T) {
+	listCmd, _ := registerFilteredEntityList(t)
 
 	lookupFunc := GetLookupFunc(listCmd)
 	if lookupFunc == nil {
@@ -368,7 +378,7 @@ func TestEntityListFiltersResolveAndLookup(t *testing.T) {
 		t.Fatalf("lookup func returned error: %v", err)
 	}
 
-	lookup, ok := lookupAny.(entityLookupResponse)
+	lookup, ok := lookupAny.(LookupResponse)
 	if !ok {
 		t.Fatalf("expected lookup response type, got %T", lookupAny)
 	}

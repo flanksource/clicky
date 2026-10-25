@@ -7,13 +7,19 @@ import (
 	"path/filepath"
 	"runtime"
 
+	"github.com/flanksource/clicky/api/filter/celfilter"
 	"github.com/flanksource/clicky/examples/enitity/internal/entitydemo"
+	"github.com/flanksource/clicky/formatters/excel"
+	"github.com/flanksource/clicky/formatters/pdf"
 )
 
 //go:embed webapp/dist
 var webappFS embed.FS
 
 func main() {
+	celfilter.Use()
+	excel.Use()
+	pdf.Use()
 	rootCmd := entitydemo.NewCommand(entitydemo.CommandOptions{
 		EmbeddedWebapp:      webappFS,
 		ResolveWebappDevDir: resolveWebappDevDir,
