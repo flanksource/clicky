@@ -89,6 +89,37 @@ lookups; CEL expressions drive row filtering/transforms (see `CEL_FILTERS.md`).
 - **`mcp`** exposes the same operations as MCP tools (`mcp serve`/`mcp tools`/`AutoExpose()`), with
   include/exclude and parameter-filtering knobs.
 
+### Interactive forms (`schemaform`, `clicky.PromptForm`, `-i`)
+
+The terminal counterpart of clicky-ui's `JsonSchemaForm`, built on charmbracelet/huh. The same schema drives both surfaces.
+
+- `schemaform.Run(ctx, schema, schemaform.Options{...})` renders a JSON Schema as an inline terminal form: a bubbletea model (`schemaform/inline.go`) that uses huh fields only as editors. Widget resolution, `x-*` extensions, `allOf` if/then/else, `x-discriminator`, `x-on-change`/`x-on-load` listeners (`when.expr` is CEL over `key`/`value`/`self`/`root`) and `x-clicky-lookup` (through `Options.Lookup`) all follow `JsonSchemaForm`. `Accessible: true` runs line-based prompts (screen readers, scripted tests).
+- `clicky.PromptForm(ctx, PromptFormOptions{Schema, Default, Lookup})` routes like the other prompts. A scoped context with a `prompt.Manager` sink goes to the dashboard (`Manager.Form`, rendered by `JsonSchemaForm`). Otherwise it uses the terminal, or fails with "interactive terminal required". `ACCESSIBLE=1` forces line-based prompts.
+- `rpc.OperationInputSchema(op, OperationSchemaOptions{...})` turns an operation's arguments into that schema, through the same per-parameter conversion as the OpenAPI document (roles, lookups, array slice flags, typed defaults). `rpc.PromptOperation(ctx, op, PromptOperationOptions{Preset, Completions})` collects values ready for `ExecuteOperation`.
+- `extensions.CobraExtensions(root).Interactive()` (also part of `.All()`) adds a persistent `-i/--interactive` flag. The global flag loses `-i` only when some command uses `-i` for a differently named flag. A command that defines its own `--interactive` keeps it and is left unwired. With the flag set, a command opens its form pre-filled with the flags and args already given, then runs with the answers. Call it after the command tree is complete.
+- **Inline layout.** Each field is one row, `label  value`. Only the focused row (`› label`) opens its huh editor.
+  - Single-line editors (inputs, confirms) open on focus. Multi-line ones (selects, multi-selects, text areas) open on enter.
+  - An open select shows the highlighted option's description (`Option.Description`, from `x-enum-descriptions` or an item's description). The row shows the chosen option's description.
+  - Keys:
+    - tab and shift+tab move between rows. ↑/↓ also move on any row whose editor is closed or single-line.
+    - enter moves on, and on the last field it submits.
+    - esc closes an open editor and reverts it, or reverts a changed field. Otherwise it arms quit, and a second esc cancels the form.
+    - ctrl+s submits from anywhere, and ctrl+c cancels.
+  - Leaving a field validates it and shows any error under its row without blocking. Submit focuses the first invalid field.
+- **Dependent object flags** (`x-clicky-schema`). `clicky.WithActionFlagSchema(action, "vars", clicky.FlagSchema{Scope: []string{"id"}, Load: fn})` declares that a JSON-object flag's schema depends on other arguments.
+  - Under `-i`, once the scope is answered, the form loads the schema through `Load` and puts its fields right after the scope field. It rebuilds them when the scope changes and passes their answers as the flag's JSON. Captain's `prompt run --vars`, for example, is the chosen prompt's input schema.
+  - A load error ends the form with that error.
+  - `schemaform` takes these as `Options.LoadSchema`.
+- **Advanced split** (`schemaform/inline_split.go`). Always shown, in this order: the discriminator, the positional argument (`x-clicky` role `positional`, which `-i` sets) and required fields. Fields with a value (`false` and `0` count) come next, then empty ones, for as long as they fit the terminal height. The rest fold under `▸ Advanced  N options`.
+  - A field that a branch or listener makes required later is promoted to the row after the field before it.
+  - Accessible mode asks the same up-front fields in document order, then asks `Configure N advanced options?`.
+- Choices come from the command's shell completion: the positional's `ValidArgsFunction`/`ValidArgs` and each flag's registered completion become dropdowns, re-queried with the answers so far. File and directory completions stay free text. An optional-id action (`prompt run [id]`) gets its id back as the first field.
+- Entities complete ids by default: `RegisterEntity` sets `ValidArgsFunction` to the entity's own `List` (`id<TAB>name`, prefix match on either) when the command declares none.
+  - The form reads the same list through `entity.GetIDOptions(cmd)`, with each item's description when it implements `EntityDescriber` (`GetDescription()`).
+  - To give a map-based action the lookups of a flags struct's filters, wrap it with `clicky.WithActionFilters(action, filters)`.
+- A filter whose options come from a source that can fail (a DB, a config catalog) implements `entity.FallibleFilter` (`LookupOptions(ctx, opts) (map, error)`). Lookups and shell completion prefer it and fail with its error instead of offering nothing. Shell completion now resolves options through the same path as lookups, so `ContextFilter` and searchable filters apply there too.
+- Demo: `examples/interactive_form.go` (`deploy -i`, `configure`). Its pty fixture is `examples/testdata/interactive-form.fixture.yaml` (`gavel fixtures examples/testdata/interactive-form.fixture.yaml`). It waits for the focus marker (`› <label>`) before each keystroke, because focus moves through a returned command and keys typed earlier land in the previous field. A cobra positional whose `Args` rejects zero args is `required` in the operation schema.
+
 ### Writing render code (enforced by `clicky lint ./...`)
 
 The bundled analyzer enforces these API-usage rules — follow them in any code that builds clicky

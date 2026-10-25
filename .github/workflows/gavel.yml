@@ -77,6 +77,10 @@ jobs:
         working-directory: docs/site
         run: pnpm install --frozen-lockfile
 
+      - name: Install entity webapp dependencies
+        working-directory: examples/enitity/webapp
+        run: pnpm install --frozen-lockfile
+
       - name: Generate docs types
         working-directory: docs/site
         run: pnpm exec astro sync
