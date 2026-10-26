@@ -92,65 +92,11 @@ var (
 // - "red" -> defaults to 500 shade
 // - "black", "white", "transparent" -> special colors
 func ParseTailwindColor(colorClass string) (string, error) {
-	if colorClass == "" {
-		return "", fmt.Errorf("empty color class")
+	color, err := ParseRawTailwindColor(colorClass)
+	if err != nil {
+		return "", err
 	}
-
-	// Remove common Tailwind prefixes
-	colorName := colorClass
-	prefixes := []string{"bg-", "text-", "border-", "ring-", "decoration-", "divide-", "outline-", "fill-", "stroke-"}
-	for _, prefix := range prefixes {
-		if strings.HasPrefix(colorClass, prefix) {
-			colorName = strings.TrimPrefix(colorClass, prefix)
-			break
-		}
-	}
-
-	// Check for special colors first
-	if color, ok := TailwindSpecialColors[colorName]; ok {
-		isDark := isBackgroundDark()
-		return adaptColorForBackground(color, isDark), nil
-	}
-
-	// Parse color and shade
-	parts := strings.Split(colorName, "-")
-
-	if len(parts) == 1 {
-		// Just a color name, default to 500 shade
-		if colorMap, ok := TailwindColors[parts[0]]; ok {
-			if shade, ok := colorMap["500"]; ok {
-				isDark := isBackgroundDark()
-				return adaptColorForBackground(shade, isDark), nil
-			}
-		}
-		// Not a Tailwind color, return as-is (might be a hex color or other CSS color)
-		isDark := isBackgroundDark()
-		return adaptColorForBackground(colorName, isDark), nil
-	}
-
-	if len(parts) == 2 {
-		// Color with shade
-		baseName := parts[0]
-		shade := parts[1]
-
-		if colorMap, ok := TailwindColors[baseName]; ok {
-			if shadeColor, ok := colorMap[shade]; ok {
-				isDark := isBackgroundDark()
-				return adaptColorForBackground(shadeColor, isDark), nil
-			}
-			return "", fmt.Errorf("invalid shade '%s' for color '%s'", shade, baseName)
-		}
-		// Not a Tailwind color, return as-is
-		isDark := isBackgroundDark()
-		return adaptColorForBackground(colorName, isDark), nil
-	}
-
-	// Handle multi-word color names (shouldn't happen with standard Tailwind)
-	hexColor := colorName
-
-	// Apply adaptive color mapping for better visibility
-	isDark := isBackgroundDark()
-	return adaptColorForBackground(hexColor, isDark), nil
+	return adaptColorForBackground(color, isBackgroundDark()), nil
 }
 
 // IsTailwindColor checks if a string is a valid Tailwind color class
@@ -200,29 +146,16 @@ func GetTailwindShade(colorClass string) string {
 	return "500" // Default shade
 }
 
-// Color converts a Tailwind color class to a raw color string without adaptation
-// It parses the Tailwind color and returns the appropriate color value
+// Color converts a Tailwind color class to a raw color string without
+// adaptation. It returns "" when the class names no colour (unknown token,
+// invalid shade, transparent, or an inherit-only semantic token), so callers
+// never emit a non-colour as a CSS or ANSI colour value.
 func Color(colorClass string) string {
-	// Try to parse as raw Tailwind color (without background adaptation)
-	hexColor, err := ParseRawTailwindColor(colorClass)
-	if err != nil {
-		// If parsing fails, return the original string
-		// This allows for fallback to standard CSS colors
-		return colorClass
-	}
-
-	// Special handling for transparent
-	if hexColor == "transparent" {
-		// Return empty string for transparent
+	color, err := ParseRawTailwindColor(colorClass)
+	if err != nil || color == "transparent" {
 		return ""
 	}
-	if hexColor == "currentColor" {
-		// Return as-is for currentColor
-		return hexColor
-	}
-
-	// Return the hex color
-	return hexColor
+	return color
 }
 
 // ParseRawTailwindColor parses a Tailwind color class and returns the raw hex color value
@@ -231,53 +164,7 @@ func ParseRawTailwindColor(colorClass string) (string, error) {
 	if colorClass == "" {
 		return "", fmt.Errorf("empty color class")
 	}
-
-	// Remove common Tailwind prefixes
-	colorName := colorClass
-	prefixes := []string{"bg-", "text-", "border-", "ring-", "decoration-", "divide-", "outline-", "fill-", "stroke-"}
-	for _, prefix := range prefixes {
-		if strings.HasPrefix(colorClass, prefix) {
-			colorName = strings.TrimPrefix(colorClass, prefix)
-			break
-		}
-	}
-
-	// Check for special colors first
-	if color, ok := TailwindSpecialColors[colorName]; ok {
-		return color, nil // Return raw color without adaptation
-	}
-
-	// Parse color and shade
-	parts := strings.Split(colorName, "-")
-
-	if len(parts) == 1 {
-		// Just a color name, default to 500 shade
-		if colorMap, ok := TailwindColors[parts[0]]; ok {
-			if shade, ok := colorMap["500"]; ok {
-				return shade, nil // Return raw color without adaptation
-			}
-		}
-		// Not a Tailwind color, return as-is (might be a hex color or other CSS color)
-		return colorName, nil
-	}
-
-	if len(parts) == 2 {
-		// Color with shade
-		baseName := parts[0]
-		shade := parts[1]
-
-		if colorMap, ok := TailwindColors[baseName]; ok {
-			if shadeColor, ok := colorMap[shade]; ok {
-				return shadeColor, nil // Return raw color without adaptation
-			}
-			return "", fmt.Errorf("invalid shade '%s' for color '%s'", shade, baseName)
-		}
-		// Not a Tailwind color, return as-is
-		return colorName, nil
-	}
-
-	// Handle multi-word color names (shouldn't happen with standard Tailwind)
-	return colorName, nil
+	return resolveColorName(stripColorPrefix(colorClass))
 }
 
 // Style represents a parsed Tailwind style with transform info

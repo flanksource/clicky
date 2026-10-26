@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -102,6 +103,99 @@ func TestStackTrace_RendersExplicitSourceLineNumbersWithoutStartLine(t *testing.
 	out := s.Render().ANSI()
 	if !strings.Contains(out, "42: run();") {
 		t.Fatalf("expected explicit source line number in output, got:\n%s", out)
+	}
+}
+
+// emailTrace has one application frame with a source window whose middle row
+// CFR could not map (line number 0) and one runtime frame, so every visual
+// role the HTML renderer emits is present.
+func emailTrace() StackTrace {
+	s := NewStackTrace()
+	s.ExceptionClass = "java.lang.IllegalStateException"
+	s.Message = "boom"
+	s.CausedBy = []string{"java.sql.SQLException: deadlock victim"}
+	s.Frames = []StackFrame{
+		{
+			Class:             "com.example.App",
+			Method:            "run",
+			File:              "App.java",
+			Line:              42,
+			SourceLines:       []string{"before();", "synthetic();", "run();"},
+			SourceLineNumbers: []int{41, 0, 42},
+		},
+		{Class: "java.lang.Thread", Method: "run", File: "Thread.java", Line: 750, Runtime: true},
+	}
+	return s
+}
+
+var (
+	classTagRegexp  = regexp.MustCompile(`<(span|div)( class="[^"]*")([^>]*)>`)
+	cssColourRegexp = regexp.MustCompile(`color: ([^;"]+)|solid ([^;"]+)`)
+)
+
+func TestStackTrace_HTMLCarriesInlineStylesOnEveryStyledElement(t *testing.T) {
+	out := emailTrace().HTML()
+	for _, m := range classTagRegexp.FindAllStringSubmatch(out, -1) {
+		if !strings.Contains(m[3], ` style="`) {
+			t.Errorf("element%s has classes but no inline style", m[2])
+		}
+	}
+	for _, m := range cssColourRegexp.FindAllStringSubmatch(out, -1) {
+		if value := m[1] + m[2]; !strings.HasPrefix(value, "#") && value != "transparent" {
+			t.Errorf("invalid CSS colour %q in HTML", m[0])
+		}
+	}
+	for name, want := range map[string]string{
+		"method":           `style="color: #1d4ed8">run</span>`,
+		"runtime frame":    `color: #64748b`,
+		"focal line bg":    `background-color: #fef2f2`,
+		"monospace":        `font-family: ui-monospace`,
+		"exception colour": `color: #b91c1c`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("%s: expected %q in HTML:\n%s", name, want, out)
+		}
+	}
+}
+
+func TestStackTrace_ZeroLineSourceRowHasBlankGutter(t *testing.T) {
+	s := emailTrace()
+	gutters := regexp.MustCompile(`<span class="stack-source-gutter[^"]*" style="[^"]*">([^<]*)</span>`).
+		FindAllStringSubmatch(s.HTML(), -1)
+	var got []string
+	for _, g := range gutters {
+		got = append(got, g[1])
+	}
+	if strings.Join(got, ",") != "41,,42" {
+		t.Fatalf("HTML gutters = %q, want [41 '' 42]", got)
+	}
+	for format, out := range map[string]string{"ansi": s.Render().String(), "markdown": s.Markdown()} {
+		if strings.Contains(out, " 0:") || strings.Contains(out, " 0 ") {
+			t.Errorf("%s renders a 0 gutter for an unmapped row:\n%s", format, out)
+		}
+		if !strings.Contains(out, "synthetic();") {
+			t.Errorf("%s dropped the unmapped row:\n%s", format, out)
+		}
+	}
+}
+
+func TestStackTrace_MarkdownIsAFencedJavaTrace(t *testing.T) {
+	s := emailTrace()
+	s.Message = "bad ``` fence"
+	want := "````java\n" +
+		"java.lang.IllegalStateException: bad ``` fence\n" +
+		"\tat com.example.App.run(App.java:42)\n" +
+		"\t      41  before();\n" +
+		"\t          synthetic();\n" +
+		"\t>>>   42  run();\n" +
+		"\tat java.lang.Thread.run(Thread.java:750)\n" +
+		"Caused by: java.sql.SQLException: deadlock victim\n" +
+		"````\n"
+	if got := s.Markdown(); got != want {
+		t.Fatalf("Markdown mismatch\n got:\n%s\nwant:\n%s", got, want)
+	}
+	if got := s.MarkdownWithOptions(MarkdownOptions{}); got != want {
+		t.Fatalf("MarkdownWithOptions mismatch\n got:\n%s", got)
 	}
 }
 

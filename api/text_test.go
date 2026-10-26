@@ -142,6 +142,22 @@ func TestTailwindStyles(t *testing.T) {
 			ansi:     "\x1b[38;2;29;78;216mInfo\x1b[0m",
 			html:     "<span class=\"text-blue-700\" style=\"color: #1d4ed8\">Info</span>",
 		},
+		{
+			name:     "Semantic muted-foreground maps to a real colour",
+			input:    Text{Content: "dim", Style: "text-muted-foreground"},
+			plain:    "dim",
+			markdown: "<span style=\"color: #6b7280\">dim</span>",
+			ansi:     "\x1b[38;2;107;113;128mdim\x1b[0m", // termenv rounds #6b7280's green channel
+			html:     "<span class=\"text-muted-foreground\" style=\"color: #6b7280\">dim</span>",
+		},
+		{
+			name:     "Unknown colour token emits no CSS",
+			input:    Text{Content: "x", Style: "text-left-top"},
+			plain:    "x",
+			markdown: "x",
+			ansi:     "x",
+			html:     "<span class=\"text-left-top\">x</span>",
+		},
 		// Backgrounds
 		{
 			name:     "Yellow background",
