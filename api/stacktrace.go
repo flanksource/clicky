@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 )
 
@@ -184,33 +185,17 @@ func (s StackTrace) frameKept(f StackFrame) bool {
 // styled spans.
 func (s StackTrace) Render() Text {
 	out := Text{}
-	if s.ExceptionClass != "" || s.Message != "" {
-		header := s.ExceptionClass
-		if s.Message != "" {
-			if header != "" {
-				header += ": "
-			}
-			header += s.Message
-		}
+	if header := s.exceptionHeader(); header != "" {
 		out = out.Add(Text{Content: header, Style: "font-bold text-red-600"})
 	}
 	for _, cause := range s.CausedBy {
 		out = out.Add(Text{Content: "\n"})
 		out = out.Add(Text{Content: "Caused by: " + cause, Style: "text-orange-600"})
 	}
-
-	rendered := 0
-	for _, f := range s.Frames {
-		if !s.frameKept(f) {
-			continue
-		}
-		if s.options.maxFrames > 0 && rendered >= s.options.maxFrames {
-			break
-		}
+	for _, f := range s.keptFrames() {
 		out = out.Add(Text{Content: "\n"})
 		out = out.Add(renderFrameHeader(f))
 		out = appendSourceLines(out, f, s.options)
-		rendered++
 	}
 	return out
 }
@@ -220,17 +205,46 @@ func (s StackTrace) String() string {
 	return s.Render().ANSI()
 }
 
-// ANSI / Pretty / Markdown delegate to the assembled Text so a StackTrace is a
-// drop-in Textable for any clicky formatter. HTML uses a dedicated structured
-// renderer (renderHTML) so frames and source context get semantic blocks and
-// monospaced layout instead of a single whitespace-collapsed line.
+// ANSI / Pretty delegate to the assembled Text so a StackTrace is a drop-in
+// Textable for any clicky formatter. HTML uses a dedicated structured renderer
+// (renderHTML) so frames and source context get semantic blocks and monospaced
+// layout instead of a single whitespace-collapsed line. Markdown renders a
+// fenced code block (renderMarkdown) so the trace survives paste verbatim.
 func (s StackTrace) ANSI() string     { return s.Render().ANSI() }
 func (s StackTrace) HTML() string     { return s.renderHTML() }
-func (s StackTrace) Markdown() string { return s.Render().Markdown() }
-func (s StackTrace) MarkdownWithOptions(options MarkdownOptions) string {
-	return s.Render().MarkdownWithOptions(options)
+func (s StackTrace) Markdown() string { return s.renderMarkdown() }
+
+// MarkdownWithOptions ignores the dialect: a fenced block reads the same in
+// every Markdown flavour clicky targets.
+func (s StackTrace) MarkdownWithOptions(MarkdownOptions) string { return s.renderMarkdown() }
+func (s StackTrace) Pretty() Text                               { return s.Render() }
+
+// keptFrames returns the frames the include/exclude and max-frames options
+// keep, in order.
+func (s StackTrace) keptFrames() []StackFrame {
+	var kept []StackFrame
+	for _, f := range s.Frames {
+		if !s.frameKept(f) {
+			continue
+		}
+		if s.options.maxFrames > 0 && len(kept) >= s.options.maxFrames {
+			break
+		}
+		kept = append(kept, f)
+	}
+	return kept
 }
-func (s StackTrace) Pretty() Text { return s.Render() }
+
+func (s StackTrace) exceptionHeader() string {
+	header := s.ExceptionClass
+	if s.Message != "" {
+		if header != "" {
+			header += ": "
+		}
+		header += s.Message
+	}
+	return header
+}
 
 // renderHTML produces a structured HTML block for the stack trace:
 //
@@ -244,39 +258,29 @@ func (s StackTrace) Pretty() Text { return s.Render() }
 //     Code.HTML() for syntax highlighting; otherwise they render as escaped
 //     plain text.
 //
-// Tailwind classes are emitted directly (the Mission Control HTML formatter
-// already loads Tailwind), so no inline styles are needed.
+// Every element carries its Tailwind classes (the Mission Control HTML
+// formatter loads Tailwind) and the equivalent inline style (htmlOpenTag), so
+// the trace keeps its colours when copied as rich text into email or docs,
+// which strip <style> blocks and classes.
 func (s StackTrace) renderHTML() string {
 	var b strings.Builder
 	// Per-element margin (rather than parent space-y-*) so header-only frames
 	// can stack tightly while exception/cause/source-bearing cards keep gap.
-	b.WriteString(`<div class="stack-trace font-mono text-xs leading-tight">`)
+	b.WriteString(htmlOpenTag("div", "stack-trace font-mono text-xs leading-tight"))
 
-	if s.ExceptionClass != "" || s.Message != "" {
-		header := s.ExceptionClass
-		if s.Message != "" {
-			if header != "" {
-				header += ": "
-			}
-			header += s.Message
-		}
-		fmt.Fprintf(&b, `<div class="stack-exception font-bold text-red-700 bg-red-50 border border-red-200 rounded px-2 mb-1">%s</div>`, htmlEscapeString(header))
+	if header := s.exceptionHeader(); header != "" {
+		b.WriteString(htmlOpenTag("div", "stack-exception font-bold text-red-700 bg-red-50 border border-red-200 rounded px-2 mb-1"))
+		b.WriteString(htmlEscapeString(header))
+		b.WriteString(`</div>`)
 	}
 
 	for _, cause := range s.CausedBy {
-		fmt.Fprintf(&b, `<div class="stack-cause text-orange-700 bg-orange-50 border-l-2 border-orange-300 px-2 py-0.5 mb-1"><span class="font-semibold">Caused by:</span> %s</div>`, htmlEscapeString(cause))
+		b.WriteString(htmlOpenTag("div", "stack-cause text-orange-700 bg-orange-50 border-l-2 border-orange-300 px-2 py-0.5 mb-1"))
+		fmt.Fprintf(&b, `%sCaused by:</span> %s</div>`, htmlOpenTag("span", "font-semibold"), htmlEscapeString(cause))
 	}
 
-	rendered := 0
-	for _, f := range s.Frames {
-		if !s.frameKept(f) {
-			continue
-		}
-		if s.options.maxFrames > 0 && rendered >= s.options.maxFrames {
-			break
-		}
+	for _, f := range s.keptFrames() {
 		s.renderHTMLFrame(&b, f)
-		rendered++
 	}
 
 	b.WriteString(`</div>`)
@@ -290,6 +294,8 @@ func (s StackTrace) renderHTML() string {
 func (s StackTrace) renderHTMLFrame(b *strings.Builder, f StackFrame) {
 	hasSource := frameHasSource(f)
 
+	// Application frames are dark and semibold; runtime (JDK/framework)
+	// frames are muted grey at reduced opacity.
 	textClass := "text-slate-800"
 	if f.Runtime {
 		textClass = "text-slate-500"
@@ -300,44 +306,39 @@ func (s StackTrace) renderHTMLFrame(b *strings.Builder, f StackFrame) {
 		if f.Runtime {
 			wrapperClass = "stack-frame border border-slate-100 rounded overflow-hidden opacity-75 mb-1"
 		}
-		fmt.Fprintf(b, `<div class="%s">`, wrapperClass)
-		fmt.Fprintf(b, `<div class="stack-frame-header %s flex flex-wrap items-baseline gap-x-1 px-2 py-0.5 bg-slate-50 border-b border-slate-200">`, textClass)
+		b.WriteString(htmlOpenTag("div", wrapperClass))
+		b.WriteString(htmlOpenTag("div", "stack-frame-header "+textClass+" flex flex-wrap items-baseline gap-x-1 px-2 py-0.5 bg-slate-50 border-b border-slate-200"))
 	} else {
 		flatClass := "stack-frame-row flex flex-wrap items-baseline gap-x-1 px-2"
 		if f.Runtime {
 			flatClass += " opacity-75"
 		}
-		fmt.Fprintf(b, `<div class="%s %s">`, flatClass, textClass)
+		b.WriteString(htmlOpenTag("div", flatClass+" "+textClass))
 	}
 
-	fmt.Fprintf(b, `<span class="font-semibold">%s.<span class="text-blue-700">%s</span></span>`,
-		htmlEscapeString(f.Class), htmlEscapeString(f.Method))
+	fmt.Fprintf(b, `%sat</span> `, htmlOpenTag("span", "stack-frame-at text-slate-500"))
+	fmt.Fprintf(b, `%s%s.%s%s</span></span>`, htmlOpenTag("span", "font-semibold "+textClass),
+		htmlEscapeString(f.Class), htmlOpenTag("span", "text-blue-700"), htmlEscapeString(f.Method))
 
-	if f.File != "" {
-		loc := f.File
-		if f.Line > 0 {
-			loc = fmt.Sprintf("%s:%d", f.File, f.Line)
-		}
-		fmt.Fprintf(b, `<span class="text-slate-500">(%s)</span>`, htmlEscapeString(loc))
+	if loc := frameLocation(f); loc != "" {
+		fmt.Fprintf(b, `%s(%s)</span>`, htmlOpenTag("span", "text-slate-500"), htmlEscapeString(loc))
 	}
 	if f.Native {
-		b.WriteString(`<span class="italic text-slate-500">[native]</span>`)
+		b.WriteString(htmlOpenTag("span", "italic text-slate-500") + `[native]</span>`)
 	}
 	if f.Annotation != "" {
-		fmt.Fprintf(b, `<span class="italic text-slate-500">— %s</span>`, htmlEscapeString(f.Annotation))
+		fmt.Fprintf(b, `%s— %s</span>`, htmlOpenTag("span", "italic text-slate-500"), htmlEscapeString(f.Annotation))
 	}
 
+	b.WriteString(`</div>`)
 	if hasSource {
-		b.WriteString(`</div>`)
 		s.renderHTMLSource(b, f)
-		b.WriteString(`</div>`)
-	} else {
 		b.WriteString(`</div>`)
 	}
 }
 
 func (s StackTrace) renderHTMLSource(b *strings.Builder, f StackFrame) {
-	b.WriteString(`<div class="stack-source bg-slate-50">`)
+	b.WriteString(htmlOpenTag("div", "stack-source bg-slate-50"))
 	for idx, src := range f.SourceLines {
 		line := frameSourceLineNumber(f, idx)
 		// Every row carries a 2px left border so the focal row's red marker
@@ -345,16 +346,41 @@ func (s StackTrace) renderHTMLSource(b *strings.Builder, f StackFrame) {
 		// Non-focal rows use a transparent border to reserve the same width.
 		rowClass := "flex border-l-2 border-transparent"
 		gutterClass := "stack-source-gutter w-10 flex-none px-1 text-right text-slate-400 select-none border-r border-slate-200"
-		codeClass := "stack-source-code px-2 whitespace-pre overflow-x-auto flex-1"
-		if s.options.highlightLine && line == f.Line {
+		codeClass := "stack-source-code font-mono px-2 whitespace-pre overflow-x-auto flex-1"
+		if s.isFocalLine(f, line) {
 			rowClass = "flex border-l-2 border-red-400 bg-red-50"
 			gutterClass = "stack-source-gutter w-10 flex-none px-1 text-right text-red-600 font-bold select-none border-r border-red-200"
-			codeClass = "stack-source-code px-2 whitespace-pre overflow-x-auto flex-1 font-bold text-red-700"
+			codeClass = "stack-source-code font-mono px-2 whitespace-pre overflow-x-auto flex-1 font-bold text-red-700"
 		}
-		fmt.Fprintf(b, `<div class="%s"><span class="%s">%d</span><span class="%s">%s</span></div>`,
-			rowClass, gutterClass, line, codeClass, renderHTMLSourceContent(src, f.SourceLanguage))
+		fmt.Fprintf(b, `%s%s%s</span>%s%s</span></div>`, htmlOpenTag("div", rowClass),
+			htmlOpenTag("span", gutterClass), sourceGutter(line),
+			htmlOpenTag("span", codeClass), renderHTMLSourceContent(src, f.SourceLanguage))
 	}
 	b.WriteString(`</div>`)
+}
+
+func (s StackTrace) isFocalLine(f StackFrame, line int) bool {
+	return s.options.highlightLine && line > 0 && line == f.Line
+}
+
+// sourceGutter is a source row's line-number label: blank when the line is
+// unknown (0), e.g. a decompiled row CFR could not map back to the class file.
+func sourceGutter(line int) string {
+	if line <= 0 {
+		return ""
+	}
+	return strconv.Itoa(line)
+}
+
+// frameLocation is the `File:Line` text of a frame ("" without a file).
+func frameLocation(f StackFrame) string {
+	if f.File == "" {
+		return ""
+	}
+	if f.Line > 0 {
+		return fmt.Sprintf("%s:%d", f.File, f.Line)
+	}
+	return f.File
 }
 
 // renderHTMLSourceContent returns the inline HTML for a single source line:
@@ -373,13 +399,8 @@ func renderFrameHeader(f StackFrame) Text {
 		style = "text-muted-foreground"
 	}
 	header := Text{Content: "  at " + f.Class + "." + f.Method, Style: style}
-	if f.File != "" {
-		suffix := "(" + f.File
-		if f.Line > 0 {
-			suffix += fmt.Sprintf(":%d", f.Line)
-		}
-		suffix += ")"
-		header = header.Add(Text{Content: " " + suffix, Style: "text-muted-foreground"})
+	if loc := frameLocation(f); loc != "" {
+		header = header.Add(Text{Content: " (" + loc + ")", Style: "text-muted-foreground"})
 	}
 	if f.Native {
 		header = header.Add(Text{Content: " [native]", Style: "italic text-muted-foreground"})
@@ -399,11 +420,15 @@ func appendSourceLines(out Text, f StackFrame, opts stackTraceOptions) Text {
 		out = out.Add(Text{Content: "\n"})
 		marker := "    "
 		style := "text-muted-foreground"
-		if opts.highlightLine && line == f.Line {
+		if opts.highlightLine && line > 0 && line == f.Line {
 			marker = ">>> "
 			style = "font-bold text-red-600"
 		}
-		out = out.Add(Text{Content: fmt.Sprintf("%s%4d: %s", marker, line, src), Style: style})
+		gutter := fmt.Sprintf("%4s: ", sourceGutter(line))
+		if line <= 0 {
+			gutter = "      "
+		}
+		out = out.Add(Text{Content: marker + gutter + src, Style: style})
 	}
 	return out
 }
@@ -423,14 +448,21 @@ func frameHasSource(f StackFrame) bool {
 	return false
 }
 
+// frameSourceLineNumber is the original line of source row idx, or 0 when it
+// is unknown. Explicit SourceLineNumbers win (a 0 entry stays unknown rather
+// than falling back to the row's window position); otherwise rows count up
+// from SourceStartLine.
 func frameSourceLineNumber(f StackFrame, idx int) int {
-	if idx < len(f.SourceLineNumbers) && f.SourceLineNumbers[idx] > 0 {
-		return f.SourceLineNumbers[idx]
+	if len(f.SourceLineNumbers) > 0 {
+		if idx < len(f.SourceLineNumbers) && f.SourceLineNumbers[idx] > 0 {
+			return f.SourceLineNumbers[idx]
+		}
+		return 0
 	}
 	if f.SourceStartLine > 0 {
 		return f.SourceStartLine + idx
 	}
-	return idx + 1
+	return 0
 }
 
 // NewStackTrace returns an empty trace with options applied. Language-specific

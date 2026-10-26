@@ -41,8 +41,8 @@ func TestParseTailwindColor(t *testing.T) {
 
 		// Edge cases
 		{"", "", true},
-		{"invalid-color", "invalid-color", false}, // Returns as-is
-		{"red-1000", "red-1000", true},            // Invalid shade
+		{"invalid-color", "invalid-color", true}, // Unknown token
+		{"red-1000", "red-1000", true},           // Invalid shade
 
 		// All color families
 		{"indigo-500", "indigo-500", false},
@@ -195,8 +195,19 @@ func TestColor(t *testing.T) {
 		// Hex colors pass through
 		{"#ff0000", "#ff0000", "#ff0000"},
 
-		// Invalid colors pass through as-is
-		{"invalid", "invalid", "invalid"},
+		// CSS named colours and functional notation pass through
+		{"navy", "navy", "navy"},
+		{"rgb", "text-[rgb(1,2,3)]", "rgb(1,2,3)"},
+
+		// Semantic tokens map to a real colour, or are omitted (inherit)
+		{"muted-foreground", "text-muted-foreground", "#6b7280"},
+		{"foreground", "text-foreground", ""},
+		{"background", "bg-background", ""},
+
+		// Unknown tokens never leak into CSS
+		{"invalid", "invalid", ""},
+		{"alignment utility", "text-left-top", ""},
+		{"invalid shade", "text-red-1000", ""},
 	}
 
 	for _, tt := range tests {
@@ -256,8 +267,8 @@ func TestParseRawTailwindColor(t *testing.T) {
 
 		// Edge cases
 		{"", "", "", true},
-		{"invalid-color", "invalid-color", "invalid-color", false}, // Returns as-is
-		{"red-1000", "red-1000", "", true},                         // Invalid shade
+		{"invalid-color", "invalid-color", "", true}, // Unknown token
+		{"red-1000", "red-1000", "", true},           // Invalid shade
 
 		// All color families at 500 shade
 		{"indigo-500", "indigo-500", "#6366f1", false},
