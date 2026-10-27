@@ -96,9 +96,9 @@ func isBinaryFormat(format string) bool {
 	switch canonicalFormat(strings.ToLower(format)) {
 	case "pdf", "html-pdf", "excel":
 		return true
-	default:
-		return false
 	}
+	contentType, declared := CustomFormatterContentType(format)
+	return declared && isBinaryContentType(contentType)
 }
 
 func callerContext(value any) context.Context {

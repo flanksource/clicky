@@ -555,7 +555,7 @@ func (s *MCPServer) executeToolWithTaskManager(ctx context.Context, tool *ToolDe
 			// Run through the transport-neutral handle, which serializes the
 			// global stdout/stderr capture, resets state, and applies the
 			// arguments + server-wide format overrides.
-			flags, posArgs := splitMCPArgs(args)
+			flags, posArgs := splitMCPArgs(tool.Operation, args)
 			overrides := formatOverrides(s.config.Tools.Format)
 			if rpc.IsListOperation(tool.Operation) && overrides["format"] == "" {
 				if overrides == nil {
@@ -706,16 +706,20 @@ func formatName(opts *formatters.FormatOptions) string {
 }
 
 // splitMCPArgs splits a model-provided MCP argument map into positional args
-// (the "args" key) and string-valued flags (every other key).
-func splitMCPArgs(args map[string]interface{}) (map[string]string, []string) {
+// (the generic "args" key, or the positional the operation names, e.g.
+// "pretty <file>") and string-valued flags (every other key), routing them as
+// the HTTP executor does.
+func splitMCPArgs(op *rpc.RPCOperation, args map[string]interface{}) (map[string]string, []string) {
 	flags := map[string]string{}
 	var posArgs []string
 	for key, value := range args {
-		if key == "args" {
+		if key == "args" || (op != nil && rpc.IsPositionalArgument(op, key)) {
 			if argArray, ok := value.([]interface{}); ok {
 				for _, arg := range argArray {
 					posArgs = append(posArgs, fmt.Sprintf("%v", arg))
 				}
+			} else {
+				posArgs = append(posArgs, fmt.Sprintf("%v", value))
 			}
 			continue
 		}

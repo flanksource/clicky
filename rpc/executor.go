@@ -283,9 +283,15 @@ func (e *CommandExecutor) ExtractRequestFromHTTP(r *http.Request, op *RPCOperati
 			}
 
 			// Handle flat JSON structure where each field is a flag or args
+			positionalKey := ""
 			for key, value := range bodyData {
 				switch {
-				case isPositionalArgument(op, key):
+				case IsPositionalArgument(op, key):
+					// Two keys both carrying the positional would merge in random map order.
+					if positionalKey != "" {
+						return nil, fmt.Errorf("request body sets positional arguments twice: %q and %q", positionalKey, key)
+					}
+					positionalKey = key
 					req.Args = append(req.Args, operationArgs(value)...)
 				case key == "flags":
 					// Handle nested flags structure for backward compatibility
@@ -307,7 +313,7 @@ func (e *CommandExecutor) ExtractRequestFromHTTP(r *http.Request, op *RPCOperati
 	// body's args; its value may be comma-separated.
 	query := r.URL.Query()
 	for name := range query {
-		if !isPositionalArgument(op, name) {
+		if !IsPositionalArgument(op, name) {
 			continue
 		}
 		req.Args = []string{}
@@ -320,7 +326,7 @@ func (e *CommandExecutor) ExtractRequestFromHTTP(r *http.Request, op *RPCOperati
 
 	// Then handle all other query parameters defined in the operation
 	for _, param := range op.Parameters {
-		if param.In == "query" && !isPositionalArgument(op, param.Name) && query.Has(param.Name) {
+		if param.In == "query" && !IsPositionalArgument(op, param.Name) && query.Has(param.Name) {
 			req.Flags[param.Name] = query.Get(param.Name) // Override body value, even if empty
 		}
 	}
@@ -330,10 +336,10 @@ func (e *CommandExecutor) ExtractRequestFromHTTP(r *http.Request, op *RPCOperati
 	return req, missingRequiredParameter(req, op)
 }
 
-// isPositionalArgument reports whether a request field carries the operation's
+// IsPositionalArgument reports whether a request field carries the operation's
 // positional args: the generic "args", or a non-path parameter marked Positional.
 // Path parameters reach Args through the URL template instead.
-func isPositionalArgument(op *RPCOperation, name string) bool {
+func IsPositionalArgument(op *RPCOperation, name string) bool {
 	if name == "args" {
 		return true
 	}

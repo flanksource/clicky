@@ -198,7 +198,9 @@ func formatToContentType(format string) string {
 		return "application/pdf"
 	case "pretty", "tree":
 		return "text/plain; charset=utf-8"
-	default:
-		return "application/json"
 	}
+	if contentType, declared := formatters.CustomFormatterContentType(format); declared {
+		return contentType
+	}
+	return "application/json"
 }

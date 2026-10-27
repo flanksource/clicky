@@ -53,9 +53,9 @@ func (p formPrompt) GetID() string          { return p.ID }
 func (p formPrompt) GetName() string        { return p.Name }
 func (p formPrompt) GetDescription() string { return p.Description }
 
-// An optional-id entity action (`prompt run [id]`) takes no id over HTTP, so
-// its operation omits it; the interactive form adds it back and completes it
-// from the entity's list.
+// An optional-id entity action (`prompt run [id]`) publishes its id as an
+// optional positional, which the interactive form completes from the entity's
+// list.
 func TestInteractiveOffersAnOptionalIDFromTheEntityList(t *testing.T) {
 	clicky.RegisterEntity(clicky.Entity[formPrompt, struct{}, any]{
 		Name: "form-prompt",
@@ -73,11 +73,9 @@ func TestInteractiveOffersAnOptionalIDFromTheEntityList(t *testing.T) {
 
 	op, err := NewConverter(DefaultConfig()).ConvertCommand(cmd)
 	require.NoError(t, err)
-	for _, param := range op.Parameters {
-		require.NotEqual(t, "id", param.Name, "the HTTP operation has no id parameter")
-	}
-	withPositional(cmd, op)
 	require.Equal(t, "id", op.Parameters[0].Name)
+	require.True(t, op.Parameters[0].Positional)
+	require.False(t, op.Parameters[0].Required)
 
 	completions, err := commandCompletions(cmd, *op, nil)
 	require.NoError(t, err)
@@ -122,7 +120,6 @@ func TestFlagSchemaFillsAJSONFlagFromTheChosenPrompt(t *testing.T) {
 
 	op, err := NewConverter(DefaultConfig()).ConvertCommand(cmd)
 	require.NoError(t, err)
-	withPositional(cmd, op)
 	completions, err := commandCompletions(cmd, *op, nil)
 	require.NoError(t, err)
 	schemas := entity.GetFlagSchemas(cmd)

@@ -1,6 +1,8 @@
 package api
 
 import (
+	"fmt"
+	"strconv"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -18,15 +20,43 @@ func (t TextTable) plainMarkdown(options MarkdownOptions) string {
 		headers[i] = markdownHeaderTitle(markdownNewlinesToBr(text))
 	}
 	rows := make([][]string, len(t.Rows))
+	var notes strings.Builder
+	number := 0
 	for r, row := range t.Rows {
 		rows[r] = make([]string, len(t.Headers))
+		labels := []string{}
 		for i := range t.Headers {
 			if cell, ok := row[t.markdownFieldName(i)]; ok {
 				rows[r][i] = strings.TrimSpace(RenderMarkdown(cell, options))
+				if label := strings.TrimSpace(cell.String()); label != "" {
+					labels = append(labels, label)
+				}
 			}
 		}
+		// A GFM cell cannot hold block content, so a row's detail becomes a note
+		// under the table that the row links to, footnote-style.
+		detail := t.getRowDetail(r)
+		if detail == nil {
+			continue
+		}
+		label := strings.Join(labels, " · ")
+		number++
+		marker, anchor := superscript(number), markdownDetailAnchor(number, label)
+		rows[r][0] = strings.TrimSpace(rows[r][0] + " [" + marker + "](#" + anchor + ")")
+		fmt.Fprintf(&notes, "\n#### %s %s <a id=%q></a>\n\n%s\n", marker, label, anchor, strings.TrimSpace(RenderMarkdown(detail, options)))
 	}
-	return "\n" + plainMarkdownTable(headers, rows)
+	return "\n" + plainMarkdownTable(headers, rows) + notes.String()
+}
+
+func superscript(n int) string {
+	return strings.Map(func(r rune) rune { return []rune("⁰¹²³⁴⁵⁶⁷⁸⁹")[r-'0'] }, strconv.Itoa(n))
+}
+
+// markdownDetailAnchor is the id of a row's detail note: its number and a
+// slug of the row's text.
+func markdownDetailAnchor(number int, label string) string {
+	slug := strings.FieldsFunc(strings.ToLower(label), func(r rune) bool { return !unicode.IsLetter(r) && !unicode.IsDigit(r) })
+	return strings.Join(append([]string{"detail", strconv.Itoa(number)}, slug...), "-")
 }
 
 // plainMarkdownTable renders a GFM pipe table: a header row, a `---`

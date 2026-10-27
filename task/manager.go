@@ -409,8 +409,6 @@ func (tm *Manager) newTask(name string, opts ...Option) *Task {
 		name:           name,
 		id:             uuid.NewString(),
 		status:         StatusPending,
-		progress:       0,
-		maxValue:       100,
 		startTime:      time.Now(),
 		manager:        tm,
 		cancel:         cancel,

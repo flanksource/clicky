@@ -40,8 +40,8 @@ func (c *Converter) ConvertCommand(cmd *cobra.Command) (*RPCOperation, error) {
 	}
 
 	var parameters []RPCParameter
-	if clicky.AcceptsPositionalArgs(cmd) && (commandMeta == nil || !commandMeta.OptionalID) {
-		parameters = addPositionalParameter(cmd, &schema, parameters)
+	if clicky.AcceptsPositionalArgs(cmd) && !optionalIDShadowedByFlag(cmd, commandMeta) {
+		parameters = addPositionalParameter(cmd, &schema, parameters, commandMeta != nil && commandMeta.OptionalID)
 	}
 	parameters, err := c.addFlagParameters(cmd, &schema, parameters)
 	if err != nil {
@@ -86,18 +86,31 @@ func (c *Converter) ConvertCommand(cmd *cobra.Command) (*RPCOperation, error) {
 	return operation, nil
 }
 
+// optionalIDShadowedByFlag reports whether an optional-id action also declares
+// a flag named like its positional (recon's `resource sync --id`): the flag
+// owns that name over HTTP, so publishing the positional would steal its values.
+func optionalIDShadowedByFlag(cmd *cobra.Command, meta *clicky.CommandOpenAPIMeta) bool {
+	name := extractParameterName(cmd.Use)
+	return meta != nil && meta.OptionalID && name != "" && cmd.Flags().Lookup(name) != nil
+}
+
 // addPositionalParameter publishes the command's positional argument: a named
-// string parameter when Use names one, otherwise a generic args array.
-func addPositionalParameter(cmd *cobra.Command, schema *Schema, parameters []RPCParameter) []RPCParameter {
+// string parameter when Use names one, otherwise a generic args array. An
+// optional id is query-only: it stays out of the body schema (which also
+// shapes tool inputs), so collection actions that never read it — and hosts
+// that decode their body strictly — are not offered a phantom body field.
+func addPositionalParameter(cmd *cobra.Command, schema *Schema, parameters []RPCParameter, queryOnly bool) []RPCParameter {
 	name, typ, description := extractParameterName(cmd.Use), "string", "Positional argument from command"
 	if name == "" {
 		name, typ, description = "args", "array", "Positional arguments for the command"
 	}
 	// cobra validates args itself: a command that rejects none requires one.
 	required := cmd.Args != nil && cmd.Args(cmd, nil) != nil
-	schema.Properties[name] = Property{Type: typ, Description: description}
-	if required {
-		schema.Required = append(schema.Required, name)
+	if !queryOnly {
+		schema.Properties[name] = Property{Type: typ, Description: description}
+		if required {
+			schema.Required = append(schema.Required, name)
+		}
 	}
 	// In is updated to "path" later if the parameter appears in the URL.
 	return append(parameters, RPCParameter{Name: name, Type: typ, Description: description, Required: required, In: "query", Positional: true})
@@ -575,7 +588,7 @@ func positionalOperandCount(use string) int {
 // an action on a collection that still addresses its selection through an id
 // path parameter. That combination is unique to bulk actions: a single action
 // is entity-scoped, and a collection-scoped action invocable without an id
-// (WithOptionalID) declares no id parameter to begin with.
+// (WithOptionalID) takes its optional id as a query parameter, not a path one.
 func isBulkActionCommand(meta *clicky.CommandOpenAPIMeta) bool {
 	return meta != nil && meta.ActionName != "" && meta.IDParam != "" &&
 		meta.Scope == "collection" && !meta.OptionalID
