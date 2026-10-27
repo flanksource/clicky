@@ -701,17 +701,17 @@ func TestOpenAPIGenerator_OptionalIDActionPath(t *testing.T) {
 		"an action invocable without an entity id must be discoverable as a collection action")
 	assert.Empty(t, overview.Clicky.IDParam,
 		"an optional-id collection action must not advertise an entity id")
-	assert.NotContains(t, getParameterNames(overview.Parameters), "id",
-		"an optional-id collection action must not expose a phantom id parameter")
+	assert.Contains(t, getParameterNames(overview.Parameters), "id",
+		"an optional-id collection action takes its optional id as a query parameter")
 	assert.Nil(t, overview.RequestBody)
 
 	refresh := spec.Paths["/api/v1/"+entityName+"/refresh"]["post"]
-	assert.NotContains(t, getParameterNames(refresh.Parameters), "id",
-		"a POST optional-id collection action must not expose a phantom id parameter")
+	assert.Contains(t, getParameterNames(refresh.Parameters), "id",
+		"a POST optional-id collection action takes its optional id as a query parameter")
 	require.NotNil(t, refresh.RequestBody)
 	require.NotNil(t, refresh.RequestBody.Content["application/json"].Schema)
 	assert.Empty(t, refresh.RequestBody.Content["application/json"].Schema.Properties,
-		"a no-argument optional-id collection action must expose an empty request schema")
+		"the optional id is query-only, so a no-flag optional-id action has an empty request schema")
 
 	assert.Contains(t, spec.Paths, "/api/v1/"+entityName+"/{id}/restart",
 		"a regular action without WithOptionalID keeps its {id} segment")

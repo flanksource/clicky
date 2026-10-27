@@ -400,7 +400,8 @@ func toolName(raw string) string {
 func positionalParams(op *rpc.RPCOperation) []string {
 	var names []string
 	for _, parameter := range op.Parameters {
-		if parameter.In == "path" {
+		// The generic "args" array is expanded by toExecutionRequest itself.
+		if parameter.In == "path" || (parameter.Positional && parameter.Name != "args") {
 			names = append(names, parameter.Name)
 		}
 	}

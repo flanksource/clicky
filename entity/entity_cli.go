@@ -141,6 +141,19 @@ func generateEntityCLI(parent *cobra.Command, entity EntityInfo) {
 	for _, ba := range entity.BulkActions {
 		generateBulkActionCommand(entityCmd, ba)
 	}
+	commandNames := make(map[string]bool)
+	for _, child := range entityCmd.Commands() {
+		commandNames[child.Name()] = true
+	}
+	for _, child := range entityCmd.Commands() {
+		aliases := child.Aliases[:0]
+		for _, alias := range child.Aliases {
+			if !commandNames[alias] {
+				aliases = append(aliases, alias)
+			}
+		}
+		child.Aliases = aliases
+	}
 	storeIDOptions(entityCmd, existing, entity.IDOptions)
 
 	if entity.ServedOnly {

@@ -63,6 +63,27 @@ var _ = Describe("TextTable.plainMarkdown", func() {
 			"\n| DISPLAY NAME | EMPTY | NOTE |\n| --- | --- | --- |\n| alpha |  | a\\|b |\n| beta |  |  |\n"))
 	})
 
+	It("links each row's detail to a note under the table, numbered in row order", func() {
+		table := TextTable{
+			Headers:    TextList{Text{Content: "status"}, Text{Content: "name"}},
+			FieldNames: []string{"status", "name"},
+			Rows: []TableRow{
+				{"status": NewTypedValue("Changed"), "name": NewTypedValue("Lapse Policy")},
+				{"status": NewTypedValue("Added"), "name": NewTypedValue("Renew")},
+				{"status": NewTypedValue("Removed"), "name": NewTypedValue("Enroll")},
+			},
+			RowDetail: []Textable{Text{Content: "lapse diff"}, nil, Text{Content: "enroll diff"}},
+		}
+
+		Expect(table.plainMarkdown(MarkdownOptions{})).To(Equal("\n" +
+			"| STATUS | NAME |\n| --- | --- |\n" +
+			"| Changed [¹](#detail-1-changed-lapse-policy) | Lapse Policy |\n" +
+			"| Added | Renew |\n" +
+			"| Removed [²](#detail-2-removed-enroll) | Enroll |\n" +
+			"\n#### ¹ Changed · Lapse Policy <a id=\"detail-1-changed-lapse-policy\"></a>\n\nlapse diff\n" +
+			"\n#### ² Removed · Enroll <a id=\"detail-2-removed-enroll\"></a>\n\nenroll diff\n"))
+	})
+
 	It("renders nothing without headers", func() {
 		Expect(TextTable{}.plainMarkdown(MarkdownOptions{})).To(BeEmpty())
 	})

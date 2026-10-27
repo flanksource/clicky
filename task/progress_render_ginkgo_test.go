@@ -37,4 +37,15 @@ var _ = Describe("Task progress rendering", func() {
 		Expect(line).NotTo(ContainSubstring("3/"))
 		Expect(line).NotTo(ContainSubstring("▱"))
 	})
+
+	It("renders no count or bar when the task never reports progress", func() {
+		running := task.StartTask("fixture", func(_ flanksourceContext.Context, _ *task.Task) (int, error) {
+			return 0, nil
+		})
+		_, err := running.GetResult()
+		Expect(err).NotTo(HaveOccurred())
+		line := running.Pretty().String()
+		Expect(line).NotTo(ContainSubstring("0/100"))
+		Expect(line).NotTo(ContainSubstring("▱"))
+	})
 })

@@ -9,7 +9,6 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 
-	"github.com/flanksource/clicky"
 	"github.com/flanksource/clicky/entity"
 )
 
@@ -119,7 +118,6 @@ func fillInteractive(cmd *cobra.Command, args []string, validateArgs cobra.Posit
 	if err != nil {
 		return nil, err
 	}
-	withPositional(cmd, op)
 	var positional []string
 	for i, param := range op.Parameters {
 		if cmd.Flags().Lookup(param.Name) != nil {
@@ -147,25 +145,6 @@ func fillInteractive(cmd *cobra.Command, args []string, validateArgs cobra.Posit
 		return nil, fmt.Errorf("%s --%s: %w", cmd.CommandPath(), interactiveFlag, err)
 	}
 	return applyInteractive(cmd, *op, args, values)
-}
-
-// withPositional adds the command's positional argument to its form when the
-// operation has none: an optional-id action (`prompt run [id]`) takes no id
-// over HTTP, so the operation omits it, but on the CLI it is the argument.
-func withPositional(cmd *cobra.Command, op *RPCOperation) {
-	if !clicky.AcceptsPositionalArgs(cmd) {
-		return
-	}
-	for _, param := range op.Parameters {
-		if cmd.Flags().Lookup(param.Name) == nil {
-			return
-		}
-	}
-	param := RPCParameter{Name: "args", Type: "array", Description: "Positional arguments for the command", In: "query", Positional: true}
-	if name := extractParameterName(cmd.Use); name != "" {
-		param = RPCParameter{Name: name, Type: "string", Description: "Positional argument from command", In: "query", Positional: true}
-	}
-	op.Parameters = append([]RPCParameter{param}, op.Parameters...)
 }
 
 // interactivePreset is the form's starting value: every flag the user passed

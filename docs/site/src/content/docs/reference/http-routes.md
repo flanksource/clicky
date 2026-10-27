@@ -13,7 +13,7 @@ These routes come from running a sample entity through `rpc.NewConverter(rpc.Def
 | update | `app widgets update <id> k=v…` | `PUT /api/v1/widgets` (`id` in the body) |
 | delete | `app widgets delete <id>` | `DELETE /api/v1/widgets/{id}` |
 | action | `app widgets restart <id>` | `POST /api/v1/widgets/{id}/restart` |
-| collection action (`WithOptionalID`) | `app widgets sync [id]` | `POST /api/v1/widgets/sync` |
+| collection action (`WithOptionalID`) | `app widgets sync [id]` | `POST /api/v1/widgets/sync[?id=…]` (`id` is query-only; an action with its own `id` flag keeps the name for the flag) |
 | primary action | `app deploy [flags]` | `POST /api/v1/deploy` (list stays `GET /api/v1/deploy`) |
 | bulk action | `app widgets pause <id> [id...]` | `POST /api/v1/widgets/{id}/pause` (`{id}` = comma-joined IDs) |
 | bulk action named `delete` | shares its CLI name with the entity's own `delete`; prefer a distinct verb such as `purge` | `DELETE /api/v1/widgets/{id}/delete` |

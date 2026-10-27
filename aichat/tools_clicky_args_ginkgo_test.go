@@ -65,4 +65,17 @@ var _ = ginkgo.Describe("positionalParams", func() {
 
 		gomega.Expect(positionalParams(op)).To(gomega.Equal([]string{"id", "child"}))
 	})
+
+	ginkgo.It("names a positional query parameter but leaves the generic args array to toExecutionRequest", func() {
+		op := &rpc.RPCOperation{Parameters: []rpc.RPCParameter{
+			{Name: "file", In: "query", Positional: true},
+			{Name: "args", In: "query", Positional: true},
+			{Name: "schema", In: "query"},
+		}}
+
+		gomega.Expect(positionalParams(op)).To(gomega.Equal([]string{"file"}))
+		request := toExecutionRequest(map[string]any{"file": "orders.json", "schema": "s.yaml"}, positionalParams(op))
+		gomega.Expect(request.Args).To(gomega.Equal([]string{"orders.json"}))
+		gomega.Expect(request.Flags).To(gomega.Equal(map[string]string{"schema": "s.yaml"}))
+	})
 })
