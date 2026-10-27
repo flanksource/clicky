@@ -1,6 +1,9 @@
 package exec
 
 import (
+	"os"
+	"strconv"
+	"strings"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -47,6 +50,26 @@ var _ = Describe("Process control", func() {
 
 		Expect(process.MustStop(5 * time.Second)).To(Succeed())
 		Expect(process.IsOK()).To(BeTrue())
+	})
+
+	It("returns from a timed run when a backgrounded descendant keeps stdout open", func() {
+		// The direct child exits at once but leaves a grandchild holding the
+		// stdout pipe, the same shape as `pg_ctl start` daemonising postgres.
+		process := NewExec("sh", "-c", "sleep 60 & echo $!").WithTimeout(5 * time.Second)
+		DeferCleanup(func() {
+			if pid, err := strconv.Atoi(strings.TrimSpace(process.GetStdout())); err == nil {
+				if orphan, err := os.FindProcess(pid); err == nil {
+					_ = orphan.Kill()
+				}
+			}
+		})
+
+		done := make(chan struct{})
+		go func() {
+			process.Run()
+			close(done)
+		}()
+		Eventually(done, 5*time.Second).Should(BeClosed())
 	})
 
 	Describe("Start failures", func() {

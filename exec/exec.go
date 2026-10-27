@@ -401,10 +401,12 @@ func (p *Process) buildCmd() (*exec.Cmd, childStdio, error) {
 	}
 
 	applyProcessGroup(cmd, p.newProcessGroup, p.keepTerminal)
-	if p.newProcessGroup || p.wantStdioPipe {
+	if p.newProcessGroup || p.wantStdioPipe || p.Timeout > 0 {
 		// Force-close the stdio pipes shortly after the direct child exits so
-		// Wait() can return even when orphaned descendants (e.g. tsx→node→claude)
-		// still hold them open. Go 1.20+ feature.
+		// Wait() can return even when orphaned descendants (e.g. tsx→node→claude,
+		// or a daemon started by `pg_ctl start`) still hold them open; a timed
+		// run otherwise blocks in stopAndReap until the descendant exits.
+		// Go 1.20+ feature.
 		cmd.WaitDelay = 2 * time.Second
 	}
 	return cmd, child, nil
