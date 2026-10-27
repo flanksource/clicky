@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.21.86](https://github.com/flanksource/clicky/compare/v1.21.85...v1.21.86) (2026-10-27)
+
+
+### 🐛 Bug Fixes
+
+* **exec:** set WaitDelay for timed runs so orphaned descendants cannot block ([caeba5c](https://github.com/flanksource/clicky/commit/caeba5cfd95731d1a9d248e74d3ac1bfbcc6f00d))
+
 ## [1.21.85](https://github.com/flanksource/clicky/compare/v1.21.84...v1.21.85) (2026-10-27)
 
 
