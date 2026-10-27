@@ -1,6 +1,7 @@
 package formatters
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"os"
@@ -65,6 +66,7 @@ type FormatSink struct {
 
 // FormatOptions contains options for formatting operations
 type FormatOptions struct {
+	Context    context.Context   `json:"-" yaml:"-"`
 	Format     string            `json:"format,omitempty"`
 	NoColor    bool              `json:"no_color,omitempty"`
 	Output     string            `json:"output,omitempty"`
@@ -168,7 +170,9 @@ func (o *FormatOptions) ParseFormatSpec() error {
 			return fmt.Errorf("invalid --format entry %q: empty format name", part)
 		}
 		if !knownFormats[name] {
-			return fmt.Errorf("invalid --format entry %q: unknown format %q", part, name)
+			if _, registered := GetCustomFormatter(name); !registered {
+				return fmt.Errorf("invalid --format entry %q: unknown format %q", part, name)
+			}
 		}
 		if hasFile && file == "" {
 			return fmt.Errorf("invalid --format entry %q: empty file path after '='", part)
@@ -226,6 +230,9 @@ func (o FormatOptions) SkipTree() bool {
 func MergeOptions(opts ...FormatOptions) FormatOptions {
 	merged := FormatOptions{}
 	for _, opt := range opts {
+		if opt.Context != nil {
+			merged.Context = opt.Context
+		}
 		if opt.Format != "" {
 			merged.Format = opt.Format
 		}

@@ -1,6 +1,7 @@
 package clicky
 
 import (
+	"context"
 	"errors"
 	"io"
 	"os"
@@ -9,6 +10,7 @@ import (
 	"github.com/flanksource/clicky/formatters"
 	"github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/spf13/cobra"
 )
 
 type sinkViews struct{}
@@ -46,6 +48,41 @@ func (sinkViews) FormatView(opts FormatOptions) (any, error) {
 }
 
 var _ = ginkgo.Describe("format sinks", func() {
+	ginkgo.It("passes a generated command context to its formatter", func() {
+		type contextKey struct{}
+		var received context.Context
+		formatters.RegisterFormatter("context-report", func(_ any, opts formatters.FormatOptions) (string, error) {
+			received = opts.Context
+			return "", nil
+		})
+		defer formatters.UnregisterFormatter("context-report")
+		previous := Flags.FormatOptions
+		defer func() { Flags.FormatOptions = previous }()
+		Flags.FormatOptions = FormatOptions{Format: "context-report"}
+		parent := &cobra.Command{Use: "root"}
+		command := AddNamedCommandWithContext("report", parent, struct{}{}, func(context.Context, struct{}) (string, error) { return "report", nil })
+		ctx, cancel := context.WithCancel(context.WithValue(context.Background(), contextKey{}, "command"))
+		cancel()
+		command.SetContext(ctx)
+		Expect(command.RunE(command, nil)).To(Succeed())
+		Expect(received.Value(contextKey{})).To(Equal("command"))
+		Expect(received.Err()).To(MatchError(context.Canceled))
+	})
+	ginkgo.It("writes a registered binary formatter to stdout without changing its bytes", func() {
+		formatters.RegisterFormatter("binary-report", func(any, formatters.FormatOptions) (string, error) {
+			return "%PDF-binary", nil
+		}, formatters.WithContentType("application/pdf"))
+		defer formatters.UnregisterFormatter("binary-report")
+		output, err := os.CreateTemp(ginkgo.GinkgoT().TempDir(), "stdout")
+		Expect(err).NotTo(HaveOccurred())
+		original := os.Stdout
+		os.Stdout = output
+		defer func() { os.Stdout = original; _ = output.Close() }()
+		Expect(printFormat("report", FormatOptions{Format: "binary-report"})).To(Succeed())
+		contents, err := os.ReadFile(output.Name())
+		Expect(err).NotTo(HaveOccurred())
+		Expect(string(contents)).To(Equal("%PDF-binary"))
+	})
 	ginkgo.It("uses an independent view for every format", func() {
 		dir := ginkgo.GinkgoT().TempDir()
 		jsonPath := filepath.Join(dir, "rows.json")

@@ -153,7 +153,8 @@ func MustPrint(o any, opts ...FormatOptions) {
 
 	// Terminate the output. Without this the shell prompt lands on the last
 	// rendered line, and line-oriented consumers of a redirect drop it.
-	if result != "" && !strings.HasSuffix(result, "\n") {
+	options := formatters.MergeOptions(append([]FormatOptions{defaultOpts}, opts...)...)
+	if result != "" && !strings.HasSuffix(result, "\n") && !formatters.IsBinaryFormat(options.ResolveFormat()) {
 		result += "\n"
 	}
 	fmt.Print(result)
@@ -171,7 +172,7 @@ func MustPrintStderr(o any, opts ...FormatOptions) {
 	if err != nil {
 		panic(err)
 	}
-	if result != "" && !strings.HasSuffix(result, "\n") {
+	if result != "" && !strings.HasSuffix(result, "\n") && !formatters.IsBinaryFormat(options.ResolveFormat()) {
 		result += "\n"
 	}
 	fmt.Fprint(os.Stderr, result)
@@ -235,7 +236,7 @@ func printFormat(o any, opts FormatOptions) error {
 	if err != nil {
 		return err
 	}
-	if output != "" && !strings.HasSuffix(output, "\n") && opts.Format != "excel" && opts.Format != "pdf" {
+	if output != "" && !strings.HasSuffix(output, "\n") && !formatters.IsBinaryFormat(opts.ResolveFormat()) {
 		output += "\n"
 	}
 	_, err = fmt.Fprint(os.Stdout, output)

@@ -42,7 +42,7 @@ func generatePrimaryAction(entityCmd *cobra.Command, action ActionInfo) {
 			return err
 		}
 		if result != nil {
-			return RenderResult(result)
+			return RenderResult(c.Context(), result)
 		}
 		return nil
 	}

@@ -55,6 +55,7 @@ func RunsHandlerWithSource(source RunSource) http.Handler {
 			}
 			runs = mergeRunMetas(runs, external)
 		}
+		runs = visibleRuns(r.Context(), source, runs)
 		if runs == nil {
 			runs = []RunMeta{}
 		}
@@ -87,6 +88,7 @@ func RunHandlerWithSource(source RunSource) http.Handler {
 				return
 			}
 		}
+		snapshots = visibleSnapshots(r.Context(), source, snapshots)
 		if len(snapshots) == 0 {
 			http.Error(w, "run not found", http.StatusNotFound)
 			return
@@ -110,6 +112,10 @@ func RunControlHandlerWithSource(source RunSource) http.Handler {
 			return
 		}
 		id := r.PathValue("id")
+		if !authorizedRun(r.Context(), source, id) {
+			http.Error(w, "run not found", http.StatusNotFound)
+			return
+		}
 		var err error
 		if groupByID(id) != nil {
 			err = ControlRun(r.Context(), id, action)
@@ -140,6 +146,10 @@ func TaskControlHandlerWithSource(source RunSource) http.Handler {
 			return
 		}
 		runID := r.PathValue("id")
+		if !authorizedRun(r.Context(), source, runID) {
+			http.Error(w, "run not found", http.StatusNotFound)
+			return
+		}
 		taskID := r.PathValue("taskID")
 		var err error
 		if groupByID(runID) != nil {
@@ -180,8 +190,12 @@ func writeControlError(w http.ResponseWriter, err error) {
 
 // TaskStdinHandler writes live stdin to a task. Input is deliberately not
 // included in any snapshot or persisted run record.
-func TaskStdinHandler() http.Handler {
+func TaskStdinHandler(source RunSource) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !authorizedRun(r.Context(), source, r.PathValue("id")) {
+			http.Error(w, "run not found", http.StatusNotFound)
+			return
+		}
 		var request struct {
 			Data string `json:"data"`
 		}
@@ -234,7 +248,7 @@ func RegisterHandlersWithSource(router *route.Router, prefix string, source RunS
 		route.Meta{Entity: "task", Verb: "control", IDParam: "id"})
 	router.Raw("POST "+prefix+"/tasks/{id}/tasks/{taskID}/control", TaskControlHandlerWithSource(source),
 		route.Meta{Entity: "task", Verb: "control-task", IDParam: "taskID"})
-	router.Raw("POST "+prefix+"/tasks/{id}/tasks/{taskID}/stdin", TaskStdinHandler(),
+	router.Raw("POST "+prefix+"/tasks/{id}/tasks/{taskID}/stdin", TaskStdinHandler(source),
 		route.Meta{Entity: "task", Verb: "stdin", IDParam: "taskID"})
 	router.Raw("GET "+prefix+"/tasks/{id}", RunHandlerWithSource(source),
 		route.Meta{Entity: "task", Verb: "get", ReadOnly: true, IDParam: "id"})

@@ -30,7 +30,7 @@ var _ = Describe("entity action errors", func() {
 
 		var rendered any
 		originalRender := RenderResult
-		RenderResult = func(value any) error {
+		RenderResult = func(_ context.Context, value any) error {
 			rendered = value
 			return nil
 		}

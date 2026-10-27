@@ -17,11 +17,13 @@ import (
 
 func init() {
 	entity.PreflightOutput = Flags.ParseFormatSpec
-	entity.RenderResult = func(o any) error {
+	entity.RenderResult = func(ctx context.Context, o any) error {
 		if err := Flags.ParseFormatSpec(); err != nil {
 			return err
 		}
-		return PrintAndWriteSinks(o, Flags.FormatOptions)
+		options := Flags.FormatOptions
+		options.Context = ctx
+		return PrintAndWriteSinks(o, options)
 	}
 	entity.ParseArgs = ParseArgumentsAsMap
 }

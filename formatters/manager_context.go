@@ -15,6 +15,9 @@ import (
 // forwarded to registered format callbacks.
 func (f *FormatManager) FormatWithContext(ctx any, options FormatOptions, data ...any) (string, error) {
 	defer rpchttp.Track(callerContext(ctx), "format")()
+	if ctx != nil || options.Context == nil {
+		options.Context = callerContext(ctx)
+	}
 	options.NoColor = options.NoColor || f.noColor
 	before := collapseFormatInput(data...)
 	before = f.applyBeforeFormatCallbacks(ctx, options, before)
@@ -23,7 +26,7 @@ func (f *FormatManager) FormatWithContext(ctx any, options FormatOptions, data .
 		return "", err
 	}
 	output = f.applyAfterFormatCallbacks(ctx, options, before, output)
-	if options.NoColor && !isBinaryFormat(options.ResolveFormat()) {
+	if options.NoColor && !IsBinaryFormat(options.ResolveFormat()) {
 		output = ansi.Strip(output)
 	}
 	return output, nil
@@ -32,6 +35,9 @@ func (f *FormatManager) FormatWithContext(ctx any, options FormatOptions, data .
 // FormatWithSchemaContext handles schema-aware formatting while forwarding ctx
 // to registered format callbacks.
 func (f *FormatManager) FormatWithSchemaContext(ctx any, prettyData *api.PrettyData, options FormatOptions) (string, error) {
+	if ctx != nil || options.Context == nil {
+		options.Context = callerContext(ctx)
+	}
 	options.NoColor = options.NoColor || f.noColor
 	before := any(prettyData)
 	before = f.applyBeforeFormatCallbacks(ctx, options, before)
@@ -86,13 +92,14 @@ func (f *FormatManager) FormatWithSchemaContext(ctx any, prettyData *api.PrettyD
 		return "", err
 	}
 	output = f.applyAfterFormatCallbacks(ctx, options, before, output)
-	if options.NoColor && !isBinaryFormat(format) {
+	if options.NoColor && !IsBinaryFormat(format) {
 		output = ansi.Strip(output)
 	}
 	return output, nil
 }
 
-func isBinaryFormat(format string) bool {
+// IsBinaryFormat reports whether a built-in or registered format emits binary data.
+func IsBinaryFormat(format string) bool {
 	switch canonicalFormat(strings.ToLower(format)) {
 	case "pdf", "html-pdf", "excel":
 		return true

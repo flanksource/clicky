@@ -15,6 +15,60 @@ type RunSource interface {
 	Control(context.Context, string, ControlAction) error
 }
 
+// RunAuthorizer filters both live and externally stored runs for a caller.
+type RunAuthorizer interface {
+	AuthorizeRun(context.Context, RunMeta) bool
+}
+
+func visibleRuns(ctx context.Context, source RunSource, runs []RunMeta) []RunMeta {
+	authorizer, ok := source.(RunAuthorizer)
+	if !ok {
+		return runs
+	}
+	visible := make([]RunMeta, 0, len(runs))
+	for _, run := range runs {
+		if authorizer.AuthorizeRun(ctx, run) {
+			visible = append(visible, run)
+		}
+	}
+	return visible
+}
+
+func visibleSnapshots(ctx context.Context, source RunSource, snapshots []TaskSnapshot) []TaskSnapshot {
+	authorizer, ok := source.(RunAuthorizer)
+	if !ok {
+		return snapshots
+	}
+	allowed := make(map[string]bool)
+	for _, snapshot := range snapshots {
+		if snapshot.Type == "group" {
+			allowed[snapshot.GroupID] = authorizer.AuthorizeRun(ctx, RunMetaFromSnapshot(snapshot))
+		}
+	}
+	visible := make([]TaskSnapshot, 0, len(snapshots))
+	for _, snapshot := range snapshots {
+		if allowed[snapshot.GroupID] {
+			visible = append(visible, snapshot)
+		}
+	}
+	return visible
+}
+
+func authorizedRun(ctx context.Context, source RunSource, id string) bool {
+	if _, ok := source.(RunAuthorizer); !ok {
+		return true
+	}
+	snapshots := SnapshotByID(id)
+	if len(snapshots) == 0 && source != nil {
+		var err error
+		snapshots, err = source.Snapshot(ctx, id)
+		if err != nil {
+			return false
+		}
+	}
+	return len(visibleSnapshots(ctx, source, snapshots)) != 0
+}
+
 // TaskControlSource is implemented by run sources that can route lifecycle
 // controls to child tasks owned outside this process.
 type TaskControlSource interface {
