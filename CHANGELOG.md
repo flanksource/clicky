@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.21.85](https://github.com/flanksource/clicky/compare/v1.21.84...v1.21.85) (2026-10-27)
+
+
+### ✨ Features
+
+* support cancellable and authorized report tasks ([b47222a](https://github.com/flanksource/clicky/commit/b47222aaee982c99a449bb1c3a8a2012b1a7b789))
+
 ## [1.21.84](https://github.com/flanksource/clicky/compare/v1.21.83...v1.21.84) (2026-10-27)
 
 
