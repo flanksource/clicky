@@ -560,8 +560,11 @@ func UseFormatter(opts FormatOptions) {
 //	})
 //
 //	result, _ := clicky.Format(myData, clicky.FormatOptions{Format: "upper"})
-func RegisterFormatter(name string, fn func(data interface{}, options FormatOptions) (string, error)) {
-	formatters.RegisterFormatter(name, fn)
+//
+// Pass formatters.WithContentType to declare the media type the format
+// produces (served as Content-Type over HTTP; a non-text type is binary).
+func RegisterFormatter(name string, fn func(data interface{}, options FormatOptions) (string, error), opts ...formatters.RegisterOption) {
+	formatters.RegisterFormatter(name, fn, opts...)
 }
 
 // ListCustomFormatters returns a sorted list of all registered custom formatter names.
