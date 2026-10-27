@@ -1,6 +1,9 @@
 package entity
 
-import "fmt"
+import (
+	"context"
+	"fmt"
+)
 
 // ParseArgs parses HTTPie-style positional arguments (key=value, key:=json, …)
 // into a body map for create/update commands. Root clicky wires it in init() to
@@ -19,7 +22,7 @@ var ParseArgs = func(args []string) (map[string]any, error) {
 // It is a package-level hook rather than a direct dependency so the entity
 // package stays free of the root clicky package (which owns the global flag
 // state) — preserving the one-way entity → clicky-subpackages dependency.
-var RenderResult = func(o any) error { return nil }
+var RenderResult = func(ctx context.Context, o any) error { return nil }
 
 // PreflightOutput validates CLI output options before a generated operation runs.
 var PreflightOutput = func() error { return nil }

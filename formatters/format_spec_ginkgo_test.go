@@ -8,6 +8,13 @@ import (
 )
 
 var _ = Describe("format specification preflight", func() {
+	It("accepts registered custom formats for stdout and file sinks", func() {
+		RegisterFormatter("report-format", func(any, FormatOptions) (string, error) { return "report", nil })
+		defer UnregisterFormatter("report-format")
+		opts := FormatOptions{Format: "report-format,report-format=report.html"}
+		Expect(opts.ParseFormatSpec()).To(Succeed())
+		Expect(opts.Sinks).To(Equal([]FormatSink{{Format: "report-format"}, {Format: "report-format", File: "report.html"}}))
+	})
 	It("leaves no partial sinks after a bad entry", func() {
 		opts := FormatOptions{Format: "json=rows.json,unknown"}
 		Expect(opts.ParseFormatSpec()).To(MatchError(ContainSubstring("unknown format")))

@@ -315,7 +315,7 @@ func generateListCommand(parent *cobra.Command, entity EntityInfo, op EntityOper
 			if err != nil {
 				return err
 			}
-			return RenderResult(result)
+			return RenderResult(c.Context(), result)
 		},
 	}
 
@@ -403,10 +403,10 @@ func generateIDCommand(parent *cobra.Command, spec idCommand) {
 			}
 			result, err := runEntityOp(c, op, flagMap, args)
 			if err != nil {
-				return renderCommandError(verb, err)
+				return renderCommandError(c.Context(), verb, err)
 			}
 			if result != nil {
-				return RenderResult(result)
+				return RenderResult(c.Context(), result)
 			}
 			return nil
 		},
@@ -515,7 +515,7 @@ func generateBodyCommand(parent *cobra.Command, verb, short string, op EntityOpe
 				return err
 			}
 			if result != nil {
-				return RenderResult(result)
+				return RenderResult(c.Context(), result)
 			}
 			return nil
 		},
@@ -585,7 +585,7 @@ func generateBulkActionCommand(parent *cobra.Command, ba BulkActionInfo) {
 				return err
 			}
 			if result != nil {
-				return RenderResult(result)
+				return RenderResult(c.Context(), result)
 			}
 			return nil
 		},

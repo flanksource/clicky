@@ -73,7 +73,7 @@ func SSEHandlerWithSource(source RunSource, taskIDs ...string) http.Handler {
 			case <-r.Context().Done():
 				return
 			case <-ticker.C:
-				snapshots := snapshotsWithSource(r.Context(), source, finished, ids...)
+				snapshots := visibleSnapshots(r.Context(), source, snapshotsWithSource(r.Context(), source, finished, ids...))
 				allDone := true
 				anyEmitted := false
 
@@ -205,7 +205,7 @@ func emitOutputDelta(
 // re-emits when the listing changes, and pings in between (sse.Snapshot). A
 // failure to list runs ends the stream with an "event: error" frame.
 func RunsSSEHandler(supplement func(RunFilter) []RunMeta) http.Handler {
-	return runsSSEHandler(func(_ context.Context, filter RunFilter) ([]RunMeta, error) {
+	return runsSSEHandler(nil, func(_ context.Context, filter RunFilter) ([]RunMeta, error) {
 		if supplement == nil {
 			return nil, nil
 		}
@@ -215,7 +215,7 @@ func RunsSSEHandler(supplement func(RunFilter) []RunMeta) http.Handler {
 
 // RunsSSEHandlerWithSource streams both in-memory and externally-owned runs.
 func RunsSSEHandlerWithSource(source RunSource) http.Handler {
-	return runsSSEHandler(func(ctx context.Context, filter RunFilter) ([]RunMeta, error) {
+	return runsSSEHandler(source, func(ctx context.Context, filter RunFilter) ([]RunMeta, error) {
 		if source == nil {
 			return nil, nil
 		}
@@ -223,7 +223,7 @@ func RunsSSEHandlerWithSource(source RunSource) http.Handler {
 	})
 }
 
-func runsSSEHandler(loadExternal func(context.Context, RunFilter) ([]RunMeta, error)) http.Handler {
+func runsSSEHandler(source RunSource, loadExternal func(context.Context, RunFilter) ([]RunMeta, error)) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		filter := runFilterFromQuery(r)
 		err := sse.ServeSnapshot(w, r, sse.SnapshotOptions{
@@ -233,7 +233,7 @@ func runsSSEHandler(loadExternal func(context.Context, RunFilter) ([]RunMeta, er
 				if err != nil {
 					return nil, fmt.Errorf("list external task runs: %w", err)
 				}
-				return mergeRunMetas(RunsRaw(filter), external), nil
+				return visibleRuns(ctx, source, mergeRunMetas(RunsRaw(filter), external)), nil
 			},
 			// Listing updates are cheaper and less urgent than per-task progress,
 			// so poll on a slower tick than SSEHandler.

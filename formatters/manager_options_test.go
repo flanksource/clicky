@@ -1,12 +1,27 @@
 package formatters
 
 import (
+	"context"
 	"github.com/flanksource/clicky/api"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"net/http/httptest"
 )
 
 var _ = Describe("Non-terminal format manager", func() {
+	It("passes the request context to custom formatters", func() {
+		type key struct{}
+		ctx, cancel := context.WithCancel(context.WithValue(context.Background(), key{}, "request"))
+		request := httptest.NewRequest("GET", "/", nil).WithContext(ctx)
+		RegisterFormatter("context-test", func(_ any, opts FormatOptions) (string, error) {
+			Expect(opts.Context.Value(key{})).To(Equal("request"))
+			cancel()
+			return "", opts.Context.Err()
+		})
+		DeferCleanup(UnregisterFormatter, "context-test")
+		_, err := NewFormatManager().FormatWithContext(request, FormatOptions{Format: "context-test"}, "example")
+		Expect(err).To(MatchError(context.Canceled))
+	})
 	DescribeTable("preserves binary bytes with NoColor on both formatting paths",
 		func(format string) {
 			const binary = "binary\x00\xff\x1b[31mpayload\x1b[0m"

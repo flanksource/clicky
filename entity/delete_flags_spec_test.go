@@ -36,7 +36,7 @@ var _ = Describe("entity delete with flags", func() {
 	BeforeEach(func() {
 		rendered = nil
 		originalRender := RenderResult
-		RenderResult = func(value any) error {
+		RenderResult = func(_ context.Context, value any) error {
 			rendered = append(rendered, value)
 			return nil
 		}

@@ -391,20 +391,20 @@ func addNamedCommand[T any, R any](
 		})
 		if err != nil {
 			if result != nil {
-				err = errors.Join(err, RenderResult(result))
+				err = errors.Join(err, RenderResult(ctx, result))
 			}
-			return renderCommandError(name, err)
+			return renderCommandError(ctx, name, err)
 		}
 
-		return RenderResult(result)
+		return RenderResult(ctx, result)
 	}
 
 	return cmd
 }
 
-func renderCommandError(name string, err error) error {
+func renderCommandError(ctx context.Context, name string, err error) error {
 	if rich, ok := renderableError(err); ok {
-		if renderErr := RenderResult(rich); renderErr != nil {
+		if renderErr := RenderResult(ctx, rich); renderErr != nil {
 			return renderErr
 		}
 	} else {
