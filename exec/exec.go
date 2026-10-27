@@ -300,12 +300,14 @@ func (p *Process) Run() *Process {
 	// prevent the child from ever starting.
 	if p.ctx != nil && p.ctx.Err() != nil {
 		p.setErr(p.ctx.Err())
+		publishExec(p, ExecExit)
 		return p
 	}
 
 	cmd, child, err := p.buildCmd()
 	if err != nil {
 		p.setErr(err)
+		publishExec(p, ExecExit)
 		return p
 	}
 
@@ -320,8 +322,10 @@ func (p *Process) Run() *Process {
 	launch, err := p.startCmd(cmd, child)
 	if err != nil {
 		p.setErr(err)
+		publishExec(p, ExecExit)
 		return p
 	}
+	publishExec(p, ExecStart)
 	p.finishRun(cmd, launch, p.waitCmd(cmd), started)
 	return p
 }
@@ -532,6 +536,7 @@ func (p *Process) finishRun(cmd *exec.Cmd, launch *launchStatus, runErr error, s
 	p.duration = finished.Sub(started)
 	p.mu.Unlock()
 
+	publishExec(p, ExecExit)
 	p.log.Tracef("%s", p.Pretty().ANSI())
 }
 
