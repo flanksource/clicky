@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.21.84](https://github.com/flanksource/clicky/compare/v1.21.83...v1.21.84) (2026-10-27)
+
+
+### ⚠ BREAKING CHANGES
+
+* optional-id collection actions no longer declare `id` in the request body schema; send it as ?id= instead.
+
+### ✨ Features
+
+* add custom formatter content types and route optional ids as query positionals ([6197ffc](https://github.com/flanksource/clicky/commit/6197ffc03de352f540ff5aa7b8774531c5014cab))
+* **api:** inline-styled stack trace HTML and fenced Markdown for email-safe copies ([25503a1](https://github.com/flanksource/clicky/commit/25503a184e0858ad1b90186a134445cf65a5a76f))
+
 ## [1.21.83](https://github.com/flanksource/clicky/compare/v1.21.82...v1.21.83) (2026-10-25)
 
 
