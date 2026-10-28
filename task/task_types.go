@@ -122,6 +122,9 @@ type WaitResult struct {
 
 // RetryConfig holds configuration for task retry behavior
 type RetryConfig struct {
+	// OnError exposes a failed attempt to its host. The host may wait for a user
+	// decision, then resume the same operation with an optional message.
+	OnError         func(context.Context, RetryRequest) (RetryDecision, error)
 	RetryableErrors []string // Error message patterns that should trigger retries
 	// Retryable, when set, decides retryability on its own (e.g. errors.Is
 	// against a sentinel); RetryableErrors is then not consulted.
@@ -164,18 +167,13 @@ func Retry(ctx context.Context, config RetryConfig, run func(ctx context.Context
 			return context.Cause(ctx)
 		}
 		err := run(ctx, attempt)
-		if err == nil || !shouldRetryError(err, config) {
+		if err == nil {
 			return err
 		}
-		if attempt > config.MaxRetries {
-			return fmt.Errorf("failed after %d attempts: %w", attempt, err)
-		}
-		timer := time.NewTimer(config.Delay(attempt))
-		select {
-		case <-timer.C:
-		case <-ctx.Done():
-			timer.Stop()
-			return fmt.Errorf("retry cancelled after attempt %d (%v): %w", attempt, err, context.Cause(ctx))
+		var retry bool
+		ctx, retry, err = retryAfterError(ctx, config, attempt, err)
+		if !retry {
+			return err
 		}
 	}
 }

@@ -37,6 +37,7 @@ type TaskSnapshot struct {
 	Status    string        `json:"status"`
 	Duration  string        `json:"duration,omitempty"`
 	Error     string        `json:"error,omitempty"`
+	Retry     *RetryRequest `json:"retry,omitempty"`
 	Message   string        `json:"message,omitempty"`   // latest log line
 	Logs      []LogEntry    `json:"logs,omitempty"`      // all log entries
 	Total     int           `json:"total,omitempty"`     // group: total child tasks
@@ -85,6 +86,10 @@ func SnapshotTask(t *Task, group *Group) TaskSnapshot {
 		Status: string(t.Status()),
 	}
 	t.mu.Lock()
+	if t.retryRequest != nil && t.status == StatusRunning {
+		request := *t.retryRequest
+		snap.Retry = &request
+	}
 	dependencies := append([]*Task(nil), t.dependencies...)
 	t.mu.Unlock()
 	for _, dependency := range dependencies {

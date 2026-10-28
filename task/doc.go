@@ -233,6 +233,13 @@ policy to code that is not a task:
 		return indexModule(ctx)
 	})
 
+RetryConfig.OnError receives the original error and remaining automatic retry budget.
+The host can await user input, honoring the callback context, and return a RetryDecision.
+RetryResume resumes the operation even after MaxRetries; RetryFail preserves the error;
+RetryAutomatic follows the bounded retry policy. RetryMessage(ctx) exposes the user's
+message to the resumed attempt. Pending requests appear in TaskSnapshot.Retry until
+the decision or cancellation. See ExampleRetryMessage for a runnable example.
+
 # Fatal Errors
 
 For unrecoverable errors that should stop execution:
