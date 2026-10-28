@@ -227,9 +227,6 @@ func newManagerWithConcurrency(maxConcurrent int) *Manager {
 			return a == b
 		},
 		Dedupe: true,
-		Metrics: collections.MetricsOpts[*Task]{
-			Disable: true,
-		},
 	})
 	if err != nil {
 		panic(fmt.Sprintf("failed to create task queue: %v", err))
