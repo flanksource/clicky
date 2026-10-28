@@ -42,11 +42,12 @@ type Task struct {
 	bufferedLogger *logger.BufferedLogger
 
 	// Structs
-	mu          sync.Mutex
-	doneOnce    sync.Once // Ensure done channel is closed only once
-	drainedOnce sync.Once // Ensure drained channel is closed only once
-	loggerOnce  sync.Once // Ensure bufferedLogger is initialized only once
-	retryConfig RetryConfig
+	mu           sync.Mutex
+	doneOnce     sync.Once // Ensure done channel is closed only once
+	drainedOnce  sync.Once // Ensure drained channel is closed only once
+	loggerOnce   sync.Once // Ensure bufferedLogger is initialized only once
+	retryConfig  RetryConfig
+	retryRequest *RetryRequest
 
 	// 8-byte aligned types
 	startTime  time.Time

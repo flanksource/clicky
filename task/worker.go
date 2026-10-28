@@ -215,6 +215,17 @@ func (t *Task) armTimeout() context.CancelFunc {
 
 // executeWithRetry handles task execution with exponential backoff retry
 func (w *worker) executeWithRetry(task *Task) {
+	config := task.retryConfig
+	if handler := config.OnError; handler != nil {
+		config.OnError = func(ctx context.Context, request RetryRequest) (RetryDecision, error) {
+			task.mu.Lock()
+			task.retryRequest = &request
+			task.mu.Unlock()
+			task.dirty.Store(true)
+			defer func() { task.mu.Lock(); task.retryRequest = nil; task.mu.Unlock(); task.dirty.Store(true) }()
+			return handler(ctx, request)
+		}
+	}
 	for {
 		// Check if task has a function to run
 		if task.runFunc == nil {
@@ -239,32 +250,26 @@ func (w *worker) executeWithRetry(task *Task) {
 		}
 
 		if err != nil {
-			// Check if error is retryable
-			shouldRetry := shouldRetryError(err, task.retryConfig)
-
-			if shouldRetry && task.retryCount < task.retryConfig.MaxRetries {
+			task.dirty.Store(true)
+			next, retry, retryErr := retryAfterError(task.flanksourceCtx, config, task.retryCount+1, err)
+			if retry {
+				task.mu.Lock()
 				task.retryCount++
-				// Log retry attempt to bufferedLogger
+				task.flanksourceCtx.Context = next
+				task.ctx = task.flanksourceCtx
+				task.mu.Unlock()
 				task.getBufferedLogger().Warnf("Attempt %d failed, retrying: %v", task.retryCount, err)
-
-				// Calculate backoff delay
-				delay := task.retryConfig.Delay(task.retryCount)
-
-				// Wait for delay or cancellation
-				select {
-				case <-time.After(delay):
-					continue // Retry
-				case <-task.ctx.Done():
-					task.Cancel()
-					return
-				}
-			} else {
-				if _, failErr := task.FailedWithError(err); failErr != nil {
-					// Log error but continue - task is already in failed state
-					task.getBufferedLogger().Errorf("Failed to set error status: %v", failErr)
-				}
+				continue
+			}
+			if task.ctx.Err() != nil {
+				task.Cancel()
 				return
 			}
+			task.mu.Lock()
+			task.err = retryErr
+			task.mu.Unlock()
+			_, _ = task.FailedWithError(retryErr)
+			return
 		} else {
 			task.Success()
 			return
