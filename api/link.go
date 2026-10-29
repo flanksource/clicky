@@ -3,6 +3,8 @@ package api
 import (
 	"encoding/json"
 	"fmt"
+
+	"github.com/flanksource/clicky/internal/markdownutil"
 )
 
 type LinkTarget string
@@ -127,7 +129,7 @@ func (l Link) MarkdownWithOptions(options MarkdownOptions) string {
 	if l.Href == "" {
 		return label
 	}
-	return fmt.Sprintf("[%s](%s)", label, l.Href)
+	return fmt.Sprintf("[%s](%s)", label, markdownutil.Destination(l.Href))
 }
 
 func (l Link) HTML() string {

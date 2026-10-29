@@ -14,6 +14,7 @@ import (
 	"github.com/yuin/goldmark/extension"
 	east "github.com/yuin/goldmark/extension/ast"
 	"github.com/yuin/goldmark/text"
+	"github.com/yuin/goldmark/util"
 )
 
 // ParseString parses markdown source into a structured Clicky markdown document.
@@ -316,7 +317,8 @@ func (p *parserState) convertText(n *gast.Text) Node {
 	if n.HardLineBreak() || n.SoftLineBreak() {
 		text += "\n"
 	}
-	return Node{Kind: "text", Text: text}
+	decoded := util.ResolveEntityNames(util.ResolveNumericReferences(util.UnescapePunctuations([]byte(text))))
+	return Node{Kind: "text", Text: string(decoded)}
 }
 
 // nodeLineText returns text held directly on a leaf block node's line segments

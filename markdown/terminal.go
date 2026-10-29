@@ -2,6 +2,7 @@ package markdown
 
 import (
 	"fmt"
+	"html"
 	"strings"
 
 	"github.com/flanksource/clicky/api"
@@ -207,7 +208,7 @@ func renderTerminalInline(n Node, mode terminalMode) string {
 	case "footnote_ref":
 		return api.FootnoteRef{ID: n.ID}.String()
 	case "raw-html", "html":
-		return terminalRawHTML(n)
+		return htmlPlainText(n)
 	default:
 		return renderTerminalBlock(n, mode)
 	}
@@ -217,14 +218,14 @@ func renderTerminalStyled(nodes []Node, mode terminalMode, style string) string 
 	return mode.render(api.Text{}.Append(renderTerminalInlines(nodes, terminalPlain), style))
 }
 
-func terminalRawHTML(n Node) string {
-	if n.Source != "" {
-		return n.Source
+func htmlPlainText(n Node) string {
+	if n.Text != "" {
+		return n.Text
 	}
 	if n.RawHTML != "" {
-		return n.RawHTML
+		return html.UnescapeString(stripTags(n.RawHTML))
 	}
-	return n.Text
+	return html.UnescapeString(stripTags(n.Source))
 }
 
 func isTerminalInline(kind string) bool {

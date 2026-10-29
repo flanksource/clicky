@@ -2,6 +2,8 @@ package api
 
 import (
 	"strings"
+
+	"github.com/flanksource/clicky/internal/markdownutil"
 )
 
 // Code represents source code that can be syntax-highlighted across
@@ -73,7 +75,8 @@ func (c Code) Markdown() string {
 	// Ensure content doesn't break the fence
 	content := strings.TrimRight(c.Content, "\n")
 
-	return "```" + lang + "\n" + content + "\n```"
+	fence := markdownutil.Fence(content)
+	return fence + lang + "\n" + content + "\n" + fence
 }
 
 // normalizeLanguage converts common language names to chroma-compatible identifiers.

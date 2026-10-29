@@ -91,6 +91,7 @@ var _ = Describe("Collapsible Rows", func() {
 					{"name": TypedValue{Textable: Text{Content: "Alice"}}, "age": TypedValue{Textable: Text{Content: "30"}}},
 					{"name": TypedValue{Textable: Text{Content: "Bob"}}, "age": TypedValue{Textable: Text{Content: "25"}}},
 				},
+				Interactive: true,
 				RowDetail: []Textable{
 					Text{Content: "Alice detail info"},
 					nil, // Bob has no detail
@@ -107,12 +108,12 @@ var _ = Describe("Collapsible Rows", func() {
 			Expect(html).NotTo(ContainSubstring("Bob detail info"))
 		})
 
-		It("renders expandable rows in static HTML", func() {
+		It("renders expanded rows in static HTML", func() {
 			html := table.StaticHTML()
 
-			// Detail row should be present but hidden by default
 			Expect(html).To(ContainSubstring("Alice detail info"))
 			Expect(html).NotTo(ContainSubstring("Bob detail info"))
+			Expect(html).NotTo(ContainSubstring("<template"))
 		})
 
 		It("renders expandable rows in compact HTML", func() {
@@ -131,8 +132,8 @@ var _ = Describe("Collapsible Rows", func() {
 			Expect(html).NotTo(ContainSubstring("detail"))
 		})
 
-		It("uses Alpine.js for expand/collapse in static HTML", func() {
-			html := table.StaticHTML()
+		It("uses Alpine.js for expand/collapse in interactive HTML", func() {
+			html := table.HTML()
 
 			// Should use Alpine.js x-data for state management
 			Expect(html).To(ContainSubstring("x-data"))
@@ -142,12 +143,11 @@ var _ = Describe("Collapsible Rows", func() {
 		It("spans detail row across all columns", func() {
 			html := table.StaticHTML()
 
-			// Detail row should have colspan spanning all columns (2 data + 1 chevron)
-			Expect(html).To(ContainSubstring(`colspan="3"`))
+			Expect(html).To(ContainSubstring(`colspan="2"`))
 		})
 
 		It("includes chevron indicator on expandable rows", func() {
-			html := table.StaticHTML()
+			html := table.HTML()
 
 			// Should have a chevron icon for expand state
 			Expect(strings.Contains(html, "chevron") || strings.Contains(html, "▶")).To(BeTrue())

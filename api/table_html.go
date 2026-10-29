@@ -137,21 +137,12 @@ func (table TextTable) StaticHTML() string {
 		return `<p class="text-red-500 text-center py-8">Table has no columns defined</p>`
 	}
 
-	hasDetail := table.hasAnyRowDetail()
-	colCount := len(columns)
-	if hasDetail {
-		colCount++ // extra column for chevron
-	}
-
 	var result strings.Builder
 	result.WriteString(`<div class="overflow-x-auto px-6 py-4">`)
 	result.WriteString(`<table class="w-full border-collapse text-sm">`)
 
 	// Headers
 	result.WriteString(`<thead><tr class="bg-gray-100">`)
-	if hasDetail {
-		result.WriteString(`<th class="border border-gray-300 px-3 py-2 w-8"></th>`)
-	}
 	for _, col := range columns {
 		headerLabel := col.Label
 		if headerLabel == "" {
@@ -162,7 +153,6 @@ func (table TextTable) StaticHTML() string {
 	}
 	result.WriteString("</tr></thead>")
 
-	// Rows - use separate <tbody> per expandable row pair for Alpine.js scoping
 	for i, row := range table.Rows {
 		detail := table.getRowDetail(i)
 		rowClass := ""
@@ -170,22 +160,8 @@ func (table TextTable) StaticHTML() string {
 			rowClass = " bg-gray-50"
 		}
 
-		if detail != nil {
-			result.WriteString(`<tbody x-data="{ open: false }">`)
-			fmt.Fprintf(&result, `<tr class="cursor-pointer hover:bg-gray-100%s" @click="open = !open">`, rowClass)
-			result.WriteString(`<td class="border border-gray-300 px-3 py-2 text-center">`)
-			result.WriteString(`<iconify-icon x-show="!open" icon="codicon:chevron-right"></iconify-icon>`)
-			result.WriteString(`<iconify-icon x-show="open" style="display:none" icon="codicon:chevron-down"></iconify-icon>`)
-			result.WriteString(`</td>`)
-		} else {
-			result.WriteString(`<tbody>`)
-			if hasDetail {
-				fmt.Fprintf(&result, `<tr class="%s">`, rowClass)
-				result.WriteString(`<td class="border border-gray-300 px-3 py-2"></td>`)
-			} else {
-				fmt.Fprintf(&result, `<tr class="%s">`, rowClass)
-			}
-		}
+		result.WriteString(`<tbody>`)
+		fmt.Fprintf(&result, `<tr class="%s">`, rowClass)
 
 		for _, col := range columns {
 			fieldValue, exists := row[col.Name]
@@ -199,10 +175,10 @@ func (table TextTable) StaticHTML() string {
 
 		// Detail row
 		if detail != nil {
-			result.WriteString(`<template x-if="open"><tr>`)
-			fmt.Fprintf(&result, `<td colspan="%d" class="border border-gray-300 px-6 py-4 bg-gray-50 whitespace-normal break-words max-w-0">`, colCount)
+			result.WriteString(`<tr>`)
+			fmt.Fprintf(&result, `<td colspan="%d" class="border border-gray-300 px-6 py-4 bg-gray-50 whitespace-normal break-words max-w-0">`, len(columns))
 			result.WriteString(detail.HTML())
-			result.WriteString(`</td></tr></template>`)
+			result.WriteString(`</td></tr>`)
 		}
 		result.WriteString(`</tbody>`)
 	}
@@ -217,7 +193,10 @@ func (table TextTable) PrintableHTML() string {
 }
 
 func (table TextTable) HTML() string {
-	return table.html(false)
+	if !table.Interactive {
+		return table.StaticHTML()
+	}
+	return table.html(true)
 }
 func (table TextTable) html(interactive bool) string {
 	if len(table.Rows) == 0 {

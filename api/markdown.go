@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/flanksource/clicky/api/tailwind"
+	"github.com/flanksource/clicky/internal/markdownutil"
 )
 
 func markdownTextable(t Textable, slack bool) string {
@@ -47,16 +48,19 @@ func (t Text) boldMD(text string, slack bool) string {
 }
 
 func (t Text) markdown(options MarkdownOptions) string {
-	slack := options.Dialect == DialectSlack
-	renderedContent := t.Content
-	plainContent := t.Content
+	result := t.markdownContent(options)
 	for _, child := range t.Children {
-		renderedContent += markdownTextableWithOptions(child, options)
-		plainContent += child.String()
+		result += markdownTextableWithOptions(child, options)
 	}
+	return result
+}
+
+func (t Text) markdownContent(options MarkdownOptions) string {
+	slack := options.Dialect == DialectSlack
+	plainContent := t.Content
 
 	var style TailwindStyle
-	content := renderedContent
+	content := plainContent
 
 	if t.Class != (Class{}) {
 		style = classToTailwindStyle(t.Class)
@@ -70,10 +74,13 @@ func (t Text) markdown(options MarkdownOptions) string {
 			content = transformedText
 		}
 	} else {
-		return renderedContent
+		return markdownutil.Text(content)
 	}
 
-	result := content
+	result := markdownutil.Text(content)
+	if result == "" {
+		return ""
+	}
 	if style.Bold {
 		result = t.boldMD(result, slack)
 	}

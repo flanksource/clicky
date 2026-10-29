@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/flanksource/clicky/api"
+	"github.com/flanksource/clicky/internal/markdownutil"
 	"gopkg.in/yaml.v3"
 )
 
@@ -71,7 +72,9 @@ func (n Node) String() string {
 		return strings.TrimSpace(joinNodeStrings(n.Children, "\n"))
 	case "paragraph", "heading", "emphasis", "strong", "strike", "link", "image", "table_cell":
 		return strings.TrimSpace(joinNodeStrings(n.Children, ""))
-	case "text", "code", "raw-html", "html":
+	case "raw-html", "html":
+		return htmlPlainText(n)
+	case "text", "code":
 		if n.Text != "" {
 			return n.Text
 		}
@@ -218,7 +221,7 @@ func (n Node) Markdown() string {
 		level := clampHeading(n.Level)
 		return strings.Repeat("#", level) + " " + joinNodeMarkdown(n.Children, "")
 	case "text":
-		return n.Text
+		return markdownutil.Text(n.Text)
 	case "linebreak":
 		return "  \n"
 	case "emphasis":
@@ -228,22 +231,23 @@ func (n Node) Markdown() string {
 	case "strike":
 		return "~~" + joinNodeMarkdown(n.Children, "") + "~~"
 	case "code":
-		return "`" + strings.ReplaceAll(n.Text, "`", "\\`") + "`"
+		return markdownutil.CodeSpan(n.Text)
 	case "code_block":
 		lang := n.Language
-		return "```" + lang + "\n" + strings.TrimRight(n.Source, "\n") + "\n```"
+		fence := markdownutil.Fence(n.Source)
+		return fence + lang + "\n" + strings.TrimRight(n.Source, "\n") + "\n" + fence
 	case "link":
 		title := ""
 		if n.Title != "" {
 			title = ` "` + strings.ReplaceAll(n.Title, `"`, `\"`) + `"`
 		}
-		return "[" + joinNodeMarkdown(n.Children, "") + "](" + n.Href + title + ")"
+		return "[" + joinNodeMarkdown(n.Children, "") + "](" + markdownutil.Destination(n.Href) + title + ")"
 	case "image":
 		title := ""
 		if n.Title != "" {
 			title = ` "` + strings.ReplaceAll(n.Title, `"`, `\"`) + `"`
 		}
-		return "![" + joinNodeMarkdown(n.Children, "") + "](" + n.Href + title + ")"
+		return "![" + joinNodeMarkdown(n.Children, "") + "](" + markdownutil.Destination(n.Href) + title + ")"
 	case "list":
 		lines := make([]string, 0, len(n.Items))
 		for i, item := range n.Items {
@@ -323,7 +327,7 @@ func joinNodeHTML(nodes []Node, sep string) string {
 func joinNodeMarkdown(nodes []Node, sep string) string {
 	parts := make([]string, 0, len(nodes))
 	for _, node := range nodes {
-		if s := node.Markdown(); strings.TrimSpace(s) != "" {
+		if s := node.Markdown(); strings.TrimSpace(s) != "" || node.Kind == "linebreak" || node.Kind == "text" {
 			parts = append(parts, s)
 		}
 	}
