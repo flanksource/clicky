@@ -148,7 +148,7 @@ func TestLoadLinesFromFileOrURL_XLSXColumn(t *testing.T) {
 		t.Fatal(err)
 	}
 	var read string
-	SetSpreadsheetReader(func(r io.Reader) (string, [][]string, error) {
+	SetSpreadsheetReader(func(r io.Reader, _ SpreadsheetReadOptions) (string, [][]string, error) {
 		data, err := io.ReadAll(r)
 		read = string(data)
 		return "Sheet1", [][]string{
