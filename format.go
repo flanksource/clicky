@@ -457,6 +457,10 @@ func HTMLElement(tag, content string, attrs ...map[string]string) api.HtmlElemen
 	}
 }
 
+func Avatar(name, imageURL string) api.Avatar {
+	return api.Avatar{Name: name, URL: imageURL}
+}
+
 func ClickyText(text api.Textable) formatters.ClickyText {
 	return formatters.ClickyText{Textable: text}
 }
@@ -512,6 +516,10 @@ func Link(href string) api.Link {
 
 func LinkCommand(command string) api.LinkCommand {
 	return api.NewLinkCommand(command)
+}
+
+func KeyMap[T any](m map[string]T, styles ...string) api.DescriptionList {
+	return Map(m, styles...)
 }
 
 func Map[T any](m map[string]T, styles ...string) api.DescriptionList {
