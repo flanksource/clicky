@@ -23,6 +23,7 @@ func BindFlag(cmd *cobra.Command, info FieldInfo) *FlagValue {
 		CLIFileRead:  info.CLIFileRead,
 	}
 	bindFlagValue(cmd.Flags(), info, fv)
+	fv.Explicit = func() bool { return cmd.Flags().Changed(info.FlagName) }
 	if info.FlagName != "" {
 		annotateFlag(cmd, info)
 	}
@@ -33,6 +34,9 @@ func BindFlag(cmd *cobra.Command, info FieldInfo) *FlagValue {
 // names a flag, registers it. pflag's XVar is XVarP with an empty shorthand.
 func bindFlagValue(fs *pflag.FlagSet, info FieldInfo, fv *FlagValue) {
 	register := info.FlagName != ""
+	if info.FieldType == reflect.TypeOf((*bool)(nil)) {
+		info.FieldType = reflect.TypeOf(false)
+	}
 	switch info.FieldType.Kind() {
 	case reflect.String:
 		val := info.DefaultValue
