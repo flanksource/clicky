@@ -38,6 +38,8 @@ func tailwindInlineCSS(classes string) string {
 }
 
 var inlineStaticCSS = map[string]string{
+	"inline-flex":     "display: inline-flex",
+	"items-center":    "align-items: center",
 	"font-mono":       "font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
 	"font-normal":     "font-weight: 400",
 	"font-medium":     "font-weight: 500",

@@ -2,14 +2,12 @@ package api
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 )
 
 func (t Text) HTML() string {
 	content := t.Content
-	for _, child := range t.Children {
-		content += child.HTML()
-	}
 
 	// Get the effective style (Class takes precedence over Style string)
 	var style TailwindStyle
@@ -31,7 +29,10 @@ func (t Text) HTML() string {
 		transformedText = content
 	}
 
-	html := formatHTML(transformedText, style, originalStyle)
+	html := formatHTML(htmlEscapeString(transformedText), style, originalStyle)
+	for _, child := range t.Children {
+		html += child.HTML()
+	}
 
 	// Apply tooltip if present
 	if t.Tooltip != nil && t.Tooltip.String() != "" {
@@ -43,6 +44,9 @@ func (t Text) HTML() string {
 }
 
 func (kv KeyValuePair) HTML() string {
+	if kv.IsEmpty() {
+		return ""
+	}
 	// Determine style
 	style := kv.Style
 	if style == "" {
@@ -52,6 +56,9 @@ func (kv KeyValuePair) HTML() string {
 	// HTML-escape the key and value
 	escapedKey := htmlEscapeString(kv.Key)
 	escapedValue := htmlEscapeString(fmt.Sprintf("%v", kv.Value))
+	if value, ok := kv.Value.(Textable); ok {
+		escapedValue = value.HTML()
+	}
 
 	if strings.Contains(style, "badge") {
 		// Badge style: pill-shaped badge
@@ -88,18 +95,19 @@ type HtmlElement struct {
 }
 
 func Badge(label string, classes ...string) Textable {
-	allClasses := append([]string{"badge", "p-0.5", "mr-1", "rounded-lg", "text-xs", "font-light bg-gray-200"}, classes...)
-	return HtmlElement{
+	allClasses := append([]string{"badge", "inline-flex", "items-center", "px-2", "py-0.5", "mr-1", "rounded", "text-xs", "bg-gray-200"}, classes...)
+	return badgeElement{HtmlElement: HtmlElement{
 		Tag: "span",
 		Attributes: map[string]string{
 			"class": strings.Join(allClasses, " "),
+			"style": tailwindInlineCSS(strings.Join(allClasses, " ")),
 		},
-		Content: label,
+		Content: htmlEscapeString(label),
 		Fallback: Text{
 			Content: label,
 			Style:   strings.Join(classes, " "),
 		},
-	}
+	}}
 }
 
 func (e HtmlElement) HTML() string {
@@ -197,8 +205,9 @@ func formatHTML(text string, style TailwindStyle, originalStyle string) string {
 func formatAttributes(attrs map[string]string) string {
 	var parts []string
 	for k, v := range attrs {
-		parts = append(parts, fmt.Sprintf(`%s="%s"`, k, v))
+		parts = append(parts, fmt.Sprintf(`%s="%s"`, k, htmlEscapeString(v)))
 	}
+	sort.Strings(parts)
 	return strings.Join(parts, " ")
 }
 

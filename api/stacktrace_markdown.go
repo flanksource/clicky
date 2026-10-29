@@ -2,11 +2,10 @@ package api
 
 import (
 	"fmt"
-	"regexp"
 	"strings"
-)
 
-var backtickRunRegexp = regexp.MustCompile("`+")
+	"github.com/flanksource/clicky/internal/markdownutil"
+)
 
 // renderMarkdown renders the trace as one fenced code block in the shape
 // Throwable.printStackTrace() prints: the exception header, one
@@ -29,7 +28,7 @@ func (s StackTrace) renderMarkdown() string {
 	if language == "" {
 		language = "java"
 	}
-	fence := markdownFence(body.String())
+	fence := markdownutil.Fence(body.String())
 	return fence + language + "\n" + body.String() + fence + "\n"
 }
 
@@ -61,12 +60,4 @@ func (s StackTrace) writeMarkdownSource(b *strings.Builder, f StackFrame) {
 		}
 		fmt.Fprintf(b, "\t%s%4s  %s\n", marker, sourceGutter(line), src)
 	}
-}
-
-func markdownFence(content string) string {
-	longest := 0
-	for _, run := range backtickRunRegexp.FindAllString(content, -1) {
-		longest = max(longest, len(run))
-	}
-	return strings.Repeat("`", max(3, longest+1))
 }
