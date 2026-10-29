@@ -10,6 +10,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/flanksource/clicky/api/tailwind"
+	"github.com/flanksource/clicky/internal/markdownutil"
 )
 
 type Comment string
@@ -150,69 +151,19 @@ type List struct {
 }
 
 func (l List) String() string {
-	if len(l.Items) == 0 {
-		return ""
-	}
-	var parts []string
-	for _, item := range l.Items {
-
-		parts = append(parts, item.String())
-	}
-	return strings.Join(parts, "")
+	return l.renderList(TransformerString, blockTextableString(l.Bullet))
 }
 
 func (l List) Markdown() string {
-	if len(l.Items) == 0 {
-		return ""
-	}
-	var parts []string
-	for i, item := range l.Items {
-		var bullet string
-		if l.Numbered {
-			bullet = fmt.Sprintf("%d. ", i+1)
-		} else if l.Bullet != nil {
-			bullet = l.Bullet.Markdown()
-		}
-		parts = append(parts, fmt.Sprintf("%s%s", bullet, item.Markdown()))
-	}
-	return strings.Join(parts, "\n")
+	return l.MarkdownWithOptions(MarkdownOptions{})
 }
 
 func (l List) MarkdownSlack() string {
-	if len(l.Items) == 0 {
-		return ""
-	}
-	var parts []string
-	for i, item := range l.Items {
-		var bullet string
-		if l.Numbered {
-			bullet = fmt.Sprintf("%d. ", i+1)
-		} else if l.Bullet != nil {
-			bullet = markdownTextable(l.Bullet, true)
-		}
-		parts = append(parts, fmt.Sprintf("%s%s", bullet, markdownTextable(item, true)))
-	}
-	return strings.Join(parts, "\n")
+	return l.MarkdownWithOptions(MarkdownOptions{Dialect: DialectSlack})
 }
 
 func (l List) ANSI() string {
-	if len(l.Items) == 0 {
-		return ""
-	}
-	var parts []string
-	for i, item := range l.Items {
-		var bullet string
-		if l.Numbered {
-			bullet = fmt.Sprintf("%d. ", i+1)
-		} else if l.Bullet != nil {
-			bullet = l.Bullet.ANSI()
-		}
-		parts = append(parts, fmt.Sprintf("%s%s", bullet, item.ANSI()))
-	}
-	if len(parts) > l.MaxInline && l.MaxInline > 0 || len(parts) > 3 {
-		return strings.Join(parts, "\n")
-	}
-	return strings.Join(parts, ", ")
+	return l.renderList(TransformerANSI, blockTextableANSI(l.Bullet))
 }
 
 func (l List) HTML() string {
@@ -223,22 +174,31 @@ func (l List) HTML() string {
 	for _, item := range l.Items {
 		parts = append(parts, item.HTML())
 	}
-	if len(parts) <= l.MaxInline {
-		return strings.Join(parts, ",")
+	if l.inline(parts) {
+		return strings.Join(parts, ", ")
 	}
 
-	var tag string
-	if l.Numbered {
+	tag := "ul"
+	if l.Numbered || l.Ordered {
 		tag = "ol"
-	} else {
-		tag = "ul"
+	}
+	if l.Unstyled {
+		tag = "div"
 	}
 
 	parts = []string{}
 	for _, item := range l.Items {
-		parts = append(parts, fmt.Sprintf("<li>%s</li>", item.HTML()))
+		itemTag := "li"
+		if l.Unstyled {
+			itemTag = "div"
+		}
+		parts = append(parts, fmt.Sprintf("<%s>%s</%s>", itemTag, item.HTML(), itemTag))
 	}
-	return fmt.Sprintf("<%s>%s</%s>", tag, strings.Join(parts, ""), tag)
+	attributes := ""
+	if l.Style != "" {
+		attributes = ` class="` + htmlEscapeString(l.Style) + `"`
+	}
+	return fmt.Sprintf("<%s%s>%s</%s>", tag, attributes, strings.Join(parts, ""), tag)
 }
 
 func (t Text) NewLine() Text {
@@ -530,17 +490,29 @@ func (kv KeyValuePair) ANSI() string {
 }
 
 func (kv KeyValuePair) Markdown() string {
+	return kv.MarkdownWithOptions(MarkdownOptions{})
+}
+
+func (kv KeyValuePair) MarkdownWithOptions(options MarkdownOptions) string {
 	if kv.IsEmpty() {
 		return ""
 	}
-	return fmt.Sprintf("**%s**: %v", kv.Key, kv.Value)
+	value := markdownutil.Text(fmt.Sprint(kv.Value))
+	if text, ok := kv.Value.(Textable); ok {
+		value = RenderMarkdown(text, options)
+	}
+	separator := " "
+	if strings.Contains(value, "\n") {
+		separator = "\n\n"
+	}
+	if list, ok := kv.Value.(List); ok && (list.MaxInline <= 0 || list.Ordered || list.Numbered || len(list.Items) > list.MaxInline) {
+		separator = "\n\n"
+	}
+	return Text{}.boldMD(markdownutil.Text(kv.Key), options.Dialect == DialectSlack) + ":" + separator + strings.TrimSpace(value)
 }
 
 func (kv KeyValuePair) MarkdownSlack() string {
-	if kv.IsEmpty() {
-		return ""
-	}
-	return fmt.Sprintf("%s: %v", Text{}.boldMD(kv.Key, true), kv.Value)
+	return kv.MarkdownWithOptions(MarkdownOptions{Dialect: DialectSlack})
 }
 
 // DescriptionList represents a collection of key-value pairs rendered as an HTML description list.
@@ -628,21 +600,22 @@ func (dl DescriptionList) MarkdownWithOptions(options MarkdownOptions) string {
 		return ""
 	}
 	var parts []string
+	separator := ", "
 	for _, item := range dl.Items {
-		parts = append(parts, RenderMarkdown(item, options))
+		part := RenderMarkdown(item, options)
+		if part == "" {
+			continue
+		}
+		if strings.Contains(part, "\n") || len(dl.Items) > 3 {
+			separator = "\n\n"
+		}
+		parts = append(parts, part)
 	}
-	return strings.Join(parts, ", ")
+	return strings.Join(parts, separator)
 }
 
 func (dl DescriptionList) MarkdownSlack() string {
-	if len(dl.Items) == 0 {
-		return ""
-	}
-	var parts []string
-	for _, item := range dl.Items {
-		parts = append(parts, markdownTextable(item, true))
-	}
-	return strings.Join(parts, ", ")
+	return dl.MarkdownWithOptions(MarkdownOptions{Dialect: DialectSlack})
 }
 
 func KeyValue(key string, value any, styles ...string) KeyValuePair {

@@ -1,10 +1,5 @@
 package api
 
-import (
-	"fmt"
-	"strings"
-)
-
 // Dialect selects the markdown flavour to emit. It exists because "markdown"
 // is not one target: the same document is consumed by GitHub-flavoured
 // renderers, by Slack, and by MDX compilers, and they disagree about how
@@ -64,18 +59,5 @@ func (tl TextList) MarkdownWithOptions(options MarkdownOptions) string {
 }
 
 func (l List) MarkdownWithOptions(options MarkdownOptions) string {
-	if len(l.Items) == 0 {
-		return ""
-	}
-	parts := make([]string, 0, len(l.Items))
-	for i, item := range l.Items {
-		var bullet string
-		if l.Numbered {
-			bullet = fmt.Sprintf("%d. ", i+1)
-		} else if l.Bullet != nil {
-			bullet = RenderMarkdown(l.Bullet, options)
-		}
-		parts = append(parts, bullet+RenderMarkdown(item, options))
-	}
-	return strings.Join(parts, "\n")
+	return l.renderList(func(value Textable) string { return RenderMarkdown(value, options) }, blockTextableString(l.Bullet))
 }

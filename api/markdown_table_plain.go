@@ -16,8 +16,8 @@ func (t TextTable) plainMarkdown(options MarkdownOptions) string {
 	}
 	headers := make([]string, len(t.Headers))
 	for i, header := range t.Headers {
-		text := RenderMarkdown(Text{Content: header.String()}, options)
-		headers[i] = markdownHeaderTitle(markdownNewlinesToBr(text))
+		text := RenderMarkdown(Text{Content: markdownHeaderTitle(header.String())}, options)
+		headers[i] = markdownNewlinesToBr(text)
 	}
 	rows := make([][]string, len(t.Rows))
 	var notes strings.Builder

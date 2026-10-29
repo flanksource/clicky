@@ -465,6 +465,10 @@ func (f PrettyField) Parse(value interface{}) (FieldValue, error) {
 		// Store TreeNode as-is without dereferencing
 		return v, nil
 	}
+	if typed := TryTypedValue(value); typed != nil && typed.Textable != nil {
+		v.Text = typed.Textable
+		return v, nil
+	}
 
 	// Dereference pointer values before processing
 	val := reflect.ValueOf(value)
