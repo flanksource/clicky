@@ -10,7 +10,7 @@ allowBuilds:
   vue-demi: set this to true or false
 
 catalog:
-  '@flanksource/clicky-ui': ^0.3.25
+  '@flanksource/clicky-ui': ^0.3.54
   "@iconify/react": ^5.0.2
   "@radix-ui/react-compose-refs": ^1.1.2
   "@radix-ui/react-slot": ^1.1.1
@@ -29,6 +29,9 @@ catalog:
   vite: ^7.3.6
 
 catalogMode: prefer
+
+minimumReleaseAgeExclude:
+  - "@flanksource/clicky-ui@0.3.54"
 
 onlyBuiltDependencies:
   - esbuild
