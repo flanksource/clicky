@@ -114,6 +114,10 @@ func validateDefault(info FieldInfo) error {
 		return nil
 	}
 	var err error
+	if info.FieldType == reflect.TypeOf((*bool)(nil)) {
+		_, err = strconv.ParseBool(info.DefaultValue)
+		return err
+	}
 	switch info.FieldType.Kind() {
 	case reflect.Int:
 		_, err = strconv.Atoi(info.DefaultValue)
@@ -182,11 +186,11 @@ func splitFlagTag(tag string) (name, short string) {
 // GetFieldByPath navigates through embedded structs using field indices
 func GetFieldByPath(structValue reflect.Value, fieldPath []int) reflect.Value {
 	current := structValue
-	for _, index := range fieldPath {
+	for position, index := range fieldPath {
 		current = current.Field(index)
 
 		// If we hit an embedded pointer struct, dereference it
-		if current.Kind() == reflect.Pointer {
+		if current.Kind() == reflect.Pointer && (position < len(fieldPath)-1 || current.Type() != reflect.TypeOf((*bool)(nil))) {
 			if current.IsNil() {
 				// Initialize nil embedded struct pointer
 				current.Set(reflect.New(current.Type().Elem()))

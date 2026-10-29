@@ -13,6 +13,7 @@ import (
 
 // FlagValue holds information about a flag and its binding
 type FlagValue struct {
+	Explicit       func() bool
 	FieldName      string
 	FieldPath      []int // Field indices for navigating embedded structs
 	FieldType      reflect.Type

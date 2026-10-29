@@ -8,6 +8,7 @@ import (
 	"github.com/flanksource/clicky"
 	"github.com/flanksource/clicky/api"
 	clickyformatters "github.com/flanksource/clicky/formatters"
+	"github.com/flanksource/clicky/markdown"
 	"github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
@@ -69,6 +70,12 @@ func TestFormatters(t *testing.T) {
 }
 
 func TestSlackFormatter(t *testing.T) {
+	g := NewWithT(t)
+	parseMarkdown := func(source string) api.Textable {
+		doc, err := markdown.ParseString(source)
+		g.Expect(err).NotTo(HaveOccurred())
+		return doc
+	}
 	type Alert struct {
 		Title   string          `pretty:"title"`
 		Org     string          `pretty:"label=org"`
@@ -83,13 +90,13 @@ func TestSlackFormatter(t *testing.T) {
 		Title:   "GitHub Action 'Create Release' Failing 🚨",
 		Org:     "flanksource",
 		Divider: api.HR,
-		Summary: clicky.Text("The Create Release GitHub Actions workflow for `config-db` is failing. A process within the workflow is exiting with code 2, which is blocking the creation of new software releases."),
+		Summary: parseMarkdown("The Create Release GitHub Actions workflow for `config-db` is failing. A process within the workflow is exiting with code 2, which is blocking the creation of new software releases."),
 		Fixes: api.List{
 			Bullet: clicky.Text("• "),
 			Items: []api.Textable{
 				clicky.Text("Check GitHub Actions logs for the exact failing step.", "font-semibold"),
-				clicky.Text("Review the `.github/workflows/release.yml` script for errors."),
-				clicky.Text("Verify repository secrets and `GITHUB_TOKEN` permissions."),
+				parseMarkdown("Review the `.github/workflows/release.yml` script for errors."),
+				parseMarkdown("Verify repository secrets and `GITHUB_TOKEN` permissions."),
 			},
 		},
 		Also: api.List{
@@ -108,7 +115,6 @@ func TestSlackFormatter(t *testing.T) {
 
 	formatter := clickyformatters.NewSlackFormatter()
 	out, err := formatter.Format(message, clickyformatters.FormatOptions{})
-	g := NewWithT(t)
 	g.Expect(err).NotTo(HaveOccurred())
 
 	expectedPath := filepath.Join("testdata", "slack-msg.json")

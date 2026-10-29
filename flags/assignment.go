@@ -20,6 +20,13 @@ const ARGS = "__args__"
 // AssignFieldValue assigns a flag value to a struct field using the field path
 func AssignFieldValue(structValue reflect.Value, fv *FlagValue, args []string, isStdinAvailable bool) error {
 	fieldValue := GetFieldByPath(structValue, fv.FieldPath)
+	if fv.FieldType == reflect.TypeOf((*bool)(nil)) {
+		if (fv.Explicit != nil && fv.Explicit()) || fv.DefaultValue != "" {
+			value := *fv.BoolPtr
+			fieldValue.Set(reflect.ValueOf(&value))
+		}
+		return nil
+	}
 
 	if !fieldValue.IsValid() || !fieldValue.CanSet() {
 		return fmt.Errorf("cannot set field at path %v", fv.FieldPath)
@@ -215,6 +222,8 @@ func fetchFileOrURL(path string, policy FileReadPolicy) (string, error) {
 //	@data.csv:ColumnName      — values from the named column of a CSV (first row is the header)
 //	@data.xlsx:ColumnName     — values from the named column of the first worksheet
 //	@data.xls:ColumnName      — same
+//	@data.xlsx:Sheet!Column   — select a worksheet by name (single-quote names with spaces)
+//	@data.xlsx:#2!Column      — select the second worksheet by position
 //
 // For the :ColumnName forms, empty cells are skipped. The column split only
 // kicks in for .csv/.xls/.xlsx files so Windows paths like @C:/data.txt
@@ -317,7 +326,11 @@ func loadColumnFromCSV(path, column string, policy FileReadPolicy) ([]string, er
 	return out, nil
 }
 
-func loadColumnFromExcel(path, column string) ([]string, error) {
+func loadColumnFromExcel(path, selector string) ([]string, error) {
+	options, column, err := parseSpreadsheetColumn(selector)
+	if err != nil {
+		return nil, fmt.Errorf("selecting column in %s: %w", path, err)
+	}
 	file, err := openValidatedFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("opening %s: %w", path, err)
@@ -328,7 +341,7 @@ func loadColumnFromExcel(path, column string) ([]string, error) {
 		}
 	}()
 
-	sheet, rows, err := readSpreadsheet(file)
+	sheet, rows, err := readSpreadsheet(file, options)
 	if err != nil {
 		return nil, fmt.Errorf("reading %s: %w", path, err)
 	}

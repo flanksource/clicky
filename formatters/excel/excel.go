@@ -4,8 +4,10 @@
 package excel
 
 import (
+	"errors"
 	"fmt"
 	"io"
+	"strings"
 
 	"github.com/xuri/excelize/v2"
 
@@ -23,7 +25,7 @@ func Use() {
 	formatters.RegisterFormatter("excel", format)
 	formatters.RegisterFormatter("xlsx", format)
 	formatters.RegisterStreamWriter("excel", writeStream)
-	flags.SetSpreadsheetReader(readFirstSheet)
+	flags.SetSpreadsheetReader(readWorksheet)
 }
 
 // WriteFile renders data as an xlsx workbook at path.
@@ -31,19 +33,44 @@ func WriteFile(data any, path string) error {
 	return NewFormatter().FormatToFile(data, path)
 }
 
-func readFirstSheet(r io.Reader) (string, [][]string, error) {
+func readWorksheet(r io.Reader, options flags.SpreadsheetReadOptions) (sheet string, rows [][]string, err error) {
+	if options.Sheet != "" && options.Index != 0 {
+		return "", nil, fmt.Errorf("select a worksheet by name or index, not both")
+	}
+	if options.Index < 0 {
+		return "", nil, fmt.Errorf("worksheet index must be a positive integer")
+	}
 	file, err := excelize.OpenReader(r)
 	if err != nil {
 		return "", nil, err
 	}
-	defer func() { _ = file.Close() }()
+	defer func() { err = errors.Join(err, file.Close()) }()
 	sheets := file.GetSheetList()
 	if len(sheets) == 0 {
 		return "", nil, fmt.Errorf("workbook has no sheets")
 	}
-	rows, err := file.GetRows(sheets[0])
-	if err != nil {
-		return "", nil, fmt.Errorf("reading sheet %q: %w", sheets[0], err)
+	sheet = sheets[0]
+	if options.Index > len(sheets) {
+		return "", nil, fmt.Errorf("worksheet index %d out of range (workbook has %d sheets)", options.Index, len(sheets))
 	}
-	return sheets[0], rows, nil
+	if options.Index > 0 {
+		sheet = sheets[options.Index-1]
+	}
+	if options.Sheet != "" {
+		sheet = ""
+		for _, name := range sheets {
+			if strings.EqualFold(name, options.Sheet) {
+				sheet = name
+				break
+			}
+		}
+		if sheet == "" {
+			return "", nil, fmt.Errorf("worksheet %q not found (available: %s)", options.Sheet, strings.Join(sheets, ", "))
+		}
+	}
+	rows, err = file.GetRows(sheet)
+	if err != nil {
+		return "", nil, fmt.Errorf("reading sheet %q: %w", sheet, err)
+	}
+	return sheet, rows, nil
 }

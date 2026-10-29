@@ -63,7 +63,7 @@ var _ = Describe("Markdown no-color rendering", func() {
 		)
 
 		Expect(err).NotTo(HaveOccurred())
-		Expect(output).To(Equal("ready"))
+		Expect(output).To(Equal("- ready"))
 		Expect(output).NotTo(ContainSubstring("<span"))
 	})
 

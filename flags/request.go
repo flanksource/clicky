@@ -77,6 +77,17 @@ func pickRawValue(info FieldInfo, flagMap map[string]string) (raw string, hasRaw
 }
 
 func assignFieldFromRequest(fieldValue reflect.Value, info FieldInfo, raw string, hasRaw, fromFlag bool, args []string, options populateRequestOptions) error {
+	if info.FieldType == reflect.TypeOf((*bool)(nil)) {
+		if !hasRaw {
+			return nil
+		}
+		value, err := strconv.ParseBool(strings.TrimSpace(raw))
+		if err != nil {
+			return fmt.Errorf("parsing optional bool: %w", err)
+		}
+		fieldValue.Set(reflect.ValueOf(&value))
+		return nil
+	}
 	switch info.FieldType.Kind() {
 	case reflect.String:
 		val := raw
