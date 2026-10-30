@@ -192,7 +192,9 @@ func llmToolPageRequest(flags map[string]string) (entity.PageRequest, error) {
 // does: an entity resolved at runtime carries filters the operation was
 // generated without, and dropping them would silently ignore what the caller
 // asked to filter on. The transport's own parameters travel with them — an
-// operation that declares a parameter named "limit" means it.
+// operation that declares a parameter named "limit" means it. A repeated
+// undeclared key is a list filter, so every value travels, joined as the
+// declared array parameters are (queryFlagValue).
 func (s *SwaggerServer) requestFlags(r *http.Request, op *RPCOperation) (map[string]string, error) {
 	req, err := s.executor.ExtractRequestFromHTTP(r, op)
 	if err != nil {
@@ -203,7 +205,7 @@ func (s *SwaggerServer) requestFlags(r *http.Request, op *RPCOperation) (map[str
 			continue
 		}
 		if _, declared := req.Flags[key]; !declared {
-			req.Flags[key] = values[0]
+			req.Flags[key] = strings.Join(values, ",")
 		}
 	}
 	return req.Flags, nil

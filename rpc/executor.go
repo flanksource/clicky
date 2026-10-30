@@ -317,7 +317,10 @@ func (e *CommandExecutor) ExtractRequestFromHTTP(r *http.Request, op *RPCOperati
 			continue
 		}
 		req.Args = []string{}
-		if value := query.Get(name); value != "" {
+		for _, value := range query[name] {
+			if value == "" {
+				continue
+			}
 			for _, arg := range strings.Split(value, ",") {
 				req.Args = append(req.Args, strings.TrimSpace(arg))
 			}
@@ -327,13 +330,31 @@ func (e *CommandExecutor) ExtractRequestFromHTTP(r *http.Request, op *RPCOperati
 	// Then handle all other query parameters defined in the operation
 	for _, param := range op.Parameters {
 		if param.In == "query" && !IsPositionalArgument(op, param.Name) && query.Has(param.Name) {
-			req.Flags[param.Name] = query.Get(param.Name) // Override body value, even if empty
+			value, err := queryFlagValue(param, query[param.Name])
+			if err != nil {
+				return nil, err
+			}
+			req.Flags[param.Name] = value // Override body value, even if empty
 		}
 	}
 
 	// A missing required parameter still returns the extracted request, so the
 	// error response can echo the input the caller actually sent.
 	return req, missingRequiredParameter(req, op)
+}
+
+// queryFlagValue reads a query parameter the way the CLI reads a repeated flag.
+// An array parameter keeps every value, joined into one CSV record that the
+// slice flag (pflag's stringSlice, MultiFilter, the request binder) splits back
+// apart, so ?kind=a&kind=b is --kind a --kind b and a single ?kind=a,b splits as
+// it always has. A scalar given twice has no CLI meaning and is refused rather
+// than silently resolved to one of its values.
+func queryFlagValue(param RPCParameter, values []string) (string, error) {
+	if len(values) > 1 && param.Type != "array" {
+		return "", entity.NewStatusErrorf(http.StatusBadRequest, "invalid_parameters",
+			"query parameter %s takes a single value but was given %d: %q", param.Name, len(values), values)
+	}
+	return strings.Join(values, ","), nil
 }
 
 // IsPositionalArgument reports whether a request field carries the operation's
