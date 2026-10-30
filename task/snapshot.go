@@ -3,6 +3,7 @@ package task
 import (
 	"time"
 
+	"github.com/flanksource/clicky/prompt"
 	"github.com/flanksource/commons/text"
 )
 
@@ -74,6 +75,8 @@ type TaskSnapshot struct {
 	StdoutTruncated bool              `json:"stdoutTruncated,omitempty"`
 	StderrTruncated bool              `json:"stderrTruncated,omitempty"`
 	Details         any               `json:"details,omitempty"`
+	// Prompts are the questions this running task is blocked on (see prompt.TaskLabel).
+	Prompts []prompt.PromptSnapshot `json:"prompts,omitempty"`
 }
 
 // SnapshotTask creates a TaskSnapshot from a Task. group is the parent group, or
@@ -131,6 +134,7 @@ func SnapshotTask(t *Task, group *Group) TaskSnapshot {
 	snap.Stdout, snap.StdoutOffset, snap.StdoutTruncated = streamTail(output.Stdout, output.StdoutOffset)
 	snap.Stderr, snap.StderrOffset, snap.StderrTruncated = streamTail(output.Stderr, output.StderrOffset)
 	snap.Details = t.snapshotDetails()
+	snap.Prompts = pendingPrompts(t)
 	t.mu.Lock()
 	controller := t.controller
 	t.mu.Unlock()

@@ -18,6 +18,11 @@ type Scope struct {
 	Labels map[string]string
 }
 
+// TaskLabel is the Scope label naming the clicky task a prompt was raised in. The
+// task package sets it on every running task's context and lists the task's
+// pending prompts on its TaskSnapshot.
+const TaskLabel = "task"
+
 type scopeKey struct{}
 
 // WithScope returns a context that tags prompts raised under it with s.
