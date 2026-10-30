@@ -235,7 +235,7 @@ func (w *worker) executeWithRetry(task *Task) {
 		}
 
 		// Execute the task function
-		err := task.runFunc(task.flanksourceCtx, task)
+		err := task.runFunc(task.promptScoped(task.flanksourceCtx), task)
 
 		task.mu.Lock()
 		status := task.status
