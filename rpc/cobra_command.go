@@ -3,9 +3,11 @@ package rpc
 import (
 	"bytes"
 	"context"
+	"encoding/csv"
 	"fmt"
 	"io"
 	"os"
+	"strings"
 	"sync"
 
 	"github.com/flanksource/clicky/entity"
@@ -61,7 +63,7 @@ func (c *CobraExecutableCommand) Execute(ctx context.Context, opts entity.Execut
 
 	for name, val := range opts.Flags {
 		if flag := lookupAnyFlag(cmd, name); flag != nil {
-			if err := flag.Value.Set(val); err != nil {
+			if err := setFlagValue(flag, val); err != nil {
 				return "", "", fmt.Errorf("invalid value for flag %s: %w", name, err)
 			}
 			flag.Changed = true
@@ -186,9 +188,34 @@ func resetFlagSet(flags *pflag.FlagSet) {
 		return
 	}
 	flags.VisitAll(func(flag *pflag.Flag) {
-		_ = flag.Value.Set(flag.DefValue)
+		if isSliceFlag(flag) {
+			_ = setFlagValue(flag, strings.TrimSuffix(strings.TrimPrefix(flag.DefValue, "["), "]"))
+		} else {
+			_ = flag.Value.Set(flag.DefValue)
+		}
 		flag.Changed = false
 	})
+}
+
+// setFlagValue applies one request value to a flag. A slice flag's value is a
+// CSV record — what ExtractRequestFromHTTP builds from a repeated query key and
+// csvRecord builds from a JSON array — and replaces the flag's values outright.
+// pflag's Set would append to whatever an earlier call (or the reset to the
+// "[]" default) left behind.
+func setFlagValue(flag *pflag.Flag, value string) error {
+	slice, ok := flag.Value.(pflag.SliceValue)
+	if !ok {
+		return flag.Value.Set(value)
+	}
+	items := []string{}
+	if value != "" {
+		record, err := csv.NewReader(strings.NewReader(value)).Read()
+		if err != nil {
+			return fmt.Errorf("parsing %q as a CSV record: %w", value, err)
+		}
+		items = record
+	}
+	return slice.Replace(items)
 }
 
 func lookupAnyFlag(cmd *cobra.Command, name string) *pflag.Flag {
