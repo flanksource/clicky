@@ -19,10 +19,14 @@ import (
 // `error` event instead — a client that has already begun reading learns why
 // the stream stopped rather than seeing it end silently.
 func serveStream(w http.ResponseWriter, r *http.Request, op *RPCOperation) {
-	flags, args := streamInputs(r, op)
+	flags, args, err := streamInputs(r, op)
+	if err != nil {
+		writeStreamStatus(w, err)
+		return
+	}
 	stream := sse.NewWriter(w)
 
-	err := op.StreamFunc(r.Context(), flags, args, stream.Send)
+	err = op.StreamFunc(r.Context(), flags, args, stream.Send)
 	switch {
 	case err == nil, errors.Is(err, r.Context().Err()) && r.Context().Err() != nil:
 		// Done, or the client hung up. Neither is a failure.
@@ -41,10 +45,15 @@ func serveStream(w http.ResponseWriter, r *http.Request, op *RPCOperation) {
 // streamInputs reads the operation's declared parameters out of the request.
 // A stream is a GET in practice, so query parameters and path values are the
 // whole input; there is no body to decode.
-func streamInputs(r *http.Request, op *RPCOperation) (map[string]string, []string) {
+func streamInputs(r *http.Request, op *RPCOperation) (map[string]string, []string, error) {
 	flags := map[string]string{}
+	query := r.URL.Query()
 	for _, param := range op.Parameters {
-		if value := r.URL.Query().Get(param.Name); value != "" {
+		value, err := queryFlagValue(param, query[param.Name])
+		if err != nil {
+			return nil, nil, err
+		}
+		if value != "" {
 			flags[param.Name] = value
 		}
 	}
@@ -58,7 +67,7 @@ func streamInputs(r *http.Request, op *RPCOperation) (map[string]string, []strin
 			args = append(args, value)
 		}
 	}
-	return flags, args
+	return flags, args, nil
 }
 
 // writeStreamStatus answers a stream that failed before it began, using the

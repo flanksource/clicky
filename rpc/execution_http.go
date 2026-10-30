@@ -189,7 +189,7 @@ func (s *SwaggerServer) handleLookupCommand(w http.ResponseWriter, r *http.Reque
 			continue
 		}
 		if _, declared := request.Flags[key]; !declared {
-			request.Flags[key] = values[0]
+			request.Flags[key] = strings.Join(values, ",")
 		}
 	}
 
