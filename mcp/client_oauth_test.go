@@ -138,7 +138,7 @@ func testOAuthLoginUsesOIDCDiscoveryAndRefreshes(t *testing.T, metadataOverride 
 	defer httpServer.Close()
 	baseURL = httpServer.URL
 
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	isolateConfigHome(t)
 	registry := NewServerRegistry("testapp")
 	oauthConfig := &OAuthClientConfig{Scopes: append([]string(nil), scopes...)}
 	if metadataOverride {
