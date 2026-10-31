@@ -164,6 +164,9 @@ func (t *Task) Cancel() {
 		t.signalDone()
 		if neverStarted {
 			t.signalDrained()
+			if t.groupSem() != nil {
+				t.parent.unpark(t)
+			}
 		}
 	} else {
 		t.mu.Unlock()
