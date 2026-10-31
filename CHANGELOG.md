@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.21.89](https://github.com/flanksource/clicky/compare/v1.21.88...v1.21.89) (2026-10-30)
+
+
+### 🐛 Bug Fixes
+
+* **rpc:** keep every value of a repeated query parameter and reject a repeated scalar ([0d54b83](https://github.com/flanksource/clicky/commit/0d54b83c0827b462186e7c20e84e9ba9153bb9c0))
+
+## [1.21.88](https://github.com/flanksource/clicky/compare/v1.21.87...v1.21.88) (2026-10-28)
+
+
+### ✨ Features
+
+* **task:** add resumable retry with operator decision hook ([38a1152](https://github.com/flanksource/clicky/commit/38a11521eebf4bfe354719d8b010f0754a87f35b))
+
 ## [1.21.87](https://github.com/flanksource/clicky/compare/v1.21.86...v1.21.87) (2026-10-27)
 
 
