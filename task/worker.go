@@ -51,6 +51,10 @@ func (w *worker) run() {
 				// terminal just as much as running one can, so the run is
 				// handed to the store here too. See the tail of the loop.
 				observeGroupTerminal(task.parent)
+				// It may have been first in its group's line.
+				if task.groupSem() != nil {
+					task.parent.wake()
+				}
 				continue
 			}
 
@@ -63,11 +67,10 @@ func (w *worker) run() {
 
 			// Gate on group concurrency at dequeue time. If the group's permit
 			// pool is saturated, or a member added before this one is still
-			// waiting for a permit, do not occupy a worker slot — re-enqueue with
-			// a short delay and let this worker pick up other work.
+			// waiting for a permit, do not occupy a worker slot: admit parks the
+			// task in its group's line, which re-enqueues it once it can start.
 			sem := task.groupSem()
 			if sem != nil && !task.parent.admit(task) {
-				w.manager.taskQueue.EnqueueWithDelay(task, 50*time.Millisecond)
 				continue
 			}
 
@@ -79,7 +82,7 @@ func (w *worker) run() {
 				// retry, timeout, panic). Registered first so it runs last,
 				// after the recover defer records terminal status.
 				if sem != nil {
-					defer sem.Release(1)
+					defer task.parent.release()
 				}
 				// Flip completed before the permit is released: the permit is
 				// what admits the next task, and a dependent that dequeues while
