@@ -29,7 +29,9 @@ type Manager struct {
 	width         int
 	verbose       atomic.Bool
 	maxConcurrent int
-	semaphore     chan struct{}
+	// workerLimit is how many workers may take tasks (SetMaxConcurrent): a
+	// worker whose id is at or above it idles. Zero lets every worker run.
+	workerLimit   atomic.Int32
 	retryConfig   RetryConfig
 	isInteractive atomic.Bool
 	renderer      *lipgloss.Renderer
@@ -247,7 +249,6 @@ func newManagerWithConcurrency(maxConcurrent int) *Manager {
 		taskQueue:         taskQueue,
 		workers:           make([]*worker, 0, maxConcurrent),
 		shutdown:          make(chan struct{}),
-		semaphore:         make(chan struct{}, maxConcurrent),
 	}
 	tm.isInteractive.Store(isInteractive)
 	tm.verbose.Store(verbose)
@@ -264,10 +265,9 @@ func newManagerWithConcurrency(maxConcurrent int) *Manager {
 
 	shutdown.SetTerminalRestoreFunc(tm.cleanupTerminal)
 
-	for i := 0; i < maxConcurrent; i++ {
-		w := &worker{id: i, manager: tm}
-		tm.workers = append(tm.workers, w)
-		go w.run()
+	tm.workerLimit.Store(int32(maxConcurrent))
+	for range maxConcurrent {
+		tm.startWorker()
 	}
 
 	shutdown.AddHookWithPriority("TaskManager", shutdown.PriorityWorkers, func() {
@@ -356,28 +356,25 @@ func IsForceInteractive() bool {
 	return global.forceInteractive.Load()
 }
 
-// SetMaxConcurrent sets the maximum number of concurrent tasks
+// SetMaxConcurrent sets the maximum number of tasks the workers run at once:
+// it starts workers up to max, and a worker numbered max or above takes no
+// task, so a lowered maximum holds too. Zero lets every started worker run.
 func SetMaxConcurrent(max int) {
 	global.mu.Lock()
 	defer global.mu.Unlock()
 
-	if global.maxConcurrent == max {
-		return
-	}
-
 	global.maxConcurrent = max
-	if max > 0 {
-		newSem := make(chan struct{}, max)
-		if global.semaphore != nil {
-			close(global.semaphore)
-		}
-		global.semaphore = newSem
-	} else {
-		if global.semaphore != nil {
-			close(global.semaphore)
-			global.semaphore = nil
-		}
+	global.workerLimit.Store(int32(max))
+	for len(global.workers) < max {
+		global.startWorker()
 	}
+}
+
+// startWorker starts one more worker; the caller holds mu.
+func (tm *Manager) startWorker() {
+	w := &worker{id: len(tm.workers), manager: tm}
+	tm.workers = append(tm.workers, w)
+	go w.run()
 }
 
 // SetRetryConfig sets the default retry configuration for new tasks
