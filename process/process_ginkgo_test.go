@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"os/user"
+	"sort"
 	"syscall"
 	"time"
 
@@ -156,6 +157,61 @@ var _ = Describe("process snapshots", func() {
 		Expect(filterEnvironment([]string{"A=1", "B=two=parts"}, EnvironmentOptions{})).To(Equal(map[string]string{
 			"A": "1", "B": "two=parts",
 		}))
+	})
+
+	It("reads the environments of a process's live children and skips one that exited but was not reaped", func() {
+		const mark = "ACME_MARK"
+		live := exec.Command("sleep", "30")
+		live.Env = append(os.Environ(), mark+"=live")
+		Expect(live.Start()).To(Succeed())
+		DeferCleanup(func() {
+			_ = live.Process.Kill()
+			_ = live.Wait()
+		})
+		exited := exec.Command("sh", "-c", "exit 0")
+		Expect(exited.Start()).To(Succeed())
+		DeferCleanup(func() { _ = exited.Wait() })
+
+		var snapshot *Snapshot
+		Eventually(func() string {
+			var err error
+			snapshot, err = Discover(context.Background(), SnapshotOptions{})
+			Expect(err).NotTo(HaveOccurred())
+			zombie, _ := snapshot.Get(exited.Process.Pid)
+			return zombie.Status
+		}).WithTimeout(5 * time.Second).Should(Equal("zombie"))
+
+		// Earlier specs leave children of their own behind; only this spec's two matter.
+		var pids []int
+		for _, child := range snapshot.Children(os.Getpid()) {
+			if child.PID == live.Process.Pid || child.PID == exited.Process.Pid {
+				pids = append(pids, child.PID)
+			}
+		}
+		snapshot.PopulateEnvironments(context.Background(), pids, EnvironmentOptions{Keys: []string{mark}})
+		liveChild, _ := snapshot.Get(live.Process.Pid)
+		zombie, _ := snapshot.Get(exited.Process.Pid)
+		children := []int{live.Process.Pid, exited.Process.Pid}
+		sort.Ints(children)
+
+		Expect(map[string]any{
+			"children":    pids,
+			"live":        liveChild.Environment,
+			"liveError":   liveChild.EnvironmentError,
+			"zombie":      zombie.Environment,
+			"zombieError": zombie.EnvironmentError,
+		}).To(Equal(map[string]any{
+			"children":    children,
+			"live":        map[string]string{mark: "live"},
+			"liveError":   "",
+			"zombie":      map[string]string(nil),
+			"zombieError": "",
+		}))
+	})
+
+	It("lists only a process's direct children", func() {
+		snapshot := NewSnapshot([]Process{{PID: 9000, PPID: 1}, {PID: 9002, PPID: 9000}, {PID: 9001, PPID: 9000}, {PID: 9003, PPID: 9001}})
+		Expect(snapshot.Children(9000)).To(Equal([]Process{{PID: 9001, PPID: 9000}, {PID: 9002, PPID: 9000}}))
 	})
 })
 

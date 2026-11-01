@@ -3,7 +3,7 @@ module github.com/flanksource/clicky/aichat
 go 1.26.1
 
 require (
-	github.com/flanksource/captain v0.0.55
+	github.com/flanksource/captain v0.0.71
 	github.com/flanksource/clicky v1.21.89
 	github.com/onsi/ginkgo/v2 v2.32.1
 	github.com/onsi/gomega v1.42.1
@@ -116,17 +116,16 @@ require (
 	github.com/fergusstrange/embedded-postgres v1.34.0 // indirect
 	github.com/firebase/genkit/go v1.13.1 // indirect
 	github.com/flanksource/commons v1.63.0 // indirect
-	github.com/flanksource/commons-db v0.1.61 // indirect
+	github.com/flanksource/commons-db v0.1.67 // indirect
 	github.com/flanksource/gomplate/v3 v3.24.90 // indirect
 	github.com/flanksource/is-healthy v1.0.92 // indirect
 	github.com/flanksource/kubectl-neat v1.0.4 // indirect
 	github.com/flanksource/sandbox-runtime v1.0.2 // indirect
-	github.com/flanksource/sqlglot-go v1.0.3 // indirect
+	github.com/flanksource/sqlglot-go v1.0.4-0.20261022123344-3264e440e925 // indirect
 	github.com/fsnotify/fsnotify v1.10.1 // indirect
 	github.com/fxamacker/cbor/v2 v2.9.1 // indirect
 	github.com/geoffgarside/ber v1.2.0 // indirect
 	github.com/ghodss/yaml v1.0.0 // indirect
-	github.com/glebarez/go-sqlite v1.21.2 // indirect
 	github.com/glebarez/sqlite v1.11.0 // indirect
 	github.com/gliderlabs/ssh v0.3.8 // indirect
 	github.com/go-faster/city v1.0.1 // indirect
@@ -145,11 +144,11 @@ require (
 	github.com/go-openapi/swag/cmdutils v0.28.0 // indirect
 	github.com/go-openapi/swag/conv v0.28.0 // indirect
 	github.com/go-openapi/swag/fileutils v0.28.0 // indirect
-	github.com/go-openapi/swag/jsonname v0.26.0 // indirect
 	github.com/go-openapi/swag/jsonutils v0.28.0 // indirect
 	github.com/go-openapi/swag/loading v0.28.0 // indirect
 	github.com/go-openapi/swag/mangling v0.28.0 // indirect
 	github.com/go-openapi/swag/netutils v0.28.0 // indirect
+	github.com/go-openapi/swag/pools v0.28.0 // indirect
 	github.com/go-openapi/swag/stringutils v0.28.0 // indirect
 	github.com/go-openapi/swag/typeutils v0.28.0 // indirect
 	github.com/go-openapi/swag/yamlutils v0.28.0 // indirect
@@ -317,17 +316,17 @@ require (
 	go.yaml.in/yaml/v3 v3.0.5 // indirect
 	go.yaml.in/yaml/v4 v4.0.0-rc.4 // indirect
 	gocloud.dev v0.46.0 // indirect
-	golang.org/x/crypto v0.57.0 // indirect
+	golang.org/x/crypto v0.58.0 // indirect
 	golang.org/x/exp v0.0.0-20260527015227-08cc5374adb3 // indirect
 	golang.org/x/mod v0.41.0 // indirect
-	golang.org/x/net v0.60.0 // indirect
+	golang.org/x/net v0.62.0 // indirect
 	golang.org/x/oauth2 v0.36.0 // indirect
-	golang.org/x/sync v0.23.0 // indirect
-	golang.org/x/sys v0.48.0 // indirect
-	golang.org/x/term v0.46.0 // indirect
-	golang.org/x/text v0.42.0 // indirect
+	golang.org/x/sync v0.24.0 // indirect
+	golang.org/x/sys v0.49.0 // indirect
+	golang.org/x/term v0.47.0 // indirect
+	golang.org/x/text v0.43.0 // indirect
 	golang.org/x/time v0.15.0 // indirect
-	golang.org/x/tools v0.49.0 // indirect
+	golang.org/x/tools v0.51.0 // indirect
 	golang.org/x/xerrors v0.0.0-20240903120638-7835f813f4da // indirect
 	google.golang.org/api v0.286.0 // indirect
 	google.golang.org/genai v1.57.0 // indirect
@@ -367,3 +366,9 @@ require (
 )
 
 replace github.com/flanksource/clicky => ../
+
+// github.com/glebarez/sqlite links its own modernc engine copy and registers the
+// "sqlite" driver, colliding with commons-db's modernc.org/sqlite registration at
+// init. The clarkmcc fork imports modernc.org/sqlite/lib instead; captain, gavel
+// and oipa-cli carry the identical replace.
+replace github.com/glebarez/sqlite => github.com/clarkmcc/gorm-sqlite v0.0.0-20240426202654-00ed082c0311

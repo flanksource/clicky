@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"syscall"
 )
 
 const psFormat = "pid=,ppid=,pcpu=,pmem=,rss=,stat=,time=,lstart=,uid=,user=,command="
@@ -33,9 +34,15 @@ func Discover(ctx context.Context, opts SnapshotOptions) (*Snapshot, error) {
 	}
 	snapshot.remove(cmd.Process.Pid)
 	if opts.Environment != nil {
-		populateEnvironments(ctx, snapshot, *opts.Environment)
+		snapshot.PopulateEnvironments(ctx, snapshot.pids(), *opts.Environment)
 	}
 	return snapshot, nil
+}
+
+// processGone reports whether pid no longer exists, e.g. because it exited
+// between being listed and being read.
+func processGone(pid int) bool {
+	return errors.Is(syscall.Kill(pid, 0), syscall.ESRCH)
 }
 
 // Descriptors lists the files and sockets each of pids holds open, by pid,

@@ -22,9 +22,16 @@ func Discover(ctx context.Context, opts SnapshotOptions) (*Snapshot, error) {
 		snapshot.children[process.PPID] = append(snapshot.children[process.PPID], process.PID)
 	}
 	if opts.Environment != nil {
-		populateEnvironments(ctx, snapshot, *opts.Environment)
+		snapshot.PopulateEnvironments(ctx, snapshot.pids(), *opts.Environment)
 	}
 	return snapshot, nil
+}
+
+// processGone reports whether pid no longer exists, e.g. because it exited
+// between being listed and being read.
+func processGone(pid int) bool {
+	exists, err := gops.PidExists(int32(pid))
+	return err == nil && !exists
 }
 
 func processFromHandle(ctx context.Context, handle *gops.Process) Process {
