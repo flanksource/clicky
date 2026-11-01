@@ -169,33 +169,24 @@ available and ` + "`pnpm install`" + ` already run in webapp/.`,
 	return cmd
 }
 
-func captainRuntimeProfile(_ context.Context, options ...capchat.RuntimeProfileOption) (capchat.RuntimeProfile, error) {
-	selection := capchat.ApplyRuntimeProfileOptions(options...)
-	if selection.Ref != "" {
-		return capchat.RuntimeProfile{}, capchat.RequestError(
-			http.StatusBadRequest,
-			fmt.Sprintf("runtime profile %q is not available; the entity demo serves its default profile", selection.Ref),
-		)
-	}
+func captainRuntimeProfile(_ context.Context, _ ...capchat.RuntimeProfileOption) (capchat.RuntimeProfile, error) {
 	defaults, err := aiflags.LoadDefaults()
 	if err != nil {
 		return capchat.RuntimeProfile{}, fmt.Errorf("load Captain AI defaults: %w", err)
 	}
-	model, err := aiflags.ApplyDefaults(capapi.Model{}, defaults)
-	if err != nil {
-		return capchat.RuntimeProfile{}, fmt.Errorf("resolve Captain AI defaults: %w", err)
-	}
-	// The profile is a resolved stack of named layers rather than a bare spec, so
-	// even a single-layer demo declares its one layer explicitly.
-	resolved, err := capapi.ResolveSpecLayers(capapi.SpecLayer{
-		Name: "entity demo", Scope: capapi.SpecLayerGlobal,
-		Spec: capapi.Spec{Model: model},
+	// The profile is a composed stack of named layers rather than a bare spec, so
+	// even a single-layer demo declares its one layer explicitly. Saved defaults
+	// are applied by the runtime when the profile is resolved.
+	composed, err := capapi.ComposeSpecLayers(capapi.ResolveSpecOptions{
+		Layers: []capapi.SpecLayer{{Name: "entity demo", Scope: capapi.SpecLayerGlobal}},
+		Saved:  &defaults,
 	})
 	if err != nil {
 		return capchat.RuntimeProfile{}, fmt.Errorf("resolve Captain runtime profile: %w", err)
 	}
 	return capchat.RuntimeProfile{
-		Resolved: resolved,
+		Composed: composed,
+		Saved:    &defaults,
 		System: "You are an operator assistant for this entity demo " +
 			"(stacks, clusters, teams). Prefer calling an operation over " +
 			"guessing, and summarize results clearly.",
