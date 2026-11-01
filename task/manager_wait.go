@@ -140,9 +140,11 @@ func (tm *Manager) awaitAll() {
 // entitled to drain. Judged from the task's live background flag rather than a
 // snapshot taken at dequeue, because the flag can flip mid-run: a supervised
 // process scheduled through the queue (exec.RunSupervisedAsTask) marks its
-// bound task background only once the server generation starts. tm.workers is
-// populated once at construction and never mutated, so it is read without mu.
+// bound task background only once the server generation starts. tm.workers
+// grows under mu (SetMaxConcurrent), so it is read under mu.
 func (tm *Manager) foregroundWorkersActive() int {
+	tm.mu.RLock()
+	defer tm.mu.RUnlock()
 	active := 0
 	for _, w := range tm.workers {
 		if t := w.inflight.Load(); t != nil && !t.IsBackground() {

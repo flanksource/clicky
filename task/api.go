@@ -257,4 +257,5 @@ func RegisterHandlersWithSource(router *route.Router, prefix string, source RunS
 		timeseries = sourceMetrics{local: timeseries, external: external}
 	}
 	metrics.RegisterRoutes(router, timeseries, prefix+"/tasks")
+	metrics.RegisterStreamRoutes(router, metrics.StoreSource(timeseries), prefix+"/tasks")
 }

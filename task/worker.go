@@ -31,6 +31,11 @@ func (w *worker) run() {
 		case <-w.manager.shutdown:
 			return
 		default:
+			// A worker past a lowered SetMaxConcurrent takes no task.
+			if limit := w.manager.workerLimit.Load(); limit > 0 && int32(w.id) >= limit {
+				time.Sleep(10 * time.Millisecond)
+				continue
+			}
 			// Try to dequeue a task
 			task, ok := w.manager.taskQueue.Dequeue()
 			if !ok {
