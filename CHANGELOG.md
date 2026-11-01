@@ -5,6 +5,33 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.21.90](https://github.com/flanksource/clicky/compare/v1.21.89...v1.21.90) (2026-11-01)
+
+
+### ⚠ BREAKING CHANGES
+
+* **api:** TextTable.HTML() now renders static markup unless Interactive is set, and expandable row details are no longer wrapped in Alpine.js templates.
+* **flags:** SpreadsheetReader now takes a SpreadsheetReadOptions argument, so custom readers passed to SetSpreadsheetReader must update their signature.
+
+### ✨ Features
+
+* **flags:** add worksheet selection and optional bool flag support ([0e89268](https://github.com/flanksource/clicky/commit/0e89268377a5800043bbe1723199f60f524e676d)), closes [#2](https://github.com/flanksource/clicky/issues/2)
+* **metrics:** add batched metrics series stream with SSE snapshot and append frames ([ce6e5bb](https://github.com/flanksource/clicky/commit/ce6e5bb6aa2fbe888671ca13895d0639198e12c0))
+* **task:** attribute prompts to the running task and list them on its snapshot ([76a4b44](https://github.com/flanksource/clicky/commit/76a4b44de4a16130091f9274626635250f609baa))
+
+
+### 🐛 Bug Fixes
+
+* **api:** fix escaping and rendering parity across HTML, Markdown, and terminal output ([7d79d0c](https://github.com/flanksource/clicky/commit/7d79d0c7536b2cebc8a1d4e2d105012e8f620892))
+* **task:** enforce lowered max concurrency by gating worker dispatch ([69c0478](https://github.com/flanksource/clicky/commit/69c047804d7595fcf6924a826535999f8237eeda))
+* **task:** wake a group's waiting member when a permit frees instead of polling ([786bfcf](https://github.com/flanksource/clicky/commit/786bfcf494ea8a188884ab1eecfe50684664007f))
+
+
+### 🔧 Maintenance
+
+* bump deps ([ef0dd6d](https://github.com/flanksource/clicky/commit/ef0dd6d208c308d39b9ab8534b525565d5ff2b49))
+* **task-ui:** remove embedded task-ui web bundle and its CI rebuild workflows ([b030a43](https://github.com/flanksource/clicky/commit/b030a4300823352bff4f20360f63ff2355632b90))
+
 ## [1.21.89](https://github.com/flanksource/clicky/compare/v1.21.88...v1.21.89) (2026-10-30)
 
 
