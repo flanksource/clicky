@@ -119,6 +119,17 @@ func (s *Snapshot) Get(pid int) (Process, bool) {
 	return process, found
 }
 
+// Children is pid's direct children, by pid.
+func (s *Snapshot) Children(pid int) []Process {
+	var children []Process
+	for _, childPID := range s.children[pid] {
+		if child, found := s.processes[childPID]; found {
+			children = append(children, child)
+		}
+	}
+	return children
+}
+
 func (s *Snapshot) Subtree(pid int) []Process {
 	root, found := s.processes[pid]
 	if !found {
@@ -317,16 +328,37 @@ func processStatus(status string) (string, bool) {
 	}
 }
 
-func populateEnvironments(ctx context.Context, snapshot *Snapshot, opts EnvironmentOptions) {
-	for pid, process := range snapshot.processes {
-		environment, err := readEnvironment(ctx, pid)
-		if err != nil {
-			process.EnvironmentError = err.Error()
-		} else {
-			process.Environment = filterEnvironment(environment, opts)
+// PopulateEnvironments reads the environment of each of pids, limited as
+// opts selects. A zombie or exiting process has no environment left to read
+// (darwin answers EINVAL for it) and one that exited since the snapshot was
+// taken has none either: both are left without one. Any other failure is
+// recorded as that process's EnvironmentError.
+func (s *Snapshot) PopulateEnvironments(ctx context.Context, pids []int, opts EnvironmentOptions) {
+	for _, pid := range pids {
+		process, found := s.processes[pid]
+		if !found || process.Status == "zombie" || process.Status == "exiting" {
+			continue
 		}
-		snapshot.processes[pid] = process
+		environment, err := readEnvironment(ctx, pid)
+		switch {
+		case err == nil:
+			process.Environment = filterEnvironment(environment, opts)
+			process.EnvironmentError = ""
+		case processGone(pid):
+			continue
+		default:
+			process.EnvironmentError = err.Error()
+		}
+		s.processes[pid] = process
 	}
+}
+
+func (s *Snapshot) pids() []int {
+	pids := make([]int, 0, len(s.processes))
+	for pid := range s.processes {
+		pids = append(pids, pid)
+	}
+	return pids
 }
 
 func filterEnvironment(entries []string, opts EnvironmentOptions) map[string]string {

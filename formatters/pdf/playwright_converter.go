@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"github.com/flanksource/commons/logger"
-	"github.com/playwright-community/playwright-go"
+	"github.com/mxschmitt/playwright-go"
 )
 
 // PlaywrightConverter implements SVGConverter using Playwright

@@ -14,7 +14,7 @@ GIT_COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
 BUILD_DATE ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 LDFLAGS ?= -X main.commit=$(GIT_COMMIT) -X main.date=$(BUILD_DATE)
 
-.PHONY: test build clean install task-ui tidy
+.PHONY: test build clean install tidy
 
 test:
 	go test -v ./...
@@ -71,14 +71,9 @@ docs-site:
 docs-site-build:
 	cd docs/site && pnpm install --frozen-lockfile && pnpm build
 
-# Build the task-ui frontend bundle (Preact + Vite → single IIFE)
-task-ui:
-	cd task/ui && npm ci && npm run build
-
 # Clean build artifacts
 clean:
 	rm -f clicky
-	rm -rf task/ui/dist task/ui/node_modules
 	go clean
 
 # Install dependencies

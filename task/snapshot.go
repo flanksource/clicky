@@ -155,9 +155,8 @@ func streamTail(value string, offset int64) (string, int64, bool) {
 }
 
 // SnapshotGroup creates a TaskSnapshot from a Group with aggregate child stats.
-// The snapshot ID stays the group NAME for backward compatibility with the
-// name-keyed Preact UI and JSONHandler; the stable id is carried separately in
-// GroupID. Observing a terminal status here records finishedAt lazily.
+// The snapshot ID stays the group NAME for backward compatibility with
+// name-keyed stream consumers; the stable id is carried separately in GroupID. Observing a terminal status here records finishedAt lazily.
 func SnapshotGroup(g *Group) TaskSnapshot {
 	status := g.Status()
 	g.observeTerminal(status, time.Now())

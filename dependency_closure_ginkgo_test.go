@@ -26,6 +26,7 @@ var _ = Describe("dependency closure", func() {
 		"github.com/google/cel-go",
 		"github.com/xuri/excelize",
 		"github.com/playwright-community/playwright-go",
+		"github.com/mxschmitt/playwright-go",
 		"github.com/flanksource/clicky/formatters/pdf",
 		"github.com/flanksource/clicky/formatters/excel",
 	}
@@ -50,6 +51,13 @@ var _ = Describe("dependency closure", func() {
 		}
 		return found
 	}
+
+	It("the PDF formatter does not compile legacy Playwright or JOSE v3", func() {
+		Expect(matching(nonStandardDeps("./formatters/pdf"), []string{
+			"github.com/playwright-community/playwright-go",
+			"github.com/go-jose/go-jose/v3",
+		})).To(BeEmpty())
+	})
 
 	for _, pkg := range []string{".", "./api", "./api/filter", "./flags", "./formatters", "./schemaform", "./task", "./exec", "./entity", "./rpc"} {
 		It(pkg+" does not compile heavy optional dependencies", func() {
