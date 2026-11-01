@@ -45,7 +45,6 @@ go run . table-provider     # TableProvider interface
 go run . trees              # filesystem tree
 go run . tasks              # task progress
 go run . task-prompt        # interactive task prompt
-go run . task-ui            # web task UI
 go run . nil-handling       # zero/nil rendering
 go run . components         # CodeBlock, badges, buttons, collapsibles
 go run . collapsible-rows   # row-level detail expansion

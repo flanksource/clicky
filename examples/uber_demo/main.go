@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"net/http"
 	"os"
 	"strings"
 	"time"
@@ -12,7 +11,6 @@ import (
 	"github.com/flanksource/clicky/api"
 	"github.com/flanksource/clicky/api/icons"
 	"github.com/flanksource/clicky/task"
-	taskui "github.com/flanksource/clicky/task/ui"
 	flanksourceContext "github.com/flanksource/commons/context"
 	"github.com/google/uuid"
 	"github.com/spf13/cobra"
@@ -1418,152 +1416,6 @@ func showColumnBuilder(_ ColumnBuilderOptions) (any, error) {
 	}), nil
 }
 
-type TaskUIOptions struct {
-	Port     int    `flag:"port" help:"HTTP server port" default:"8080"`
-	NumTasks int    `flag:"tasks" help:"Number of concurrent tasks for batch group" default:"5"`
-	Count    int    `flag:"count" help:"Total number of tasks to generate (overrides default groups)" default:"0"`
-	Spread   string `flag:"spread" help:"Spread task creation over this duration (e.g. 30s, 1m)" default:""`
-}
-
-func showTaskUI(opts TaskUIOptions) (any, error) {
-	task.SetNoProgress(true)
-	var spread time.Duration
-	if opts.Spread != "" {
-		if d, err := time.ParseDuration(opts.Spread); err == nil {
-			spread = d
-		}
-	}
-	go func() {
-		time.Sleep(1 * time.Second)
-		if opts.Count > 0 {
-			runScaleTasks(opts.Count, spread)
-		} else {
-			runGroupedTasks(opts.NumTasks, func(d time.Duration) { time.Sleep(d * 3) })
-		}
-	}()
-
-	handler := taskui.Handler()
-
-	addr := fmt.Sprintf(":%d", opts.Port)
-	clicky.Infof("Task UI at http://localhost%s", addr)
-	if err := http.ListenAndServe(addr, handler); err != nil {
-		fmt.Fprintf(os.Stderr, "Server error: %v\n", err)
-	}
-	return nil, nil
-}
-
-func runGroupedTasks(numTasks int, sleep func(time.Duration), _ ...task.Option) {
-	build := task.StartGroup[string]("Build Pipeline")
-	build.Add("Download dependencies", func(_ flanksourceContext.Context, t *task.Task) (string, error) {
-		for i := 1; i <= 5; i++ {
-			sleep(150 * time.Millisecond)
-			t.SetProgress(i, 5)
-			t.Infof("Downloaded package %d of 5", i)
-		}
-		t.Success()
-		return "done", nil
-	})
-	build.Add("Build project", func(_ flanksourceContext.Context, t *task.Task) (string, error) {
-		for i, step := range []string{"Parsing", "Type checking", "Compiling", "Linking"} {
-			sleep(200 * time.Millisecond)
-			t.SetProgress(i+1, 4)
-			t.Infof("%s...", step)
-		}
-		t.Warnf("Found 2 deprecated API calls")
-		t.Warning()
-		return "built with warnings", nil
-	})
-	build.Add("Run tests", func(_ flanksourceContext.Context, t *task.Task) (string, error) {
-		for i := 1; i <= 8; i++ {
-			sleep(100 * time.Millisecond)
-			t.SetProgress(i, 8)
-			t.Infof("Test %d passed", i)
-		}
-		t.Success()
-		return "8 tests passed", nil
-	})
-	build.Add("Publish artifacts", func(_ flanksourceContext.Context, t *task.Task) (string, error) {
-		t.Infof("Uploading...")
-		sleep(300 * time.Millisecond)
-		t.SetProgress(1, 3)
-		sleep(300 * time.Millisecond)
-		t.Errorf("Connection reset by peer")
-		t.SetProgress(2, 3)
-		sleep(200 * time.Millisecond)
-		t.Errorf("Registry returned 503")
-		t.FailedWithError(fmt.Errorf("publish failed"))
-		return "", fmt.Errorf("publish failed")
-	})
-
-	batch := task.StartGroup[string]("Batch Processing")
-	for i := 1; i <= numTasks; i++ {
-		n := i
-		batch.Add(fmt.Sprintf("Process batch %d", n), func(_ flanksourceContext.Context, t *task.Task) (string, error) {
-			for j := 1; j <= 10; j++ {
-				sleep(50 * time.Millisecond)
-				t.SetProgress(j, 10)
-			}
-			if n%3 == 0 {
-				t.Warnf("Batch %d had slow items", n)
-				t.Warning()
-			} else {
-				t.Success()
-			}
-			return fmt.Sprintf("batch %d done", n), nil
-		})
-	}
-}
-
-func runScaleTasks(count int, duration time.Duration, _ ...task.Option) {
-	batchSize := 50
-	if count < 100 {
-		batchSize = max(1, count/5)
-	}
-	numBatches := (count + batchSize - 1) / batchSize
-
-	var delay time.Duration
-	if duration > 0 && numBatches > 1 {
-		delay = duration / time.Duration(numBatches)
-	}
-
-	taskNum := 0
-	for b := 0; b < numBatches; b++ {
-		groupName := fmt.Sprintf("Batch %d", b+1)
-		if numBatches == 1 {
-			groupName = "Tasks"
-		}
-		g := task.StartGroup[string](groupName)
-		remaining := min(batchSize, count-taskNum)
-		for i := 0; i < remaining; i++ {
-			taskNum++
-			n := taskNum
-			g.Add(fmt.Sprintf("Task %d", n), func(_ flanksourceContext.Context, t *task.Task) (string, error) {
-				steps := 3 + n%5
-				for s := 1; s <= steps; s++ {
-					time.Sleep(time.Duration(50+n%100) * time.Millisecond)
-					t.SetProgress(s, steps)
-					t.Infof("Step %d/%d", s, steps)
-				}
-				switch n % 10 {
-				case 7:
-					t.Warnf("Task %d completed with warnings", n)
-					t.Warning()
-				case 9:
-					t.Errorf("Task %d encountered an error", n)
-					t.FailedWithError(fmt.Errorf("task %d failed", n))
-					return "", fmt.Errorf("failed")
-				default:
-					t.Success()
-				}
-				return fmt.Sprintf("task %d done", n), nil
-			})
-		}
-		if delay > 0 && b < numBatches-1 {
-			time.Sleep(delay)
-		}
-	}
-}
-
 func main() {
 	rootCmd := &cobra.Command{
 		Use:   "uber-demo",
@@ -1590,7 +1442,6 @@ func main() {
 	clicky.AddNamedCommand("trees", rootCmd, clicky.FileTreeOptions{}, showTrees)
 	clicky.AddNamedCommand("tasks", rootCmd, TasksOptions{}, showTasks)
 	clicky.AddNamedCommand("task-prompt", rootCmd, TaskPromptOptions{}, showTaskPrompt)
-	clicky.AddNamedCommand("task-ui", rootCmd, TaskUIOptions{}, showTaskUI)
 	clicky.AddNamedCommand("nil-handling", rootCmd, NilHandlingOptions{}, showNilHandling)
 	clicky.AddNamedCommand("components", rootCmd, ComponentsOptions{}, showComponents)
 	clicky.AddNamedCommand("collapsible-rows", rootCmd, CollapsibleRowOptions{}, showCollapsibleRows)

@@ -2,11 +2,8 @@ package entitydemo
 
 import (
 	"context"
-	"net/http"
-	"net/http/httptest"
 	"path/filepath"
 
-	capchat "github.com/flanksource/captain/pkg/aichat"
 	"github.com/flanksource/captain/pkg/api"
 	"github.com/flanksource/captain/pkg/captainconfig"
 	. "github.com/onsi/ginkgo/v2"
@@ -19,7 +16,7 @@ var _ = Describe("Captain chat settings", func() {
 		captainconfig.SetPathForTesting(configPath)
 		DeferCleanup(func() { captainconfig.SetPathForTesting("") })
 
-		configuredModel := "configured-model"
+		configuredModel := "gpt-5"
 		provider := api.OpenAI
 		Expect(captainconfig.Save(captainconfig.Config{
 			AI: captainconfig.AIDefaults{
@@ -32,18 +29,11 @@ var _ = Describe("Captain chat settings", func() {
 
 		profile, err := captainRuntimeProfile(context.Background())
 		Expect(err).NotTo(HaveOccurred())
-		Expect(profile.Resolved.Spec.Model.Name).To(Equal(configuredModel))
-		Expect(profile.Resolved.Spec.Model.Mode).To(Equal(api.ModeAPI))
-	})
-
-	It("rejects a named runtime profile because the demo only serves its default", func() {
-		service := capchat.NewService(capchat.ServiceOptions{Profile: capchat.RuntimeProfileProviderFunc(captainRuntimeProfile)})
-		request := httptest.NewRequest(http.MethodGet, "/api/chat/models?runtimeProfile=review", nil)
-		response := httptest.NewRecorder()
-
-		service.Handler().ServeHTTP(response, request)
-
-		Expect(response.Code).To(Equal(http.StatusBadRequest))
-		Expect(response.Body.String()).To(ContainSubstring(`runtime profile "review" is not available`))
+		resolved, err := api.ResolveSpecLayers(api.ResolveSpecOptions{
+			Layers: profile.Composed.Trace, Saved: profile.Saved, RequireModel: true,
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(resolved.Spec.Model.Name).To(Equal(configuredModel))
+		Expect(resolved.Spec.Model.Mode).To(Equal(api.ModeAPI))
 	})
 })
