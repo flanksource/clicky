@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.21.92](https://github.com/flanksource/clicky/compare/v1.21.91...v1.21.92) (2026-11-02)
+
+
+### ✨ Features
+
+* **task:** add weighted task slots and zero-slot supervisor dispatch ([19fcf2e](https://github.com/flanksource/clicky/commit/19fcf2e123c4f8ecd03674f6dacbbc8782f2c340))
+
 ## [1.21.91](https://github.com/flanksource/clicky/compare/v1.21.90...v1.21.91) (2026-11-01)
 
 
