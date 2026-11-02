@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.21.94](https://github.com/flanksource/clicky/compare/v1.21.93...v1.21.94) (2026-11-02)
+
+
+### ⚡ Performance Improvements
+
+* **api:** bound cell measuring when rendering terminal tables ([74c27a0](https://github.com/flanksource/clicky/commit/74c27a0e7402d4f4f54a7cbf5cf4dacf2e0bf97b))
+
 ## [1.21.93](https://github.com/flanksource/clicky/compare/v1.21.92...v1.21.93) (2026-11-02)
 
 
