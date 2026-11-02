@@ -43,6 +43,7 @@ var (
 	DefaultRetryConfig        = task.DefaultRetryConfig
 	DefaultTaskManagerOptions = task.DefaultManagerOptions
 	WithTimeout               = task.WithTimeout
+	WithSlots                 = task.WithSlots
 	WithTaskTimeout           = task.WithTaskTimeout
 	WithDependencies          = task.WithDependencies
 	WithFunc                  = task.WithFunc

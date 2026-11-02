@@ -151,6 +151,12 @@ func (tm *Manager) foregroundWorkersActive() int {
 			active++
 		}
 	}
+	tm.supervisors.Range(func(_, value any) bool {
+		if t := value.(*worker).inflight.Load(); t != nil && !t.IsBackground() {
+			active++
+		}
+		return true
+	})
 	return active
 }
 
