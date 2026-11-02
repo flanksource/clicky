@@ -59,10 +59,10 @@ func TestStackTraceHTMLRendersEscapedSourceLinesWithoutCodeWrappers(t *testing.T
 	}}
 
 	rendered := trace.HTML()
-	wantLine := `<span class="stack-source-code px-2 whitespace-pre overflow-x-auto flex-1">` +
-		`String s = &quot;&lt;a &amp; b&gt;&quot;;</span>`
-	if !strings.Contains(rendered, wantLine) {
-		t.Fatalf("HTML() missing escaped source line %q in:\n%s", wantLine, rendered)
+	wantClass := `<span class="stack-source-code font-mono px-2 whitespace-pre overflow-x-auto flex-1" style="`
+	wantContent := `">String s = &quot;&lt;a &amp; b&gt;&quot;;</span>`
+	if !strings.Contains(rendered, wantClass) || !strings.Contains(rendered, wantContent) {
+		t.Fatalf("HTML() missing escaped source line (%q ... %q) in:\n%s", wantClass, wantContent, rendered)
 	}
 	for _, markup := range []string{"<pre", "<code", "chroma", `class="line"`} {
 		if strings.Contains(rendered, markup) {
