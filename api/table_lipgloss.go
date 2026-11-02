@@ -4,9 +4,11 @@ package api
 
 import (
 	"strings"
+	"unicode/utf8"
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/lipgloss/table"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/flanksource/clicky/api/tailwind"
 )
 
@@ -28,19 +30,26 @@ func (t *TextTable) renderLipgloss(withColors bool) string {
 		return ""
 	}
 
-	// Calculate max width per column using .String() for accurate measurement
+	borderWidth := len(t.Headers) + 1
+	available := GetTerminalWidth() - borderWidth
+
+	// Calculate max width per column using .String() for accurate measurement.
+	// No column is allocated more than the available width, so measuring stops
+	// there: a cell can hold hundreds of kilobytes that end up as a few
+	// characters, and measuring all of it dominated rendering such a table.
+	widthLimit := max(available, columnMinWidth)
 	columnWidths := make([]int, len(t.Headers))
 
 	// Measure headers
 	for i, header := range t.Headers {
-		columnWidths[i] = lipgloss.Width(header.String())
+		columnWidths[i] = cappedWidth(header.String(), widthLimit)
 	}
 
 	// Measure all row cells to find max width per column
 	for _, row := range t.Rows {
 		for colIdx := range t.Headers {
 			cell := t.getCellValue(row, colIdx)
-			width := lipgloss.Width(cell.String())
+			width := cappedWidth(cell.String(), widthLimit)
 			if width > columnWidths[colIdx] {
 				columnWidths[colIdx] = width
 			}
@@ -53,8 +62,7 @@ func (t *TextTable) renderLipgloss(withColors bool) string {
 	// whichever column is currently widest, one character at a time, with no
 	// floor -- so a narrow column keeps its width only by accident, and a table
 	// that fits gets padded out to fill the terminal.
-	borderWidth := len(columnWidths) + 1
-	widths := allocateColumnWidths(columnWidths, GetTerminalWidth()-borderWidth)
+	widths := allocateColumnWidths(columnWidths, available)
 
 	tableWidth := borderWidth
 	for _, width := range widths {
@@ -65,6 +73,14 @@ func (t *TextTable) renderLipgloss(withColors bool) string {
 	for row, cells := range rows {
 		for _, cell := range cells {
 			rowHeights[row] = max(rowHeights[row], strings.Count(strings.ReplaceAll(cell, "\r\n", "\n"), "\n")+1)
+		}
+	}
+
+	// Lipgloss measures every cell and truncates it to its column width times
+	// its row height; hand it only the part of each cell that can survive that.
+	for row, cells := range rows {
+		for col, cell := range cells {
+			cells[col] = clipCell(cell, widths[col]*rowHeights[row])
 		}
 	}
 
@@ -102,6 +118,51 @@ func (t *TextTable) renderLipgloss(withColors bool) string {
 	})
 
 	return tbl.String()
+}
+
+// clipCell returns a prefix of cell that ansi.Truncate, which lipgloss uses to
+// cut a cell to its box, truncates to the same string as the whole cell for
+// any length up to limit. It returns cell unchanged when it is short, or when
+// it holds escape sequences or invalid UTF-8, whose bytes past the cut
+// ansi.Truncate keeps.
+func clipCell(cell string, limit int) string {
+	// A grapheme is at most two cells wide, so a prefix at least limit+4 wide
+	// reaches limit within graphemes that also end the same way in the whole
+	// cell, wherever the prefix splits the last one.
+	end := widthPrefix(cell, limit+4)
+	if end == len(cell) || strings.IndexByte(cell, ansi.ESC) >= 0 || !utf8.ValidString(cell) {
+		return cell
+	}
+	return cell[:end]
+}
+
+// cappedWidth returns lipgloss.Width(s), or limit when s is at least that wide.
+func cappedWidth(s string, limit int) int {
+	width := 0
+	for line := range strings.SplitSeq(s, "\n") {
+		// The prefix can end inside a grapheme and measure up to two cells
+		// wider than the same bytes do within the line.
+		if widthPrefix(line, limit+2) < len(line) {
+			return limit
+		}
+		width = max(width, ansi.StringWidth(line))
+	}
+	return min(width, limit)
+}
+
+// widthPrefix returns the length of a prefix of s, ending on a rune boundary,
+// that is at least width cells wide, or len(s) when no shorter one was found.
+// It measures prefixes of doubling length, so it reads a bounded part of s.
+func widthPrefix(s string, width int) int {
+	for end := 4*max(width, 0) + 16; end < len(s); end *= 2 {
+		for end > 0 && !utf8.RuneStart(s[end]) {
+			end--
+		}
+		if ansi.StringWidth(s[:end]) >= width {
+			return end
+		}
+	}
+	return len(s)
 }
 
 // columnMinWidth is the narrowest a column may be shrunk to, leaving room for a
