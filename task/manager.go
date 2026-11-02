@@ -29,6 +29,8 @@ type Manager struct {
 	width         int
 	verbose       atomic.Bool
 	maxConcurrent int
+	slotsUsed     int
+	supervisors   sync.Map // *Task -> *worker outside the ordinary worker pool
 	// workerLimit is how many workers may take tasks (SetMaxConcurrent): a
 	// worker whose id is at or above it idles. Zero lets every worker run.
 	workerLimit   atomic.Int32
@@ -410,6 +412,7 @@ func (tm *Manager) newTask(name string, opts ...Option) *Task {
 		flanksourceCtx: flanksourceCtx,
 		retryConfig:    tm.retryConfig,
 		retryCount:     0,
+		slots:          1,
 		doneChan:       make(chan struct{}),
 		drainedChan:    make(chan struct{}),
 	}
@@ -465,6 +468,10 @@ func (tm *Manager) enqueueClaimed(task *Task) {
 
 	if task.groupSem() != nil {
 		task.parent.admission.enlist(task)
+	}
+	if task.slots == 0 {
+		go tm.runSupervisor(task)
+		return
 	}
 	tm.taskQueue.Enqueue(task)
 }

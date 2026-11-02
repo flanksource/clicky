@@ -166,7 +166,7 @@ func (t *Task) IsGroup() bool {
 // assigned once in StartGroup before any task is added and never mutated, so no
 // lock is needed.
 func (t *Task) groupSem() *semaphore.Weighted {
-	if t.parent == nil {
+	if t.parent == nil || t.slots == 0 {
 		return nil
 	}
 	return t.parent.sem

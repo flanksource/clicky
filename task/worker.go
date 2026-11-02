@@ -74,58 +74,84 @@ func (w *worker) run() {
 			// pool is saturated, or a member added before this one is still
 			// waiting for a permit, do not occupy a worker slot: admit parks the
 			// task in its group's line, which re-enqueues it once it can start.
-			sem := task.groupSem()
-			if sem != nil && !task.parent.admit(task) {
+			reserved, err := w.manager.reserveSlots(task)
+			if err != nil {
+				task.mu.Lock()
+				task.err = err
+				task.mu.Unlock()
+				task.Failed()
+				task.markCompleted()
+				task.signalDone()
+				w.manager.releaseIdentity(task)
+				observeGroupTerminal(task.parent)
+				if task.groupSem() != nil {
+					task.parent.wake()
+				}
 				continue
 			}
-
-			w.inflight.Store(task)
-			w.manager.workersActive.Add(1)
-
-			func() {
-				// Release the group permit on ALL exit paths (success, failure,
-				// retry, timeout, panic). Registered first so it runs last,
-				// after the recover defer records terminal status.
-				if sem != nil {
-					defer task.parent.release()
-				}
-				// Flip completed before the permit is released: the permit is
-				// what admits the next task, and a dependent that dequeues while
-				// this one is terminal but not yet completed is cancelled as
-				// "dependency failed".
-				defer task.markCompleted()
-				defer func() {
-					if r := recover(); r != nil {
-						task.mu.Lock()
-						task.status = StatusFailed
-						task.err = fmt.Errorf("panic: %v", r)
-						task.endTime = time.Now()
-						task.mu.Unlock()
-					}
-				}()
-				w.executeTask(task)
-			}()
-
-			w.manager.workersActive.Add(-1)
-
-			w.manager.releaseIdentity(task)
-
-			// Signal done channel for compatibility
-			task.signalDone()
-
-			// Finishing the last task in a group is what makes the group
-			// terminal, and this is the only place that fact is known without
-			// something happening to snapshot it. Observing it here is what
-			// gives a run a durable record the moment it ends rather than
-			// whenever a UI next looks.
-			observeGroupTerminal(task.parent)
-
-			// Cleared only after all post-run bookkeeping so a wait that gates
-			// on foregroundWorkersActive never returns before identity cleanup
-			// and the done signal have landed.
-			w.inflight.Store(nil)
+			if !reserved {
+				w.manager.taskQueue.EnqueueWithDelay(task, 10*time.Millisecond)
+				continue
+			}
+			sem := task.groupSem()
+			if sem != nil && !task.parent.admit(task) {
+				w.manager.releaseSlots(task)
+				continue
+			}
+			w.finishTask(task, true)
 		}
 	}
+}
+
+func (w *worker) finishTask(task *Task, reserved bool) {
+	w.inflight.Store(task)
+	w.manager.workersActive.Add(1)
+
+	func() {
+		// Release the group permit on ALL exit paths (success, failure,
+		// retry, timeout, panic). Registered first so it runs last,
+		// after the recover defer records terminal status.
+		if reserved {
+			defer w.manager.releaseSlots(task)
+		}
+		if task.groupSem() != nil {
+			defer task.parent.release(task.slots)
+		}
+		// Flip completed before the permit is released: the permit is
+		// what admits the next task, and a dependent that dequeues while
+		// this one is terminal but not yet completed is cancelled as
+		// "dependency failed".
+		defer task.markCompleted()
+		defer func() {
+			if r := recover(); r != nil {
+				task.mu.Lock()
+				task.status = StatusFailed
+				task.err = fmt.Errorf("panic: %v", r)
+				task.endTime = time.Now()
+				task.mu.Unlock()
+			}
+		}()
+		w.executeTask(task)
+	}()
+
+	w.manager.workersActive.Add(-1)
+
+	w.manager.releaseIdentity(task)
+
+	// Signal done channel for compatibility
+	task.signalDone()
+
+	// Finishing the last task in a group is what makes the group
+	// terminal, and this is the only place that fact is known without
+	// something happening to snapshot it. Observing it here is what
+	// gives a run a durable record the moment it ends rather than
+	// whenever a UI next looks.
+	observeGroupTerminal(task.parent)
+
+	// Cleared only after all post-run bookkeeping so a wait that gates
+	// on foregroundWorkersActive never returns before identity cleanup
+	// and the done signal have landed.
+	w.inflight.Store(nil)
 }
 
 // checkDependencies reports whether a task may start: every dependency has to

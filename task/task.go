@@ -71,6 +71,7 @@ type Task struct {
 	maxValue          int
 	retryCount        int
 	priority          int // Priority for queue ordering (lower = higher priority)
+	slots             int // Immutable reservation; zero denotes a supervisor
 	plainLogsRendered int // buffered log entries already emitted by PlainRender; guarded by mu
 
 	// Smaller types

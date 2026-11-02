@@ -97,7 +97,7 @@ func (g *Group) admitLocked(t *Task) bool {
 	}()
 	for i, member := range l.waiting {
 		if member == t {
-			admitted := g.sem.TryAcquire(1)
+			admitted := g.sem.TryAcquire(int64(t.slots))
 			if admitted {
 				kept = append(kept, l.waiting[i+1:]...)
 			} else {
@@ -120,10 +120,10 @@ func (g *Group) admitLocked(t *Task) bool {
 }
 
 // release returns a member's permit and wakes the line.
-func (g *Group) release() {
+func (g *Group) release(slots int) {
 	g.admission.mu.Lock()
 	defer g.admission.mu.Unlock()
-	g.sem.Release(1)
+	g.sem.Release(int64(slots))
 	g.wakeLocked()
 }
 
