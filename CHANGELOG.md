@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.21.93](https://github.com/flanksource/clicky/compare/v1.21.92...v1.21.93) (2026-11-02)
+
+
+### ✅ Tests
+
+* **api:** Update stack trace HTML rendering assertions for font-mono and inline style ([93da097](https://github.com/flanksource/clicky/commit/93da0970251cb51d35856bac092f394c7fac21e8))
+
 ## [1.21.92](https://github.com/flanksource/clicky/compare/v1.21.91...v1.21.92) (2026-11-02)
 
 
