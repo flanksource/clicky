@@ -28,7 +28,7 @@ func TestRenderClientListEscapesMarkdownCells(t *testing.T) {
 }
 
 func TestAddOAuthNoVerifyPersistsConfiguration(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	isolateConfigHome(t)
 	output, err := executeMCPCommand(
 		"add", "private", "https://example.com/mcp",
 		"--oauth-client-id", "client-1",
@@ -53,7 +53,7 @@ func TestAddOAuthNoVerifyPersistsConfiguration(t *testing.T) {
 }
 
 func TestAddNoBrowserRequiresOAuth(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	isolateConfigHome(t)
 	_, err := executeMCPCommand("add", "public", "https://example.com/mcp", "--no-browser", "--no-verify")
 	if err == nil || !strings.Contains(err.Error(), "requires --oauth") {
 		t.Fatalf("error = %v", err)
@@ -61,8 +61,7 @@ func TestAddNoBrowserRequiresOAuth(t *testing.T) {
 }
 
 func TestAddRejectsInvalidNameBeforeOAuthStorageBinding(t *testing.T) {
-	configHome := t.TempDir()
-	t.Setenv("XDG_CONFIG_HOME", configHome)
+	isolateConfigHome(t)
 	_, err := executeMCPCommand("add", "../config", "https://example.com/mcp", "--oauth", "--no-verify")
 	if err == nil || !strings.Contains(err.Error(), "invalid server name") {
 		t.Fatalf("error = %v", err)
@@ -74,7 +73,7 @@ func TestAddRejectsInvalidNameBeforeOAuthStorageBinding(t *testing.T) {
 }
 
 func TestAddRejectsLiteralOAuthSecret(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	isolateConfigHome(t)
 	_, err := executeMCPCommand(
 		"add", "private", "https://example.com/mcp", "--oauth-client-id", "client", "--oauth-client-secret", "literal", "--no-verify",
 	)

@@ -13,7 +13,7 @@ import (
 )
 
 func TestClientCommandsStdioAndOfflineHelp(t *testing.T) {
-	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	isolateConfigHome(t)
 	workingDir, err := os.Getwd()
 	if err != nil {
 		t.Fatal(err)
