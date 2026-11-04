@@ -69,6 +69,8 @@ type Task struct {
 	// 4-byte types
 	progress          int
 	maxValue          int
+	progressMetrics   *ProgressMetrics
+	labels            map[string]string
 	retryCount        int
 	priority          int // Priority for queue ordering (lower = higher priority)
 	slots             int // Immutable reservation; zero denotes a supervisor
@@ -343,6 +345,9 @@ func (t *Task) SetStatus(status Status) {
 
 // SetProgress updates the task's progress
 func (t *Task) SetProgress(value, maximum int) {
+	if value < 0 || maximum < 0 {
+		panic("task: invalid progress")
+	}
 	t.mu.Lock()
 	t.progress = value
 	t.maxValue = maximum
