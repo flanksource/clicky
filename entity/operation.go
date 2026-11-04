@@ -150,7 +150,7 @@ type Schema struct {
 
 // Property represents a JSON schema property.
 type Property struct {
-	Type        string      `json:"type"`
+	Type        string      `json:"type,omitempty"`
 	Description string      `json:"description"`
 	Enum        []string    `json:"enum,omitempty"`
 	Default     interface{} `json:"default,omitempty"`

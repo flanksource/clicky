@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/flanksource/commons/duration"
 )
@@ -77,6 +78,17 @@ func pickRawValue(info FieldInfo, flagMap map[string]string) (raw string, hasRaw
 }
 
 func assignFieldFromRequest(fieldValue reflect.Value, info FieldInfo, raw string, hasRaw, fromFlag bool, args []string, options populateRequestOptions) error {
+	if isJSONField(info.FieldType) {
+		if !hasRaw {
+			return nil
+		}
+		value, err := parseJSONFlag(info.FieldType, raw)
+		if err != nil {
+			return err
+		}
+		fieldValue.Set(value)
+		return nil
+	}
 	if info.FieldType == reflect.TypeOf((*bool)(nil)) {
 		if !hasRaw {
 			return nil
@@ -89,6 +101,38 @@ func assignFieldFromRequest(fieldValue reflect.Value, info FieldInfo, raw string
 		return nil
 	}
 	switch info.FieldType.Kind() {
+	case reflect.Int64:
+		if info.FieldType.String() == "time.Duration" {
+			if !hasRaw {
+				return nil
+			}
+			value, err := time.ParseDuration(raw)
+			if err != nil {
+				return err
+			}
+			fieldValue.SetInt(int64(value))
+			return nil
+		}
+		if info.FieldType.String() == "duration.Duration" {
+			if !hasRaw {
+				return nil
+			}
+			d, err := duration.ParseDuration(raw)
+			if err != nil {
+				return err
+			}
+			fieldValue.Set(reflect.ValueOf(d))
+			return nil
+		}
+		if !hasRaw {
+			return nil
+		}
+		value, err := strconv.ParseInt(strings.TrimSpace(raw), 10, 64)
+		if err != nil {
+			return err
+		}
+		fieldValue.SetInt(value)
+		return nil
 	case reflect.String:
 		val := raw
 		// Positional args override a default but not an explicit flag value.
