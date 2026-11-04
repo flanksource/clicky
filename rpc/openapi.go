@@ -547,11 +547,7 @@ func (g *OpenAPIGenerator) filterLookupMeta(op RPCOperation, paramName string) *
 	if op.Clicky == nil || op.Clicky.Entity == "" {
 		return nil
 	}
-	info, ok := clicky.GetEntity(op.Clicky.Entity)
-	if !ok {
-		return nil
-	}
-	filterName, ok := info.FilterRefs[paramName]
+	filterName, ok := operationFilterRefs(op)[paramName]
 	if !ok {
 		return nil
 	}
@@ -575,10 +571,32 @@ func (g *OpenAPIGenerator) filterLookupMeta(op RPCOperation, paramName string) *
 	}
 }
 
+func operationFilterRefs(op RPCOperation) map[string]string {
+	for _, info := range clicky.GetEntities() {
+		if info.Name != op.Clicky.Entity || info.Parent != op.Clicky.Parent || info.IsAdmin != op.Clicky.Admin {
+			continue
+		}
+		if op.Clicky.Verb == "list" {
+			return info.FilterRefs
+		}
+		if op.Clicky.Verb == "action" {
+			for _, action := range info.Actions {
+				if action.Name == op.Clicky.ActionName {
+					return action.FilterRefs
+				}
+			}
+		}
+	}
+	return nil
+}
+
 // ParamRole classifies a parameter within its operation, deriving the
 // supportsLookup/isListOp signals from the operation's Clicky metadata. Returns
 // the UI role ("limit", "offset", "time-from", "time-to", "filter") or "".
 func ParamRole(op RPCOperation, param RPCParameter) string {
+	if op.Clicky != nil && op.Clicky.Verb == "action" && param.In == "query" && operationFilterRefs(op)[param.Name] != "" {
+		return "filter"
+	}
 	supportsLookup := op.Clicky != nil && op.Clicky.SupportsLookup
 	isListOp := op.Clicky != nil && op.Clicky.Verb == "list"
 	return paramRole(param, supportsLookup, isListOp)

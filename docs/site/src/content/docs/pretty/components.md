@@ -8,14 +8,24 @@ All components are `api.Textable`. They can be returned directly, added to an `a
 ## Lists and key/values
 
 ```go
-clicky.List(clicky.Text("one"), clicky.Text("two"))        // "one, two" inline, one per line in markdown
+clicky.List(clicky.Text("one"), clicky.Text("two"))        // bulleted list in terminal, Markdown and HTML
 clicky.CompactList(tags)                                   // short scalar slices; inline up to 3 items
 clicky.TextList(a, b)                                      // join existing Textables
 clicky.Map(map[string]string{"env": "prod", "team": "platform"}) // env: prod, team: platform (sorted keys)
 clicky.KeyValue("namespace", obj.Namespace)                // single pair; empty values are skipped
 ```
 
-For a block of key/value pairs, use `api.DescriptionList`:
+For a sorted block of key/value pairs, use `clicky.KeyMap`. Rich values keep their links, badges, and nested structure in every human-readable format:
+
+```go
+clicky.KeyMap(map[string]api.Textable{
+	"Owner": clicky.Link("https://example.test/people/alex").Append("Alex"),
+	"Status": clicky.LabelBadge("status", "ready"),
+	"Instructions": clicky.CodeBlock("sh", "make test"),
+})
+```
+
+For explicit ordering, use `api.DescriptionList`:
 
 ```go
 api.DescriptionList{Items: []api.KeyValuePair{
@@ -31,7 +41,9 @@ clicky.CodeBlock("go", source)
 clicky.CodeBlock("application/json", body) // MIME types map to languages
 ```
 
-Code is syntax-highlighted in the terminal and HTML, and fenced in Markdown.
+Code is syntax-highlighted in the terminal and HTML, and fenced in Markdown. Fences grow to contain embedded backticks safely. Lists indent multiline items; `api.List{Ordered: true}` numbers items, and `Unstyled: true` removes markers.
+
+Tables render HTML elements by default, including expanded row details. Set `TextTable.Interactive = true` for JavaScript sorting, search, and collapsible details in an HTML page that loads Clicky's browser assets.
 
 ## Collapsible sections
 

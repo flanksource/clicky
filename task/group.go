@@ -41,6 +41,8 @@ type Group struct {
 	frozenDetails   any
 	work            *WorkProgress
 	noRender        bool // keeps the group's tasks off the terminal; see WithNoRender
+	parent          *Group
+	children        []*Group
 }
 
 type TaskGroupOption func(group *Group)
@@ -185,14 +187,14 @@ func (g *Group) observeTerminal(status Status, now time.Time) {
 // is evaluated outside any lock the worker holds; nil and still-running groups
 // are no-ops.
 func observeGroupTerminal(g *Group) {
-	if g == nil {
-		return
+	for g != nil {
+		status := g.Status()
+		if isRunning(status) {
+			return
+		}
+		g.observeTerminal(status, time.Now())
+		g = g.parent
 	}
-	status := g.Status()
-	if isRunning(status) {
-		return
-	}
-	g.observeTerminal(status, time.Now())
 }
 
 // live reports whether the group still holds its identity: it was not
@@ -259,8 +261,13 @@ func (g TypedGroup[T]) Add(name string, taskFunc func(flanksourceContext.Context
 
 // GetResults waits for all tasks in the group and returns typed results
 func (g TypedGroup[T]) GetResults() (map[TypedTask[T]]T, error) {
+	g.WaitFor()
+	return g.collectResults()
+}
+
+func (g TypedGroup[T]) collectResults() (map[TypedTask[T]]T, error) {
 	results := make(map[TypedTask[T]]T)
-	for _, item := range g.GetTasks() {
+	for _, item := range g.allTasks() {
 		switch v := item.(type) {
 		case TypedTask[T]:
 			v.WaitFor()
@@ -269,6 +276,11 @@ func (g TypedGroup[T]) GetResults() (map[TypedTask[T]]T, error) {
 				return nil, err
 			}
 			results[v] = r
+		default:
+			member := item.GetTask()
+			if result := member.WaitFor(); result.Error != nil {
+				return nil, result.Error
+			}
 		}
 	}
 
@@ -281,8 +293,11 @@ func (g *Group) Name() string {
 }
 
 func (g *Group) Status() Status {
-	items := g.GetTasks()
-	if len(items) == 0 {
+	statuses := g.memberStatuses()
+	if len(statuses) == 0 {
+		if g.ctx.Err() != nil {
+			return StatusCancelled
+		}
 		return StatusPending
 	}
 
@@ -292,8 +307,7 @@ func (g *Group) Status() Status {
 	hasCancelled := false
 	allCompleted := true
 
-	for _, item := range items {
-		status := item.GetTask().Status()
+	for _, status := range statuses {
 		switch status {
 		case StatusRunning:
 			hasRunning = true
@@ -342,8 +356,9 @@ func (g *TypedGroup[T]) WaitFor() *WaitResult {
 	for {
 		// Get current count of tasks
 		g.mu.RLock()
-		currentCount := len(g.Items)
+		childCount := len(g.children)
 		g.mu.RUnlock()
+		currentCount := len(g.allTasks()) + childCount
 
 		// Check if we have new tasks
 		if currentCount != lastCount {
@@ -360,10 +375,8 @@ func (g *TypedGroup[T]) WaitFor() *WaitResult {
 
 		// Every member is swept, not just up to the first unfinished one, so a
 		// member past its deadline is cut off as soon as the group is polled.
-		for _, item := range g.GetTasks() {
-			member := item.GetTask()
-			member.cancelIfContextDone()
-			switch member.Status() {
+		for _, status := range g.memberStatuses() {
+			switch status {
 			case StatusRunning:
 				allComplete, hasRunning = false, true
 			case StatusPending:
@@ -392,7 +405,7 @@ func (g *TypedGroup[T]) WaitFor() *WaitResult {
 
 	result.Status = g.Status()
 	result.Duration = g.Duration()
-	for _, item := range g.GetTasks() {
+	for _, item := range g.allTasks() {
 		result.TaskCount++
 		switch item.GetTask().Status() {
 		case StatusSuccess, StatusPASS, StatusSKIP:
@@ -403,7 +416,7 @@ func (g *TypedGroup[T]) WaitFor() *WaitResult {
 			result.WarningCount++
 		}
 	}
-	_, result.Error = g.GetResults()
+	_, result.Error = g.collectResults()
 
 	// For plain render mode, force a final render
 	if g.manager != nil && g.manager.noProgress.Load() && !g.manager.noRender.Load() {
@@ -415,16 +428,14 @@ func (g *TypedGroup[T]) WaitFor() *WaitResult {
 
 // Cancel cancels all items in the group
 func (g *Group) Cancel() {
-	g.mu.RLock()
-	defer g.mu.RUnlock()
-
 	if g.cancel != nil {
 		g.cancel()
 	}
-
-	// Cancel all child items
-	for _, item := range g.Items {
+	for _, item := range g.allTasks() {
 		item.GetTask().Cancel()
+	}
+	for _, child := range g.childGroups() {
+		child.Cancel()
 	}
 }
 
@@ -441,7 +452,7 @@ func (g *TypedGroup[T]) Duration() time.Duration {
 	var latestEnd time.Time
 	allCompleted := true
 
-	for _, item := range g.GetTasks() {
+	for _, item := range g.allTasks() {
 		status := item.GetTask().Status()
 		if status == StatusPending || status == StatusRunning {
 			allCompleted = false

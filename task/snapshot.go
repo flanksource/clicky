@@ -60,6 +60,7 @@ type TaskSnapshot struct {
 	// for a task GroupID links it to its parent run so the SSE/JSON clients can
 	// key on a stable id rather than the human-facing name.
 	GroupID         string            `json:"groupId,omitempty"`
+	ParentGroupID   string            `json:"parentGroupId,omitempty"`
 	DependencyIDs   []string          `json:"dependencyIds,omitempty"`
 	Kind            string            `json:"kind,omitempty"`
 	Labels          map[string]string `json:"labels,omitempty"`
@@ -173,6 +174,9 @@ func SnapshotGroup(g *Group) TaskSnapshot {
 		Href:    md.Href,
 	}
 	snap.Controls = controllerActions(controllerForGroup(g))
+	if g.parent != nil {
+		snap.ParentGroupID = g.parent.ID()
+	}
 	snap.Details = g.snapshotDetails()
 	snap.Work = g.snapshotWork()
 	if started := g.StartedAt(); !started.IsZero() {
@@ -181,9 +185,7 @@ func SnapshotGroup(g *Group) TaskSnapshot {
 	if finished := g.FinishedAt(); !finished.IsZero() {
 		snap.FinishedAt = finished.UTC().Format(time.RFC3339Nano)
 	}
-	g.mu.RLock()
-	items := g.Items
-	g.mu.RUnlock()
+	items := g.allTasks()
 
 	for _, item := range items {
 		t := item.GetTask()
@@ -215,6 +217,9 @@ func snapshotGroupWithTasks(g *Group) []TaskSnapshot {
 	for _, item := range items {
 		snaps = append(snaps, SnapshotTask(item.GetTask(), g))
 	}
+	for _, child := range g.childGroups() {
+		snaps = append(snaps, snapshotGroupWithTasks(child)...)
+	}
 	return snaps
 }
 
@@ -241,6 +246,16 @@ func SnapshotAll(taskIDs ...string) []TaskSnapshot {
 
 	for _, g := range groups {
 		if len(filter) > 0 && !filter[g.Name()] && !filter[g.ID()] {
+			continue
+		}
+		includedByParent := false
+		for parent := g.parent; parent != nil; parent = parent.parent {
+			if len(filter) == 0 || filter[parent.Name()] || filter[parent.ID()] {
+				includedByParent = true
+				break
+			}
+		}
+		if includedByParent {
 			continue
 		}
 		snapshots = append(snapshots, snapshotGroupWithTasks(g)...)

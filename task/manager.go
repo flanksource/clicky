@@ -564,19 +564,17 @@ func attachTaskableToGroup(t *Task, item Taskable) {
 
 // StartGroup creates and starts tracking a new task group
 func StartGroup[T any](name string, opts ...TaskGroupOption) TypedGroup[T] {
-	ctx, cancel := context.WithCancel(context.Background())
 	group := &Group{
 		name:      name,
 		Items:     make([]Taskable, 0),
 		startTime: time.Now(),
 		manager:   global,
-		ctx:       ctx,
-		cancel:    cancel,
 	}
 
 	for _, opt := range opts {
 		opt(group)
 	}
+	group.bindContext()
 
 	// Assign a stable id unless the caller supplied one via WithGroupID. The id
 	// is what the registry drill-down (SnapshotByID) and SSE id filter key on,
@@ -596,10 +594,16 @@ func StartGroup[T any](name string, opts ...TaskGroupOption) TypedGroup[T] {
 	global.mu.Lock()
 	defer global.mu.Unlock()
 	if existing := global.joinLiveGroup(group); existing != nil {
-		cancel()
+		group.cancel()
 		return TypedGroup[T]{Group: existing, joined: true}
 	}
 	global.groups = append(global.groups, group)
+	if group.parent != nil {
+		group.parent.mu.Lock()
+		group.parent.children = append(group.parent.children, group)
+		group.parent.finishedAt = time.Time{}
+		group.parent.mu.Unlock()
+	}
 
 	return TypedGroup[T]{Group: group}
 }

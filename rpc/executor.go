@@ -456,6 +456,8 @@ func convertValueToString(value interface{}) string {
 		return ""
 	case []interface{}:
 		return csvRecord(v)
+	case []string:
+		return csvRecord(v)
 	case map[string]interface{}:
 		return jsonRecord(v)
 	default:
@@ -479,7 +481,7 @@ func jsonRecord(value map[string]interface{}) string {
 // a slice-typed flag decodes identically over HTTP and on the command line.
 // Without this a JSON body's ["a=1","b=2"] reaches the handler as Go's bracket
 // form `[a=1 b=2]` — one unparseable string instead of two values.
-func csvRecord(values []interface{}) string {
+func csvRecord[T any](values []T) string {
 	if len(values) == 0 {
 		return ""
 	}
