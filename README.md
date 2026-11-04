@@ -346,11 +346,7 @@ go test ./middleware/...
 go test -tags integration ./rpc/... -run TestOpenAPIServe_E2E
 ```
 
-The task UI bundle is built separately:
-
-```bash
-make task-ui
-```
+clicky has no embedded task web UI. To show task progress in a browser, mount `task.RegisterHandlers(router, "/api/v1")` behind the shared `sse.Hub` (see `sse/doc.go`) and render it with clicky-ui's `TaskManager` (or `useTaskRun`/`useTaskRuns`) over `createEventHub`.
 
 ## Examples
 

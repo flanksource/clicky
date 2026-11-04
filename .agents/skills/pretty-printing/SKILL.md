@@ -118,12 +118,26 @@ Return `nil` from `GetChildren()` for leaves. Do not recursively render children
 
 ## Guardrails
 
+- Prefer Go structs with `pretty` tags and the owning type's `Pretty`/`TableProvider`/`TreeNode` interfaces over manually rebuilding field, row, or child mappings at call sites. Compose nodes inside those implementations when their presentation requires it.
+- Avoid repeated or nested `fmt.Sprintf` for structured presentation. Keep typed and rich values intact; use tags, builders, and human-formatting helpers. Concise prose interpolation and required domain formats remain valid.
 - Do not hardcode ANSI escapes or HTML.
 - Do not convert icons to strings before adding them.
 - When `clicky lint` applies, name concrete `api.Text` returners as recognized `Pretty*` methods; use `api.Textable` for other render helpers. This is a repository lint contract, not a Go type-system restriction.
 - Do not use direct `api.Text{Content: ...}` or child-slice literals when a helper or append chain exists.
 - Do not assume terminal-only behavior; verify Markdown or HTML when the changed primitive has format-specific behavior.
 - Preserve stable table column keys and unique tree identity separately from human-readable labels.
+
+## Gavel lint prompt
+
+Use [prompts/pretty-printing.prompt](prompts/pretty-printing.prompt) to review these practices with structured, source-quoted Gavel findings:
+
+```bash
+gavel lint prompt skills/pretty-printing/prompts/pretty-printing.prompt lint/summary.go
+gavel lint prompt --changed skills/pretty-printing/prompts/pretty-printing.prompt
+gavel lint prompt --dry-run skills/pretty-printing/prompts/pretty-printing.prompt lint/summary.go
+```
+
+Run from the reviewed repository. In a consuming repository, replace the prompt path with the absolute path to this file in your Clicky checkout. Pass files or directories explicitly, or use `--changed`/`--since`. Change flags select files; supply a diff through stdin when findings must be limited to added or changed code. The prompt inherits the configured model and Gavel's lint output schema and reports findings without editing source.
 
 ## Detailed reference
 

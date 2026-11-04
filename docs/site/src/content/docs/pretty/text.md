@@ -42,11 +42,13 @@ func (c Check) Pretty() api.Text {
 | Append formatted | `.Appendf("%s/%s", ns, name)` |
 | Spacing / layout | `.Space()`, `.Tab()`, `.NewLine()`, `.HR()`, `.Indent(n)` |
 | Prefix / suffix / wrap | `.Prefix("[")`, `.Suffix("]")`, `.Wrap("(", ")")` |
-| Style the whole node | `.Styles("text-red-600")`, `.AppendStyle("underline")` |
+| Style the node's own content | `.Styles("text-red-600")`, `.AppendStyle("underline")` |
 | Tooltip (HTML) | `.WithTooltip(clicky.Text("details"))` |
 | Conditional class | `clicky.Class(ok, "text-green-600", "text-red-600")` |
 
 `Append` is type-aware. Strings with newlines become line breaks, `time.Time` and `time.Duration` are humanized, maps become key/value lists, and values that implement `Pretty` contribute their `Pretty()`.
+
+Text content is literal: `clicky.Text("For <customers> use *literal*")` keeps the angle brackets and asterisks visible in HTML and Markdown. Use `clicky.ParseMarkdown` for authored Markdown, or add semantic children such as links and code blocks with `.Add(...)`. Transforms apply to the node's own content; child nodes keep their type, destination, and formatting.
 
 `api.Text` is immutable. Every method returns a new value, so always use the result:
 

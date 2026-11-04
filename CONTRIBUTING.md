@@ -23,7 +23,6 @@ make lint           # golangci-lint v2.8.0 (pinned into .bin/) + go vet ./...
 make lint-clicky-ui # run clicky-ui's custom oxlint rules against the entity demo webapp
 make fmt            # gofmt -s -w . and `go mod tidy` across every module in GO_MODULES
 make check          # fmt + lint + test
-make task-ui        # rebuild the embedded Preact task-UI bundle (task/ui/dist/taskui.js)
 make docs           # serve pkgsite Go docs locally on :8089
 ```
 
@@ -40,8 +39,7 @@ go test -tags integration ./rpc/... -run TestOpenAPIServe_E2E
 ```
 
 CI (`.github/workflows/gavel.yml`) runs tests and lint through the `flanksource/gavel` action, not
-bare `go test`/`golangci-lint`. The `flanksource/dist.yml` workflow rebuilds and commits the
-embedded `task/ui/dist/taskui.js` bundle on pushes to main.
+bare `go test`/`golangci-lint`.
 
 ## Conventions
 
@@ -56,8 +54,10 @@ embedded `task/ui/dist/taskui.js` bundle on pushes to main.
   severity: errors fail CI, warnings are advisory. The rules are documented under "Writing render
   code" in [CLAUDE.md](CLAUDE.md).
 - **Generated artifacts** at the repo root (`out.*`, `*.pdf`, `*.html`, `react.html`, `*-demo`
-  binaries) are gitignored scratch output — not source. `task/ui/dist/taskui.js` is committed build
-  output auto-rebuilt by CI; regenerate locally with `make task-ui`.
+  binaries) are gitignored scratch output — not source.
+- **No embedded web UIs for tasks** — clicky ships no browser bundle. A web view of task state
+  mounts `task.RegisterHandlers(router, prefix)` behind the shared `sse.Hub` (`sse/doc.go`) and
+  renders it with clicky-ui (`TaskManager`, `useTaskRun`/`useTaskRuns` over `createEventHub`).
 
 ## Known issues (from project memory)
 

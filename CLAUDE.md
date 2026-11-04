@@ -61,8 +61,9 @@ can also format data against an external YAML schema (`PrettyObject`/`PrettyFiel
 
 The interactive renderer **owns the terminal** while tasks run, redrawing the task tree in place.
 Emit logs through `clicky.Infof/Errorf/Warnf/Debugf` (which route via a gated, secret-redacting
-writer) rather than `fmt.Println`, so log lines never corrupt a live frame. A `task/ui/` Preact
-bundle (embedded via `//go:embed`, streamed over SSE) provides a browser view of task state.
+writer) rather than `fmt.Println`, so log lines never corrupt a live frame. For a browser view,
+mount `task.RegisterHandlers(router, prefix)` behind the shared `sse.Hub` and render it with
+clicky-ui's `TaskManager` / `useTaskRun` over `createEventHub`; clicky embeds no task web UI.
 
 ### Entities — generate CLI + REST + web UI from a struct
 
@@ -113,7 +114,7 @@ The terminal counterpart of clicky-ui's `JsonSchemaForm`, built on charmbracelet
 - **Advanced split** (`schemaform/inline_split.go`). Always shown, in this order: the discriminator, the positional argument (`x-clicky` role `positional`, which `-i` sets) and required fields. Fields with a value (`false` and `0` count) come next, then empty ones, for as long as they fit the terminal height. The rest fold under `▸ Advanced  N options`.
   - A field that a branch or listener makes required later is promoted to the row after the field before it.
   - Accessible mode asks the same up-front fields in document order, then asks `Configure N advanced options?`.
-- Choices come from the command's shell completion: the positional's `ValidArgsFunction`/`ValidArgs` and each flag's registered completion become dropdowns, re-queried with the answers so far. File and directory completions stay free text. An optional-id action (`prompt run [id]`) gets its id back as the first field.
+- Choices come from the command's shell completion: the positional's `ValidArgsFunction`/`ValidArgs` and each flag's registered completion become dropdowns, re-queried with the answers so far. File and directory completions stay free text. An optional-id action (`prompt run [id]`) publishes its id as an optional, query-only positional (`?id=` over HTTP; it stays out of the body schema), so it is the first field. An action that declares its own `id` flag keeps the name for the flag.
 - Entities complete ids by default: `RegisterEntity` sets `ValidArgsFunction` to the entity's own `List` (`id<TAB>name`, prefix match on either) when the command declares none.
   - The form reads the same list through `entity.GetIDOptions(cmd)`, with each item's description when it implements `EntityDescriber` (`GetDescription()`).
   - To give a map-based action the lookups of a flags struct's filters, wrap it with `clicky.WithActionFilters(action, filters)`.
@@ -187,7 +188,7 @@ Practical notes from building entity surfaces on clicky:
 - **`formatters/`** — `FormatManager` (the global `clicky.Formatter`) dispatches to per-format
   formatters; `formatters/reflect.go` walks plain structs into `FieldValue`/`PrettyData`.
 - **`task/`** — `Manager`, `Task`, `TypedTask`, `Group`, the live TTY renderer + pluggable
-  `LiveRenderer` hook, SSE, and the embedded `task/ui/` frontend.
+  `LiveRenderer` hook, and the task HTTP/SSE API (`task.RegisterHandlers`).
 - **`entity*.go`** (root) — the entity registry and fluent builder.
 - **`extensions/`, `rpc/`, `mcp/`** — Cobra → OpenAPI/Swagger and Cobra → MCP layers.
 - **`cmd/clicky/`** — the standalone binary: `pretty`, `schema`, `lint`, `version`, plus the
