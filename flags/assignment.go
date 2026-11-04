@@ -20,6 +20,12 @@ const ARGS = "__args__"
 // AssignFieldValue assigns a flag value to a struct field using the field path
 func AssignFieldValue(structValue reflect.Value, fv *FlagValue, args []string, isStdinAvailable bool) error {
 	fieldValue := GetFieldByPath(structValue, fv.FieldPath)
+	if fv.JSON != nil {
+		if (fv.Explicit != nil && fv.Explicit()) || fv.DefaultValue != "" {
+			fieldValue.Set(fv.JSON.value)
+		}
+		return nil
+	}
 	if fv.FieldType == reflect.TypeOf((*bool)(nil)) {
 		if (fv.Explicit != nil && fv.Explicit()) || fv.DefaultValue != "" {
 			value := *fv.BoolPtr
@@ -63,6 +69,14 @@ func AssignFieldValue(structValue reflect.Value, fv *FlagValue, args []string, i
 
 	case reflect.Int:
 		fieldValue.SetInt(int64(*fv.IntPtr))
+	case reflect.Int64:
+		if fv.StdDurationPtr != nil {
+			fieldValue.SetInt(int64(*fv.StdDurationPtr))
+		} else if fv.DurationPtr != nil {
+			fieldValue.Set(reflect.ValueOf(*fv.DurationPtr))
+		} else {
+			fieldValue.SetInt(*fv.Int64Ptr)
+		}
 
 	case reflect.Float64:
 		fieldValue.SetFloat(*fv.Float64Ptr)

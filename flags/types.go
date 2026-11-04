@@ -24,6 +24,9 @@ type FlagValue struct {
 	CLIFileRead    bool
 	StringPtr      *string
 	IntPtr         *int
+	Int64Ptr       *int64
+	StdDurationPtr *time.Duration
+	JSON           *jsonFlagValue
 	Float64Ptr     *float64
 	BoolPtr        *bool
 	StringSlicePtr *[]string

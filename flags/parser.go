@@ -5,6 +5,7 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/flanksource/commons/duration"
 )
@@ -118,7 +119,23 @@ func validateDefault(info FieldInfo) error {
 		_, err = strconv.ParseBool(info.DefaultValue)
 		return err
 	}
+	if info.FieldType.String() == "time.Time" {
+		_, err = parseTime(info.DefaultValue)
+		return err
+	}
 	switch info.FieldType.Kind() {
+	case reflect.Int64:
+		if info.FieldType.String() == "time.Duration" {
+			_, err = time.ParseDuration(info.DefaultValue)
+		} else if info.FieldType.String() == "duration.Duration" {
+			_, err = duration.ParseDuration(info.DefaultValue)
+		} else {
+			_, err = strconv.ParseInt(info.DefaultValue, 10, 64)
+		}
+	case reflect.Struct, reflect.Map, reflect.Pointer, reflect.Array, reflect.Slice:
+		if isJSONField(info.FieldType) {
+			_, err = parseJSONFlag(info.FieldType, info.DefaultValue)
+		}
 	case reflect.Int:
 		_, err = strconv.Atoi(info.DefaultValue)
 	case reflect.Float64:
@@ -190,7 +207,7 @@ func GetFieldByPath(structValue reflect.Value, fieldPath []int) reflect.Value {
 		current = current.Field(index)
 
 		// If we hit an embedded pointer struct, dereference it
-		if current.Kind() == reflect.Pointer && (position < len(fieldPath)-1 || current.Type() != reflect.TypeOf((*bool)(nil))) {
+		if current.Kind() == reflect.Pointer && position < len(fieldPath)-1 {
 			if current.IsNil() {
 				// Initialize nil embedded struct pointer
 				current.Set(reflect.New(current.Type().Elem()))

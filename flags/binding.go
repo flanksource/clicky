@@ -38,6 +38,36 @@ func bindFlagValue(fs *pflag.FlagSet, info FieldInfo, fv *FlagValue) {
 		info.FieldType = reflect.TypeOf(false)
 	}
 	switch info.FieldType.Kind() {
+	case reflect.Int64:
+		if info.FieldType.String() == "time.Duration" {
+			var value time.Duration
+			if info.DefaultValue != "" {
+				value, _ = time.ParseDuration(info.DefaultValue)
+			}
+			fv.StdDurationPtr = &value
+			if register {
+				fs.DurationVarP(fv.StdDurationPtr, info.FlagName, info.ShortFlag, value, info.Help)
+			}
+			return
+		}
+		if info.FieldType.String() == "duration.Duration" {
+			bindNamedTypeFlag(fs, info, fv)
+			return
+		}
+		var val int64
+		if info.DefaultValue != "" {
+			val, _ = strconv.ParseInt(info.DefaultValue, 10, 64)
+		}
+		fv.Int64Ptr = &val
+		if register {
+			fs.Int64VarP(fv.Int64Ptr, info.FlagName, info.ShortFlag, val, info.Help)
+		}
+	case reflect.Struct, reflect.Map, reflect.Pointer, reflect.Array:
+		if info.FieldType.String() == "time.Time" {
+			bindNamedTypeFlag(fs, info, fv)
+			return
+		}
+		bindJSONFlag(fs, info, fv)
 	case reflect.String:
 		val := info.DefaultValue
 		fv.StringPtr = &val
@@ -98,6 +128,8 @@ func bindSliceFlag(fs *pflag.FlagSet, info FieldInfo, fv *FlagValue) {
 		if register {
 			fs.IntSliceVarP(fv.IntSlicePtr, info.FlagName, info.ShortFlag, val, info.Help)
 		}
+	default:
+		bindJSONFlag(fs, info, fv)
 	}
 }
 

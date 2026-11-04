@@ -153,6 +153,12 @@ func flagParameter(flag *pflag.Flag) (RPCParameter, error) {
 		Enum:        flags.AllowedValues(flag),
 	}
 	switch flag.Value.Type() {
+	case "json-object":
+		param.Type = "object"
+	case "json-array":
+		param.Type = "array"
+	case "json-value":
+		param.Type = ""
 	case "bool":
 		param.Type = "boolean"
 		if flag.DefValue != "" {
