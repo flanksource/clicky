@@ -57,6 +57,16 @@ Embedded (anonymous) structs are walked recursively, so shared option groups can
 
 `@file` expansion is opt-in per field because it reads whatever the value names on the machine doing the expansion. For slice fields, `@file.csv:Column` and `@file.xlsx:Column` read one named column.
 
+Excel inputs use the first worksheet unless you select another with `Sheet!Column` notation:
+
+```bash
+command '@issues.xlsx:Sheet2!Issue Key'
+command '@issues.xlsx:Sprint Backlog!Issue Key'
+command '@issues.xlsx:#2!Issue Key'
+```
+
+`#2` selects the second worksheet by position, counting from one. Sheet names and column headers are case-insensitive. Excel-style single-quoted names such as `'Sprint Backlog'!Issue Key` are also supported; quotes are required for names containing `!`. Escape apostrophes within quoted names by doubling them: `'O''Brien'!Issue Key`. Quote an index-like sheet name to select it literally: `'#2'!Issue Key`. Keep the entire argument quoted for the shell, escaping any embedded quotes. Missing sheets, invalid indexes, and missing columns return errors; empty cells are skipped. CSV headers continue to use the complete column name after `:`.
+
 ## Decoding
 
 Every surface builds a `map[string]string` and decodes it with the same tags. You can use the decoder yourself, for example in an action that received a raw flag map:
