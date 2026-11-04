@@ -31,6 +31,7 @@ func WithActionFilters[Opts ActionFlags, R any](action *ActionSpec[R], filters [
 	action.lookupFunc = buildActionLookupFunc(filters)
 	action.contextLookupFunc = buildActionLookupFuncWithContext(filters)
 	action.bindCompletions = buildActionFilterCompletionBinder(filters)
+	action.filterRefs = entityFilterRefs(filters)
 	return action
 }
 
