@@ -16,8 +16,8 @@ type Step struct {
 
 // StartStep adds a running step to the group. The caller runs the step's work
 // itself and must Finish the step.
-func (g *Group) StartStep(name string) *Step {
-	t := g.manager.newTask(name, WithGroup(g))
+func (g *Group) StartStep(name string, opts ...Option) *Step {
+	t := g.manager.newTask(name, append([]Option{WithGroup(g)}, opts...)...)
 	attachTaskableToGroup(t, t)
 	now := time.Now()
 	t.mu.Lock()
@@ -44,6 +44,9 @@ func (s *Step) Finish(err error) {
 	if t.completed.Load() {
 		t.mu.Unlock()
 		return
+	}
+	if err == nil {
+		err = t.ctx.Err()
 	}
 	switch {
 	case t.status == StatusCancelled:
