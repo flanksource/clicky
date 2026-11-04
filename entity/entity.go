@@ -140,6 +140,7 @@ type ActionInfo struct {
 	// FlagSchemas shape JSON-object flags from the other arguments
 	// (WithActionFlagSchema).
 	FlagSchemas map[string]FlagSchema
+	FilterRefs  map[string]string
 	// FlagsType, if non-nil, is the struct type whose `flag:"..."` tagged
 	// fields are registered as cobra flags on the generated action command
 	// and populated into the flag map passed to DataFunc.
@@ -403,6 +404,7 @@ type ActionSpec[R any] struct {
 	contextLookupFunc ContextLookupFunc
 	bindCompletions   func(cmd *cobra.Command)
 	flagSchemas       map[string]FlagSchema
+	filterRefs        map[string]string
 	optionalID        bool
 	toolGroup         string
 	toolHints         MCPToolHints
@@ -569,6 +571,7 @@ func (a *ActionSpec[R]) actionInfo() ActionInfo {
 		ContextLookupFunc: a.contextLookupFunc,
 		BindCompletions:   a.bindCompletions,
 		FlagSchemas:       a.flagSchemas,
+		FilterRefs:        a.filterRefs,
 	}
 	if a.runCtx != nil {
 		info.ContextDataFunc = func(ctx context.Context, flagMap map[string]string, args []string) (any, error) {
