@@ -206,7 +206,11 @@ func WithContext(parent context.Context) Option {
 		if err := previous.Err(); err != nil {
 			cancel(context.Cause(previous))
 		}
-		t.ctx = flanksourceContext.NewContext(ctx)
+		var taskContext context.Context = ctx
+		if t.parent != nil {
+			taskContext = context.WithValue(ctx, groupContextKey{}, t.parent)
+		}
+		t.ctx = flanksourceContext.NewContext(taskContext)
 		t.flanksourceCtx = t.ctx
 		t.cancel = func() {
 			stop()
