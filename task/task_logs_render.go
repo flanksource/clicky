@@ -54,6 +54,12 @@ func (t *Task) prettyWithLogOffset(from int) (api.Text, int) {
 	if t.maxValue > 0 {
 		text = text.Space().Append(progressBar(t.progress, t.maxValue), "text-gray-500")
 	}
+	if t.progressMetrics != nil {
+		if t.maxValue == 0 {
+			text = text.Space().Append(fmt.Sprint(t.progress), "text-gray-500")
+		}
+		text = text.Space().Append(t.progressMetrics.String(), "text-gray-500")
+	}
 
 	// Note: We can't call t.Status() here since it would try to acquire the same mutex
 	// So we directly access t.status and handle the health check inline

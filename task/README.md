@@ -20,3 +20,5 @@ Here `commonscontext` is `github.com/flanksource/commons/context`, `task` is `gi
 Use `GroupFromContext(ctx)` to recover the active group in a shared provider. `StartStep` reports work performed inline without consuming another worker slot. Pass `WithContext(ctx)` when the step has a more specific request context, and finish it with the operation's error. A canceled context keeps the step canceled even when `Finish(nil)` is called.
 
 Run lifecycle regressions with `go test -race ./task -run '^TestTask$' -ginkgo.focus='Nested group lifecycle'`; run inline-step regressions with `go test -race ./task -run '^TestTask$' -ginkgo.focus='Group steps'`.
+
+Publish bounded measurements with `step.Task().SetProgress(completed, total)` and attach their unit and transfer metrics with `step.Task().SetProgressMetrics(task.ProgressMetrics{Unit: "objects", Bytes: bytesRead, BytesPerSecond: rate})`. A zero total means unknown progress; a known total displays zero completed work immediately. Keep the phase in `SetDescription`, and use `SetLabels` for filterable task identity. Snapshots carry independent copies of these labels and metrics for CLI, JSON and web consumers.
