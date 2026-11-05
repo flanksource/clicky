@@ -2,7 +2,9 @@ package task
 
 import (
 	"context"
+	"fmt"
 	"sort"
+	"time"
 
 	"github.com/flanksource/clicky/metrics"
 )
@@ -109,49 +111,90 @@ func mergeRunMetas(live, external []RunMeta) []RunMeta {
 	return merged
 }
 
-// finishedSnapshots remembers the snapshots of external runs whose group has
-// reached a terminal status. A finished run never changes, so a stream that
-// polls every tick only needs to ask the source for it once.
-type finishedSnapshots map[string][]TaskSnapshot
+// runSnapshots reads the runs one stream follows: the in-memory registry on
+// every read, an external source at most once per externalPollInterval. The
+// cache is per stream on purpose: a source may scope what it returns to the
+// caller in ctx, so sharing its answers across connections could leak runs.
+type runSnapshots struct {
+	source RunSource
+	ids    []string
+	// finished holds external runs whose group has reached a terminal status.
+	// A finished run never changes, so the source is asked for it once.
+	finished map[string][]TaskSnapshot
+	external []TaskSnapshot
+	polledAt time.Time
+}
 
-func snapshotsWithSource(ctx context.Context, source RunSource, finished finishedSnapshots, ids ...string) []TaskSnapshot {
-	live := SnapshotAll(ids...)
-	if source == nil {
-		return live
+func newRunSnapshots(source RunSource, ids []string) *runSnapshots {
+	return &runSnapshots{source: source, ids: ids, finished: map[string][]TaskSnapshot{}}
+}
+
+// read returns the live runs plus the external ones as of the last refresh,
+// refreshing those first when now is a poll interval past the last one.
+func (s *runSnapshots) read(ctx context.Context, now time.Time) ([]TaskSnapshot, error) {
+	live := SnapshotAll(s.ids...)
+	if s.source == nil {
+		return live, nil
 	}
-	if len(ids) == 0 {
-		runs, err := source.Runs(ctx, RunFilter{})
+	held := heldRuns(live)
+	if s.polledAt.IsZero() || now.Sub(s.polledAt) >= externalPollInterval {
+		external, err := s.readExternal(ctx, held)
 		if err != nil {
-			return live
+			return nil, err
+		}
+		s.external, s.polledAt = external, now
+	}
+	for _, snapshot := range s.external {
+		if !held[snapshot.GroupID] {
+			live = append(live, snapshot)
+		}
+	}
+	return live, nil
+}
+
+func (s *runSnapshots) readExternal(ctx context.Context, held map[string]bool) ([]TaskSnapshot, error) {
+	ids := s.ids
+	if len(ids) == 0 {
+		runs, err := s.source.Runs(ctx, RunFilter{})
+		if err != nil {
+			return nil, fmt.Errorf("list external task runs: %w", err)
 		}
 		for _, run := range runs {
 			ids = append(ids, run.ID)
 		}
 	}
-	seen := make(map[string]struct{})
-	for _, snapshot := range live {
-		if snapshot.Type == "group" {
-			seen[snapshot.GroupID] = struct{}{}
-		}
-	}
+	var external []TaskSnapshot
 	for _, id := range ids {
-		if _, ok := seen[id]; ok {
+		if held[id] {
 			continue
 		}
-		if snapshots, ok := finished[id]; ok {
-			live = append(live, snapshots...)
+		if snapshots, ok := s.finished[id]; ok {
+			external = append(external, snapshots...)
 			continue
 		}
-		snapshots, err := source.Snapshot(ctx, id)
+		snapshots, err := s.source.Snapshot(ctx, id)
 		if err != nil {
-			continue
+			return nil, fmt.Errorf("load external task run %q: %w", id, err)
 		}
-		if len(snapshots) > 0 && finished != nil && !hasUnfinishedGroup(snapshots) {
-			finished[id] = snapshots
+		if len(snapshots) > 0 && !hasUnfinishedGroup(snapshots) {
+			s.finished[id] = snapshots
 		}
-		live = append(live, snapshots...)
+		external = append(external, snapshots...)
 	}
-	return live
+	return external, nil
+}
+
+// heldRuns names the runs this process holds, by stable id and by name: a
+// stream may follow a run by either, and neither is the source's to answer.
+func heldRuns(snapshots []TaskSnapshot) map[string]bool {
+	held := map[string]bool{}
+	for _, snapshot := range snapshots {
+		if snapshot.Type == "group" {
+			held[snapshot.GroupID] = true
+			held[snapshot.ID] = true
+		}
+	}
+	return held
 }
 
 func hasUnfinishedGroup(snapshots []TaskSnapshot) bool {

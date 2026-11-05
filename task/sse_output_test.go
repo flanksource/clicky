@@ -2,8 +2,10 @@ package task
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -42,11 +44,15 @@ func TestEmitOutputDeltaSendsOnlyWhatTheClientHasNotSeen(t *testing.T) {
 
 	emit := func(view StreamView) (outputDelta, bool) {
 		t.Helper()
-		recorder := httptest.NewRecorder()
-		if !emitOutputDelta(recorder, snapshot, "stdout", view, sent) {
+		var frame bytes.Buffer
+		emitted, err := emitOutputDelta(&frame, snapshot, "stdout", view, sent)
+		if err != nil {
+			t.Fatalf("emit output delta: %v", err)
+		}
+		if !emitted {
 			return outputDelta{}, false
 		}
-		return decodeOutputFrame(t, recorder.Body.String()), true
+		return decodeOutputFrame(t, frame.String()), true
 	}
 
 	for _, tc := range []struct {
@@ -99,13 +105,96 @@ func TestEmitOutputDeltaSendsOnlyWhatTheClientHasNotSeen(t *testing.T) {
 }
 
 func TestEmitOutputDeltaStaysSilentForATaskThatHasWrittenNothing(t *testing.T) {
-	recorder := httptest.NewRecorder()
+	var frame bytes.Buffer
 	sent := map[string]int64{}
 
-	emitted := emitOutputDelta(recorder, TaskSnapshot{ID: "task-1", Type: "task"}, "stdout", StreamView{}, sent)
+	emitted, err := emitOutputDelta(&frame, TaskSnapshot{ID: "task-1", Type: "task"}, "stdout", StreamView{}, sent)
 
-	if emitted || recorder.Body.Len() != 0 {
-		t.Fatalf("expected no frame for an empty stream, got %q", recorder.Body.String())
+	if err != nil || emitted || frame.Len() != 0 {
+		t.Fatalf("expected no frame for an empty stream, got %q (err %v)", frame.String(), err)
+	}
+}
+
+// Logs travel like output: a client is sent the entries it lacks, keyed by
+// their sequence number, and is reset only when it holds entries that are gone.
+func TestEmitLogsDeltaSendsOnlyTheEntriesTheClientLacks(t *testing.T) {
+	entry := func(seq uint64) LogEntry {
+		return LogEntry{Seq: seq, Level: "info", Message: fmt.Sprintf("line %d", seq), Time: "2026-11-05T10:00:00Z"}
+	}
+	snapshot := TaskSnapshot{ID: "task-1", GroupID: "run-1", Type: "task"}
+	sent := map[string]logCursor{}
+
+	for _, tc := range []struct {
+		name    string
+		logs    []LogEntry
+		cleared uint64
+		emitted bool
+		want    logsDelta
+	}{{
+		name:    "a fresh subscriber is reset to every retained entry",
+		logs:    []LogEntry{entry(1), entry(2)},
+		emitted: true,
+		want:    logsDelta{Entries: []LogEntry{entry(1), entry(2)}, Reset: true},
+	}, {
+		name:    "an unchanged log sends nothing",
+		logs:    []LogEntry{entry(1), entry(2)},
+		emitted: false,
+	}, {
+		name:    "a new entry is appended alone",
+		logs:    []LogEntry{entry(1), entry(2), entry(3)},
+		emitted: true,
+		want:    logsDelta{Entries: []LogEntry{entry(3)}},
+	}, {
+		// Retention dropped entry 1; the client keeps what it has.
+		name:    "eviction of an entry the client holds is not a reset",
+		logs:    []LogEntry{entry(2), entry(3), entry(4)},
+		emitted: true,
+		want:    logsDelta{Entries: []LogEntry{entry(4)}},
+	}, {
+		name:    "a clear resets the client to what was logged since",
+		logs:    []LogEntry{entry(5)},
+		cleared: 4,
+		emitted: true,
+		want:    logsDelta{Entries: []LogEntry{entry(5)}, Reset: true},
+	}, {
+		name:    "a clear with nothing logged since empties the client",
+		cleared: 5,
+		emitted: true,
+		want:    logsDelta{Entries: []LogEntry{}, Reset: true},
+	}} {
+		t.Run(tc.name, func(t *testing.T) {
+			snapshot.Logs, snapshot.LogsClearedThrough = tc.logs, tc.cleared
+			var frame bytes.Buffer
+			emitted, err := emitLogsDelta(&frame, snapshot, sent)
+			if err != nil {
+				t.Fatalf("emit logs delta: %v", err)
+			}
+			if emitted != tc.emitted {
+				t.Fatalf("emitted = %v, want %v (frame %q)", emitted, tc.emitted, frame.String())
+			}
+			if !tc.emitted {
+				return
+			}
+			want := tc.want
+			want.ID, want.GroupID = snapshot.ID, snapshot.GroupID
+			wantJSON, err := json.Marshal(want)
+			if err != nil {
+				t.Fatalf("encode want: %v", err)
+			}
+			if got := frame.String(); got != "event: logs\ndata: "+string(wantJSON)+"\n\n" {
+				t.Fatalf("frame = %q, want logs %s", got, wantJSON)
+			}
+		})
+	}
+}
+
+func TestEmitLogsDeltaStaysSilentForATaskThatHasLoggedNothing(t *testing.T) {
+	var frame bytes.Buffer
+
+	emitted, err := emitLogsDelta(&frame, TaskSnapshot{ID: "task-1", Type: "task"}, map[string]logCursor{})
+
+	if err != nil || emitted || frame.Len() != 0 {
+		t.Fatalf("expected no frame for an empty log, got %q (err %v)", frame.String(), err)
 	}
 }
 
@@ -138,6 +227,8 @@ func startTaskStream(t *testing.T, h http.Handler) (*sseFrames, func()) {
 			}
 			line = strings.TrimRight(line, "\n")
 			switch {
+			case strings.HasPrefix(line, ":"):
+				frames.out <- [2]string{":", line}
 			case strings.HasPrefix(line, "event: "):
 				event = strings.TrimPrefix(line, "event: ")
 			case strings.HasPrefix(line, "data: ") && event != "":
@@ -166,6 +257,105 @@ func (f *sseFrames) await(name string, timeout time.Duration) string {
 		case <-deadline:
 			f.t.Fatalf("timed out waiting for an event: %s frame", name)
 			return ""
+		}
+	}
+}
+
+func TestSSEHandlerCarriesLogsOnlyInDeltaFrames(t *testing.T) {
+	withTestGlobal(t)
+
+	run := StartManagedRun("logger", WithGroupID("run-logs"))
+	defer run.Finish(StatusSuccess, nil)
+	run.Task().Infof("first line")
+
+	frames, stop := startTaskStream(t, SSEHandler("run-logs"))
+	defer stop()
+
+	var delta logsDelta
+	if err := json.Unmarshal([]byte(frames.await("logs", 3*time.Second)), &delta); err != nil {
+		t.Fatalf("decode logs frame: %v", err)
+	}
+	if !delta.Reset || len(delta.Entries) != 1 || delta.Entries[0].Message != "first line" {
+		t.Fatalf("first logs frame = %+v, want a reset to [first line]", delta)
+	}
+
+	run.Task().Infof("second line")
+	for deadline := time.After(3 * time.Second); ; {
+		select {
+		case frame := <-frames.out:
+			switch frame[0] {
+			case "task":
+				var snapshot TaskSnapshot
+				if err := json.Unmarshal([]byte(frame[1]), &snapshot); err != nil {
+					t.Fatalf("decode task frame: %v", err)
+				}
+				if snapshot.Type == "task" && len(snapshot.Logs) > 0 {
+					t.Fatalf("task frame carried logs: %+v", snapshot.Logs)
+				}
+			case "logs":
+				var appended logsDelta
+				if err := json.Unmarshal([]byte(frame[1]), &appended); err != nil {
+					t.Fatalf("decode logs frame: %v", err)
+				}
+				if appended.Reset || len(appended.Entries) != 1 || appended.Entries[0].Message != "second line" {
+					t.Fatalf("second logs frame = %+v, want an append of [second line] alone", appended)
+				}
+				return
+			}
+		case <-deadline:
+			t.Fatal("timed out waiting for the appended logs frame")
+		}
+	}
+}
+
+func TestSSEHandlerPingsAQuietStream(t *testing.T) {
+	withTestGlobal(t)
+	previous := streamPingInterval
+	streamPingInterval = 300 * time.Millisecond
+	t.Cleanup(func() { streamPingInterval = previous })
+
+	run := StartManagedRun("quiet", WithGroupID("run-quiet"))
+	defer run.Finish(StatusSuccess, nil)
+
+	frames, stop := startTaskStream(t, SSEHandler("run-quiet"))
+	defer stop()
+
+	if ping := frames.await(":", 3*time.Second); ping != ": ping" {
+		t.Fatalf("keepalive = %q, want %q", ping, ": ping")
+	}
+}
+
+// A running task whose state does not change must not be re-sent: the frame
+// carries timestamps, not an elapsed value that moves on every tick.
+func TestSSEHandlerSendsAnIdleRunningTaskOnce(t *testing.T) {
+	withTestGlobal(t)
+	const window = 5 * 200 * time.Millisecond
+
+	run := StartManagedRun("idle", WithGroupID("run-idle"))
+	defer run.Finish(StatusSuccess, nil)
+
+	frames, stop := startTaskStream(t, SSEHandler("run-idle"))
+	defer stop()
+
+	taskFrames := 0
+	for deadline := time.After(window); ; {
+		select {
+		case frame := <-frames.out:
+			if frame[0] != "task" {
+				continue
+			}
+			var snapshot TaskSnapshot
+			if err := json.Unmarshal([]byte(frame[1]), &snapshot); err != nil {
+				t.Fatalf("decode task frame: %v", err)
+			}
+			if snapshot.Type == "task" {
+				taskFrames++
+			}
+		case <-deadline:
+			if taskFrames != 1 {
+				t.Fatalf("idle running task sent %d task frames over %s, want 1", taskFrames, window)
+			}
+			return
 		}
 	}
 }

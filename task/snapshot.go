@@ -1,10 +1,10 @@
 package task
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/flanksource/clicky/prompt"
-	"github.com/flanksource/commons/text"
 )
 
 // SnapshotStreamLimit bounds each stdout/stderr tail exposed through task
@@ -24,29 +24,38 @@ type OutputSnapshot struct {
 	StderrOffset int64  `json:"stderrOffset,omitempty"`
 }
 
+// LogEntry is one retained task log line. Seq is its position in the task's
+// whole log history, so a stream can send only the entries a client lacks.
 type LogEntry struct {
+	Seq     uint64 `json:"seq"`
 	Level   string `json:"level"`
 	Message string `json:"message"`
+	Time    string `json:"time"` // RFC3339Nano
 }
 
-// TaskSnapshot is a JSON-serializable snapshot of a task or group's current state.
+// TaskSnapshot is a JSON-serializable snapshot of a task or group's current
+// state. It carries timestamps only — never an elapsed value, which would
+// change on every read of a running task; Duration derives it on demand.
 type TaskSnapshot struct {
-	ID        string        `json:"id"`
-	Name      string        `json:"name"`
-	Type      string        `json:"type"`            // "task" or "group"
-	Group     string        `json:"group,omitempty"` // parent group name
-	Status    string        `json:"status"`
-	Duration  string        `json:"duration,omitempty"`
-	Error     string        `json:"error,omitempty"`
-	Retry     *RetryRequest `json:"retry,omitempty"`
-	Message   string        `json:"message,omitempty"`   // latest log line
-	Logs      []LogEntry    `json:"logs,omitempty"`      // all log entries
-	Total     int           `json:"total,omitempty"`     // group: total child tasks
-	Completed int           `json:"completed,omitempty"` // group: completed tasks
-	Failed    int           `json:"failed,omitempty"`    // group: failed tasks
-	Running   int           `json:"running,omitempty"`   // group: running tasks
-	Canceled  int           `json:"canceled,omitempty"`
-	Work      *WorkProgress `json:"work,omitempty"`
+	ID      string        `json:"id"`
+	Name    string        `json:"name"`
+	Type    string        `json:"type"`            // "task" or "group"
+	Group   string        `json:"group,omitempty"` // parent group name
+	Status  string        `json:"status"`
+	Error   string        `json:"error,omitempty"`
+	Retry   *RetryRequest `json:"retry,omitempty"`
+	Message string        `json:"message,omitempty"` // latest log line
+	Logs    []LogEntry    `json:"logs,omitempty"`    // retained log entries, oldest first
+	// LogsClearedThrough is the Seq of the last entry dropped by a log clear (0
+	// when the log was never cleared): a client holding entries at or below it
+	// holds entries that are gone.
+	LogsClearedThrough uint64        `json:"logsClearedThrough,omitempty"`
+	Total              int           `json:"total,omitempty"`     // group: total child tasks
+	Completed          int           `json:"completed,omitempty"` // group: completed tasks
+	Failed             int           `json:"failed,omitempty"`    // group: failed tasks
+	Running            int           `json:"running,omitempty"`   // group: running tasks
+	Canceled           int           `json:"canceled,omitempty"`
+	Work               *WorkProgress `json:"work,omitempty"`
 
 	// Per-task fields (type == "task"). Description is the live stage label set
 	// via Task.SetDescription; Progress/MaxValue mirror Task.SetProgress so the UI
@@ -104,9 +113,6 @@ func SnapshotTask(t *Task, group *Group) TaskSnapshot {
 		snap.Group = group.Name()
 		snap.GroupID = group.ID()
 	}
-	if d := t.Duration(); d > 0 {
-		snap.Duration = text.HumanizeDuration(d)
-	}
 	if started := t.StartTime(); !started.IsZero() {
 		snap.StartedAt = started.UTC().Format(time.RFC3339Nano)
 	}
@@ -118,12 +124,15 @@ func SnapshotTask(t *Task, group *Group) TaskSnapshot {
 	}
 	t.snapshotProgress(&snap)
 	if bl := t.getBufferedLogger(); bl != nil {
+		snap.LogsClearedThrough = bl.ClearedThrough()
 		if entries := bl.GetLogs(); len(entries) > 0 {
 			snap.Message = entries[len(entries)-1].Message
 			for _, e := range entries {
 				snap.Logs = append(snap.Logs, LogEntry{
+					Seq:     e.Seq,
 					Level:   e.Level.String(),
 					Message: e.Message,
+					Time:    e.Time.UTC().Format(time.RFC3339Nano),
 				})
 			}
 		}
@@ -138,6 +147,34 @@ func SnapshotTask(t *Task, group *Group) TaskSnapshot {
 	t.mu.Unlock()
 	snap.Controls = controllerActions(controller)
 	return snap
+}
+
+// Duration is how long the task or group has run: finishedAt-startedAt once it
+// finished, the time since startedAt while it runs, and 0 before it starts.
+func (s TaskSnapshot) Duration() time.Duration { return elapsed(s.StartedAt, s.FinishedAt) }
+
+// Duration is how long the run has taken so far; see TaskSnapshot.Duration.
+func (m RunMeta) Duration() time.Duration { return elapsed(m.StartedAt, m.FinishedAt) }
+
+func elapsed(startedAt, finishedAt string) time.Duration {
+	if startedAt == "" {
+		return 0
+	}
+	started := parseSnapshotTime("startedAt", startedAt)
+	if finishedAt == "" {
+		return time.Since(started)
+	}
+	return parseSnapshotTime("finishedAt", finishedAt).Sub(started)
+}
+
+// parseSnapshotTime panics on a malformed timestamp: snapshots are written with
+// time.RFC3339Nano, so anything else is a corrupted snapshot, not input.
+func parseSnapshotTime(field, value string) time.Time {
+	parsed, err := time.Parse(time.RFC3339Nano, value)
+	if err != nil {
+		panic(fmt.Sprintf("task: snapshot %s %q is not RFC3339: %v", field, value, err))
+	}
+	return parsed
 }
 
 // streamTail bounds a stream view to SnapshotStreamLimit, advancing offset by

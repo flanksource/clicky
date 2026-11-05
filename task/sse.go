@@ -1,10 +1,13 @@
 package task
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
@@ -12,42 +15,47 @@ import (
 	"github.com/flanksource/commons/logger"
 )
 
+// streamTick is how often a task stream re-reads the runs it follows. It is
+// the stream's only rate limit: every change made between two ticks reaches
+// the client as one frame per task.
+const streamTick = 200 * time.Millisecond
+
+var (
+	// streamPingInterval is how long a task stream may send nothing before it
+	// writes a keepalive comment, so an idle proxy does not drop a quiet run's
+	// stream. A var so specs can shorten it.
+	streamPingInterval = 15 * time.Second
+	// externalPollInterval is how often a task stream re-reads runs owned by an
+	// external RunSource; in-memory runs are re-read every tick.
+	externalPollInterval = time.Second
+)
+
 // SSEHandler returns an http.Handler that streams task events via Server-Sent Events.
 // If taskIDs are provided, only groups matching those IDs are streamed.
-// The handler polls every 200ms, emits changed JSON snapshots, and sends stdout
-// and stderr as append-only output deltas (or a reset when the bounded tail
-// rolls over).
-// It sends an "event: done" when all tracked groups have completed.
+//
+// Every 200ms the handler re-reads its runs and sends, per task, only what
+// changed: an "event: task" snapshot when its state differs from the last one
+// sent, stdout/stderr as "event: output" deltas, and log entries as
+// "event: logs" deltas. Snapshots carry timestamps, never elapsed times, so a
+// task that is merely running sends nothing. A stream that sent nothing for
+// streamPingInterval writes a ": ping" comment.
+//
+// It sends "event: done" once every tracked group has completed, and
+// "event: error" {"error": msg} — ending the stream — when its runs cannot be
+// read or encoded.
 func SSEHandler(taskIDs ...string) http.Handler {
 	return SSEHandlerWithSource(nil, taskIDs...)
 }
 
-// SSEHandlerWithSource also streams task runs owned by another process or store.
+// SSEHandlerWithSource also streams task runs owned by another process or
+// store, re-reading those every externalPollInterval.
 func SSEHandlerWithSource(source RunSource, taskIDs ...string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Merge query param IDs with function-level IDs. A ?kind= filter is
-		// resolved to the matching runs' ids so the stream can follow a whole
-		// kind, not just an explicit id/name list.
-		ids := append([]string{}, taskIDs...)
-		if q := r.URL.Query().Get("tasks"); q != "" {
-			ids = append(ids, strings.Split(q, ",")...)
+		ids, err := streamRunIDs(r, source, taskIDs)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
 		}
-		if kind := r.URL.Query().Get("kind"); kind != "" {
-			for _, run := range Runs(RunFilter{Kind: kind}) {
-				ids = append(ids, run.ID)
-			}
-			if source != nil {
-				runs, err := source.Runs(r.Context(), RunFilter{Kind: kind})
-				if err != nil {
-					http.Error(w, "list external task runs: "+err.Error(), http.StatusInternalServerError)
-					return
-				}
-				for _, run := range runs {
-					ids = append(ids, run.ID)
-				}
-			}
-		}
-
 		flusher, ok := w.(http.Flusher)
 		if !ok {
 			http.Error(w, "streaming not supported", http.StatusInternalServerError)
@@ -60,72 +68,171 @@ func SSEHandlerWithSource(source RunSource, taskIDs ...string) http.Handler {
 		w.Header().Set("X-Accel-Buffering", "no")
 		flusher.Flush()
 
-		ticker := time.NewTicker(200 * time.Millisecond)
+		stream := newTaskStream(source, ids)
+		ticker := time.NewTicker(streamTick)
 		defer ticker.Stop()
-		lastSnapshots := map[string]string{}
-		// lastOutput holds, per stream, the absolute offset one past the last byte
-		// this connection has sent — the client's end position, not its length.
-		lastOutput := map[string]int64{}
-		finished := finishedSnapshots{}
-
+		lastWrite := time.Now()
 		for {
 			select {
 			case <-r.Context().Done():
 				return
-			case <-ticker.C:
-				snapshots := visibleSnapshots(r.Context(), source, snapshotsWithSource(r.Context(), source, finished, ids...))
-				allDone := true
-				anyEmitted := false
-
-				for _, snap := range snapshots {
-					if snap.Type == "group" {
-						if snap.Status == string(StatusRunning) || snap.Status == string(StatusPending) {
-							allDone = false
-						}
+			case now := <-ticker.C:
+				var frames bytes.Buffer
+				done, err := stream.tick(r.Context(), &frames, now)
+				if err != nil {
+					if r.Context().Err() != nil {
+						return
 					}
-					stdout := StreamView{Data: snap.Stdout, Offset: snap.StdoutOffset, Truncated: snap.StdoutTruncated}
-					stderr := StreamView{Data: snap.Stderr, Offset: snap.StderrOffset, Truncated: snap.StderrTruncated}
-					if snap.Type == "task" {
-						snap.Stdout = ""
-						snap.Stderr = ""
-					}
-					data, err := json.Marshal(snap)
-					if err != nil {
-						continue
-					}
-					key := snap.Type + ":" + snap.ID + ":" + snap.GroupID
-					if lastSnapshots[key] != string(data) {
-						lastSnapshots[key] = string(data)
-						_, _ = fmt.Fprintf(w, "event: task\ndata: %s\n\n", data)
-						anyEmitted = true
-					}
-					if snap.Type == "task" {
-						if emitOutputDelta(w, snap, "stdout", stdout, lastOutput) {
-							anyEmitted = true
-						}
-						if emitOutputDelta(w, snap, "stderr", stderr, lastOutput) {
-							anyEmitted = true
-						}
-					}
+					logger.Warnf("task stream: %v", err)
+					frames.Reset()
+					writeStreamError(&frames, err)
+					done = true
 				}
-
-				if anyEmitted {
-					flusher.Flush()
+				if frames.Len() == 0 && now.Sub(lastWrite) >= streamPingInterval {
+					frames.WriteString(": ping\n\n")
 				}
-
-				if len(snapshots) > 0 && allDone {
-					_, _ = fmt.Fprintf(w, "event: done\ndata: {\"status\":\"completed\"}\n\n")
+				if frames.Len() > 0 {
+					// One write per tick: a hub relaying this stream flushes a
+					// burst once instead of once per frame.
+					if _, err := w.Write(frames.Bytes()); err != nil {
+						return
+					}
 					flusher.Flush()
+					lastWrite = now
+				}
+				if done {
 					return
-				}
-
-				// No groups registered yet — keep waiting
-				if len(snapshots) == 0 {
-					continue
 				}
 			}
 		}
 	})
+}
+
+// streamRunIDs is the runs a stream follows: the handler's own ids, ?tasks=,
+// and the runs of ?kind= as of the request.
+func streamRunIDs(r *http.Request, source RunSource, taskIDs []string) ([]string, error) {
+	ids := append([]string{}, taskIDs...)
+	if q := r.URL.Query().Get("tasks"); q != "" {
+		ids = append(ids, strings.Split(q, ",")...)
+	}
+	kind := r.URL.Query().Get("kind")
+	if kind == "" {
+		return ids, nil
+	}
+	for _, run := range Runs(RunFilter{Kind: kind}) {
+		ids = append(ids, run.ID)
+	}
+	if source == nil {
+		return ids, nil
+	}
+	runs, err := source.Runs(r.Context(), RunFilter{Kind: kind})
+	if err != nil {
+		return nil, fmt.Errorf("list external task runs: %w", err)
+	}
+	for _, run := range runs {
+		ids = append(ids, run.ID)
+	}
+	return ids, nil
+}
+
+// taskStream is one connection's position in the runs it follows: what it last
+// sent of each snapshot, stream and log, so each tick sends only what changed.
+type taskStream struct {
+	runs      *runSnapshots
+	snapshots map[string]string
+	// output holds, per stream, the absolute offset one past the last byte this
+	// connection has sent — the client's end position, not its length.
+	output map[string]int64
+	logs   map[string]logCursor
+}
+
+func newTaskStream(source RunSource, ids []string) *taskStream {
+	return &taskStream{
+		runs:      newRunSnapshots(source, ids),
+		snapshots: map[string]string{},
+		output:    map[string]int64{},
+		logs:      map[string]logCursor{},
+	}
+}
+
+// tick writes the frames for everything that changed since the last tick, and
+// the done frame once every tracked group has finished, which it reports.
+func (s *taskStream) tick(ctx context.Context, frames *bytes.Buffer, now time.Time) (bool, error) {
+	snapshots, err := s.runs.read(ctx, now)
+	if err != nil {
+		return false, err
+	}
+	snapshots = visibleSnapshots(ctx, s.runs.source, snapshots)
+	allDone := true
+	for _, snapshot := range snapshots {
+		if snapshot.Type == "group" && (snapshot.Status == string(StatusRunning) || snapshot.Status == string(StatusPending)) {
+			allDone = false
+		}
+		if err := s.write(frames, snapshot); err != nil {
+			return false, err
+		}
+	}
+	if len(snapshots) == 0 || !allDone {
+		// With no groups registered yet, keep waiting for them.
+		return false, nil
+	}
+	frames.WriteString("event: done\ndata: {\"status\":\"completed\"}\n\n")
+	return true, nil
+}
+
+// write sends one snapshot's changes. A task frame never carries its output or
+// logs: those travel as deltas, which a client accumulates beside the snapshot.
+func (s *taskStream) write(frames io.Writer, snapshot TaskSnapshot) error {
+	full := snapshot
+	if snapshot.Type == "task" {
+		snapshot.Stdout, snapshot.Stderr, snapshot.Logs = "", "", nil
+	}
+	data, err := json.Marshal(snapshot)
+	if err != nil {
+		return fmt.Errorf("encode %s %q snapshot: %w", snapshot.Type, snapshot.ID, err)
+	}
+	key := snapshot.Type + ":" + snapshot.ID + ":" + snapshot.GroupID
+	if s.snapshots[key] != string(data) {
+		s.snapshots[key] = string(data)
+		if _, err := fmt.Fprintf(frames, "event: task\ndata: %s\n\n", data); err != nil {
+			return err
+		}
+	}
+	if snapshot.Type != "task" {
+		return nil
+	}
+	streams := []struct {
+		name string
+		view StreamView
+	}{
+		{"stdout", StreamView{Data: full.Stdout, Offset: full.StdoutOffset, Truncated: full.StdoutTruncated}},
+		{"stderr", StreamView{Data: full.Stderr, Offset: full.StderrOffset, Truncated: full.StderrTruncated}},
+	}
+	for _, stream := range streams {
+		if _, err := emitOutputDelta(frames, full, stream.name, stream.view, s.output); err != nil {
+			return err
+		}
+	}
+	_, err = emitLogsDelta(frames, full, s.logs)
+	return err
+}
+
+// writeEvent writes one named event carrying payload as JSON.
+func writeEvent(w io.Writer, name string, payload any) error {
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("encode %s frame: %w", name, err)
+	}
+	_, err = fmt.Fprintf(w, "event: %s\ndata: %s\n\n", name, data)
+	return err
+}
+
+// writeStreamError is the stream's last frame when it cannot go on, the same
+// "event: error" {"error": msg} contract as sse.Snapshot.
+func writeStreamError(frames *bytes.Buffer, cause error) {
+	if err := writeEvent(frames, "error", map[string]string{"error": cause.Error()}); err != nil {
+		panic(fmt.Sprintf("task stream: %v", err))
+	}
 }
 
 // StreamView is one snapshot's view of a task stream: the retained tail, the
@@ -160,12 +267,12 @@ type outputDelta struct {
 // rolls over: the tail becomes a sliding window that is never again a prefix
 // extension, so every poll would resend the whole retained buffer.
 func emitOutputDelta(
-	w http.ResponseWriter,
+	w io.Writer,
 	snapshot TaskSnapshot,
 	stream string,
 	view StreamView,
 	sent map[string]int64,
-) bool {
+) (bool, error) {
 	key := snapshot.GroupID + ":" + snapshot.ID + ":" + stream
 	end := view.end()
 	have, seen := sent[key]
@@ -175,11 +282,11 @@ func emitOutputDelta(
 	}
 	switch {
 	case seen && have == end:
-		return false
+		return false, nil
 	case !seen && view.Data == "":
 		// A task that has produced nothing yet has nothing to reset the client to.
 		sent[key] = end
-		return false
+		return false, nil
 	case seen && have >= view.Offset && have <= end:
 		delta.Data = view.Data[have-view.Offset:]
 		delta.Offset = have
@@ -189,12 +296,51 @@ func emitOutputDelta(
 		delta.Reset = true
 	}
 	sent[key] = end
-	data, err := json.Marshal(delta)
-	if err != nil {
-		return false
+	return true, writeEvent(w, "output", delta)
+}
+
+// logsDelta is one frame of a task's log. Entries are in Seq order; Reset tells
+// the client to replace the entries it holds instead of appending to them.
+type logsDelta struct {
+	ID      string     `json:"id"`
+	GroupID string     `json:"groupId,omitempty"`
+	Entries []LogEntry `json:"entries"`
+	Reset   bool       `json:"reset,omitempty"`
+}
+
+// logCursor is what a connection has sent of one task's log: the highest Seq,
+// and the clear (LogsClearedThrough) it was sent after.
+type logCursor struct{ seq, cleared uint64 }
+
+// emitLogsDelta sends the log entries the client lacks. Entries are identified
+// by Seq, so retention dropping an old entry is not a change; only a clear
+// (LogsClearedThrough moving) resets the client. A first frame is a reset to
+// every retained entry — the only frame that carries entries with no Seq, as
+// in snapshots persisted before entries were sequenced.
+func emitLogsDelta(w io.Writer, snapshot TaskSnapshot, sent map[string]logCursor) (bool, error) {
+	key := snapshot.GroupID + ":" + snapshot.ID
+	have, seen := sent[key]
+	next := logCursor{seq: have.seq, cleared: snapshot.LogsClearedThrough}
+	if n := len(snapshot.Logs); n > 0 {
+		next.seq = max(have.seq, snapshot.Logs[n-1].Seq)
 	}
-	_, _ = fmt.Fprintf(w, "event: output\ndata: %s\n\n", data)
-	return true
+	delta := logsDelta{ID: snapshot.ID, GroupID: snapshot.GroupID}
+	switch {
+	case !seen && len(snapshot.Logs) == 0:
+		// A task that has logged nothing yet has nothing to reset the client to.
+		sent[key] = next
+		return false, nil
+	case !seen || snapshot.LogsClearedThrough > have.cleared:
+		delta.Entries, delta.Reset = append([]LogEntry{}, snapshot.Logs...), true
+	default:
+		from := sort.Search(len(snapshot.Logs), func(i int) bool { return snapshot.Logs[i].Seq > have.seq })
+		if from == len(snapshot.Logs) {
+			return false, nil
+		}
+		delta.Entries = snapshot.Logs[from:]
+	}
+	sent[key] = next
+	return true, writeEvent(w, "logs", delta)
 }
 
 // RunsSSEHandler streams the run listing (RunMeta) as SSE. Unlike SSEHandler it
