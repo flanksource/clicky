@@ -170,10 +170,13 @@ func (p *Process) waitRuntime(result <-chan error, timeout <-chan time.Time, can
 		case <-samples:
 			monitor.sample()
 		case <-timeout:
-			p.stopAndReap(result, 5*time.Second)
+			// The reaped exit status is the signal sent here, not the run's
+			// outcome: the timeout is.
+			_ = p.stopAndReap(result, 5*time.Second)
 			return fmt.Errorf("command timed out after %v", p.Timeout)
 		case <-cancelled:
-			p.stopAndReap(result, 5*time.Second)
+			// As above: the cancellation, not the signal it caused, is the outcome.
+			_ = p.stopAndReap(result, 5*time.Second)
 			return p.ctx.Err()
 		}
 	}

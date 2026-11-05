@@ -206,7 +206,7 @@ func WithContext(parent context.Context) Option {
 		if err := previous.Err(); err != nil {
 			cancel(context.Cause(previous))
 		}
-		var taskContext context.Context = ctx
+		taskContext := ctx
 		if t.parent != nil {
 			taskContext = context.WithValue(ctx, groupContextKey{}, t.parent)
 		}
