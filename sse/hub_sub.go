@@ -126,7 +126,7 @@ func (c *hubConn) runSub(sub *hubSub, req *http.Request, root http.Handler) {
 	case contentType != "text/event-stream":
 		closed.Error = fmt.Sprintf("content type %q is not text/event-stream: %s", rw.header.Get("Content-Type"), readErrorBody(pr))
 	default:
-		if err := readStream(pr, func(ev streamEvent) error { return c.write(encodeSubEvent(sub.id, ev)) }); err != nil {
+		if err := c.relaySub(sub, pr); err != nil {
 			closed.Error = err.Error()
 		}
 	}
@@ -144,9 +144,27 @@ func (c *hubConn) runSub(sub *hubSub, req *http.Request, root http.Handler) {
 	if err != nil {
 		panic(fmt.Sprintf("marshal events __closed: %v", err))
 	}
-	if err := c.write(fmt.Appendf(nil, "event: %s/__closed\ndata: %s\n\n", sub.id, payload)); err != nil && !errors.Is(err, errHubConnClosed) {
+	if err := c.write(fmt.Appendf(nil, "event: %s/__closed\ndata: %s\n\n", sub.id, payload), true); err != nil && !errors.Is(err, errHubConnClosed) {
 		logger.Debugf("events sub %s: %v", sub.id, err)
 	}
+}
+
+// relaySub re-emits the sub's events on the connection. Events the handler
+// wrote together are flushed together, once the parser has consumed them all.
+func (c *hubConn) relaySub(sub *hubSub, body io.Reader) error {
+	pending := false
+	emit := func(ev streamEvent) error {
+		pending = true
+		return c.write(encodeSubEvent(sub.id, ev), false)
+	}
+	idle := func() error {
+		if !pending {
+			return nil
+		}
+		pending = false
+		return c.flush()
+	}
+	return readStream(body, emit, idle)
 }
 
 // awaitSubHandler waits for a cancelled sub's handler to return, at most
