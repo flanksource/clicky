@@ -61,6 +61,8 @@ Fail loudly when the state is missing. Silently falling back to a default tenant
 | `entity.OperationSurfaceFromContext(ctx)` | `entity` | `"cli"`, `"http"` or `"mcp"`; empty for direct calls |
 | `rpc.RequestFromContext(ctx)` | `rpc` | the originating `*http.Request`; `ok == false` on the CLI |
 | `entity.TraceIDFromContext(ctx)` | `entity` | the trace ID used in [structured error](/runtime/errors/) responses |
+| `task.TaskFromContext(ctx)` | `task` | the owning `*task.Task`; `nil` outside a task context |
+| `task.GroupFromContext(ctx)` | `task` | the owning `*task.Group`; `nil` outside a group context |
 
 `rpc.RequestFromContext` is how a create or update handler reads the **raw nested JSON body**. The executor re-buffers the body after flattening it into string flags, so the handler can still decode it:
 
@@ -79,6 +81,34 @@ UpdateWithContext(func(ctx context.Context, id string, body map[string]any) (Con
 ```
 
 You can also read headers, the authenticated principal set by your middleware, or the client IP from the same request.
+
+## Progress from a task context
+
+Task callbacks receive a context containing their own task. Pass that context to downstream functions so they can report progress without another task parameter:
+
+```go
+func loadSchema(ctx context.Context) error {
+	current := task.TaskFromContext(ctx)
+	if current == nil {
+		return errors.New("loading a schema requires a task context")
+	}
+	current.SetDescription("Loading schema")
+	return readSchema(ctx)
+}
+
+run := task.StartTask("Prepare", func(ctx commonscontext.Context, _ *task.Task) (struct{}, error) {
+	return struct{}{}, loadSchema(ctx)
+})
+_, err := run.GetResult()
+```
+
+Import `github.com/flanksource/clicky/task` and alias `github.com/flanksource/commons/context` as `commonscontext`. `TaskFromContext` accepts a standard `context.Context`, including contexts derived with deadlines, cancellation, or values. It also works with `Task.Context()` and `Task.FlanksourceContext()` for inline steps, planned steps, and managed runs. For those operations, explicitly pass the step's or run's task context to its work.
+
+A child task identifies itself in its own context while its parent's context still identifies the parent. Retries retain task identity. Callers' contexts retain their original values and cancellation; creating a task does not modify its input context. `TaskFromContext` only looks up the task: callers decide whether a missing task is valid for their operation.
+
+Use `task.WithOnProgress(publish)` when an owner needs to publish intermediate snapshots. `SetDescription`, `SetProgress`, and `SetProgressMetrics` invoke the callback after releasing the task lock, so the callback can read snapshots. Install it when creating the task or step; the callback must support concurrent calls. Task status and lifetime still belong to the task manager or the inline step's `Finish` call.
+
+`Task.StartTime()` and `Task.Duration()` describe execution. A task cancelled while queued has no execution start and zero execution duration. `Task.WaitTime()` measures enqueue-to-start, or enqueue-to-cancellation when the task never starts; its value stops changing when execution starts.
 
 ## Context in filters
 
