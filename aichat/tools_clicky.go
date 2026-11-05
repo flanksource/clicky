@@ -476,7 +476,12 @@ func stringify(value any) string {
 func jsonSchema(schema rpc.Schema) map[string]any {
 	properties := map[string]any{}
 	for name, property := range schema.Properties {
-		entry := map[string]any{"type": property.Type}
+		entry := map[string]any{}
+		// An empty type is a flag that takes any JSON value (json.RawMessage);
+		// "type": "" is not a JSON Schema type and fails metaschema validation.
+		if property.Type != "" {
+			entry["type"] = property.Type
+		}
 		if property.Type == "array" {
 			entry["items"] = map[string]any{"type": "string"}
 		}

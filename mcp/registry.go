@@ -47,9 +47,10 @@ type Schema struct {
 	Required   []string            `json:"required"`
 }
 
-// Property represents a JSON schema property
+// Property represents a JSON schema property. An empty Type is a property that
+// takes any JSON value; it is omitted because "type": "" is not a JSON Schema type.
 type Property struct {
-	Type        string      `json:"type"`
+	Type        string      `json:"type,omitempty"`
 	Description string      `json:"description"`
 	Enum        []string    `json:"enum,omitempty"`
 	Default     interface{} `json:"default,omitempty"`
