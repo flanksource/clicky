@@ -2,9 +2,10 @@ package task
 
 import (
 	"fmt"
-	"github.com/flanksource/commons/text"
 	"maps"
 	"math"
+
+	"github.com/flanksource/commons/text"
 )
 
 // ProgressMetrics describes measured work independently from its phase label.
@@ -22,6 +23,7 @@ func (t *Task) SetProgressMetrics(metrics ProgressMetrics) {
 	t.progressMetrics = &metrics
 	t.mu.Unlock()
 	t.dirty.Store(true)
+	t.notifyProgress()
 }
 
 func (m ProgressMetrics) String() string {

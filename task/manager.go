@@ -405,7 +405,6 @@ func (tm *Manager) newTask(name string, opts ...Option) *Task {
 		name:           name,
 		id:             uuid.NewString(),
 		status:         StatusPending,
-		startTime:      time.Now(),
 		manager:        tm,
 		cancel:         cancel,
 		ctx:            flanksourceCtx,
@@ -420,6 +419,9 @@ func (tm *Manager) newTask(name string, opts ...Option) *Task {
 	for _, opt := range opts {
 		opt(task)
 	}
+
+	task.flanksourceCtx.Context = context.WithValue(task.flanksourceCtx.Context, taskContextKey{}, task)
+	task.ctx = task.flanksourceCtx
 
 	// Route ctx.Logger into the task's buffered logger so context-logged
 	// lines render under the task's line (and stream in plain mode) instead

@@ -54,7 +54,7 @@ func (t *Task) waitResult() *WaitResult {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	result := &WaitResult{Status: t.status, Error: t.resultError(), TaskCount: 1}
-	if !t.enqueuedAt.IsZero() {
+	if !t.startTime.IsZero() {
 		result.Duration = t.endTime.Sub(t.startTime)
 	}
 	switch t.status {
@@ -136,7 +136,7 @@ func (t *Task) Duration() time.Duration {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
-	if t.status == StatusPending || t.enqueuedAt.IsZero() {
+	if t.startTime.IsZero() {
 		return 0
 	}
 

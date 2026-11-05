@@ -32,6 +32,7 @@ type Task struct {
 	outputProvider  func() OutputSnapshot
 	detailsProvider func() any
 	controller      TaskController
+	onProgress      func()
 	frozenOutput    *OutputSnapshot
 	frozenDetails   any
 
@@ -246,7 +247,8 @@ func (t *Task) SetDescription(description string) {
 	t.mu.Lock()
 	t.description = description
 	t.mu.Unlock()
-	t.dirty.Store(true) // Mark task as modified
+	t.dirty.Store(true)
+	t.notifyProgress()
 }
 
 // Description returns the task description
@@ -352,7 +354,8 @@ func (t *Task) SetProgress(value, maximum int) {
 	t.progress = value
 	t.maxValue = maximum
 	t.mu.Unlock()
-	t.dirty.Store(true) // Mark task as modified
+	t.dirty.Store(true)
+	t.notifyProgress()
 }
 
 // Progress returns the task's current progress value and maximum. A maximum of 0
@@ -449,10 +452,16 @@ func (t *Task) Status() Status {
 func (t *Task) WaitTime() time.Duration {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	if t.endTime.IsZero() {
-		return time.Since(t.startTime)
+	if t.enqueuedAt.IsZero() {
+		return 0
 	}
-	return t.endTime.Sub(t.startTime)
+	if !t.startTime.IsZero() {
+		return t.startTime.Sub(t.enqueuedAt)
+	}
+	if !t.endTime.IsZero() {
+		return t.endTime.Sub(t.enqueuedAt)
+	}
+	return time.Since(t.enqueuedAt)
 }
 
 // StartTime returns when the task started execution
