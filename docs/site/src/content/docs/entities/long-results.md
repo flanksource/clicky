@@ -114,7 +114,14 @@ The client buffers up to `maxRows` (default 5,000) and counts the rows it evicts
 
 ### Task output is different
 
-The streaming output of clicky tasks (`task.SSEHandler`) is a separate SSE stream for **task progress**, not list rows. It emits changed task snapshots every 200ms, plus stdout/stderr as append-only deltas at absolute offsets (or a reset when the bounded tail rolls over), and ends with `event: done`. clicky-ui's task views consume it and fall back to polling only when `EventSource` is unavailable.
+The streaming output of clicky tasks (`task.SSEHandler`) is a separate SSE stream for **task progress**, not list rows. Every 200ms it re-reads its runs and sends only what changed:
+
+- `event: task` — a task or group snapshot whose state differs from the last one sent. Snapshots carry timestamps (`startedAt`/`finishedAt`), never an elapsed time, so a task that is merely running sends nothing; consumers derive durations (`TaskSnapshot.Duration()` in Go).
+- `event: output` — stdout/stderr as append-only deltas at absolute offsets, or a reset when the bounded tail rolls over.
+- `event: logs` — log entries the client lacks, keyed by their `seq`, or a reset after the task's log was cleared.
+- `: ping` — a keepalive after 15s with nothing sent.
+
+Runs owned by an external `RunSource` are re-read once a second. The stream ends with `event: done` once every group finished, or with `event: error` `{"error": msg}` when its runs cannot be read. clicky-ui's task views consume it and fall back to polling only when `EventSource` is unavailable.
 
 ## Export: scope=page|all
 

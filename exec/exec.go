@@ -87,6 +87,7 @@ type Process struct {
 	completed bool
 	succeeded bool
 	duration  time.Duration
+	finished  *time.Time
 
 	Started *time.Time
 	cmd     *exec.Cmd
@@ -316,6 +317,7 @@ func (p *Process) Run() *Process {
 	started := time.Now()
 	p.mu.Lock()
 	p.Started = &started
+	p.finished = nil
 	p.cmd = cmd
 	p.mu.Unlock()
 
@@ -536,6 +538,7 @@ func (p *Process) finishRun(cmd *exec.Cmd, launch *launchStatus, runErr error, s
 	p.completed = completed
 	p.succeeded = succeeded
 	p.duration = finished.Sub(started)
+	p.finished = &finished
 	p.mu.Unlock()
 
 	publishExec(p, ExecExit)

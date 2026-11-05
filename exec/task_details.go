@@ -12,16 +12,31 @@ import (
 )
 
 // ExecTaskDetails is the structured command metadata exposed beside stdout and
-// stderr in task snapshots.
+// stderr in task snapshots. It carries timestamps only; Duration derives the
+// elapsed time, so the details of a running process do not change by
+// themselves between two snapshots.
 type ExecTaskDetails struct {
-	Command  string        `json:"command"`
-	Args     []string      `json:"args,omitempty"`
-	Cwd      string        `json:"cwd,omitempty"`
-	PID      int           `json:"pid,omitempty"`
-	Status   string        `json:"status"`
-	ExitCode int           `json:"exitCode"`
-	Started  *time.Time    `json:"started,omitempty"`
-	Duration time.Duration `json:"duration,omitempty"`
+	Command  string     `json:"command"`
+	Args     []string   `json:"args,omitempty"`
+	Cwd      string     `json:"cwd,omitempty"`
+	PID      int        `json:"pid,omitempty"`
+	Status   string     `json:"status"`
+	ExitCode int        `json:"exitCode"`
+	Started  *time.Time `json:"started,omitempty"`
+	Finished *time.Time `json:"finished,omitempty"`
+}
+
+// Duration is how long the process ran: Finished-Started once it exited, the
+// time since Started while it runs, and 0 before it starts.
+func (d ExecTaskDetails) Duration() time.Duration {
+	switch {
+	case d.Started == nil:
+		return 0
+	case d.Finished == nil:
+		return time.Since(*d.Started)
+	default:
+		return d.Finished.Sub(*d.Started)
+	}
 }
 
 type processTaskController struct {
@@ -76,7 +91,7 @@ func (p *Process) bindTask(t *task.Task) {
 func (p *Process) taskDetails() ExecTaskDetails {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
-	details := ExecTaskDetails{Command: p.Cmd, Args: append([]string(nil), p.Args...), Cwd: p.Cwd, PID: p.pid, Started: p.Started, ExitCode: -1, Status: "pending"}
+	details := ExecTaskDetails{Command: p.Cmd, Args: append([]string(nil), p.Args...), Cwd: p.Cwd, PID: p.pid, Started: p.Started, Finished: p.finished, ExitCode: -1, Status: "pending"}
 	if p.exitCode != nil {
 		details.ExitCode = *p.exitCode
 	}
@@ -90,7 +105,6 @@ func (p *Process) taskDetails() ExecTaskDetails {
 	case p.running:
 		details.Status = "running"
 	}
-	details.Duration = p.durationLocked()
 	return details
 }
 

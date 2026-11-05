@@ -26,9 +26,17 @@ var _ = Describe("Exec task details", func() {
 		Eventually(finished, 5*time.Second).Should(Receive(&result))
 		Expect(result.Duration).To(BeNumerically(">", 0))
 		Expect(handle.Status()).To(Equal(task.StatusRunning))
-		Consistently(func() time.Duration {
-			return task.SnapshotByID(group.ID())[1].Details.(ExecTaskDetails).Duration
-		}, 50*time.Millisecond).Should(Equal(result.Duration))
+		details := task.SnapshotByID(group.ID())[1].Details.(ExecTaskDetails)
+		Expect(details.Finished).NotTo(BeNil())
+		Expect(details.Finished.Before(*details.Started)).To(BeFalse())
+		Consistently(func() ExecTaskDetails {
+			return task.SnapshotByID(group.ID())[1].Details.(ExecTaskDetails)
+		}, 50*time.Millisecond).Should(Equal(details), "a finished process's details never change")
+		Expect(details.Duration()).To(Equal(result.Duration))
+	})
+
+	It("derives no duration before the process starts", func() {
+		Expect(ExecTaskDetails{}.Duration()).To(BeZero())
 	})
 
 	It("exposes a running process attached with WithTask", func() {
@@ -45,7 +53,12 @@ var _ = Describe("Exec task details", func() {
 		Expect(metadata.PID).To(Equal(process.Pid()))
 		Expect(metadata.Status).To(Equal("running"))
 		Expect(metadata.Started).NotTo(BeNil())
+		Expect(metadata.Finished).To(BeNil())
 		Expect(metadata.ExitCode).To(Equal(-1))
+		Expect(metadata.Duration()).To(BeNumerically(">", 0))
+		Consistently(func() any {
+			return task.SnapshotByID(group.ID())[1].Details
+		}, 300*time.Millisecond).Should(Equal(details), "a running process's details carry no clock-derived value")
 	})
 	It("projects ExecResult output into an attached task group", func() {
 		group := task.StartGroup[ExecResult]("commit", task.WithKind("gavel-commit"))
