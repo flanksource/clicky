@@ -149,7 +149,7 @@ func (h *Hub) handleStream(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		panic(fmt.Sprintf("marshal events hello: %v", err))
 	}
-	if conn.write(fmt.Appendf(nil, "event: __hello\ndata: %s\n\n", hello)) != nil {
+	if conn.write(fmt.Appendf(nil, "event: __hello\ndata: %s\n\n", hello), true) != nil {
 		return
 	}
 	ticker := time.NewTicker(hubPingInterval)
@@ -159,7 +159,7 @@ func (h *Hub) handleStream(w http.ResponseWriter, r *http.Request) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			if conn.write([]byte(": ping\n\n")) != nil {
+			if conn.write([]byte(": ping\n\n"), true) != nil {
 				return
 			}
 		}
@@ -284,11 +284,12 @@ func (c *hubConn) removeSub(sub *hubSub) {
 	c.mu.Unlock()
 }
 
-// write sends one complete frame on the connection and flushes it. Every
-// writer (hello, pings, every sub) goes through here, so frames never
-// interleave. A failed write means the client is gone: the connection is
+// write sends one complete frame on the connection, flushing it when flush is
+// set. Every writer (hello, pings, every sub) goes through here, so frames
+// never interleave. A sub writes a burst unflushed and calls flush once the
+// burst ends. A failed write means the client is gone: the connection is
 // cancelled, which tears down its subs.
-func (c *hubConn) write(frame []byte) error {
+func (c *hubConn) write(frame []byte, flush bool) error {
 	c.writeMu.Lock()
 	defer c.writeMu.Unlock()
 	if c.closed {
@@ -297,6 +298,19 @@ func (c *hubConn) write(frame []byte) error {
 	if _, err := c.w.Write(frame); err != nil {
 		c.cancel()
 		return fmt.Errorf("write to events connection %q: %w", c.id, err)
+	}
+	if flush {
+		c.flusher.Flush()
+	}
+	return nil
+}
+
+// flush pushes every frame written so far to the client.
+func (c *hubConn) flush() error {
+	c.writeMu.Lock()
+	defer c.writeMu.Unlock()
+	if c.closed {
+		return errHubConnClosed
 	}
 	c.flusher.Flush()
 	return nil

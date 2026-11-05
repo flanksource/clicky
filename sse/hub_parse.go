@@ -21,12 +21,21 @@ type streamEvent struct {
 // dispatch rules: comment lines and retry: are dropped, unknown fields are
 // ignored, an event without data is not dispatched, and a trailing event cut
 // off by the end of the stream is discarded. bufio.Reader grows to fit any
-// line, so a large frame (a full listing) is never truncated. It returns nil
-// at the end of the stream, or the first read or emit error.
-func readStream(r io.Reader, emit func(streamEvent) error) error {
+// line, so a large frame (a full listing) is never truncated.
+//
+// idle is called whenever the parser has consumed every complete line it holds
+// and is about to wait for more input, so a caller can batch what emit wrote
+// and push it out once per burst rather than once per event. It returns nil
+// at the end of the stream, or the first read, emit or idle error.
+func readStream(r io.Reader, emit func(streamEvent) error, idle func() error) error {
 	reader := bufio.NewReaderSize(r, 64<<10)
 	var ev streamEvent
 	for {
+		if !lineBuffered(reader) {
+			if err := idle(); err != nil {
+				return err
+			}
+		}
 		line, err := reader.ReadString('\n')
 		if err != nil {
 			if errors.Is(err, io.EOF) {
@@ -58,6 +67,13 @@ func readStream(r io.Reader, emit func(streamEvent) error) error {
 			ev.id = value
 		}
 	}
+}
+
+// lineBuffered reports whether reader already holds a complete line, i.e.
+// whether the next ReadString returns without reading from the source.
+func lineBuffered(reader *bufio.Reader) bool {
+	buffered, err := reader.Peek(reader.Buffered())
+	return err == nil && bytes.IndexByte(buffered, '\n') >= 0
 }
 
 // encodeSubEvent renders ev as one frame of the multiplexed stream, its name
