@@ -1,6 +1,7 @@
 package rpc
 
 import (
+	"encoding/json"
 	"reflect"
 	"strconv"
 	"strings"
@@ -46,6 +47,9 @@ func (g *OpenAPIGenerator) convertGoTypeWithSeen(t reflect.Type, seen map[reflec
 
 	if t == timeType {
 		return &OpenAPISchema{Type: "string", Format: "date-time"}
+	}
+	if t == reflect.TypeFor[json.RawMessage]() {
+		return &OpenAPISchema{}
 	}
 
 	if t.Implements(schemaDescriberType) {
