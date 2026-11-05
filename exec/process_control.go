@@ -108,9 +108,10 @@ func (p *Process) Kill(timeout time.Duration) error {
 }
 
 // stopAndReap interrupts the child and waits for Run()'s single cmd.Wait
-// goroutine to reap it via resultChan, escalating to SIGKILL after grace. It
-// never calls cmd.Wait/Process.Wait itself, keeping Run() the only reaper.
-func (p *Process) stopAndReap(resultChan <-chan error, grace time.Duration) {
+// goroutine to reap it via resultChan, escalating to SIGKILL after grace, and
+// returns the reaped exit status. It never calls cmd.Wait/Process.Wait itself,
+// keeping Run() the only reaper.
+func (p *Process) stopAndReap(resultChan <-chan error, grace time.Duration) error {
 	p.mu.RLock()
 	var proc *os.Process
 	if p.cmd != nil {
@@ -121,10 +122,11 @@ func (p *Process) stopAndReap(resultChan <-chan error, grace time.Duration) {
 		_ = proc.Signal(os.Interrupt)
 	}
 	select {
-	case <-resultChan:
+	case err := <-resultChan:
+		return err
 	case <-time.After(grace):
 		_ = p.KillTree()
-		<-resultChan
+		return <-resultChan
 	}
 }
 

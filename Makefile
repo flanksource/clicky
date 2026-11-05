@@ -4,7 +4,7 @@ GOLANGCI_LINT ?= $(LOCALBIN)/golangci-lint
 PKGSITE ?= $(LOCALBIN)/pkgsite
 
 ## Tool Versions
-GOLANGCI_LINT_VERSION ?= v2.10.1
+GOLANGCI_LINT_VERSION ?= v2.15.0
 PKGSITE_VERSION ?= v0.1.0
 
 ## Docs server

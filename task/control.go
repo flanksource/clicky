@@ -99,7 +99,7 @@ func ControlRun(ctx context.Context, id string, action ControlAction) error {
 		return fmt.Errorf("run %q not found", id)
 	}
 	controller := controllerForGroup(group)
-	if controller == nil || !actionAllowed(controller.Actions(), action) {
+	if !actionAllowed(controller.Actions(), action) {
 		return fmt.Errorf("run %q does not support %q", id, action)
 	}
 	return controller.Control(ctx, action)
