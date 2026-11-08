@@ -48,6 +48,9 @@ type Answer struct {
 	Values    map[string]any
 	Cancelled bool
 	At        time.Time
+	// By identifies who answered (an authenticated user, else the client the
+	// answer came from); empty for answers resolved in-process.
+	By string
 }
 
 // PromptSnapshot is the JSON-serializable state of a prompt for UI/SSE consumption.
@@ -65,6 +68,7 @@ type PromptSnapshot struct {
 	Labels      map[string]string `json:"labels,omitempty"`
 	CreatedAt   string            `json:"createdAt,omitempty"`  // RFC3339
 	ResolvedAt  string            `json:"resolvedAt,omitempty"` // RFC3339
+	ResolvedBy  string            `json:"resolvedBy,omitempty"`
 }
 
 // Filter scopes a snapshot listing. Empty fields match everything; Labels entries

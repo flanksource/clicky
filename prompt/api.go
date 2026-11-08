@@ -104,7 +104,7 @@ func (m *Manager) ResolveHandler() http.Handler {
 			http.Error(w, fmt.Sprintf("invalid request body: %v", err), http.StatusBadRequest)
 			return
 		}
-		err := m.Resolve(id, Answer{Values: body.Values, Cancelled: body.Cancelled})
+		err := m.Resolve(id, Answer{Values: body.Values, Cancelled: body.Cancelled, By: m.answerer(r)})
 		if err != nil {
 			status := http.StatusConflict
 			if strings.Contains(err.Error(), "answer for prompt") {

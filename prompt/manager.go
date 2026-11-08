@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -19,6 +20,25 @@ type Manager struct {
 	mu      sync.Mutex
 	pending map[string]chan Answer
 	seq     atomic.Uint64
+	// identify names who answered an HTTP-resolved prompt; see SetIdentity.
+	identify func(*http.Request) string
+}
+
+// SetIdentity sets how ResolveHandler names the answerer of a prompt (e.g. the
+// authenticated principal). The default is the X-Prompt-User header, else the
+// request's remote address.
+func (m *Manager) SetIdentity(identify func(*http.Request) string) {
+	m.identify = identify
+}
+
+func (m *Manager) answerer(r *http.Request) string {
+	if m.identify != nil {
+		return m.identify(r)
+	}
+	if user := r.Header.Get("X-Prompt-User"); user != "" {
+		return user
+	}
+	return r.RemoteAddr
 }
 
 // NewManager returns a Manager backed by store (use NewMemory for the default).
@@ -134,6 +154,7 @@ func (m *Manager) finalize(id string, state State, ans Answer) error {
 		snap.Value = ans.Values
 	}
 	snap.ResolvedAt = ans.At.UTC().Format(time.RFC3339)
+	snap.ResolvedBy = ans.By
 	return m.store.Set(snap)
 }
 
