@@ -127,17 +127,17 @@ Return `nil` from `GetChildren()` for leaves. Do not recursively render children
 - Do not assume terminal-only behavior; verify Markdown or HTML when the changed primitive has format-specific behavior.
 - Preserve stable table column keys and unique tree identity separately from human-readable labels.
 
-## Gavel lint prompt
+## Gavel lint and review prompt
 
-Use [prompts/pretty-printing.prompt](prompts/pretty-printing.prompt) to review these practices with structured, source-quoted Gavel findings:
+The repository-pinned Gavel v0.0.67 accepts linter names or file paths after `gavel lint`; it does not provide `gavel lint prompt`. Run its supported lint commands against the requested files:
 
 ```bash
-gavel lint prompt skills/pretty-printing/prompts/pretty-printing.prompt lint/summary.go
-gavel lint prompt --changed skills/pretty-printing/prompts/pretty-printing.prompt
-gavel lint prompt --dry-run skills/pretty-printing/prompts/pretty-printing.prompt lint/summary.go
+gavel lint lint/summary.go
+gavel lint --changed
+gavel lint --dry-run lint/summary.go
 ```
 
-Run from the reviewed repository. In a consuming repository, replace the prompt path with the absolute path to this file in your Clicky checkout. Pass files or directories explicitly, or use `--changed`/`--since`. Change flags select files; supply a diff through stdin when findings must be limited to added or changed code. The prompt inherits the configured model and Gavel's lint output schema and reports findings without editing source.
+Run from the reviewed repository. Pass files or directories explicitly, or use `--changed`/`--since`. For a separate agent review, use [prompts/pretty-printing.prompt](prompts/pretty-printing.prompt), located at `.agents/skills/pretty-printing/prompts/pretty-printing.prompt` in this checkout. Consumers should use the absolute path to that prompt in their Clicky checkout, not the path to `SKILL.md`. A Gavel version that provides `gavel lint prompt` can run the prompt directly; verify support with `gavel lint --help` first.
 
 ## Detailed reference
 

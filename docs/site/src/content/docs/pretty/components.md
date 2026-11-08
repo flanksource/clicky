@@ -15,7 +15,7 @@ clicky.Map(map[string]string{"env": "prod", "team": "platform"}) // env: prod, t
 clicky.KeyValue("namespace", obj.Namespace)                // single pair; empty values are skipped
 ```
 
-For a sorted block of key/value pairs, use `clicky.KeyMap`. Rich values keep their links, badges, and nested structure in every human-readable format:
+For a sorted block of key/value pairs, use `clicky.KeyMap`. HTML and Markdown preserve rich values such as links, badges, and nested structure. Terminal and plain output use each value's format-specific rendering; links display their labels:
 
 ```go
 clicky.KeyMap(map[string]api.Textable{
@@ -43,7 +43,7 @@ clicky.CodeBlock("application/json", body) // MIME types map to languages
 
 Code is syntax-highlighted in the terminal and HTML, and fenced in Markdown. Fences grow to contain embedded backticks safely. Lists indent multiline items; `api.List{Ordered: true}` numbers items, and `Unstyled: true` removes markers.
 
-Tables render HTML elements by default, including expanded row details. Set `TextTable.Interactive = true` for JavaScript sorting, search, and collapsible details in an HTML page that loads Clicky's browser assets.
+Tables render HTML elements by default, including expanded row details. Set `TextTable.Interactive = true` for JavaScript sorting and search in an HTML page that loads Clicky's browser assets. These controls apply only to tables without row details. Tables with `TextTable.RowDetail` use the collapsible detail renderer, which provides expandable details without sorting or search.
 
 ## Collapsible sections
 

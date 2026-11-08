@@ -51,7 +51,7 @@ func SSEHandler(taskIDs ...string) http.Handler {
 // store, re-reading those every externalPollInterval.
 func SSEHandlerWithSource(source RunSource, taskIDs ...string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ids, err := streamRunIDs(r, source, taskIDs)
+		ids, followAll, err := streamRunIDs(r, source, taskIDs)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -68,7 +68,7 @@ func SSEHandlerWithSource(source RunSource, taskIDs ...string) http.Handler {
 		w.Header().Set("X-Accel-Buffering", "no")
 		flusher.Flush()
 
-		stream := newTaskStream(source, ids)
+		stream := newTaskStream(source, ids, followAll)
 		ticker := time.NewTicker(streamTick)
 		defer ticker.Stop()
 		lastWrite := time.Now()
@@ -109,30 +109,30 @@ func SSEHandlerWithSource(source RunSource, taskIDs ...string) http.Handler {
 }
 
 // streamRunIDs is the runs a stream follows: the handler's own ids, ?tasks=,
-// and the runs of ?kind= as of the request.
-func streamRunIDs(r *http.Request, source RunSource, taskIDs []string) ([]string, error) {
-	ids := append([]string{}, taskIDs...)
+// and the runs of ?kind= as of the request. followAll is true only without filters.
+func streamRunIDs(r *http.Request, source RunSource, taskIDs []string) (ids []string, followAll bool, err error) {
+	ids = append([]string{}, taskIDs...)
 	if q := r.URL.Query().Get("tasks"); q != "" {
 		ids = append(ids, strings.Split(q, ",")...)
 	}
 	kind := r.URL.Query().Get("kind")
 	if kind == "" {
-		return ids, nil
+		return ids, len(ids) == 0, nil
 	}
 	for _, run := range Runs(RunFilter{Kind: kind}) {
 		ids = append(ids, run.ID)
 	}
 	if source == nil {
-		return ids, nil
+		return ids, false, nil
 	}
 	runs, err := source.Runs(r.Context(), RunFilter{Kind: kind})
 	if err != nil {
-		return nil, fmt.Errorf("list external task runs: %w", err)
+		return nil, false, fmt.Errorf("list external task runs: %w", err)
 	}
 	for _, run := range runs {
 		ids = append(ids, run.ID)
 	}
-	return ids, nil
+	return ids, false, nil
 }
 
 // taskStream is one connection's position in the runs it follows: what it last
@@ -146,9 +146,10 @@ type taskStream struct {
 	logs   map[string]logCursor
 }
 
-func newTaskStream(source RunSource, ids []string) *taskStream {
+// newTaskStream owns the snapshot and delta cursors for one connection.
+func newTaskStream(source RunSource, ids []string, followAll bool) *taskStream {
 	return &taskStream{
-		runs:      newRunSnapshots(source, ids),
+		runs:      newRunSnapshots(source, ids, followAll),
 		snapshots: map[string]string{},
 		output:    map[string]int64{},
 		logs:      map[string]logCursor{},

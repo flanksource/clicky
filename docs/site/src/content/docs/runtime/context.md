@@ -98,11 +98,11 @@ func loadSchema(ctx context.Context) error {
 
 run := task.StartTask("Prepare", func(ctx commonscontext.Context, _ *task.Task) (struct{}, error) {
 	return struct{}{}, loadSchema(ctx)
-})
+}, task.WithContext(requestCtx))
 _, err := run.GetResult()
 ```
 
-Import `github.com/flanksource/clicky/task` and alias `github.com/flanksource/commons/context` as `commonscontext`. `TaskFromContext` accepts a standard `context.Context`, including contexts derived with deadlines, cancellation, or values. It also works with `Task.Context()` and `Task.FlanksourceContext()` for inline steps, planned steps, and managed runs. For those operations, explicitly pass the step's or run's task context to its work.
+Here `requestCtx` is the handler's request context. Import `github.com/flanksource/clicky/task` and alias `github.com/flanksource/commons/context` as `commonscontext`. `TaskFromContext` accepts a standard `context.Context`, including contexts derived with deadlines, cancellation, or values. It also works with `Task.Context()` and `Task.FlanksourceContext()` for inline steps, planned steps, and managed runs. For those operations, explicitly pass the step's or run's task context to its work.
 
 A child task identifies itself in its own context while its parent's context still identifies the parent. Retries retain task identity. Callers' contexts retain their original values and cancellation; creating a task does not modify its input context. `TaskFromContext` only looks up the task: callers decide whether a missing task is valid for their operation.
 

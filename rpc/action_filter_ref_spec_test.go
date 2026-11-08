@@ -18,6 +18,45 @@ type actionRefOptions struct {
 func (actionRefOptions) ClickyActionFlags() {}
 
 var _ = Describe("action named filter references", func() {
+	It("publishes named filters on admin lists and primary actions", func() {
+		const filter = "special-surface-owners"
+		entity.RegisterFilter(entity.NamedFilter{Name: filter, Source: entity.StaticOptions(map[string]api.Textable{"owner": api.Text{Content: "Alex"}})})
+		clicky.RegisterEntity(clicky.Entity[refUser, actionRefOptions, any]{
+			Name: "special-filter-surfaces",
+			PrimaryAction: entity.WithActionFilters(
+				entity.PrimaryActionWithContext(actionRefOptions{}, func(context.Context, actionRefOptions) (any, error) { return nil, nil }),
+				[]entity.Filter[actionRefOptions]{entity.Use[actionRefOptions](filter).As("owner")},
+			),
+			Admin: &clicky.Entity[refUser, actionRefOptions, any]{
+				List:    func(actionRefOptions) ([]refUser, error) { return nil, nil },
+				Filters: []entity.Filter[actionRefOptions]{entity.Use[actionRefOptions](filter).As("owner")},
+			},
+		})
+		root := &cobra.Command{Use: "testapp"}
+		clicky.GenerateCLI(root)
+		spec, err := NewOpenAPIGenerator(nil).GenerateFromCobra(root)
+		Expect(err).NotTo(HaveOccurred())
+		found := 0
+		for path, methods := range spec.Paths {
+			if path != "/api/v1/special-filter-surfaces" && path != "/api/v1/admin/special-filter-surfaces" {
+				continue
+			}
+			for _, operation := range methods {
+				for _, parameter := range operation.Parameters {
+					if parameter.Name != "owner" {
+						continue
+					}
+					Expect(parameter.Clicky).NotTo(BeNil())
+					Expect(parameter.Clicky.Role).To(Equal("filter"))
+					Expect(parameter.Lookup).NotTo(BeNil())
+					Expect(parameter.Lookup.Ref).To(Equal("#/components/x-clicky-filters/" + filter))
+					found++
+				}
+			}
+		}
+		Expect(found).To(Equal(2))
+	})
+
 	It("executes native repeatable arguments with the same encoding as JSON arrays", func() {
 		executor := NewCommandExecutor(&RPCService{Operations: []RPCOperation{{
 			Name: "records", Parameters: []RPCParameter{{Name: "activity", Type: "array"}},

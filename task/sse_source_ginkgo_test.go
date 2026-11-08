@@ -22,6 +22,19 @@ func (unknownRunSource) Runs(context.Context, task.RunFilter) ([]task.RunMeta, e
 }
 
 var _ = Describe("task stream over an external run source", func() {
+	It("does not follow unrelated local or external runs when a kind has no matches", func() {
+		run := task.StartManagedRun("unrelated kind run", task.WithKind("other-kind"))
+		defer run.Finish(task.StatusSuccess, nil)
+		source := unknownRunSource{failingRunSource{err: errors.New("must not request an unrelated snapshot")}}
+		request := httptest.NewRequest(http.MethodGet, "/tasks/stream?kind=missing-kind", nil)
+		ctx, cancel := context.WithTimeout(request.Context(), 500*time.Millisecond)
+		defer cancel()
+		response := httptest.NewRecorder()
+		task.SSEHandlerWithSource(source).ServeHTTP(response, request.WithContext(ctx))
+		Expect(response.Code).To(Equal(http.StatusOK))
+		Expect(response.Body.String()).To(BeEmpty())
+	})
+
 	It("re-reads a running external run at the external refresh cadence, not every tick", func() {
 		const window = 1300 * time.Millisecond
 		source := &recordingRunSource{snapshots: map[string][]task.TaskSnapshot{

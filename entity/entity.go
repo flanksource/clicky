@@ -1221,11 +1221,12 @@ func registerAdminEntity[T EntityItem, ListOpts any, R any](e Entity[T, ListOpts
 		adminValidArgs = e.ValidArgs
 	}
 	adminInfo := EntityInfo{
-		Name:      admin.Name,
-		Type:      parent.Type,
-		ListType:  parent.ListType,
-		ValidArgs: adminValidArgs,
-		IsAdmin:   true,
+		FilterRefs: entityFilterRefs(admin.Filters),
+		Name:       admin.Name,
+		Type:       parent.Type,
+		ListType:   parent.ListType,
+		ValidArgs:  adminValidArgs,
+		IsAdmin:    true,
 	}
 	if op, ok := entityListOperation(admin); ok {
 		adminInfo.Operations = append(adminInfo.Operations, op)

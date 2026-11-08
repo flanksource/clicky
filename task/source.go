@@ -116,8 +116,9 @@ func mergeRunMetas(live, external []RunMeta) []RunMeta {
 // cache is per stream on purpose: a source may scope what it returns to the
 // caller in ctx, so sharing its answers across connections could leak runs.
 type runSnapshots struct {
-	source RunSource
-	ids    []string
+	source    RunSource
+	ids       []string
+	followAll bool
 	// finished holds external runs whose group has reached a terminal status.
 	// A finished run never changes, so the source is asked for it once.
 	finished map[string][]TaskSnapshot
@@ -125,13 +126,17 @@ type runSnapshots struct {
 	polledAt time.Time
 }
 
-func newRunSnapshots(source RunSource, ids []string) *runSnapshots {
-	return &runSnapshots{source: source, ids: ids, finished: map[string][]TaskSnapshot{}}
+// newRunSnapshots keeps an empty filtered selection distinct from following all runs.
+func newRunSnapshots(source RunSource, ids []string, followAll bool) *runSnapshots {
+	return &runSnapshots{source: source, ids: ids, followAll: followAll, finished: map[string][]TaskSnapshot{}}
 }
 
 // read returns the live runs plus the external ones as of the last refresh,
 // refreshing those first when now is a poll interval past the last one.
 func (s *runSnapshots) read(ctx context.Context, now time.Time) ([]TaskSnapshot, error) {
+	if !s.followAll && len(s.ids) == 0 {
+		return nil, nil
+	}
 	live := SnapshotAll(s.ids...)
 	if s.source == nil {
 		return live, nil
@@ -152,9 +157,11 @@ func (s *runSnapshots) read(ctx context.Context, now time.Time) ([]TaskSnapshot,
 	return live, nil
 }
 
+// readExternal refreshes selected remote runs, reusing terminal snapshots and
+// leaving locally held runs to the in-memory registry.
 func (s *runSnapshots) readExternal(ctx context.Context, held map[string]bool) ([]TaskSnapshot, error) {
 	ids := s.ids
-	if len(ids) == 0 {
+	if s.followAll {
 		runs, err := s.source.Runs(ctx, RunFilter{})
 		if err != nil {
 			return nil, fmt.Errorf("list external task runs: %w", err)

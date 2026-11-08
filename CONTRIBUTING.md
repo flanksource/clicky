@@ -59,6 +59,18 @@ bare `go test`/`golangci-lint`.
   mounts `task.RegisterHandlers(router, prefix)` behind the shared `sse.Hub` (`sse/doc.go`) and
   renders it with clicky-ui (`TaskManager`, `useTaskRun`/`useTaskRuns` over `createEventHub`).
 
+Task handlers require `*route.Router`; the SSE hub requires its underlying `*http.ServeMux`. Import `route`, `task`, and `sse` from `github.com/flanksource/clicky` and share the mux:
+
+```go
+mux := http.NewServeMux()
+router := route.NewRouter(mux)
+task.RegisterHandlers(router, "/api/v1")
+hub := sse.NewHub(sse.HubOptions{Build: "dev"})
+root := hub.Guard(mux)
+hub.Register(mux, root)
+log.Fatal(http.ListenAndServe(":8080", root))
+```
+
 ## Known issues (from project memory)
 
 - `gavel-action-lint-show-passed` — the gavel GitHub action can crash `gavel lint`; run lint as a

@@ -46,8 +46,8 @@ type Task struct {
 	mu           sync.Mutex
 	observeMu    sync.Mutex // Orders observer deliveries; guards observedStatus
 	doneOnce     sync.Once  // Ensure done channel is closed only once
-	drainedOnce  sync.Once // Ensure drained channel is closed only once
-	loggerOnce   sync.Once // Ensure bufferedLogger is initialized only once
+	drainedOnce  sync.Once  // Ensure drained channel is closed only once
+	loggerOnce   sync.Once  // Ensure bufferedLogger is initialized only once
 	retryConfig  RetryConfig
 	retryRequest *RetryRequest
 
@@ -352,9 +352,6 @@ func (t *Task) SetStatus(status Status) {
 
 // SetProgress updates the task's progress
 func (t *Task) SetProgress(value, maximum int) {
-	if value < 0 || maximum < 0 {
-		panic("task: invalid progress")
-	}
 	t.mu.Lock()
 	t.progress = value
 	t.maxValue = maximum

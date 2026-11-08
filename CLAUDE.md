@@ -65,6 +65,18 @@ writer) rather than `fmt.Println`, so log lines never corrupt a live frame. For 
 mount `task.RegisterHandlers(router, prefix)` behind the shared `sse.Hub` and render it with
 clicky-ui's `TaskManager` / `useTaskRun` over `createEventHub`; clicky embeds no task web UI.
 
+Wrap the shared `http.ServeMux` with `route.NewRouter` for task registration; the hub receives that same mux. Import `route`, `task`, and `sse` from `github.com/flanksource/clicky`:
+
+```go
+mux := http.NewServeMux()
+router := route.NewRouter(mux)
+task.RegisterHandlers(router, "/api/v1")
+hub := sse.NewHub(sse.HubOptions{Build: "dev"})
+root := hub.Guard(mux)
+hub.Register(mux, root)
+log.Fatal(http.ListenAndServe(":8080", root))
+```
+
 ### Entities — generate CLI + REST + web UI from a struct
 
 Define a data type once and get all three surfaces. Implement `EntityItem` (`GetID`/`GetName`) on
