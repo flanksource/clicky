@@ -2,6 +2,9 @@ package exec
 
 import (
 	"context"
+	"os"
+	osexec "os/exec"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -31,6 +34,31 @@ var _ = Describe("exec observers", func() {
 			Expect(events[0].Err).To(MatchError(p.Err))
 			Expect(events[0].Err).To(HaveOccurred())
 		}
+	})
+
+	It("identifies a started child by parent, process group and OS create time", func() {
+		var events []ExecEvent
+		release := ObserveExec(func(event ExecEvent) {
+			if event.Phase == ExecStart {
+				out, err := osexec.Command("ps", "-o", "ppid=", "-p", strconv.Itoa(event.PID)).Output()
+				Expect(err).NotTo(HaveOccurred())
+				event.Stdout = strings.TrimSpace(string(out))
+			}
+			events = append(events, event)
+		})
+		defer release()
+		before := time.Now().Add(-time.Second)
+		p := NewExec("sleep", "0.2").WithProcessGroup().Run()
+		Expect(events).To(HaveLen(2))
+		start := events[0]
+		Expect(start.Phase).To(Equal(ExecStart))
+		Expect(start.PID).To(Equal(p.Pid()))
+		Expect(start.PPID).To(Equal(os.Getpid()))
+		Expect(start.Stdout).To(Equal(strconv.Itoa(os.Getpid())))
+		Expect(start.PGID).To(Equal(start.PID))
+		Expect(start.CreatedAt).To(BeTemporally(">=", before))
+		Expect(start.CreatedAt).To(BeTemporally("<=", time.Now()))
+		Expect(events[1].CreatedAt).To(Equal(start.CreatedAt))
 	})
 
 	It("waits for in-flight delivery before release returns", func() {

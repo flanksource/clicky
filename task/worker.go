@@ -204,6 +204,7 @@ func (w *worker) executeTask(task *Task) {
 	task.status = StatusRunning
 	task.mu.Unlock()
 	task.dirty.Store(true)
+	task.publishStatus()
 
 	defer task.armTimeout()()
 

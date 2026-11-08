@@ -32,6 +32,7 @@ func StartManagedRun(name string, opts ...TaskGroupOption) *ManagedRun {
 	global.mu.Lock()
 	global.tasks = append(global.tasks, t)
 	global.mu.Unlock()
+	t.publishStatus()
 	return &ManagedRun{group: group.Group, task: t}
 }
 
@@ -91,5 +92,6 @@ func (r *ManagedRun) Finish(status Status, err error) {
 	r.task.dirty.Store(true)
 	r.task.mu.Unlock()
 	r.task.signalDone()
+	r.task.publishStatus()
 	r.group.observeTerminal(status, time.Now())
 }

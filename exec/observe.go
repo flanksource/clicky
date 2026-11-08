@@ -1,12 +1,15 @@
 package exec
 
 import (
+	"os"
 	"sort"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 	"unicode/utf8"
+
+	gops "github.com/shirou/gopsutil/v4/process"
 )
 
 type ExecPhase string
@@ -17,12 +20,19 @@ const (
 	TailBytes           = 64 << 10
 )
 
+// ExecEvent describes one process start or exit. PPID is this process; PGID is
+// the child's own pid when it leads a new process group and 0 when it shares
+// ours. CreatedAt is the OS create time of PID (what ps reports), so it keys
+// the child the same way a process sampler does; it is zero when the child
+// exited before it could be read. StartedAt is taken just before fork.
 type ExecEvent struct {
 	Phase          ExecPhase
 	Name, Command  string
 	Args, EnvKeys  []string
 	Dir            string
-	PID            int
+	PID, PPID      int
+	PGID           int
+	CreatedAt      time.Time
 	StartedAt      time.Time
 	Duration       time.Duration
 	ExitCode       int
@@ -82,8 +92,17 @@ func publishExec(p *Process, phase ExecPhase) {
 	if len(delivers) == 0 {
 		return
 	}
+	if phase == ExecStart {
+		createdAt := processCreatedAt(p.Pid())
+		p.mu.Lock()
+		p.createdAt = createdAt
+		p.mu.Unlock()
+	}
 	p.mu.RLock()
-	event := ExecEvent{Phase: phase, Name: p.Cmd, Command: p.Cmd, Args: append([]string(nil), p.Args...), Dir: p.Cwd, PID: p.pid}
+	event := ExecEvent{Phase: phase, Name: p.Cmd, Command: p.Cmd, Args: append([]string(nil), p.Args...), Dir: p.Cwd, PID: p.pid, PPID: os.Getpid(), CreatedAt: p.createdAt}
+	if p.newProcessGroup && p.pid > 0 {
+		event.PGID = p.pid
+	}
 	if p.Started != nil {
 		event.StartedAt = *p.Started
 	}
@@ -128,6 +147,23 @@ func publishExec(p *Process, phase ExecPhase) {
 			observer.deliver(event)
 		}()
 	}
+}
+
+// processCreatedAt is zero when pid is unknown or has already exited: a start
+// observed after the child is gone has no create time left to read.
+func processCreatedAt(pid int) time.Time {
+	if pid <= 0 {
+		return time.Time{}
+	}
+	proc, err := gops.NewProcess(int32(pid))
+	if err != nil {
+		return time.Time{}
+	}
+	millis, err := proc.CreateTime()
+	if err != nil {
+		return time.Time{}
+	}
+	return time.UnixMilli(millis)
 }
 
 func observerTail(buffer *captureBuffer) string {
