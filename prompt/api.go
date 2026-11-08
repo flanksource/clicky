@@ -63,7 +63,11 @@ func (m *Manager) SSEHandler() http.Handler {
 
 		var lastSent string
 		emit := func() {
-			data, err := json.Marshal(m.List(filter))
+			snaps := m.List(filter)
+			if snaps == nil {
+				snaps = []PromptSnapshot{}
+			}
+			data, err := json.Marshal(snaps)
 			if err != nil {
 				return
 			}

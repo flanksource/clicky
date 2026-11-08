@@ -279,3 +279,18 @@ func TestFormViaManagerWithScope(t *testing.T) {
 		t.Fatalf("expected {env: prod}, got %+v", r)
 	}
 }
+
+// An empty listing streams as [], like the JSON handler: clients filter the
+// event's array, and a null would throw before any prompt ever arrives.
+func TestSSEStreamsEmptyListingAsArray(t *testing.T) {
+	m := NewManager(NewMemory(MemoryConfig{}))
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+	req := httptest.NewRequest(http.MethodGet, "/prompts/stream?owner=nobody", nil).WithContext(ctx)
+	rec := httptest.NewRecorder()
+	m.SSEHandler().ServeHTTP(rec, req)
+	const want = "event: prompts\ndata: []\n\n"
+	if got := rec.Body.String(); got != want {
+		t.Fatalf("expected %q, got %q", want, got)
+	}
+}
