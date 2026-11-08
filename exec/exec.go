@@ -78,6 +78,10 @@ type Process struct {
 	// after cmd.Start(). Probes (Pid/KillTree) read this instead of
 	// cmd.Process, whose fields os/exec mutates without a lock we control.
 	pid int
+	// createdAt is the OS create time of pid, read once when the start is
+	// published to exec observers; zero when nothing observed it or the
+	// child was already gone.
+	createdAt time.Time
 	// completed / succeeded are clicky-owned copies of cmd.ProcessState's
 	// terminal status, captured under mu once Wait() returns. Probes
 	// (Result/IsOK/Status) read these instead of cmd.ProcessState, which

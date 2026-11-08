@@ -10,4 +10,5 @@ func (t *Task) notifyProgress() {
 	if t.onProgress != nil {
 		t.onProgress()
 	}
+	t.publishProgress()
 }

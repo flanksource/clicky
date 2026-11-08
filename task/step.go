@@ -29,6 +29,7 @@ func (g *Group) StartStep(name string, opts ...Option) *Step {
 	g.manager.mu.Lock()
 	g.manager.tasks = append(g.manager.tasks, t)
 	g.manager.mu.Unlock()
+	t.publishStatus()
 	return &Step{task: t}
 }
 
@@ -67,5 +68,6 @@ func (s *Step) Finish(err error) {
 	t.mu.Unlock()
 	t.signalDone()
 	t.signalDrained()
+	t.publishStatus()
 	observeGroupTerminal(t.parent)
 }

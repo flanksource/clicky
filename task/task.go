@@ -44,7 +44,8 @@ type Task struct {
 
 	// Structs
 	mu           sync.Mutex
-	doneOnce     sync.Once // Ensure done channel is closed only once
+	observeMu    sync.Mutex // Orders observer deliveries; guards observedStatus
+	doneOnce     sync.Once  // Ensure done channel is closed only once
 	drainedOnce  sync.Once // Ensure drained channel is closed only once
 	loggerOnce   sync.Once // Ensure bufferedLogger is initialized only once
 	retryConfig  RetryConfig
@@ -66,6 +67,8 @@ type Task struct {
 	id          string
 	prompt      string
 	identity    string // Unique identifier for task deduplication
+
+	observedStatus Status // last status delivered to task observers
 
 	// 4-byte types
 	progress          int
@@ -166,6 +169,7 @@ func (t *Task) Cancel() {
 		t.dirty.Store(true)
 		t.mu.Unlock()
 		t.signalDone()
+		t.publishStatus()
 		if neverStarted {
 			t.signalDrained()
 			if t.groupSem() != nil {
@@ -193,6 +197,7 @@ func (t *Task) signalDrained() {
 func (t *Task) markCompleted() {
 	t.completed.Store(true)
 	t.signalDrained()
+	t.publishStatus()
 }
 
 // Debugf logs a debug message (only shown in verbose mode)
@@ -329,8 +334,6 @@ func (t *Task) freezeProviders() {
 // SetStatus updates the task's display name/status message
 func (t *Task) SetStatus(status Status) {
 	t.mu.Lock()
-	defer t.mu.Unlock()
-
 	switch status {
 	case StatusSuccess, StatusCancelled, StatusFailed, StatusWarning:
 		t.endTime = time.Now()
@@ -343,6 +346,8 @@ func (t *Task) SetStatus(status Status) {
 	}
 	t.status = status
 	t.dirty.Store(true) // Mark task as modified
+	t.mu.Unlock()
+	t.publishStatus()
 }
 
 // SetProgress updates the task's progress
