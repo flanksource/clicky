@@ -1,6 +1,6 @@
 module github.com/flanksource/clicky
 
-go 1.26.1
+go 1.27.1
 
 require (
 	github.com/ajstarks/svgo v0.0.0-20211024235047-1546f124cd8b
@@ -14,6 +14,7 @@ require (
 	github.com/creack/pty v1.1.24
 	github.com/flanksource/commons v1.63.0
 	github.com/flanksource/gomplate/v3 v3.24.90
+	github.com/flanksource/telltale/sdk v0.0.2
 	github.com/go-xmlfmt/xmlfmt v1.1.3
 	github.com/goccy/go-yaml v1.19.2
 	github.com/golang-jwt/jwt/v5 v5.3.1
@@ -31,6 +32,7 @@ require (
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/samber/lo v1.53.0
 	github.com/samber/oops v1.22.0
+	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3
 	github.com/shirou/gopsutil/v4 v4.26.7
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.0.10
@@ -123,7 +125,6 @@ require (
 	github.com/richardlehane/msoleps v1.0.6 // indirect
 	github.com/rivo/uniseg v0.4.7 // indirect
 	github.com/robertkrimen/otto v0.5.1 // indirect
-	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3 // indirect
 	github.com/sirupsen/logrus v1.9.4 // indirect
 	github.com/spf13/cast v1.10.0 // indirect
 	github.com/tidwall/gjson v1.18.0 // indirect

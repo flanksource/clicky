@@ -473,6 +473,8 @@ func stringify(value any) string {
 	return fmt.Sprintf("%v", value)
 }
 
+// jsonSchema projects command properties into a tool schema, preserving opaque
+// JSON values and array element types supplied by the converter.
 func jsonSchema(schema rpc.Schema) map[string]any {
 	properties := map[string]any{}
 	for name, property := range schema.Properties {
@@ -482,8 +484,8 @@ func jsonSchema(schema rpc.Schema) map[string]any {
 		if property.Type != "" {
 			entry["type"] = property.Type
 		}
-		if property.Type == "array" {
-			entry["items"] = map[string]any{"type": "string"}
+		if property.Items != nil && property.Items.Type != "" {
+			entry["items"] = map[string]any{"type": property.Items.Type}
 		}
 		if property.Description != "" {
 			entry["description"] = property.Description

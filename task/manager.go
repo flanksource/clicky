@@ -549,19 +549,18 @@ func attachTaskableToGroup(t *Task, item Taskable) {
 		return
 	}
 	t.parent.mu.Lock()
-	defer t.parent.mu.Unlock()
 	for _, item := range t.parent.Items {
 		if item.GetTask() == t {
+			t.parent.mu.Unlock()
 			return
 		}
 	}
 	t.parent.Items = append(t.parent.Items, item)
-	// New work reopens a group that had already finished, so its next terminal
-	// observation is a new completion: persisted again, and aged for GC from then.
-	t.parent.finishedAt = time.Time{}
 	if !t.startTime.IsZero() && (t.parent.startTime.IsZero() || t.startTime.Before(t.parent.startTime)) {
 		t.parent.startTime = t.startTime
 	}
+	t.parent.mu.Unlock()
+	t.parent.reopenAncestors()
 }
 
 // StartGroup creates and starts tracking a new task group
@@ -597,14 +596,17 @@ func StartGroup[T any](name string, opts ...TaskGroupOption) TypedGroup[T] {
 	defer global.mu.Unlock()
 	if existing := global.joinLiveGroup(group); existing != nil {
 		group.cancel()
+		if existing.parent != group.parent {
+			panic("task: group identity is already owned by a different parent")
+		}
 		return TypedGroup[T]{Group: existing, joined: true}
 	}
 	global.groups = append(global.groups, group)
 	if group.parent != nil {
 		group.parent.mu.Lock()
 		group.parent.children = append(group.parent.children, group)
-		group.parent.finishedAt = time.Time{}
 		group.parent.mu.Unlock()
+		group.parent.reopenAncestors()
 	}
 
 	return TypedGroup[T]{Group: group}

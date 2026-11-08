@@ -348,6 +348,18 @@ go test -tags integration ./rpc/... -run TestOpenAPIServe_E2E
 
 clicky has no embedded task web UI. To show task progress in a browser, mount `task.RegisterHandlers(router, "/api/v1")` behind the shared `sse.Hub` (see `sse/doc.go`) and render it with clicky-ui's `TaskManager` (or `useTaskRun`/`useTaskRuns`) over `createEventHub`.
 
+Both registrations must share the same `http.ServeMux`. Import `github.com/flanksource/clicky/route`, `github.com/flanksource/clicky/task`, and `github.com/flanksource/clicky/sse`:
+
+```go
+mux := http.NewServeMux()
+router := route.NewRouter(mux)
+task.RegisterHandlers(router, "/api/v1")
+hub := sse.NewHub(sse.HubOptions{Build: "dev"})
+root := hub.Guard(mux)
+hub.Register(mux, root)
+log.Fatal(http.ListenAndServe(":8080", root))
+```
+
 ## Examples
 
 The `examples/` directory includes focused demos for:

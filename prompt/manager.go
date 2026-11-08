@@ -25,20 +25,24 @@ type Manager struct {
 }
 
 // SetIdentity sets how ResolveHandler names the answerer of a prompt (e.g. the
-// authenticated principal). The default is the X-Prompt-User header, else the
-// request's remote address.
+// authenticated principal). Without a callback answers have no attribution.
+// Applications using a proxy header must ensure their trusted proxy replaces
+// client-supplied values before reading that header in the callback.
 func (m *Manager) SetIdentity(identify func(*http.Request) string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.identify = identify
 }
 
+// answerer attributes HTTP answers only through the application's trusted resolver.
 func (m *Manager) answerer(r *http.Request) string {
-	if m.identify != nil {
-		return m.identify(r)
+	m.mu.Lock()
+	identify := m.identify
+	m.mu.Unlock()
+	if identify != nil {
+		return identify(r)
 	}
-	if user := r.Header.Get("X-Prompt-User"); user != "" {
-		return user
-	}
-	return r.RemoteAddr
+	return ""
 }
 
 // NewManager returns a Manager backed by store (use NewMemory for the default).

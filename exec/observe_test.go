@@ -15,6 +15,24 @@ import (
 )
 
 var _ = Describe("exec observers", func() {
+	It("clears OS creation time when a reused process fails before launch", func() {
+		var events []ExecEvent
+		release := ObserveExec(func(event ExecEvent) { events = append(events, event) })
+		defer release()
+		p := NewExec("true").Run()
+		Expect(p.Err).NotTo(HaveOccurred())
+		p.mu.Lock()
+		p.createdAt = time.Now()
+		p.mu.Unlock()
+		p.done = make(chan struct{})
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		p.WithContext(ctx).Run()
+		Expect(events).To(HaveLen(3))
+		Expect(events[2].Err).To(MatchError(context.Canceled))
+		Expect(events[2].CreatedAt).To(BeZero())
+	})
+
 	It("reports an exit for each failure before launch", func() {
 		ctx, cancel := context.WithCancel(context.Background())
 		cancel()
@@ -37,12 +55,18 @@ var _ = Describe("exec observers", func() {
 	})
 
 	It("identifies a started child by parent, process group and OS create time", func() {
+		ps, err := osexec.LookPath("ps")
+		if err != nil {
+			Skip("ps is required to inspect the child process parent")
+		}
 		var events []ExecEvent
+		var ppid string
+		var lookupErr error
 		release := ObserveExec(func(event ExecEvent) {
 			if event.Phase == ExecStart {
-				out, err := osexec.Command("ps", "-o", "ppid=", "-p", strconv.Itoa(event.PID)).Output()
-				Expect(err).NotTo(HaveOccurred())
-				event.Stdout = strings.TrimSpace(string(out))
+				var out []byte
+				out, lookupErr = osexec.Command(ps, "-o", "ppid=", "-p", strconv.Itoa(event.PID)).Output()
+				ppid = strings.TrimSpace(string(out))
 			}
 			events = append(events, event)
 		})
@@ -54,7 +78,8 @@ var _ = Describe("exec observers", func() {
 		Expect(start.Phase).To(Equal(ExecStart))
 		Expect(start.PID).To(Equal(p.Pid()))
 		Expect(start.PPID).To(Equal(os.Getpid()))
-		Expect(start.Stdout).To(Equal(strconv.Itoa(os.Getpid())))
+		Expect(lookupErr).NotTo(HaveOccurred())
+		Expect(ppid).To(Equal(strconv.Itoa(os.Getpid())))
 		Expect(start.PGID).To(Equal(start.PID))
 		Expect(start.CreatedAt).To(BeTemporally(">=", before))
 		Expect(start.CreatedAt).To(BeTemporally("<=", time.Now()))

@@ -1,12 +1,26 @@
 package task
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 type groupContextKey struct{}
 
+// GroupFromContext returns the group that owns the task context, or nil.
 func GroupFromContext(ctx context.Context) *Group {
 	group, _ := ctx.Value(groupContextKey{}).(*Group)
 	return group
+}
+
+// reopenAncestors clears terminal timestamps when descendant work is added,
+// allowing persistence and retention to observe the next completion.
+func (g *Group) reopenAncestors() {
+	for current := g; current != nil; current = current.parent {
+		current.mu.Lock()
+		current.finishedAt = time.Time{}
+		current.mu.Unlock()
+	}
 }
 
 // WithGroupContext carries request values and cancellation into every member.
@@ -39,6 +53,8 @@ func (g *Group) allTasks() []Taskable {
 	return items
 }
 
+// memberStatuses aggregates direct tasks and child groups without closing
+// pending children whose owners may still be scheduling their first task.
 func (g *Group) memberStatuses() []Status {
 	statuses := []Status{}
 	for _, item := range g.GetTasks() {
@@ -51,6 +67,8 @@ func (g *Group) memberStatuses() []Status {
 	return statuses
 }
 
+// bindContext gives a group its own identity and cancellation scope while
+// preserving request values and following its parent's cancellation.
 func (g *Group) bindContext() {
 	if g.parent != nil && g.ctx == nil {
 		g.ctx = g.parent.Context()

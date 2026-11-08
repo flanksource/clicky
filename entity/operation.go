@@ -131,6 +131,8 @@ type RPCParameter struct {
 	// Positional marks the command's positional argument ("args", or the name
 	// Use gives it); its values are passed as args, never as a --flag.
 	Positional bool `json:"positional,omitempty"`
+	// Items distinguishes typed repeatable flags from opaque JSON arrays.
+	Items *Property `json:"items,omitempty"`
 }
 
 // RPCService represents a collection of RPC operations.
@@ -154,6 +156,8 @@ type Property struct {
 	Description string      `json:"description"`
 	Enum        []string    `json:"enum,omitempty"`
 	Default     interface{} `json:"default,omitempty"`
+	// Items is the array element schema; an empty property accepts any JSON value.
+	Items *Property `json:"items,omitempty"`
 }
 
 // Config holds configuration for RPC conversion.

@@ -7,6 +7,15 @@ import (
 )
 
 var _ = Describe("Task progress audit: native notifications", func() {
+	DescribeTable("retains negative counters without panicking", func(value, maximum int) {
+		group := task.StartGroup[bool]("negative progress")
+		step := group.StartStep("read documents")
+		defer step.Finish(nil)
+		Expect(func() { step.Task().SetProgress(value, maximum) }).NotTo(Panic())
+		gotValue, gotMaximum := step.Task().Progress()
+		Expect([]int{gotValue, gotMaximum}).To(Equal([]int{value, maximum}))
+	}, Entry("negative value", -1, 10), Entry("negative maximum", 1, -1))
+
 	It("publishes descriptions, counters, and metrics after unlocking the task", func() {
 		group := task.StartGroup[bool]("progress notifications")
 		var snapshots []task.TaskSnapshot

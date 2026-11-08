@@ -31,7 +31,7 @@ require (
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/ebitengine/purego v0.10.2 // indirect
 	github.com/erikgeiser/coninput v0.0.0-20211004153227-1c3628e74d0f // indirect
-	github.com/flanksource/commons v1.63.0 // indirect
+	github.com/flanksource/commons v1.62.1-0.20261105091155-b465a8f3b946 // indirect
 	github.com/go-ole/go-ole v1.3.0 // indirect
 	github.com/go-xmlfmt/xmlfmt v1.1.3 // indirect
 	github.com/goccy/go-yaml v1.19.2 // indirect

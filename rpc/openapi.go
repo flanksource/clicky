@@ -528,6 +528,7 @@ func (g *OpenAPIGenerator) convertParameter(op RPCOperation, param RPCParameter)
 			Description: param.Description,
 			Default:     param.Default,
 			Enum:        param.Enum,
+			Items:       param.Items,
 		}),
 	}
 	if role := ParamRole(op, param); role != "" {
@@ -571,6 +572,7 @@ func (g *OpenAPIGenerator) filterLookupMeta(op RPCOperation, paramName string) *
 	}
 }
 
+// operationFilterRefs resolves named filters for the operation's exact surface.
 func operationFilterRefs(op RPCOperation) map[string]string {
 	for _, info := range clicky.GetEntities() {
 		if info.Name != op.Clicky.Entity || info.Parent != op.Clicky.Parent || info.IsAdmin != op.Clicky.Admin {
@@ -580,6 +582,9 @@ func operationFilterRefs(op RPCOperation) map[string]string {
 			return info.FilterRefs
 		}
 		if op.Clicky.Verb == "action" {
+			if info.PrimaryAction != nil && info.PrimaryAction.Name == op.Clicky.ActionName {
+				return info.PrimaryAction.FilterRefs
+			}
 			for _, action := range info.Actions {
 				if action.Name == op.Clicky.ActionName {
 					return action.FilterRefs
@@ -1012,6 +1017,11 @@ func (g *OpenAPIGenerator) enhanceNumberSchema(schema *OpenAPISchema, prop Prope
 // enhanceArraySchema handles array types with items schema
 func (g *OpenAPIGenerator) enhanceArraySchema(schema *OpenAPISchema, prop Property) {
 	schema.Type = "array"
+	if prop.Items != nil {
+		schema.Items = g.convertPropertyToOpenAPI(*prop.Items)
+		schema.Items.Enum, schema.Enum = schema.Enum, nil
+		return
+	}
 	// For now, default to string items - this could be enhanced to parse item types from descriptions
 	schema.Items = &OpenAPISchema{
 		Type: "string",

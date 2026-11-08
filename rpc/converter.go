@@ -106,14 +106,18 @@ func addPositionalParameter(cmd *cobra.Command, schema *Schema, parameters []RPC
 	}
 	// cobra validates args itself: a command that rejects none requires one.
 	required := cmd.Args != nil && cmd.Args(cmd, nil) != nil
+	property := Property{Type: typ, Description: description}
+	if typ == "array" {
+		property.Items = &Property{Type: "string"}
+	}
 	if !queryOnly {
-		schema.Properties[name] = Property{Type: typ, Description: description}
+		schema.Properties[name] = property
 		if required {
 			schema.Required = append(schema.Required, name)
 		}
 	}
 	// In is updated to "path" later if the parameter appears in the URL.
-	return append(parameters, RPCParameter{Name: name, Type: typ, Description: description, Required: required, In: "query", Positional: true})
+	return append(parameters, RPCParameter{Name: name, Type: typ, Description: description, Required: required, In: "query", Positional: true, Items: property.Items})
 }
 
 // addFlagParameters publishes the command's own flags. LocalNonPersistentFlags
@@ -137,7 +141,7 @@ func (c *Converter) addFlagParameters(cmd *cobra.Command, schema *Schema, parame
 			schema.Required = append(schema.Required, flag.Name)
 			param.Required = true
 		}
-		schema.Properties[flag.Name] = Property{Type: param.Type, Description: flag.Usage, Default: param.Default, Enum: flags.AllowedValues(flag)}
+		schema.Properties[flag.Name] = Property{Type: param.Type, Description: flag.Usage, Default: param.Default, Enum: flags.AllowedValues(flag), Items: param.Items}
 		parameters = append(parameters, param)
 	})
 	return parameters, flagErr
@@ -157,6 +161,7 @@ func flagParameter(flag *pflag.Flag) (RPCParameter, error) {
 		param.Type = "object"
 	case "json-array":
 		param.Type = "array"
+		param.Items = &Property{}
 	case "json-value":
 		param.Type = ""
 	case "bool":
@@ -176,6 +181,7 @@ func flagParameter(flag *pflag.Flag) (RPCParameter, error) {
 		"float32Slice", "float64Slice", "boolSlice", "durationSlice":
 		param.Type = "array"
 		values, err := sliceDefault(flag.DefValue)
+		param.Items = &Property{Type: "string"}
 		if len(values) > 0 {
 			param.Default = values
 		}

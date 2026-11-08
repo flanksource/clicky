@@ -13,6 +13,45 @@ import (
 )
 
 var _ = Describe("Nested group lifecycle", func() {
+	It("rejects identity joins across parents while joining siblings", func(ctx SpecContext) {
+		parent := task.StartGroup[bool]("identity parent", task.WithGroupContext(ctx))
+		other := task.StartGroup[bool]("other identity parent", task.WithGroupContext(ctx))
+		child := task.StartGroup[bool]("identity child", task.WithParentGroup(parent.Group), task.WithGroupIdentity(parent.ID()))
+		defer parent.Cancel()
+		defer other.Cancel()
+		joined := task.StartGroup[bool]("sibling join", task.WithParentGroup(parent.Group), task.WithGroupIdentity(parent.ID()))
+		Expect(joined.Joined()).To(BeTrue())
+		Expect(joined.ID()).To(Equal(child.ID()))
+		Expect(func() {
+			task.StartGroup[bool]("cross parent join", task.WithParentGroup(other.Group), task.WithGroupIdentity(parent.ID()))
+		}).To(Panic())
+		Expect(task.SnapshotByID(other.ID())).To(HaveLen(1))
+	})
+
+	DescribeTable("reopens every ancestor when descendant work is added", func(addGroup bool) {
+		root := task.StartGroup[bool]("reopened root")
+		parent := task.StartGroup[bool]("reopened parent", task.WithParentGroup(root.Group))
+		child := task.StartGroup[bool]("reopened child", task.WithParentGroup(parent.Group))
+		child.StartStep("first pass").Finish(nil)
+		Expect([]time.Time{root.FinishedAt(), parent.FinishedAt(), child.FinishedAt()}).NotTo(ContainElement(BeZero()))
+		if addGroup {
+			child = task.StartGroup[bool]("new descendant", task.WithParentGroup(child.Group))
+		}
+		step := child.StartStep("second pass")
+		defer step.Finish(nil)
+		Expect([]time.Time{root.FinishedAt(), parent.FinishedAt(), child.FinishedAt()}).To(ConsistOf(time.Time{}, time.Time{}, time.Time{}))
+		Expect(root.Status()).To(Equal(task.StatusRunning))
+	}, Entry("existing child", false), Entry("new child", true))
+
+	It("completes after the owner cancels a child with no work to schedule", func(ctx SpecContext) {
+		parent := task.StartGroup[bool]("empty child owner", task.WithGroupContext(ctx))
+		child := task.StartGroup[bool]("empty child", task.WithParentGroup(parent.Group))
+		Expect(parent.Status()).To(Equal(task.StatusPending))
+		// Scheduling is complete: there are no inputs for this child.
+		child.Cancel()
+		Expect(parent.WaitFor().Status).To(Equal(task.StatusCancelled))
+	})
+
 	It("records parent completion when its last nested worker finishes", func(ctx SpecContext) {
 		parent := task.StartGroup[bool]("terminal parent", task.WithGroupContext(ctx))
 		child := task.StartGroup[bool]("terminal child", task.WithParentGroup(parent.Group))

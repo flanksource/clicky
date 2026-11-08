@@ -49,12 +49,7 @@ type Schema struct {
 
 // Property represents a JSON schema property. An empty Type is a property that
 // takes any JSON value; it is omitted because "type": "" is not a JSON Schema type.
-type Property struct {
-	Type        string      `json:"type,omitempty"`
-	Description string      `json:"description"`
-	Enum        []string    `json:"enum,omitempty"`
-	Default     interface{} `json:"default,omitempty"`
-}
+type Property = rpc.Property
 
 // NewMcpTool creates an MCP ToolDefinition from a generic RPC operation
 func NewMcpTool(rpcOp *rpc.RPCOperation) *ToolDefinition {
@@ -67,12 +62,7 @@ func NewMcpTool(rpcOp *rpc.RPCOperation) *ToolDefinition {
 
 	// Convert RPC properties to MCP properties
 	for name, rpcProp := range rpcOp.Schema.Properties {
-		inputSchema.Properties[name] = Property{
-			Type:        rpcProp.Type,
-			Description: rpcProp.Description,
-			Enum:        rpcProp.Enum,
-			Default:     rpcProp.Default,
-		}
+		inputSchema.Properties[name] = rpcProp
 	}
 
 	// Get application name for title

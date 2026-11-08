@@ -76,8 +76,8 @@ var _ = Describe("tool input schemas", func() {
 		Expect(annotate["properties"]).To(MatchKeys(IgnoreExtras, Keys{
 			"content":         Equal(map[string]any{"description": "Structured content"}),
 			"target":          HaveKeyWithValue("type", "object"),
-			"links":           HaveKeyWithValue("type", "array"),
-			"evidence":        HaveKeyWithValue("type", "array"),
+			"links":           And(HaveKeyWithValue("type", "array"), Not(HaveKey("items"))),
+			"evidence":        And(HaveKeyWithValue("type", "array"), HaveKeyWithValue("items", map[string]any{"type": "string"})),
 			"expectedVersion": HaveKeyWithValue("type", "integer"),
 		}))
 	})

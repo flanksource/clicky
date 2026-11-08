@@ -18,9 +18,10 @@ var _ = Describe("MCP tool input schemas", func() {
 			URI string `json:"uri"`
 		}
 		type options struct {
-			Content json.RawMessage `flag:"content" help:"Structured content"`
-			Target  *target         `flag:"target" help:"Target object"`
-			Links   []target        `flag:"links" help:"Target list"`
+			Content  json.RawMessage `flag:"content" help:"Structured content"`
+			Target   *target         `flag:"target" help:"Target object"`
+			Links    []target        `flag:"links" help:"Target list"`
+			Evidence []string        `flag:"evidence" help:"Evidence list"`
 		}
 		fields, err := flags.ParseStructFields(reflect.TypeFor[options]())
 		Expect(err).NotTo(HaveOccurred())
@@ -53,5 +54,7 @@ var _ = Describe("MCP tool input schemas", func() {
 		Expect(published.Properties["content"]).To(Equal(map[string]any{"description": "Structured content"}))
 		Expect(published.Properties["target"]).To(HaveKeyWithValue("type", "object"))
 		Expect(published.Properties["links"]).To(HaveKeyWithValue("type", "array"))
+		Expect(published.Properties["links"]["items"]).To(Equal(map[string]any{"description": ""}))
+		Expect(published.Properties["evidence"]["items"]).To(HaveKeyWithValue("type", "string"))
 	})
 })

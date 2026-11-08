@@ -372,7 +372,12 @@ func (p *Process) closeParentStdio() {
 	}
 }
 
+// prepareRun initializes capture and clears identity from any previous child,
+// including when this run will fail before starting a process.
 func (p *Process) prepareRun() {
+	p.mu.Lock()
+	p.createdAt = time.Time{}
+	p.mu.Unlock()
 	if p.log == nil {
 		p.log = logger.GetLogger("exec")
 	}
