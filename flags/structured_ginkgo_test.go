@@ -11,6 +11,34 @@ import (
 )
 
 var _ = Describe("structured action flags", func() {
+	It("omits unset JSON defaults from help while retaining explicit defaults", func() {
+		type target struct{ URI string }
+		type options struct {
+			Target   target            `flag:"target"`
+			Assignee *target           `flag:"assignee"`
+			Links    []target          `flag:"links"`
+			Content  json.RawMessage   `flag:"content"`
+			Default  map[string]string `flag:"default" default:"{\"env\":\"dev\"}"`
+		}
+		fields, err := ParseStructFields(reflect.TypeFor[options]())
+		Expect(err).NotTo(HaveOccurred())
+		command := &cobra.Command{}
+		for _, field := range fields {
+			BindFlag(command, field)
+		}
+		for _, name := range []string{"target", "assignee", "links", "content"} {
+			Expect(command.Flags().Lookup(name).DefValue).To(BeEmpty(), name)
+		}
+		Expect(command.Flags().Lookup("default").DefValue).To(MatchJSON(`{"env":"dev"}`))
+		Expect(command.Flags().FlagUsages()).NotTo(ContainSubstring("default null"))
+	})
+
+	It("renders invalid JSON values as diagnostics without panicking", func() {
+		Expect((&jsonFlagValue{}).String()).To(BeEmpty())
+		value := &jsonFlagValue{value: reflect.ValueOf(json.RawMessage(`invalid`))}
+		Expect(value.String()).To(ContainSubstring("invalid JSON"))
+	})
+
 	It("preserves standard duration defaults and request values alongside int64 versions", func() {
 		type options struct {
 			Timeout time.Duration `flag:"timeout" default:"60s"`

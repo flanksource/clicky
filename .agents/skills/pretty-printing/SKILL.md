@@ -129,7 +129,7 @@ Return `nil` from `GetChildren()` for leaves. Do not recursively render children
 
 ## Gavel lint and review prompt
 
-The repository-pinned Gavel v0.0.67 accepts linter names or file paths after `gavel lint`; it does not provide `gavel lint prompt`. Run its supported lint commands against the requested files:
+The workflow pins the Gavel action to v0.0.67, which does not pin the CLI: the action uses a preinstalled binary or downloads the latest release by default. Check the installed CLI with `gavel version` and `gavel lint --help`. Gavel CLI v0.0.67 accepts linter names or file paths after `gavel lint` and does not provide `gavel lint prompt`. Run supported lint commands against the requested files:
 
 ```bash
 gavel lint lint/summary.go
@@ -137,7 +137,7 @@ gavel lint --changed
 gavel lint --dry-run lint/summary.go
 ```
 
-Run from the reviewed repository. Pass files or directories explicitly, or use `--changed`/`--since`. For a separate agent review, use [prompts/pretty-printing.prompt](prompts/pretty-printing.prompt), located at `.agents/skills/pretty-printing/prompts/pretty-printing.prompt` in this checkout. Consumers should use the absolute path to that prompt in their Clicky checkout, not the path to `SKILL.md`. A Gavel version that provides `gavel lint prompt` can run the prompt directly; verify support with `gavel lint --help` first.
+Run from the reviewed repository. Pass files or directories explicitly for a full review. `--changed` and `--since` report only new issues relative to a baseline and can omit existing issues in the requested files. For a separate agent review, use [prompts/pretty-printing.prompt](prompts/pretty-printing.prompt), located at `.agents/skills/pretty-printing/prompts/pretty-printing.prompt` in this checkout. Consumers should use the absolute path to that prompt in their Clicky checkout, not the path to `SKILL.md`. A Gavel version that provides `gavel lint prompt` can run the prompt directly; verify support with `gavel lint --help` first.
 
 ## Detailed reference
 

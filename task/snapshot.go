@@ -24,8 +24,8 @@ type OutputSnapshot struct {
 	StderrOffset int64  `json:"stderrOffset,omitempty"`
 }
 
-// LogEntry is one retained task log line. Seq is its position in the task's
-// whole log history, so a stream can send only the entries a client lacks.
+// LogEntry is one retained task log line. Seq is a stable cursor assigned when
+// the task snapshot first observes it, so streams send only entries a client lacks.
 type LogEntry struct {
 	Seq     uint64 `json:"seq"`
 	Level   string `json:"level"`
@@ -46,9 +46,8 @@ type TaskSnapshot struct {
 	Retry   *RetryRequest `json:"retry,omitempty"`
 	Message string        `json:"message,omitempty"` // latest log line
 	Logs    []LogEntry    `json:"logs,omitempty"`    // retained log entries, oldest first
-	// LogsClearedThrough is the Seq of the last entry dropped by a log clear (0
-	// when the log was never cleared): a client holding entries at or below it
-	// holds entries that are gone.
+	// LogsClearedThrough is the sequence boundary of the most recent explicit
+	// clear (0 before the first clear). Entries at or below it are gone.
 	LogsClearedThrough uint64        `json:"logsClearedThrough,omitempty"`
 	Total              int           `json:"total,omitempty"`     // group: total child tasks
 	Completed          int           `json:"completed,omitempty"` // group: completed tasks
@@ -123,20 +122,7 @@ func SnapshotTask(t *Task, group *Group) TaskSnapshot {
 		snap.Error = err.Error()
 	}
 	t.snapshotProgress(&snap)
-	if bl := t.getBufferedLogger(); bl != nil {
-		snap.LogsClearedThrough = bl.ClearedThrough()
-		if entries := bl.GetLogs(); len(entries) > 0 {
-			snap.Message = entries[len(entries)-1].Message
-			for _, e := range entries {
-				snap.Logs = append(snap.Logs, LogEntry{
-					Seq:     e.Seq,
-					Level:   e.Level.String(),
-					Message: e.Message,
-					Time:    e.Time.UTC().Format(time.RFC3339Nano),
-				})
-			}
-		}
-	}
+	t.snapshotLogs(&snap)
 	output := t.snapshotOutput()
 	snap.Stdout, snap.StdoutOffset, snap.StdoutTruncated = streamTail(output.Stdout, output.StdoutOffset)
 	snap.Stderr, snap.StderrOffset, snap.StderrTruncated = streamTail(output.Stderr, output.StderrOffset)

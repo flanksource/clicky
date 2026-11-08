@@ -95,7 +95,12 @@ func (t *Task) GetLevel() logger.LogLevel {
 
 // ClearLogs clears all buffered logs for this task
 func (t *Task) ClearLogs() {
+	t.logCursor.mu.Lock()
+	defer t.logCursor.mu.Unlock()
 	t.getBufferedLogger().ClearLogs()
+	t.logCursor.last++
+	t.logCursor.cleared = t.logCursor.last
+	t.logCursor.entries = nil
 }
 
 // SetLogLevel sets the log level (implements Logger interface)

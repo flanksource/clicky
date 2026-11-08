@@ -1,6 +1,6 @@
 module github.com/flanksource/clicky/examples/enitity
 
-go 1.26.1
+go 1.27.1
 
 require (
 	github.com/flanksource/captain v0.0.71
@@ -118,7 +118,7 @@ require (
 	github.com/felixge/httpsnoop v1.1.0 // indirect
 	github.com/fergusstrange/embedded-postgres v1.34.0 // indirect
 	github.com/firebase/genkit/go v1.13.1 // indirect
-	github.com/flanksource/commons v1.62.1-0.20261105091155-b465a8f3b946 // indirect
+	github.com/flanksource/commons v1.63.0 // indirect
 	github.com/flanksource/commons-db v0.1.67 // indirect
 	github.com/flanksource/gomplate/v3 v3.24.90 // indirect
 	github.com/flanksource/is-healthy v1.0.92 // indirect

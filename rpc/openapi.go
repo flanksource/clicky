@@ -1019,7 +1019,9 @@ func (g *OpenAPIGenerator) enhanceArraySchema(schema *OpenAPISchema, prop Proper
 	schema.Type = "array"
 	if prop.Items != nil {
 		schema.Items = g.convertPropertyToOpenAPI(*prop.Items)
-		schema.Items.Enum, schema.Enum = schema.Enum, nil
+		if len(schema.Enum) > 0 {
+			schema.Items.Enum, schema.Enum = schema.Enum, nil
+		}
 		return
 	}
 	// For now, default to string items - this could be enhanced to parse item types from descriptions
