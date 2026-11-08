@@ -12,13 +12,20 @@ import (
 
 type jsonFlagValue struct{ value reflect.Value }
 
+// String omits unset defaults and exposes serialization failures as help text
+// because pflag calls it during registration without an error return channel.
 func (v *jsonFlagValue) String() string {
+	if !v.value.IsValid() || v.value.IsZero() {
+		return ""
+	}
 	data, err := json.Marshal(v.value.Interface())
 	if err != nil {
-		panic(err)
+		return fmt.Sprintf("invalid JSON: %v", err)
 	}
 	return string(data)
 }
+
+// Set replaces the value only after strict decoding succeeds.
 func (v *jsonFlagValue) Set(raw string) error {
 	value, err := parseJSONFlag(v.value.Type(), raw)
 	if err == nil {
@@ -26,6 +33,8 @@ func (v *jsonFlagValue) Set(raw string) error {
 	}
 	return err
 }
+
+// Type distinguishes opaque JSON from object and array flags in generated schemas.
 func (v *jsonFlagValue) Type() string {
 	t := v.value.Type()
 	for t.Kind() == reflect.Pointer {
@@ -39,6 +48,8 @@ func (v *jsonFlagValue) Type() string {
 	}
 	return "json-object"
 }
+
+// parseJSONFlag decodes exactly one value and rejects unknown object fields.
 func parseJSONFlag(t reflect.Type, raw string) (reflect.Value, error) {
 	value := reflect.New(t)
 	decoder := json.NewDecoder(strings.NewReader(raw))
@@ -52,6 +63,8 @@ func parseJSONFlag(t reflect.Type, raw string) (reflect.Value, error) {
 	}
 	return value.Elem(), nil
 }
+
+// isJSONField selects structured types while preserving native flag bindings.
 func isJSONField(t reflect.Type) bool {
 	if t == reflect.TypeFor[*bool]() || t.String() == "time.Time" {
 		return false
@@ -64,6 +77,8 @@ func isJSONField(t reflect.Type) bool {
 	}
 	return false
 }
+
+// bindJSONFlag validates an explicit default before registering the flag.
 func bindJSONFlag(fs *pflag.FlagSet, info FieldInfo, fv *FlagValue) {
 	fv.JSON = &jsonFlagValue{value: reflect.New(info.FieldType).Elem()}
 	if info.DefaultValue != "" {

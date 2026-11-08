@@ -41,6 +41,7 @@ type Task struct {
 
 	// Logger interface implementation
 	bufferedLogger *logger.BufferedLogger
+	logCursor      snapshotLogCursor
 
 	// Structs
 	mu           sync.Mutex

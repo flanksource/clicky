@@ -214,7 +214,7 @@ function buildExampleCommandHref(resolved: ClickyResolvedCommand): string | unde
 function commandInitialValues(
   resolved: ClickyResolvedCommand,
 ): Record<string, string> {
-  const values: Record<string, string> = { ...(resolved.request.flags ?? {}) };
+  const values: Record<string, string> = { ...resolved.request.flags };
   const args = [...(resolved.request.args ?? [])];
   const positionalParams = (resolved.operation?.operation.parameters ?? []).filter((param) =>
     isDemoPositionalParam(param),

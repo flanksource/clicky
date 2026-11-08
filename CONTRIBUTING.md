@@ -68,8 +68,10 @@ task.RegisterHandlers(router, "/api/v1")
 hub := sse.NewHub(sse.HubOptions{Build: "dev"})
 root := hub.Guard(mux)
 hub.Register(mux, root)
-log.Fatal(http.ListenAndServe(":8080", root))
+log.Fatal(http.ListenAndServe("127.0.0.1:8080", root))
 ```
+
+This example listens on loopback for local use. Network deployments must authenticate and authorize both the task API and hub routes, including relayed subscriptions. `hub.Guard` enforces stream transport policy; it does not authenticate callers.
 
 ## Known issues (from project memory)
 
