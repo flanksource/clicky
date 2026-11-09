@@ -40,7 +40,14 @@ var (
 // task that is merely running sends nothing. A stream that sent nothing for
 // streamPingInterval writes a ": ping" comment.
 //
-// It sends "event: done" once every tracked group has completed, and
+// A running snapshot whose SessionRef type has a registered SessionSource has
+// that session followed, once per connection, and its live entries and state
+// multiplexed in as "event: session" / "event: session-state" frames
+// {"session":{"type","id"}, "entry"|"state"}. A follow that fails sends
+// "event: session-error" {"session", "error"} and is dropped; the stream goes on.
+//
+// It sends "event: done" once every tracked group has completed and its
+// session follows have closed (or sessionDrainTimeout has passed), and
 // "event: error" {"error": msg} — ending the stream — when its runs cannot be
 // read or encoded.
 func SSEHandler(taskIDs ...string) http.Handler {
@@ -142,8 +149,9 @@ type taskStream struct {
 	snapshots map[string]string
 	// output holds, per stream, the absolute offset one past the last byte this
 	// connection has sent — the client's end position, not its length.
-	output map[string]int64
-	logs   map[string]logCursor
+	output   map[string]int64
+	logs     map[string]logCursor
+	sessions *sessionFollows
 }
 
 func newTaskStream(source RunSource, ids []string) *taskStream {
@@ -152,11 +160,14 @@ func newTaskStream(source RunSource, ids []string) *taskStream {
 		snapshots: map[string]string{},
 		output:    map[string]int64{},
 		logs:      map[string]logCursor{},
+		sessions:  newSessionFollows(),
 	}
 }
 
-// tick writes the frames for everything that changed since the last tick, and
-// the done frame once every tracked group has finished, which it reports.
+// tick writes the frames for everything that changed since the last tick —
+// snapshots, output and log deltas, then whatever the followed sessions sent —
+// and the done frame once every tracked group has finished and its session
+// follows have drained, which it reports.
 func (s *taskStream) tick(ctx context.Context, frames *bytes.Buffer, now time.Time) (bool, error) {
 	snapshots, err := s.runs.read(ctx, now)
 	if err != nil {
@@ -165,14 +176,17 @@ func (s *taskStream) tick(ctx context.Context, frames *bytes.Buffer, now time.Ti
 	snapshots = visibleSnapshots(ctx, s.runs.source, snapshots)
 	allDone := true
 	for _, snapshot := range snapshots {
-		if snapshot.Type == "group" && (snapshot.Status == string(StatusRunning) || snapshot.Status == string(StatusPending)) {
+		if snapshot.Type == "group" && !snapshotTerminal(snapshot) {
 			allDone = false
 		}
-		if err := s.write(frames, snapshot); err != nil {
+		if err := s.write(ctx, frames, snapshot); err != nil {
 			return false, err
 		}
 	}
-	if len(snapshots) == 0 || !allDone {
+	if err := s.sessions.drain(frames); err != nil {
+		return false, err
+	}
+	if len(snapshots) == 0 || !allDone || !s.sessions.drained(now) {
 		// With no groups registered yet, keep waiting for them.
 		return false, nil
 	}
@@ -182,7 +196,10 @@ func (s *taskStream) tick(ctx context.Context, frames *bytes.Buffer, now time.Ti
 
 // write sends one snapshot's changes. A task frame never carries its output or
 // logs: those travel as deltas, which a client accumulates beside the snapshot.
-func (s *taskStream) write(frames io.Writer, snapshot TaskSnapshot) error {
+// The session it names is followed before the frame is written, so a client
+// that loads the session's history on seeing the ref misses no live entry.
+func (s *taskStream) write(ctx context.Context, frames io.Writer, snapshot TaskSnapshot) error {
+	s.sessions.open(ctx, snapshot.Session, snapshotTerminal(snapshot))
 	full := snapshot
 	if snapshot.Type == "task" {
 		snapshot.Stdout, snapshot.Stderr, snapshot.Logs = "", "", nil
@@ -215,6 +232,10 @@ func (s *taskStream) write(frames io.Writer, snapshot TaskSnapshot) error {
 	}
 	_, err = emitLogsDelta(frames, full, s.logs)
 	return err
+}
+
+func snapshotTerminal(snapshot TaskSnapshot) bool {
+	return snapshot.Status != string(StatusRunning) && snapshot.Status != string(StatusPending)
 }
 
 // writeEvent writes one named event carrying payload as JSON.

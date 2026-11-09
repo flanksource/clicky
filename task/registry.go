@@ -29,6 +29,7 @@ type RunMeta struct {
 	Canceled   int               `json:"canceled,omitempty"`
 	Work       *WorkProgress     `json:"work,omitempty"`
 	Href       string            `json:"href,omitempty"`
+	Session    *SessionRef       `json:"session,omitempty"`
 	Controls   []ControlAction   `json:"controls,omitempty"`
 }
 
@@ -73,6 +74,7 @@ func RunMetaFromSnapshot(snap TaskSnapshot) RunMeta {
 		Canceled:   snap.Canceled,
 		Work:       snap.Work,
 		Href:       snap.Href,
+		Session:    snap.Session,
 		Controls:   snap.Controls,
 	}
 }

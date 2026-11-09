@@ -46,8 +46,8 @@ type Task struct {
 	mu           sync.Mutex
 	observeMu    sync.Mutex // Orders observer deliveries; guards observedStatus
 	doneOnce     sync.Once  // Ensure done channel is closed only once
-	drainedOnce  sync.Once // Ensure drained channel is closed only once
-	loggerOnce   sync.Once // Ensure bufferedLogger is initialized only once
+	drainedOnce  sync.Once  // Ensure drained channel is closed only once
+	loggerOnce   sync.Once  // Ensure bufferedLogger is initialized only once
 	retryConfig  RetryConfig
 	retryRequest *RetryRequest
 
@@ -75,6 +75,7 @@ type Task struct {
 	maxValue          int
 	progressMetrics   *ProgressMetrics
 	labels            map[string]string
+	session           *SessionRef
 	retryCount        int
 	priority          int // Priority for queue ordering (lower = higher priority)
 	slots             int // Immutable reservation; zero denotes a supervisor
