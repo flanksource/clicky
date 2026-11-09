@@ -44,11 +44,24 @@ func (t *Task) SetLabels(labels map[string]string) {
 	t.dirty.Store(true)
 }
 
+// SetSession records the session the task drives; it panics on a reference
+// without a type or an id.
+func (t *Task) SetSession(ref SessionRef) {
+	ref.validate()
+	t.mu.Lock()
+	t.session = ref.clone()
+	t.mu.Unlock()
+	t.dirty.Store(true)
+}
+
 func (t *Task) snapshotProgress(snap *TaskSnapshot) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 	snap.Description, snap.Progress, snap.MaxValue = t.description, t.progress, t.maxValue
 	snap.Labels = maps.Clone(t.labels)
+	if t.session != nil {
+		snap.Session = t.session.clone()
+	}
 	if t.progressMetrics != nil {
 		metrics := *t.progressMetrics
 		snap.ProgressMetrics = &metrics

@@ -14,10 +14,11 @@ import (
 // key/value facets for filtering, and Owner identifies who started it. All
 // fields are optional.
 type GroupMetadata struct {
-	Kind   string            `json:"kind,omitempty"`
-	Labels map[string]string `json:"labels,omitempty"`
-	Owner  string            `json:"owner,omitempty"`
-	Href   string            `json:"href,omitempty"`
+	Kind    string            `json:"kind,omitempty"`
+	Labels  map[string]string `json:"labels,omitempty"`
+	Owner   string            `json:"owner,omitempty"`
+	Href    string            `json:"href,omitempty"`
+	Session *SessionRef       `json:"session,omitempty"`
 }
 
 // Group represents a group of tasks that can be managed collectively
@@ -131,6 +132,9 @@ func (g *Group) Metadata() GroupMetadata {
 	g.mu.RLock()
 	defer g.mu.RUnlock()
 	md := GroupMetadata{Kind: g.metadata.Kind, Owner: g.metadata.Owner, Href: g.metadata.Href}
+	if g.metadata.Session != nil {
+		md.Session = g.metadata.Session.clone()
+	}
 	if g.metadata.Labels != nil {
 		md.Labels = make(map[string]string, len(g.metadata.Labels))
 		for k, v := range g.metadata.Labels {
@@ -138,6 +142,15 @@ func (g *Group) Metadata() GroupMetadata {
 		}
 	}
 	return md
+}
+
+// SetSession records the session the run drives; it panics on a reference
+// without a type or an id.
+func (g *Group) SetSession(ref SessionRef) {
+	ref.validate()
+	g.mu.Lock()
+	g.metadata.Session = ref.clone()
+	g.mu.Unlock()
 }
 
 // StartedAt returns the group's start time.
