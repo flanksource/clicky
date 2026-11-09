@@ -33,6 +33,66 @@ type LogEntry struct {
 	Time    string `json:"time"` // RFC3339Nano
 }
 
+// SessionRef names the session a task or run drives, so a UI can render it
+// natively: Type selects the renderer, ID identifies the session, and Href is
+// where it can be read. Summary is what a collapsed row shows of it, computed
+// by the session's owner and refreshed by calling SetSession again.
+type SessionRef struct {
+	Type    string          `json:"type"`
+	ID      string          `json:"id"`
+	Href    string          `json:"href,omitempty"`
+	Summary *SessionSummary `json:"summary,omitempty"`
+}
+
+// SessionSummary is a session at a glance: the model driving it, how full its
+// context window is, how many actions (tool calls) it has taken, its latest
+// tool call or text, and a free-form activity line.
+type SessionSummary struct {
+	Model    string          `json:"model,omitempty"`
+	Context  *SessionContext `json:"context,omitempty"`
+	Actions  int             `json:"actions"`
+	Latest   *SessionLatest  `json:"latest,omitempty"`
+	Activity string          `json:"activity,omitempty"`
+}
+
+// SessionContext is a session's context-window use in tokens.
+type SessionContext struct {
+	UsedTokens   int `json:"usedTokens"`
+	WindowTokens int `json:"windowTokens,omitempty"`
+}
+
+// SessionLatest is a session's most recent tool call or text: Kind is "tool"
+// (Tool names it) or "text".
+type SessionLatest struct {
+	Kind string `json:"kind"`
+	Tool string `json:"tool,omitempty"`
+	Text string `json:"text"`
+}
+
+func (r SessionRef) validate() {
+	if r.Type == "" || r.ID == "" {
+		panic(fmt.Sprintf("task: session reference needs a type and an id, got %+v", r))
+	}
+}
+
+// clone deep-copies the reference, so a snapshot never shares a summary the
+// owner may replace.
+func (r SessionRef) clone() *SessionRef {
+	if r.Summary != nil {
+		summary := *r.Summary
+		if summary.Context != nil {
+			context := *summary.Context
+			summary.Context = &context
+		}
+		if summary.Latest != nil {
+			latest := *summary.Latest
+			summary.Latest = &latest
+		}
+		r.Summary = &summary
+	}
+	return &r
+}
+
 // TaskSnapshot is a JSON-serializable snapshot of a task or group's current
 // state. It carries timestamps only — never an elapsed value, which would
 // change on every read of a running task; Duration derives it on demand.
@@ -77,6 +137,7 @@ type TaskSnapshot struct {
 	StartedAt       string            `json:"startedAt,omitempty"`  // RFC3339
 	FinishedAt      string            `json:"finishedAt,omitempty"` // RFC3339
 	Href            string            `json:"href,omitempty"`
+	Session         *SessionRef       `json:"session,omitempty"`
 	Controls        []ControlAction   `json:"controls,omitempty"`
 	Stdout          string            `json:"stdout,omitempty"`
 	Stderr          string            `json:"stderr,omitempty"`
@@ -192,6 +253,7 @@ func SnapshotGroup(g *Group) TaskSnapshot {
 		Labels:  md.Labels,
 		Owner:   md.Owner,
 		Href:    md.Href,
+		Session: md.Session,
 	}
 	snap.Controls = controllerActions(controllerForGroup(g))
 	if g.parent != nil {

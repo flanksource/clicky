@@ -76,6 +76,7 @@ type Task struct {
 	maxValue          int
 	progressMetrics   *ProgressMetrics
 	labels            map[string]string
+	session           *SessionRef
 	retryCount        int
 	priority          int // Priority for queue ordering (lower = higher priority)
 	slots             int // Immutable reservation; zero denotes a supervisor
