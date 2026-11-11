@@ -364,7 +364,8 @@ type FieldMeta struct {
 }
 
 type TypedValue struct {
-	Textable Textable
+	HasFilterValue bool
+	Textable       Textable
 	// FilterValue preserves a table cell's raw scalar independently from its
 	// formatted Textable representation for filters and hidden row metadata.
 	FilterValue any
@@ -650,7 +651,7 @@ func newTableFromProviders(items []TableProvider, rowType reflect.Type, options 
 					textable = Text{}.Add(textable).Styles(styles...)
 				}
 			}
-			cell := TypedValue{Textable: textable}
+			cell := TypedValue{Textable: textable, HasFilterValue: presentedCell || col.FilterKey != ""}
 			// Filterable cells keep their raw value. Explicitly presented cells and
 			// hidden metadata keep only a primitive one: a presented count of 0
 			// renders as empty text, so its display cannot stand in for the value.

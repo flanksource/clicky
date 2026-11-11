@@ -152,10 +152,11 @@ type Schema struct {
 
 // Property represents a JSON schema property.
 type Property struct {
-	Type        string      `json:"type,omitempty"`
-	Description string      `json:"description"`
-	Enum        []string    `json:"enum,omitempty"`
-	Default     interface{} `json:"default,omitempty"`
+	Type        string         `json:"type,omitempty"`
+	Description string         `json:"description"`
+	Enum        []string       `json:"enum,omitempty"`
+	Default     interface{}    `json:"default,omitempty"`
+	Extensions  map[string]any `json:"-"`
 	// Items is the array element schema; an empty property accepts any JSON value.
 	Items *Property `json:"items,omitempty"`
 }

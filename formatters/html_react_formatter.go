@@ -571,13 +571,13 @@ func convertTable(table *api.TextTable) ClickyNode {
 		for _, column := range node.Columns {
 			if cell, ok := row[column.Name]; ok {
 				cellNode := convertTypedValue(&cell, nil)
-				cellNode.FilterValue = cell.FilterValue
+				cellNode.FilterValue = tableFilterValue(cell)
 				rowNode.Cells[column.Name] = compactNode(cellNode)
 				continue
 			}
 			if cell, ok := row[column.Label]; ok {
 				cellNode := convertTypedValue(&cell, nil)
-				cellNode.FilterValue = cell.FilterValue
+				cellNode.FilterValue = tableFilterValue(cell)
 				rowNode.Cells[column.Name] = compactNode(cellNode)
 				continue
 			}
@@ -588,7 +588,7 @@ func convertTable(table *api.TextTable) ClickyNode {
 				continue
 			}
 			cellNode := convertTypedValue(&cell, nil)
-			cellNode.FilterValue = cell.FilterValue
+			cellNode.FilterValue = tableFilterValue(cell)
 			rowNode.Cells[cellName] = compactNode(cellNode)
 		}
 
@@ -601,6 +601,13 @@ func convertTable(table *api.TextTable) ClickyNode {
 	}
 
 	return node
+}
+
+func tableFilterValue(cell api.TypedValue) any {
+	if cell.HasFilterValue && cell.FilterValue == nil {
+		return json.RawMessage("null")
+	}
+	return cell.FilterValue
 }
 
 func convertTree(tree *api.TextTree) ClickyNode {
