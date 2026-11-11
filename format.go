@@ -198,7 +198,10 @@ func FormatToFile(o any, opts FormatOptions, file string) error {
 //
 // Each sink is attempted independently; errors are returned after all sinks run.
 func PrintAndWriteSinks(o any, opts FormatOptions) (resultErr error) {
-	_ = task.Wait()
+	// A task cannot drain the global manager while it is still running.
+	if opts.Context == nil || task.TaskFromContext(opts.Context) == nil {
+		_ = task.Wait()
+	}
 	if closer, ok := o.(io.Closer); ok {
 		defer func() { resultErr = errors.Join(resultErr, closer.Close()) }()
 	}
