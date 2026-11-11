@@ -136,12 +136,19 @@ func (c *Converter) addFlagParameters(cmd *cobra.Command, schema *Schema, parame
 		if err != nil && flagErr == nil {
 			flagErr = err
 		}
+		metadata, err := flags.Schema(flag)
+		if err != nil && flagErr == nil {
+			flagErr = err
+		}
+		if typ, ok := metadata["type"]; ok && typ != param.Type && flagErr == nil {
+			flagErr = fmt.Errorf("--%s schema type %v disagrees with flag type %s", flag.Name, typ, param.Type)
+		}
 		// Boolean flags always have defaults, so they are never required.
 		if flag.Value.Type() != "bool" && c.isFlagRequired(cmd, flag.Name) {
 			schema.Required = append(schema.Required, flag.Name)
 			param.Required = true
 		}
-		schema.Properties[flag.Name] = Property{Type: param.Type, Description: flag.Usage, Default: param.Default, Enum: flags.AllowedValues(flag), Items: param.Items}
+		schema.Properties[flag.Name] = Property{Type: param.Type, Description: flag.Usage, Default: param.Default, Enum: flags.AllowedValues(flag), Items: param.Items, Extensions: metadata}
 		parameters = append(parameters, param)
 	})
 	return parameters, flagErr
@@ -607,7 +614,7 @@ func isBulkActionCommand(meta *clicky.CommandOpenAPIMeta) bool {
 }
 
 func isValidParamName(name string) bool {
-	if name == "" {
+	if name == "" || name == "flags" {
 		return false
 	}
 	// Reject variadic/body-style args like "key=value ...", "[args...]"

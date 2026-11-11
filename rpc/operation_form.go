@@ -55,7 +55,7 @@ func OperationInputSchema(op RPCOperation, opts OperationSchemaOptions) (json.Ra
 		}
 		if lookup := operationLookupMeta(op, param.Name, converted, opts.LookupFilters); lookup != nil {
 			prop["x-clicky-lookup"] = lookup
-		} else if containsString(opts.Completions, param.Name) {
+		} else if prop["x-clicky-lookup"] == nil && containsString(opts.Completions, param.Name) {
 			prop["x-clicky-lookup"] = &ClickyLookupMeta{Filter: param.Name}
 		}
 		properties[param.Name] = prop

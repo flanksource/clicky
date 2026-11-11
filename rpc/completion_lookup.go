@@ -49,7 +49,7 @@ func commandCompletions(cmd *cobra.Command, op RPCOperation, args []string) (map
 		if err != nil {
 			return nil, fmt.Errorf("%s: completing %s: %w", cmd.CommandPath(), param.Name, err)
 		}
-		if len(probe) == 0 {
+		if probe == nil {
 			continue
 		}
 		out[param.Name] = func(_ context.Context, values map[string]any) ([]schemaform.Option, error) {
