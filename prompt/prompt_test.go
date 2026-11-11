@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 )
@@ -139,6 +141,38 @@ func TestResolveHandler(t *testing.T) {
 	}
 	if idx := SelectedIndex(<-answered); idx != 1 {
 		t.Fatalf("expected index 1 from HTTP resolve, got %d", idx)
+	}
+}
+
+func TestResolveHandlerRejectsConditionallyInvalidAnswer(t *testing.T) {
+	m := NewManager(NewMemory(MemoryConfig{}))
+	mux := http.NewServeMux()
+	m.RegisterHandlers(mux, "/api")
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+	go func() { _, _ = m.Ask(context.Background(), Prompt{ID: "c1", Schema: json.RawMessage(scaleSchema)}) }()
+	waitPending(t, m, "c1")
+
+	post := func(values map[string]any) (int, string) {
+		body, _ := json.Marshal(map[string]any{"values": values})
+		resp, err := http.Post(srv.URL+"/api/prompts/c1/answer", "application/json", bytes.NewReader(body))
+		if err != nil {
+			t.Fatalf("post answer: %v", err)
+		}
+		defer resp.Body.Close()
+		msg, _ := io.ReadAll(resp.Body)
+		return resp.StatusCode, string(msg)
+	}
+
+	status, msg := post(map[string]any{"db": "x", "scale": true})
+	if status != http.StatusBadRequest || !strings.Contains(msg, `missing required field "cluster"`) {
+		t.Fatalf("expected 400 naming cluster, got %d %q", status, msg)
+	}
+	if _, ok := m.Pending("c1"); !ok {
+		t.Fatal("prompt should remain pending after a rejected answer")
+	}
+	if status, msg := post(map[string]any{"db": "x", "scale": true, "cluster": "c1"}); status != http.StatusOK {
+		t.Fatalf("expected corrected answer to return 200, got %d %q", status, msg)
 	}
 }
 

@@ -107,7 +107,7 @@ func filterTreeNodeRecursive(node api.TreeNode, predicate Predicate) (api.TreeNo
 func rowVariables(row api.PrettyDataRow) map[string]any {
 	result := make(map[string]any, len(row)+1)
 	for key, fieldValue := range row {
-		if fieldValue.FilterValue != nil {
+		if fieldValue.HasFilterValue || fieldValue.FilterValue != nil {
 			result[key] = fieldValue.FilterValue
 		} else {
 			result[key] = fieldValue.String()
