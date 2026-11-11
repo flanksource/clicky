@@ -12,9 +12,8 @@ require (
 	github.com/charmbracelet/lipgloss v1.1.1-0.20250404203927-76690c660834
 	github.com/charmbracelet/x/ansi v0.11.6
 	github.com/creack/pty v1.1.24
-	github.com/flanksource/commons v1.63.0
+	github.com/flanksource/commons v1.64.1
 	github.com/flanksource/gomplate/v3 v3.24.90
-	github.com/flanksource/telltale/sdk v0.0.2
 	github.com/go-xmlfmt/xmlfmt v1.1.3
 	github.com/goccy/go-yaml v1.19.2
 	github.com/golang-jwt/jwt/v5 v5.3.1
