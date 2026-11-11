@@ -531,6 +531,9 @@ func (g *OpenAPIGenerator) convertParameter(op RPCOperation, param RPCParameter)
 			Items:       param.Items,
 		}),
 	}
+	if property, ok := op.Schema.Properties[param.Name]; ok && len(property.Extensions) > 0 {
+		openAPIParam.Schema = g.convertPropertyToOpenAPI(property)
+	}
 	if role := ParamRole(op, param); role != "" {
 		openAPIParam.Clicky = &ClickyParameterMeta{Role: role}
 		if role == "filter" {
@@ -964,6 +967,7 @@ func (g *OpenAPIGenerator) convertPropertyToOpenAPI(prop Property) *OpenAPISchem
 	case "boolean":
 		schema.Type = "boolean"
 	}
+	schema.Extensions = prop.Extensions
 
 	return schema
 }

@@ -205,6 +205,12 @@ func TaskStdinHandler(source RunSource) http.Handler {
 //	POST {prefix}/tasks/{id}/control lifecycle action
 //	POST {prefix}/tasks/{id}/tasks/{taskID}/control child lifecycle action
 //	POST {prefix}/tasks/{id}/tasks/{taskID}/stdin live stdin (never persisted)
+//	GET {prefix}/tasks/metrics/{id}, {prefix}/tasks/metrics/stream  run metrics
+//
+// Registering also starts sampling the worker pool into the metric store every
+// second: "pool:<name>" for the Metric* pool gauges (workers-busy,
+// workers-limit, slots-used, queued, …) and "<runID>:concurrency-*" for each
+// live concurrency-limited group.
 //
 // The {id} route reuses Go 1.22 net/http path-value routing; the stream route is
 // registered before the {id} route so "stream" is not treated as an id.
@@ -231,6 +237,7 @@ func RegisterHandlersWithSource(router *route.Router, prefix string, source RunS
 		route.Meta{Entity: "task", Verb: "stdin", IDParam: "taskID"})
 	router.Raw("GET "+prefix+"/tasks/{id}", RunHandlerWithSource(source),
 		route.Meta{Entity: "task", Verb: "get", ReadOnly: true, IDParam: "id"})
+	startPoolSampler()
 	timeseries := Metrics()
 	if external, ok := source.(MetricSource); ok {
 		timeseries = sourceMetrics{local: timeseries, external: external}
