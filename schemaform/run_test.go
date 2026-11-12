@@ -316,6 +316,23 @@ var _ = Describe("Run (accessible mode)", func() {
 			Expect(last.Values).To(HaveKeyWithValue("env", "prod"))
 		})
 
+		It("prefixes a known icon's glyph and suffixes badges as [label]", func() {
+			a.opts.Lookup = func(context.Context, schemaform.LookupRequest) (schemaform.LookupResult, error) {
+				return schemaform.LookupResult{Options: []schemaform.Option{
+					{Value: "orders", Label: "orders-db", Raw: "orders", Icon: "database", Badges: []schemaform.Badge{{Label: "proxy"}, {Label: "svc"}}},
+					{Value: "vault", Label: "vault", Raw: "vault", Icon: "ion:lock-closed"},
+					{Value: "other", Label: "other", Raw: "other", Icon: "acme:unknown-icon"},
+				}}, nil
+			}
+			Expect(a.run(json.RawMessage(`{"type":"object","required":["conn"],"properties":{"conn":{"type":"string","x-clicky-lookup":{"filter":"conn"}}}}`), "1")).
+				To(Equal(map[string]any{"conn": "orders"}))
+			Expect(a.output.String()).To(And(
+				ContainSubstring("1. 🗄️ orders-db [proxy] [svc]"),
+				ContainSubstring("2. 🔒 vault"),
+				ContainSubstring("3. other"),
+			))
+		})
+
 		It("fails loudly when the schema has a lookup but no Lookup is configured", func() {
 			a.opts.Lookup = nil
 			_, err := a.run(json.RawMessage(`{"type":"object","properties":{"env":{"type":"string","x-clicky-lookup":{"filter":"env"}}}}`))

@@ -143,6 +143,26 @@ func TestFlagSchemaFillsAJSONFlagFromTheChosenPrompt(t *testing.T) {
 	assert.JSONEq(t, `{"diff":"HEAD~1"}`, cmd.Flags().Lookup("vars").Value.String())
 }
 
+func TestLookupResultCarriesIconDescriptionToneAndBadges(t *testing.T) {
+	result, err := lookupResult(entity.LookupResponse{Filters: map[string]entity.LookupFilter{"connection": {Options: map[string]entity.LookupNode{
+		"orders": {
+			Kind: "text", Plain: "orders-db", Icon: "postgres", Description: "db.internal:5432", Tone: "success",
+			Badges: []entity.LookupBadge{{Label: "proxy", Icon: "ion:shield", Tone: "info"}},
+			Group:  "Postgres",
+		},
+		"plain": {Kind: "text", Plain: "plain"},
+	}}}}, "connection")
+	require.NoError(t, err)
+	assert.Equal(t, []schemaform.Option{
+		{
+			Value: "orders", Label: "orders-db (orders)", Raw: "orders", Icon: "postgres", Description: "db.internal:5432", Tone: "success",
+			Badges: []schemaform.Badge{{Label: "proxy", Icon: "ion:shield", Tone: "info"}},
+			Group:  "Postgres",
+		},
+		{Value: "plain", Label: "plain", Raw: "plain"},
+	}, result.Options)
+}
+
 func TestShellCompletionsBecomeFormLookups(t *testing.T) {
 	cmd := newPromptRunCommand()
 	op, err := NewConverter(DefaultConfig()).ConvertCommand(cmd)
