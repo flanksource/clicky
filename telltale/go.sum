@@ -84,8 +84,8 @@ github.com/flanksource/is-healthy v1.0.90 h1:YV4rmL9y1BOgg0FZsWF7FgMBiHyf1FS3oJG
 github.com/flanksource/is-healthy v1.0.90/go.mod h1:fTjFuG/3G4NFLEmaOAyyzlZB0i0CCBpvjq3UqceSfSg=
 github.com/flanksource/kubectl-neat v1.0.4 h1:t5/9CqgE84oEtB0KitgJ2+WIeLfD+RhXSxYrqb4X8yI=
 github.com/flanksource/kubectl-neat v1.0.4/go.mod h1:Un/Voyh3cmiZNKQrW/TkAl28nAA7vwnwDGVjRErKjOw=
-github.com/flanksource/telltale/sdk v0.0.2 h1:ob0cKca4muwrltzj3J1Xf3ux9+JNiSwJvsbewnt3r+Y=
-github.com/flanksource/telltale/sdk v0.0.2/go.mod h1:5KDrlpDADGZlJuiAbs2LLWGZzWLldys2bSh6fsA1Vs8=
+github.com/flanksource/telltale/sdk v0.0.3 h1:JP+4jqwNUoNyWLS38yyQ2cTWc/u0+1hqnLg147mY0oc=
+github.com/flanksource/telltale/sdk v0.0.3/go.mod h1:8QT8ymHuwrAToGVkAn7Hajxw12n/Tu3PZ5pVxw3bv9c=
 github.com/flanksource/telltale/sdk/commonslog v0.0.1 h1:j3Xo+wQpu6s3efqYKnGv46fBLOXh3rVOqz/1k/l4kI4=
 github.com/flanksource/telltale/sdk/commonslog v0.0.1/go.mod h1:qHltYG+FZ5UJf3PotF2wV0QtFvHJMeDIefcc64qA0tU=
 github.com/fxamacker/cbor/v2 v2.9.1 h1:2rWm8B193Ll4VdjsJY28jxs70IdDsHRWgQYAI80+rMQ=
