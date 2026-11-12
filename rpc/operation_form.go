@@ -223,18 +223,34 @@ func lookupResult(data any, filter string) (schemaform.LookupResult, error) {
 	sort.Strings(values)
 	options := make([]schemaform.Option, len(values))
 	for i, value := range values {
-		label := f.Options[value].Plain
+		node := f.Options[value]
+		label := node.Plain
 		if label == "" {
-			label = f.Options[value].Text
+			label = node.Text
 		}
 		if label == "" || label == value {
 			label = value
 		} else {
 			label = label + " (" + value + ")"
 		}
-		options[i] = schemaform.Option{Value: value, Label: label, Raw: value}
+		options[i] = schemaform.Option{
+			Value: value, Label: label, Raw: value,
+			Icon: node.Icon, Description: node.Description, Tone: node.Tone, Badges: lookupBadges(node.Badges),
+			Group: node.Group,
+		}
 	}
 	return schemaform.LookupResult{Options: options, Multi: f.Multi, Truncated: f.Truncated, Total: f.Total}, nil
+}
+
+func lookupBadges(badges []entity.LookupBadge) []schemaform.Badge {
+	if len(badges) == 0 {
+		return nil
+	}
+	out := make([]schemaform.Badge, len(badges))
+	for i, b := range badges {
+		out[i] = schemaform.Badge{Label: b.Label, Icon: b.Icon, Tone: b.Tone}
+	}
+	return out
 }
 
 // PromptOperationOptions configures PromptOperation.

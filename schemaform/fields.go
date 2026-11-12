@@ -3,13 +3,19 @@ package schemaform
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"math"
 	"regexp"
+	"slices"
 	"strings"
+	"sync"
 	"time"
 	"unicode/utf8"
 
 	"github.com/charmbracelet/huh"
+	"github.com/charmbracelet/lipgloss"
+
+	"github.com/flanksource/clicky/api/icons"
 )
 
 // field is one leaf control of the form, bound to a path in the State.
@@ -353,9 +359,51 @@ func (f *field) huhOptions(options []Option, single bool) []huh.Option[string] {
 		out = append(out, huh.NewOption("(none)", ""))
 	}
 	for _, o := range options {
-		out = append(out, huh.NewOption(o.Label, o.Value))
+		out = append(out, huh.NewOption(o.display(), o.Value))
 	}
 	return out
+}
+
+var badgeStyle = lipgloss.NewStyle().Faint(true)
+
+// display is the option as a select lists it: the icon's glyph, the label,
+// then each badge as a dim [label].
+func (o Option) display() string {
+	label := o.Label
+	if glyph := iconGlyph(o.Icon); glyph != "" {
+		label = glyph + " " + label
+	}
+	for _, b := range o.Badges {
+		label += " " + badgeStyle.Render("["+b.Label+"]")
+	}
+	return label
+}
+
+// iconsByName resolves an icon by its clicky name ("database") or its
+// Iconify name ("ion:server"); the first clicky name (sorted) claims a shared
+// Iconify name.
+var iconsByName = sync.OnceValue(func() map[string]icons.Icon {
+	byName := make(map[string]icons.Icon, 2*len(icons.All))
+	for _, name := range slices.Sorted(maps.Keys(icons.All)) {
+		if icon := icons.All[name]; icon.Iconify != "" {
+			if _, taken := byName[icon.Iconify]; !taken {
+				byName[icon.Iconify] = icon
+			}
+		}
+	}
+	for name, icon := range icons.All {
+		byName[name] = icon
+	}
+	return byName
+})
+
+// iconGlyph is the terminal glyph of a known icon name; a name the terminal
+// has no glyph for (any other Iconify set) renders nothing.
+func iconGlyph(name string) string {
+	if name == "" {
+		return ""
+	}
+	return iconsByName()[name].Unicode
 }
 
 func rawFor(options []Option, value string) any {
