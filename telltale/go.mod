@@ -5,7 +5,7 @@ go 1.27.1
 require (
 	github.com/flanksource/clicky v1.21.94
 	github.com/flanksource/commons v1.64.1
-	github.com/flanksource/telltale/sdk v0.0.2
+	github.com/flanksource/telltale/sdk v0.0.3
 	github.com/flanksource/telltale/sdk/commonslog v0.0.1
 	github.com/google/gops v0.3.29
 	github.com/onsi/ginkgo/v2 v2.32.1
