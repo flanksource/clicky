@@ -229,12 +229,15 @@ func (p *CobraToolProvider) handlerFor(op *rpc.RPCOperation, scope context.Conte
 	values := context.WithoutCancel(scope)
 	return func(ctx context.Context, input map[string]any) (any, error) {
 		var request *rpc.ExecutionRequest
+		var err error
 		if idOnlyBulkAction(op) {
 			ids, err := requiredBulkIDs(op, input)
 			if err != nil {
 				return nil, err
 			}
-			request = toExecutionRequest(input, nil)
+			if request, err = toExecutionRequest(op, input, nil); err != nil {
+				return nil, err
+			}
 			delete(request.Flags, "ids")
 			request.Args = ids
 		} else {
@@ -244,7 +247,9 @@ func (p *CobraToolProvider) handlerFor(op *rpc.RPCOperation, scope context.Conte
 					return nil, fmt.Errorf("operation %s requires %s", op.Name, op.Clicky.IDParam)
 				}
 			}
-			request = toExecutionRequest(input, positional)
+			if request, err = toExecutionRequest(op, input, positional); err != nil {
+				return nil, err
+			}
 		}
 		request.Context = entity.ContextWithOperationSurface(scopedContext{Context: ctx, values: values}, "mcp")
 		if rpc.IsListOperation(op) {
@@ -408,7 +413,7 @@ func positionalParams(op *rpc.RPCOperation) []string {
 	return names
 }
 
-func toExecutionRequest(input map[string]any, positional []string) *rpc.ExecutionRequest {
+func toExecutionRequest(op *rpc.RPCOperation, input map[string]any, positional []string) (*rpc.ExecutionRequest, error) {
 	request := &rpc.ExecutionRequest{Flags: map[string]string{}}
 	positionalSet := make(map[string]bool, len(positional))
 	for _, name := range positional {
@@ -433,11 +438,16 @@ func toExecutionRequest(input map[string]any, positional []string) *rpc.Executio
 	}
 	sort.Strings(keys)
 	for _, key := range keys {
-		if !positionalSet[key] {
-			request.Flags[key] = stringify(input[key])
+		if positionalSet[key] {
+			continue
 		}
+		text, err := rpc.FlagValue(op, key, input[key])
+		if err != nil {
+			return nil, fmt.Errorf("argument %q: %w", key, err)
+		}
+		request.Flags[key] = text
 	}
-	return request
+	return request, nil
 }
 
 // stringifyArgs renders the generic "args" slot as positional arguments. A

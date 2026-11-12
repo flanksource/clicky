@@ -555,7 +555,10 @@ func (s *MCPServer) executeToolWithTaskManager(ctx context.Context, tool *ToolDe
 			// Run through the transport-neutral handle, which serializes the
 			// global stdout/stderr capture, resets state, and applies the
 			// arguments + server-wide format overrides.
-			flags, posArgs := splitMCPArgs(tool.Operation, args)
+			flags, posArgs, err := splitMCPArgs(tool.Operation, args)
+			if err != nil {
+				return nil, err
+			}
 			overrides := formatOverrides(s.config.Tools.Format)
 			if rpc.IsListOperation(tool.Operation) && overrides["format"] == "" {
 				if overrides == nil {
@@ -709,7 +712,7 @@ func formatName(opts *formatters.FormatOptions) string {
 // (the generic "args" key, or the positional the operation names, e.g.
 // "pretty <file>") and string-valued flags (every other key), routing them as
 // the HTTP executor does.
-func splitMCPArgs(op *rpc.RPCOperation, args map[string]interface{}) (map[string]string, []string) {
+func splitMCPArgs(op *rpc.RPCOperation, args map[string]interface{}) (map[string]string, []string, error) {
 	flags := map[string]string{}
 	var posArgs []string
 	for key, value := range args {
@@ -723,9 +726,13 @@ func splitMCPArgs(op *rpc.RPCOperation, args map[string]interface{}) (map[string
 			}
 			continue
 		}
-		flags[key] = fmt.Sprintf("%v", value)
+		text, err := rpc.FlagValue(op, key, value)
+		if err != nil {
+			return nil, nil, fmt.Errorf("argument %q: %w", key, err)
+		}
+		flags[key] = text
 	}
-	return flags, posArgs
+	return flags, posArgs, nil
 }
 
 // handlePromptsList handles the MCP prompts/list request

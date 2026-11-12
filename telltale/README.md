@@ -66,6 +66,5 @@ In your own trace definition, the same group is `spec.collect.clicky`.
 TELLTALE_AGENT=1 go run ./examples/demo          # prints its pid
 telltale clicky <pid> --duration 10s             # records every clicky probe
 telltale agents get <pid>                        # lists the probes and ops
-go run ./hack/smoke <pid> 7                      # arms every clicky probe, prints a sample of each
 gops stack <pid>
 ```

@@ -13,7 +13,7 @@ var _ = ginkgo.Describe("toExecutionRequest", func() {
 	// ExecutionRequest.Args: routed into Flags instead, the command runs with no
 	// positional arguments at all and reports its own argument as missing.
 	ginkgo.It("routes the generic args array to positional arguments", func() {
-		request := toExecutionRequest(map[string]any{
+		request := mustExecutionRequest(nil, map[string]any{
 			"args": []any{"SELECT TOP 1 * FROM AsCode"},
 		}, nil)
 
@@ -24,13 +24,13 @@ var _ = ginkgo.Describe("toExecutionRequest", func() {
 	ginkgo.It("accepts a bare string for the args array", func() {
 		// Models routinely send the scalar when the array holds one element;
 		// the HTTP body path already tolerates it, so the tool path must too.
-		request := toExecutionRequest(map[string]any{"args": "group-life"}, nil)
+		request := mustExecutionRequest(nil, map[string]any{"args": "group-life"}, nil)
 
 		gomega.Expect(request.Args).To(gomega.Equal([]string{"group-life"}))
 	})
 
 	ginkgo.It("keeps named path parameters ahead of the generic args", func() {
-		request := toExecutionRequest(map[string]any{
+		request := mustExecutionRequest(nil, map[string]any{
 			"id":     "abc-123",
 			"args":   []any{"extra"},
 			"format": "json",
@@ -41,19 +41,44 @@ var _ = ginkgo.Describe("toExecutionRequest", func() {
 	})
 
 	ginkgo.It("does not duplicate a path parameter named args", func() {
-		request := toExecutionRequest(map[string]any{"args": "first"}, []string{"args"})
+		request := mustExecutionRequest(nil, map[string]any{"args": "first"}, []string{"args"})
 
 		gomega.Expect(request.Args).To(gomega.Equal([]string{"first"}))
 		gomega.Expect(request.Flags).NotTo(gomega.HaveKey("args"))
 	})
 
 	ginkgo.It("leaves every other key a flag", func() {
-		request := toExecutionRequest(map[string]any{"limit": 10, "trace": true}, nil)
+		request := mustExecutionRequest(nil, map[string]any{"limit": 10, "trace": true}, nil)
 
 		gomega.Expect(request.Args).To(gomega.BeEmpty())
 		gomega.Expect(request.Flags).To(gomega.Equal(map[string]string{"limit": "10", "trace": "true"}))
 	})
+
+	ginkgo.It("encodes structured values for JSON-backed flags as JSON and native slices as CSV", func() {
+		op := &rpc.RPCOperation{Schema: rpc.Schema{Properties: map[string]rpc.Property{
+			"source": {Type: "object"},
+			"links":  {Type: "array", Items: &rpc.Property{}},
+			"tags":   {Type: "array", Items: &rpc.Property{Type: "string"}},
+		}}}
+		request := mustExecutionRequest(op, map[string]any{
+			"source": map[string]any{"uri": "s3://bucket"},
+			"links":  []any{map[string]any{"uri": "a"}},
+			"tags":   []any{"x", "y"},
+		}, nil)
+
+		gomega.Expect(request.Flags).To(gomega.Equal(map[string]string{
+			"source": `{"uri":"s3://bucket"}`,
+			"links":  `[{"uri":"a"}]`,
+			"tags":   "x,y",
+		}))
+	})
 })
+
+func mustExecutionRequest(op *rpc.RPCOperation, input map[string]any, positional []string) *rpc.ExecutionRequest {
+	request, err := toExecutionRequest(op, input, positional)
+	gomega.Expect(err).NotTo(gomega.HaveOccurred())
+	return request
+}
 
 var _ = ginkgo.Describe("positionalParams", func() {
 	ginkgo.It("names only the path parameters, in operation order", func() {
@@ -74,7 +99,7 @@ var _ = ginkgo.Describe("positionalParams", func() {
 		}}
 
 		gomega.Expect(positionalParams(op)).To(gomega.Equal([]string{"file"}))
-		request := toExecutionRequest(map[string]any{"file": "orders.json", "schema": "s.yaml"}, positionalParams(op))
+		request := mustExecutionRequest(nil, map[string]any{"file": "orders.json", "schema": "s.yaml"}, positionalParams(op))
 		gomega.Expect(request.Args).To(gomega.Equal([]string{"orders.json"}))
 		gomega.Expect(request.Flags).To(gomega.Equal(map[string]string{"schema": "s.yaml"}))
 	})

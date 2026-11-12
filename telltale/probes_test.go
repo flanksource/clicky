@@ -46,6 +46,13 @@ var _ = Describe("exec probe", func() {
 		Expect(makeExecRecord(exec.ExecEvent{Phase: exec.ExecExit, Stdout: "abcdef"}, 3).StdoutTail).To(Equal("def"))
 	})
 
+	It("keeps a shell command identifiable and masks it, including before launch", func() {
+		const command = "mysql --password hunter2"
+		record := makeExecRecord(exec.ExecEvent{Phase: exec.ExecExit, Name: command, Command: command}, 0)
+		Expect(record.Name).To(Equal("mysql --password ****"))
+		Expect(record.Command).To(Equal("mysql --password ****"))
+	})
+
 	It("hands a started child off with the process key telltale's sampler computes", func() {
 		sink := &testSink{}
 		var psKey string
@@ -136,6 +143,28 @@ var _ = Describe("task probe", func() {
 			{task.TaskStatusChanged, "probe work", "success"},
 			{task.TaskStatusChanged, "probe existing", "success"},
 		}))
+	})
+
+	It("delivers a baseline larger than the record ring once the ring drains", func() {
+		const baselineTasks = 300
+		group := task.StartGroup[bool]("probe ring group")
+		for i := range baselineTasks {
+			step := group.StartStep(fmt.Sprintf("probe ring %d", i))
+			defer step.Finish(nil)
+		}
+		sink := &boundedSink{capacity: 256}
+		release, err := (taskProbe{}).Arm(context.Background(), json.RawMessage(`{"name":"probe ring *"}`), sink)
+		Expect(err).NotTo(HaveOccurred())
+		defer func() { Expect(release()).To(Succeed()) }()
+		Eventually(sink.drain, "5s", "20ms").Should(BeNumerically(">=", baselineTasks))
+	})
+
+	It("masks exec command arguments in task details", func() {
+		record, err := makeTaskRecord(task.TaskStatusChanged, task.TaskSnapshot{
+			Details: exec.ExecTaskDetails{Command: "mysql", Args: []string{"--password", "hunter2"}},
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(string(record.Details.(json.RawMessage))).To(And(ContainSubstring(`"args":["--password","****"]`), Not(ContainSubstring("hunter2"))))
 	})
 
 	It("rejects an invalid glob and a negative progress interval", func() {

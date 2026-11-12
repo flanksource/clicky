@@ -3,6 +3,8 @@ package flags
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
+
 	"github.com/spf13/pflag"
 )
 
@@ -32,8 +34,11 @@ func Schema(flag *pflag.Flag) (map[string]any, error) {
 	if len(values) != 1 {
 		return nil, fmt.Errorf("flag %s has %d schema annotations", flag.Name, len(values))
 	}
+	// UseNumber keeps integer constraints such as const/default exact.
 	var schema map[string]any
-	if err := json.Unmarshal([]byte(values[0]), &schema); err != nil {
+	decoder := json.NewDecoder(strings.NewReader(values[0]))
+	decoder.UseNumber()
+	if err := decoder.Decode(&schema); err != nil {
 		return nil, fmt.Errorf("flag %s schema: %w", flag.Name, err)
 	}
 	if schema == nil {

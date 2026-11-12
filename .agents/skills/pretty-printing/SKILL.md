@@ -134,8 +134,10 @@ The workflow pins the Gavel action to v0.0.67, which does not pin the CLI: the a
 ```bash
 gavel lint lint/summary.go
 gavel lint --changed
-gavel lint --dry-run lint/summary.go
+gavel lint --dry-run lint/summary.go   # preview only: prints the linter commands without running them
 ```
+
+`--dry-run` does not lint anything, so never report its output as a lint result.
 
 Run from the reviewed repository. Pass files or directories explicitly for a full review. `--changed` and `--since` report only new issues relative to a baseline and can omit existing issues in the requested files. For a separate agent review, use [prompts/pretty-printing.prompt](prompts/pretty-printing.prompt), located at `.agents/skills/pretty-printing/prompts/pretty-printing.prompt` in this checkout. Consumers should use the absolute path to that prompt in their Clicky checkout, not the path to `SKILL.md`. A Gavel version that provides `gavel lint prompt` can run the prompt directly; verify support with `gavel lint --help` first.
 
