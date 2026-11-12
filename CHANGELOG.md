@@ -5,6 +5,75 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.21.95](https://github.com/flanksource/clicky/compare/v1.21.94...v1.21.95) (2026-11-12)
+
+
+### ⚠ BREAKING CHANGES
+
+* **prompt:** prompt answers no longer fall back to X-Prompt-User or the remote address; applications must call SetIdentity to attribute answers.
+
+The same change publishes array element schemas so typed repeatable flags expose items while opaque JSON arrays stay untyped, reopens task group ancestors when descendant work arrives, and clears a reused process's creation time when a run fails before launch.
+
+Gavel-Issue-Id: 2443f58f-5605-4efc-8dda-e09f88940af8
+Claude-Session-Id: 01a1babf-1657-7f72-8cd8-46affaab64ae
+* **task:** TaskSnapshot.Duration and ExecTaskDetails.Duration are now
+methods, not serialized fields; JSON consumers derive durations from
+startedAt/finishedAt (started/finished for exec details).
+
+Claude-Session-Id: b9c3ace7-7521-44c5-b3a4-b61a4abf69c4
+
+### ⚡ Performance Improvements
+
+* **sse:** flush a hub sub's burst of frames once ([a90a9d8](https://github.com/flanksource/clicky/commit/a90a9d8efb3828197d8e66788b3e326e89d1cf8e))
+
+
+### ✨ Features
+
+* add exec and task observers for process and status events ([d349418](https://github.com/flanksource/clicky/commit/d3494184fe3dd73e5ac9e2632281e36397a56357))
+* preserve flag schema metadata and sample worker pool gauges ([91e7973](https://github.com/flanksource/clicky/commit/91e7973e340241699ba235482f7447c374eb82e1))
+* **api:** support conditional schema validation and null-aware table filters ([d49ffb3](https://github.com/flanksource/clicky/commit/d49ffb3beaec9bb20174c41bea467f365f934305))
+* **prompt:** record answerer identity on resolved prompts ([cd499c9](https://github.com/flanksource/clicky/commit/cd499c9d5176588e57f17493d0d7cd5e17125309))
+* **task:** add nested task groups with parent lifecycle propagation ([d57a0a3](https://github.com/flanksource/clicky/commit/d57a0a3ab684b22a9659029b3bb0d817166a58a7))
+* **task:** add session references and live session streaming to task runs ([715b941](https://github.com/flanksource/clicky/commit/715b94167d36e220156d43633729068568acd1bc))
+* **task:** expose structured progress metrics and task labels ([16df62c](https://github.com/flanksource/clicky/commit/16df62c7f26a3586f8e67040d0a5e53e1072d295))
+* **task:** stream timestamps only, with log deltas and keepalives ([e52ac75](https://github.com/flanksource/clicky/commit/e52ac7531513d81dfd79ce787b79d9bb3eac5568))
+* **telltale:** add telltale and gops observability module for clicky processes ([f451828](https://github.com/flanksource/clicky/commit/f451828c58b8e65c561b9c9abe8ed4d3092da71b))
+* **tui:** Add reusable terminal table model with stable selection and frozen detail ([ce600ce](https://github.com/flanksource/clicky/commit/ce600ced277cea502b31ff98c221723c98e38f19))
+
+
+### 🐛 Bug Fixes
+
+* bind structured action inputs ([82c625d](https://github.com/flanksource/clicky/commit/82c625dea6f047e60e06af8ef6259d8755624415))
+* fix JSON flag encoding, allOf validation, and command masking across packages ([9e1269a](https://github.com/flanksource/clicky/commit/9e1269a6aa196a11568c368bb7afbc6a730990e4))
+* omit empty type for untyped JSON flags in tool and response schemas ([73f812d](https://github.com/flanksource/clicky/commit/73f812dace3a43203dcb0d129394cf22b596a80d))
+* **api:** Stream empty prompt listings as empty array in SSE handler ([38924aa](https://github.com/flanksource/clicky/commit/38924aaa069b904aca01a5737af82c1fe7bf0496))
+* **format:** avoid waiting on global tasks from within a task context ([6688bf6](https://github.com/flanksource/clicky/commit/6688bf6a361566430e06650a75a5330f583ff642))
+* **rpc:** resolve action-level filter refs in OpenAPI and RPC arguments ([ff91249](https://github.com/flanksource/clicky/commit/ff9124924adef3c4592bd78603fbb5065735c62a))
+* **task:** expose context progress and separate queue timing ([5946add](https://github.com/flanksource/clicky/commit/5946add59950aee52f04ec4d9892fc5fb9079663))
+* **task:** Stabilize task snapshot log sequences for resumable streams ([8d465f5](https://github.com/flanksource/clicky/commit/8d465f555dcad88f567ef629478385d108f96353))
+* **telltale:** bump telltale/sdk to v0.0.3 so its capture transport unwraps for commons v1.64.1 TLS config ([2359a17](https://github.com/flanksource/clicky/commit/2359a17b6d6093bfc7d7f896baf61f366ec4fe55))
+
+
+### 📚 Documentation
+
+* **docs:** relocate agent skills to .agents and document removal of embedded task UI ([c4d7b1f](https://github.com/flanksource/clicky/commit/c4d7b1f0538a8160567c2b88b36f289ea2dc83c9))
+
+
+### 📦 Build System
+
+* bump golangci-lint to v2.15.0 and fix its new findings ([8471121](https://github.com/flanksource/clicky/commit/8471121d0496eb2b0983b3bfefdb7d3d891468d6))
+
+
+### 🔧 Maintenance
+
+* **deps:** bump commons to v1.64.1 for buffered logger seq tracking ([751d315](https://github.com/flanksource/clicky/commit/751d3150d06d4d8e5ac70143a3d5e643dcf299e0))
+* **examples:** tidy example modules for commons v1.64.1 ([36ed5fb](https://github.com/flanksource/clicky/commit/36ed5fb46e1918ca947cd61f662777b3ababc9bb))
+
+
+### security
+
+* **prompt:** require trusted identity callback to attribute prompt answers ([be5c6b9](https://github.com/flanksource/clicky/commit/be5c6b9808332b7ee389c2c4fc36ef2d68029d33))
+
 ## [1.21.94](https://github.com/flanksource/clicky/compare/v1.21.93...v1.21.94) (2026-11-02)
 
 
