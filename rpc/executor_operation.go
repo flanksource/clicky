@@ -70,7 +70,11 @@ func executionRequestFromValues(
 			request.Args = operationArgs(value)
 			continue
 		}
-		request.Flags[name] = convertValueToString(value)
+		text, err := FlagValue(operation, name, value)
+		if err != nil {
+			return nil, fmt.Errorf("operation %s: argument %q: %w", operationID(operation), name, err)
+		}
+		request.Flags[name] = text
 	}
 	return request, nil
 }

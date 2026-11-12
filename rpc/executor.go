@@ -297,12 +297,20 @@ func (e *CommandExecutor) ExtractRequestFromHTTP(r *http.Request, op *RPCOperati
 					// Handle nested flags structure for backward compatibility
 					if flagsMap, ok := value.(map[string]interface{}); ok {
 						for flagName, flagValue := range flagsMap {
-							req.Flags[flagName] = convertValueToString(flagValue)
+							text, err := FlagValue(op, flagName, flagValue)
+							if err != nil {
+								return nil, fmt.Errorf("flag %s: %w", flagName, err)
+							}
+							req.Flags[flagName] = text
 						}
 					}
 				default:
 					// Treat all other fields as flags
-					req.Flags[key] = convertValueToString(value)
+					text, err := FlagValue(op, key, value)
+					if err != nil {
+						return nil, fmt.Errorf("flag %s: %w", key, err)
+					}
+					req.Flags[key] = text
 				}
 			}
 		}
@@ -433,6 +441,43 @@ func (e *CommandExecutor) validateParameterType(value, paramType string) error {
 	}
 
 	return nil
+}
+
+// FlagValue encodes a request value for the operation's flag name. A JSON-backed
+// flag (json-object, json-array, json-value) parses its value as JSON, so a
+// structured value is sent as JSON rather than as the CSV record a repeatable
+// flag expects; a string is taken to be JSON text already.
+func FlagValue(op *RPCOperation, name string, value any) (string, error) {
+	property, ok := Property{}, false
+	if op != nil {
+		property, ok = op.Schema.Properties[name]
+	}
+	if ok && isJSONProperty(property) {
+		return jsonFlagText(value)
+	}
+	return convertValueToString(value), nil
+}
+
+// isJSONProperty mirrors flagParameter's projection of the json-* flag types.
+func isJSONProperty(property Property) bool {
+	switch property.Type {
+	case "object", "":
+		return true
+	case "array":
+		return property.Items != nil && property.Items.Type == ""
+	}
+	return false
+}
+
+func jsonFlagText(value any) (string, error) {
+	if text, ok := value.(string); ok {
+		return text, nil
+	}
+	encoded, err := json.Marshal(value)
+	if err != nil {
+		return "", fmt.Errorf("encode JSON flag value: %w", err)
+	}
+	return string(encoded), nil
 }
 
 // convertValueToString converts interface{} values to strings for flag usage

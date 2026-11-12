@@ -321,7 +321,6 @@ func (p *Process) Run() *Process {
 	started := time.Now()
 	p.mu.Lock()
 	p.Started = &started
-	p.finished = nil
 	p.cmd = cmd
 	p.mu.Unlock()
 
@@ -377,6 +376,7 @@ func (p *Process) closeParentStdio() {
 func (p *Process) prepareRun() {
 	p.mu.Lock()
 	p.createdAt = time.Time{}
+	p.Started, p.finished = nil, nil
 	p.mu.Unlock()
 	if p.log == nil {
 		p.log = logger.GetLogger("exec")

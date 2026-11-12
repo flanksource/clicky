@@ -188,7 +188,7 @@ func flagParameter(flag *pflag.Flag) (RPCParameter, error) {
 		"float32Slice", "float64Slice", "boolSlice", "durationSlice":
 		param.Type = "array"
 		values, err := sliceDefault(flag.DefValue)
-		param.Items = &Property{Type: "string"}
+		param.Items = &Property{Type: sliceItemType(flag.Value.Type())}
 		if len(values) > 0 {
 			param.Default = values
 		}
@@ -207,6 +207,20 @@ func flagParameter(flag *pflag.Flag) (RPCParameter, error) {
 		}
 	}
 	return param, nil
+}
+
+// sliceItemType is the JSON Schema type of one element of a pflag slice type;
+// textual elements such as durations stay strings.
+func sliceItemType(flagType string) string {
+	switch flagType {
+	case "intSlice", "int32Slice", "int64Slice", "uintSlice":
+		return "integer"
+	case "float32Slice", "float64Slice":
+		return "number"
+	case "boolSlice":
+		return "boolean"
+	}
+	return "string"
 }
 
 // applyCommandMeta copies a command's OpenAPI annotations onto the operation.

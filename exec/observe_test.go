@@ -31,6 +31,8 @@ var _ = Describe("exec observers", func() {
 		Expect(events).To(HaveLen(3))
 		Expect(events[2].Err).To(MatchError(context.Canceled))
 		Expect(events[2].CreatedAt).To(BeZero())
+		Expect(p.Started).To(BeNil())
+		Expect(p.finished).To(BeNil())
 	})
 
 	It("reports an exit for each failure before launch", func() {

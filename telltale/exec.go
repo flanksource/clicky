@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 	"unicode/utf8"
 
@@ -21,6 +22,7 @@ import (
 type ExecRecord struct {
 	Phase      exec.ExecPhase `json:"phase"`
 	Name       string         `json:"name"`
+	Command    string         `json:"command,omitempty"`
 	Args       []string       `json:"args,omitempty"`
 	Dir        string         `json:"dir,omitempty"`
 	EnvKeys    []string       `json:"envKeys,omitempty"`
@@ -98,8 +100,12 @@ func (p execParams) wants(phase exec.ExecPhase) bool {
 }
 
 func makeExecRecord(event exec.ExecEvent, limit int) ExecRecord {
-	args := sdk.MaskArgs(append([]string{event.Name}, event.Args...))
-	r := ExecRecord{Phase: event.Phase, Name: event.Name, Args: args[1:], Dir: event.Dir, EnvKeys: event.EnvKeys,
+	command := event.Command
+	if command == "" {
+		command = event.Name
+	}
+	r := ExecRecord{Phase: event.Phase, Name: maskCommand(event.Name), Command: maskCommand(event.Command),
+		Args: maskArgv(command, event.Args), Dir: event.Dir, EnvKeys: event.EnvKeys,
 		PID: event.PID, PPID: event.PPID, PGID: event.PGID, StartedAt: event.StartedAt}
 	if event.PID > 0 {
 		r.ProcessKey = strconv.Itoa(event.PID)
@@ -121,6 +127,29 @@ func makeExecRecord(event exec.ExecEvent, limit int) ExecRecord {
 		r.Error = sdk.Mask(event.Err.Error())
 	}
 	return r
+}
+
+// maskCommand masks a configured command line such as NewExecf's "mysql
+// --password x", which reaches the record as Command and, before launch, Name.
+func maskCommand(command string) string {
+	fields := strings.Fields(command)
+	if len(fields) < 2 {
+		return sdk.Mask(command)
+	}
+	return sdk.Mask(strings.Join(sdk.MaskArgs(fields), " "))
+}
+
+// maskArgv masks args with the command's executable as argv[0], so
+// tool-specific flags such as mysql's -p are recognized.
+func maskArgv(command string, args []string) []string {
+	if len(args) == 0 {
+		return nil
+	}
+	tool := command
+	if fields := strings.Fields(command); len(fields) > 0 {
+		tool = fields[0]
+	}
+	return sdk.MaskArgs(append([]string{tool}, args...))[1:]
 }
 
 func tail(value string, limit int) string {

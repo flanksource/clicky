@@ -651,16 +651,20 @@ func newTableFromProviders(items []TableProvider, rowType reflect.Type, options 
 					textable = Text{}.Add(textable).Styles(styles...)
 				}
 			}
-			cell := TypedValue{Textable: textable, HasFilterValue: presentedCell || col.FilterKey != ""}
+			cell := TypedValue{Textable: textable}
 			// Filterable cells keep their raw value. Explicitly presented cells and
 			// hidden metadata keep only a primitive one: a presented count of 0
 			// renders as empty text, so its display cannot stand in for the value.
+			// A presented nil is an explicit null; a rejected non-scalar is absent,
+			// so filtering falls back to the display text.
 			if instant, ok := columnInstant(col, filterValue); ok {
-				cell.FilterValue = instant
+				cell.FilterValue, cell.HasFilterValue = instant, true
 			} else if col.FilterKey != "" {
-				cell.FilterValue = filterValue
+				cell.FilterValue, cell.HasFilterValue = filterValue, true
 			} else if (col.Hidden || presentedCell) && isScalarFilterValue(filterValue) {
-				cell.FilterValue = filterValue
+				cell.FilterValue, cell.HasFilterValue = filterValue, true
+			} else if presentedCell && filterValue == nil {
+				cell.HasFilterValue = true
 			}
 			row[col.Name] = cell
 		}

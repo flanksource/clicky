@@ -248,7 +248,14 @@ func setFlag(cmd *cobra.Command, flag *pflag.Flag, value any, answered bool) err
 		flag.Changed = false
 		return nil
 	}
-	if err := cmd.Flags().Set(flag.Name, convertValueToString(value)); err != nil {
+	text := convertValueToString(value)
+	if strings.HasPrefix(flag.Value.Type(), "json-") {
+		var err error
+		if text, err = jsonFlagText(value); err != nil {
+			return fmt.Errorf("--%s: %w", flag.Name, err)
+		}
+	}
+	if err := cmd.Flags().Set(flag.Name, text); err != nil {
 		return fmt.Errorf("--%s: %w", flag.Name, err)
 	}
 	return nil

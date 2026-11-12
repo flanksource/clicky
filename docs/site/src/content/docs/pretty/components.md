@@ -43,7 +43,7 @@ clicky.CodeBlock("application/json", body) // MIME types map to languages
 
 Code is syntax-highlighted in the terminal and HTML, and fenced in Markdown. Fences grow to contain embedded backticks safely. Lists indent multiline items; `api.List{Ordered: true}` numbers items, and `Unstyled: true` removes markers.
 
-Tables render HTML elements by default, including expanded row details. Set `TextTable.Interactive = true` for JavaScript sorting and search in an HTML page that loads Clicky's browser assets. These controls apply only to tables without row details. Tables with `TextTable.RowDetail` use the collapsible detail renderer, which provides expandable details without sorting or search.
+Tables render HTML elements by default, including expanded row details. Set `TextTable.Interactive = true` for JavaScript sorting and search in an HTML page that loads Clicky's browser assets. These controls apply only to tables without row details. An interactive table with `TextTable.RowDetail` uses the collapsible detail renderer, which provides expandable details without sorting or search. With `Interactive` false, `TextTable.HTML()` renders through `StaticHTML()` and row details are always expanded, so set `Interactive = true` to make them collapsible.
 
 ## Collapsible sections
 

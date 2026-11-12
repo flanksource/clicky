@@ -45,11 +45,15 @@ func Validate(schema json.RawMessage, values map[string]any) error {
 	return validateObject(&doc, values, "")
 }
 
-// validateObject checks values against the schema's effective properties and
-// required keys (base plus live allOf branches). Errors name the dotted path
-// of the offending field below prefix.
+// validateObject checks values against every schema that applies to each
+// property and the union of required keys (base, allOf members and live
+// if/then/else branches). Errors name the dotted path of the offending field
+// below prefix.
 func validateObject(doc *schemaDoc, values map[string]any, prefix string) error {
-	props, required := effective(doc, values)
+	props, required, err := effective(doc, values)
+	if err != nil {
+		return err
+	}
 	for _, key := range required {
 		if _, ok := values[key]; !ok {
 			return fmt.Errorf("missing required field %q", fieldPath(prefix, key))
@@ -65,19 +69,27 @@ func validateObject(doc *schemaDoc, values map[string]any, prefix string) error 
 		if !ok {
 			continue
 		}
-		name := fieldPath(prefix, key)
-		if obj, isObj := v.(map[string]any); isObj && props[key] != nil && (props[key].Type == "object" || props[key].Type == "") {
-			if err := validateObject(props[key], obj, name); err != nil {
+		for _, schema := range props[key] {
+			if err := validateField(schema, v, fieldPath(prefix, key)); err != nil {
 				return err
 			}
-			if err := checkConst(props[key], v); err != nil {
-				return fmt.Errorf("field %q: %w", name, err)
-			}
-			continue
 		}
-		if err := validateValue(props[key], v); err != nil {
+	}
+	return nil
+}
+
+func validateField(schema *schemaDoc, v any, name string) error {
+	if obj, isObj := v.(map[string]any); isObj && schema != nil && (schema.Type == "object" || schema.Type == "") {
+		if err := validateObject(schema, obj, name); err != nil {
+			return err
+		}
+		if err := checkConst(schema, v); err != nil {
 			return fmt.Errorf("field %q: %w", name, err)
 		}
+		return nil
+	}
+	if err := validateValue(schema, v); err != nil {
+		return fmt.Errorf("field %q: %w", name, err)
 	}
 	return nil
 }
@@ -89,91 +101,157 @@ func fieldPath(prefix, key string) string {
 	return prefix + "." + key
 }
 
-// effective mirrors schemaform.Effective: an unconditional allOf member always
-// contributes its properties and required keys; an if/then/else member
-// contributes then when its if matches values, else otherwise. Later members
-// win on key collision; required is the union.
-func effective(doc *schemaDoc, values map[string]any) (map[string]*schemaDoc, []string) {
-	props := make(map[string]*schemaDoc, len(doc.Properties))
+// effective collects, per property, every schema that constrains it, and the
+// union of required keys. A schema applies its own properties and required,
+// then the then/else branch its if selects, then each allOf member the same
+// way, so every constraint of a combined schema is checked (allOf means all).
+func effective(doc *schemaDoc, values map[string]any) (map[string][]*schemaDoc, []string, error) {
+	props := map[string][]*schemaDoc{}
 	var required []string
-	merge := func(branch *schemaDoc) {
+	var apply func(branch *schemaDoc, path string) error
+	apply = func(branch *schemaDoc, path string) error {
 		if branch == nil {
-			return
+			return nil
 		}
 		for k, p := range branch.Properties {
-			props[k] = p
+			props[k] = append(props[k], p)
 		}
 		for _, k := range branch.Required {
 			if !slices.Contains(required, k) {
 				required = append(required, k)
 			}
 		}
-	}
-	merge(doc)
-	for _, clause := range doc.AllOf {
-		switch {
-		case clause.If == nil && clause.Then == nil:
-			merge(clause)
-		case matchesIf(clause.If, values):
-			merge(clause.Then)
-		default:
-			merge(clause.Else)
+		if branch.If != nil {
+			matched, err := matchesIf(branch.If, values)
+			if err != nil {
+				return fmt.Errorf("invalid schema: %s.if: %w", path, err)
+			}
+			selected, name := branch.Else, "else"
+			if matched {
+				selected, name = branch.Then, "then"
+			}
+			if err := apply(selected, path+"."+name); err != nil {
+				return err
+			}
 		}
+		for i, clause := range branch.AllOf {
+			member := fmt.Sprintf("%s.allOf[%d]", path, i)
+			if clause == nil {
+				return fmt.Errorf("invalid schema: %s is null", member)
+			}
+			if err := apply(clause, member); err != nil {
+				return err
+			}
+		}
+		return nil
 	}
-	return props, required
+	if err := apply(doc, "#"); err != nil {
+		return nil, nil, err
+	}
+	return props, required, nil
 }
 
-// matchesIf mirrors schemaform.matchesIf: every if.required key is present and
-// every if.properties predicate holds. A predicate that states nothing
-// checkable makes the whole if false, never true.
-func matchesIf(ifSchema *schemaDoc, values map[string]any) bool {
-	if ifSchema == nil {
-		return false
-	}
+// matchesIf reports whether values satisfies the if schema: every if.required
+// key is present and every if.properties predicate holds for the keys that are
+// present (an absent key satisfies properties, as in JSON Schema). A predicate
+// this package cannot evaluate is an error rather than a guess.
+func matchesIf(ifSchema *schemaDoc, values map[string]any) (bool, error) {
 	for _, k := range ifSchema.Required {
 		if _, ok := values[k]; !ok {
-			return false
+			return false, nil
 		}
 	}
-	for k, sub := range ifSchema.Properties {
+	keys := make([]string, 0, len(ifSchema.Properties))
+	for k := range ifSchema.Properties {
+		keys = append(keys, k)
+	}
+	slices.Sort(keys)
+	matched := true
+	for _, k := range keys {
 		v, present := values[k]
-		if holds, decided := evaluatePredicate(sub, v, present); !decided || !holds {
-			return false
+		if !present {
+			continue
 		}
+		holds, err := evaluatePredicate(ifSchema.Properties[k], v)
+		if err != nil {
+			return false, fmt.Errorf("property %q: %w", k, err)
+		}
+		matched = matched && holds
 	}
-	return true
+	return matched, nil
 }
 
-// evaluatePredicate mirrors schemaform.evaluatePredicate: const, enum, not and
-// nested properties/required decide; anything else (e.g. type alone) is
-// undecided so the caller fails closed.
-func evaluatePredicate(sub *schemaDoc, value any, present bool) (holds, decided bool) {
+// evaluatePredicate decides a condition sub-schema for a present value from
+// const, enum, type, not and nested properties/required. A sub-schema stating
+// none of them cannot be decided and is rejected.
+func evaluatePredicate(sub *schemaDoc, value any) (bool, error) {
 	if sub == nil {
-		return false, false
+		return false, fmt.Errorf("condition is null")
 	}
-	holds = true
+	decided, holds := false, true
 	if sub.Const != nil {
 		decided = true
-		holds = holds && present && equalsConst(sub.Const, value)
+		holds = holds && equalsConst(sub.Const, value)
 	}
 	if sub.Enum != nil {
 		decided = true
-		holds = holds && present && slices.ContainsFunc(sub.Enum, func(e any) bool { return jsonEqual(e, value) })
+		holds = holds && slices.ContainsFunc(sub.Enum, func(e any) bool { return jsonEqual(e, value) })
+	}
+	if sub.Type != "" {
+		decided = true
+		matches, err := matchesType(sub.Type, value)
+		if err != nil {
+			return false, err
+		}
+		holds = holds && matches
 	}
 	if sub.Not != nil {
-		inner, innerDecided := evaluatePredicate(sub.Not, value, present)
-		if !innerDecided {
-			return false, false
-		}
 		decided = true
+		inner, err := evaluatePredicate(sub.Not, value)
+		if err != nil {
+			return false, fmt.Errorf("not: %w", err)
+		}
 		holds = holds && !inner
 	}
 	if sub.Properties != nil || sub.Required != nil {
 		decided = true
-		obj, ok := value.(map[string]any)
-		holds = holds && ok && matchesIf(sub, obj)
+		// properties and required constrain objects only.
+		if obj, ok := value.(map[string]any); ok {
+			matched, err := matchesIf(sub, obj)
+			if err != nil {
+				return false, err
+			}
+			holds = holds && matched
+		}
 	}
-	return holds && decided, decided
+	if !decided {
+		return false, fmt.Errorf("condition states no const, enum, type, not, properties or required")
+	}
+	return holds, nil
+}
+
+func matchesType(typ string, value any) (bool, error) {
+	switch typ {
+	case "string":
+		_, ok := value.(string)
+		return ok, nil
+	case "boolean":
+		_, ok := value.(bool)
+		return ok, nil
+	case "number":
+		return validateValue(&schemaDoc{Type: "number"}, value) == nil, nil
+	case "integer":
+		return validateInteger(value) == nil, nil
+	case "array":
+		_, ok := value.([]any)
+		return ok, nil
+	case "object":
+		_, ok := value.(map[string]any)
+		return ok, nil
+	case "null":
+		return value == nil, nil
+	}
+	return false, fmt.Errorf("unsupported condition type %q", typ)
 }
 
 func checkConst(s *schemaDoc, v any) error {

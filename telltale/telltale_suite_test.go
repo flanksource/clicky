@@ -71,3 +71,30 @@ func readRecords(conn *protocol.Conn) []json.RawMessage {
 		return batch.Items
 	}
 }
+
+// boundedSink drops records once capacity are pending, like the SDK's ring;
+// drain empties it and reports how many records it has accepted in total.
+type boundedSink struct {
+	testSink
+	capacity int
+	pending  int
+	accepted int
+}
+
+func (s *boundedSink) TryEmit(any) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.pending >= s.capacity {
+		return false
+	}
+	s.pending++
+	s.accepted++
+	return true
+}
+
+func (s *boundedSink) drain() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.pending = 0
+	return s.accepted
+}

@@ -18,7 +18,8 @@ var _ = Describe("splitMCPArgs", func() {
 
 	DescribeTable("delivers the positional as args and the rest as flags",
 		func(args map[string]interface{}) {
-			flags, posArgs := splitMCPArgs(operation, args)
+			flags, posArgs, err := splitMCPArgs(operation, args)
+			Expect(err).NotTo(HaveOccurred())
 
 			Expect(posArgs).To(Equal([]string{dataFile}))
 			Expect(flags).To(Equal(map[string]string{"schema": "s.yaml"}))
@@ -28,9 +29,25 @@ var _ = Describe("splitMCPArgs", func() {
 	)
 
 	It("keeps every non-args key a flag when the tool has no operation", func() {
-		flags, posArgs := splitMCPArgs(nil, map[string]interface{}{"file": dataFile})
+		flags, posArgs, err := splitMCPArgs(nil, map[string]interface{}{"file": dataFile})
+		Expect(err).NotTo(HaveOccurred())
 
 		Expect(posArgs).To(BeEmpty())
 		Expect(flags).To(Equal(map[string]string{"file": dataFile}))
+	})
+
+	It("encodes JSON-backed flag arguments as JSON", func() {
+		op := &rpc.RPCOperation{Schema: rpc.Schema{Properties: map[string]rpc.Property{
+			"vars":  {Type: "object"},
+			"links": {Type: "array", Items: &rpc.Property{}},
+			"raw":   {},
+		}}}
+		flags, _, err := splitMCPArgs(op, map[string]interface{}{
+			"vars":  map[string]interface{}{"env": "prod"},
+			"links": []interface{}{"a", "b"},
+			"raw":   true,
+		})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(flags).To(Equal(map[string]string{"vars": `{"env":"prod"}`, "links": `["a","b"]`, "raw": "true"}))
 	})
 })

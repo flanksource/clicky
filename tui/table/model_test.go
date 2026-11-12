@@ -29,6 +29,7 @@ func (r item) RowDetail() api.Textable {
 var _ = Describe("table state", func() {
 	It("retains stable selection and freezes the sample while inspecting a scrollable detail", func() {
 		m := table.Model{}
+		m.SetSize(80, 4)
 		Expect(m.Set(api.NewTableFrom([]item{{Name: "one"}, {Name: "two"}}), []string{"1", "2"})).To(Succeed())
 		m.Key("down")
 		Expect(m.Set(api.NewTableFrom([]item{{Name: "two"}, {Name: "one"}}), []string{"2", "1"})).To(Succeed())
@@ -39,13 +40,37 @@ var _ = Describe("table state", func() {
 		for range 5 {
 			m.Key("down")
 		}
-		Expect(m.View(80, 4)).To(ContainSubstring("last"))
+		Expect(m.View()).To(ContainSubstring("last"))
+		// Six detail lines in a four-line viewport scroll at most two lines, so
+		// one up press moves the view at once.
+		Expect(m.DetailOffset).To(Equal(2))
+		m.Key("up")
+		Expect(m.View()).To(HavePrefix("second"))
+	})
+	It("fits the empty-state message to a narrow viewport", func() {
+		m := table.Model{}
+		Expect(m.Set(api.NewTableFrom([]item{}), nil)).To(Succeed())
+		m.SetSize(20, 4)
+		for _, line := range strings.Split(m.View(), "\n") {
+			Expect(ansi.StringWidth(line)).To(BeNumerically("<=", 20))
+		}
+	})
+	It("keeps a column within its MaxWidth when the viewport has room to spare", func() {
+		m := table.Model{Table: api.TextTable{
+			Columns: []api.PrettyField{{Name: "status", Label: "Status of the deployment", MaxWidth: 8}},
+			Rows:    []api.TableRow{{"status": api.NewTypedValue("ready")}},
+		}, IDs: []string{"1"}, Selected: "1"}
+		m.SetSize(80, 4)
+		header := strings.Split(m.View(), "\n")[0]
+		Expect(header).To(HavePrefix("  Status …"))
+		Expect(ansi.StringWidth(header)).To(Equal(80))
 	})
 	It("fits Unicode rows and column headers to both requested terminal sizes", func() {
 		m := table.Model{}
 		Expect(m.Set(api.NewTableFrom([]item{{Name: "長い名前", SQL: strings.Repeat("select ", 40)}}), []string{"1"})).To(Succeed())
 		for _, width := range []int{80, 120} {
-			view := m.View(width, 24)
+			m.SetSize(width, 24)
+			view := m.View()
 			Expect(view).To(ContainSubstring("SQL"))
 			for _, line := range strings.Split(view, "\n") {
 				Expect(ansi.StringWidth(line)).To(BeNumerically("<=", width))

@@ -125,3 +125,66 @@ func TestValidateMultiSelectEnforcesMaxItems(t *testing.T) {
 		t.Fatalf("expected an at-limit selection to pass: %v", err)
 	}
 }
+
+func TestValidateAllOfCombinedConstraints(t *testing.T) {
+	cases := []struct {
+		name, schema string
+		values       map[string]any
+		want         string
+	}{
+		{
+			name: "a later property schema keeps the earlier enum",
+			schema: `{"type":"object","properties":{"mode":{"enum":["manual"],"type":"string"}},
+				"allOf":[{"properties":{"mode":{"type":"string"}}}]}`,
+			values: map[string]any{"mode": "auto"},
+			want:   `field "mode": value "auto" is not one of the allowed options`,
+		},
+		{
+			name: "a root if/then applies",
+			schema: `{"type":"object","if":{"properties":{"scale":{"const":true}},"required":["scale"]},
+				"then":{"required":["cluster"]}}`,
+			values: map[string]any{"scale": true},
+			want:   `missing required field "cluster"`,
+		},
+		{
+			name: "a conditional member's own required applies",
+			schema: `{"type":"object","allOf":[{"required":["db"],
+				"if":{"properties":{"scale":{"const":true}},"required":["scale"]},"then":{"required":["cluster"]}}]}`,
+			values: map[string]any{"scale": true, "cluster": "c1"},
+			want:   `missing required field "db"`,
+		},
+		{
+			name: "a type-only condition selects then",
+			schema: `{"type":"object","allOf":[{"if":{"properties":{"count":{"type":"integer"}},"required":["count"]},
+				"then":{"required":["unit"]}}]}`,
+			values: map[string]any{"count": float64(1)},
+			want:   `missing required field "unit"`,
+		},
+		{
+			name: "an absent optional condition property satisfies if",
+			schema: `{"type":"object","allOf":[{"if":{"properties":{"scale":{"const":true}}},
+				"then":{"required":["cluster"]},"else":{"required":["target"]}}]}`,
+			values: map[string]any{},
+			want:   `missing required field "cluster"`,
+		},
+		{
+			name:   "a null allOf member is an invalid schema",
+			schema: `{"type":"object","allOf":[null]}`,
+			values: map[string]any{},
+			want:   `invalid schema: #.allOf[0] is null`,
+		},
+		{
+			name: "an undecidable condition is rejected",
+			schema: `{"type":"object","allOf":[{"if":{"properties":{"n":{"minimum":1}}},
+				"then":{"required":["unit"]}}]}`,
+			values: map[string]any{"n": float64(2)},
+			want:   `invalid schema: #.allOf[0].if: property "n": condition states no const, enum, type, not, properties or required`,
+		},
+	}
+	for _, tc := range cases {
+		err := Validate(json.RawMessage(tc.schema), tc.values)
+		if err == nil || err.Error() != tc.want {
+			t.Errorf("%s: expected %q, got %v", tc.name, tc.want, err)
+		}
+	}
+}
