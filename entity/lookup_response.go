@@ -36,14 +36,29 @@ type LookupFilter struct {
 }
 
 // LookupNode is the serialized api.Textable label of a lookup option; Plain is
-// its unstyled text.
+// its unstyled text. Icon (an icon name), Description, Tone and Badges decorate
+// the option in pickers; they are optional and omitted when unset.
 type LookupNode struct {
-	Kind     string       `json:"kind"`
-	Plain    string       `json:"plain,omitempty"`
-	Text     string       `json:"text,omitempty"`
-	Style    *LookupStyle `json:"style,omitempty"`
-	Children []LookupNode `json:"children,omitempty"`
-	Tooltip  *LookupNode  `json:"tooltip,omitempty"`
+	Kind        string        `json:"kind"`
+	Plain       string        `json:"plain,omitempty"`
+	Text        string        `json:"text,omitempty"`
+	Style       *LookupStyle  `json:"style,omitempty"`
+	Children    []LookupNode  `json:"children,omitempty"`
+	Tooltip     *LookupNode   `json:"tooltip,omitempty"`
+	Icon        string        `json:"icon,omitempty"`
+	Description string        `json:"description,omitempty"`
+	Tone        string        `json:"tone,omitempty"`
+	Badges      []LookupBadge `json:"badges,omitempty"`
+	// Group buckets the option under a heading in pickers (e.g. a connection
+	// type) when the field does not narrow to one.
+	Group string `json:"group,omitempty"`
+}
+
+// LookupBadge is a short trait shown beside a lookup option (e.g. "proxy").
+type LookupBadge struct {
+	Label string `json:"label"`
+	Icon  string `json:"icon,omitempty"`
+	Tone  string `json:"tone,omitempty"`
 }
 
 // LookupStyle carries a LookupNode's Tailwind class string.

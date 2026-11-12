@@ -32,6 +32,22 @@ type Option struct {
 	// Description explains the option (x-enum-descriptions, an item's
 	// description); the form shows it for the highlighted and the chosen option.
 	Description string
+	// Icon names the option's icon; the terminal prefixes its glyph when it is
+	// a known clicky icon (api/icons) and shows nothing otherwise.
+	Icon string
+	// Tone is a semantic color hint (success, warning, …) for richer renderers.
+	Tone string
+	// Badges are short traits the terminal suffixes as dim [label]s.
+	Badges []Badge
+	// Group is the heading richer renderers bucket the option under.
+	Group string
+}
+
+// Badge is a short trait shown beside an option.
+type Badge struct {
+	Label string
+	Icon  string
+	Tone  string
 }
 
 // Control is a property resolved to a render-ready control.
