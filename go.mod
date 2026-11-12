@@ -38,7 +38,7 @@ require (
 	github.com/stretchr/testify v1.11.1
 	github.com/timberio/go-datemath v0.1.0
 	github.com/tj/go-naturaldate v1.3.0
-	github.com/xuri/excelize/v2 v2.11.1-0.20261029001137-c5fd73bde8f6
+	github.com/xuri/excelize/v2 v2.11.1
 	github.com/yuin/goldmark v1.7.17
 	go.opentelemetry.io/otel v1.45.0
 	go.opentelemetry.io/otel/trace v1.45.0
