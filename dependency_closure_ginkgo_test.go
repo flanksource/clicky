@@ -23,7 +23,7 @@ var _ = Describe("dependency closure", func() {
 		"github.com/yuin/gopher-lua",
 		"github.com/shirou/gopsutil/v3/",
 		"modernc.org/",
-		"github.com/google/cel-go",
+		"cel.dev/cel-go",
 		"github.com/xuri/excelize",
 		"github.com/playwright-community/playwright-go",
 		"github.com/mxschmitt/playwright-go",

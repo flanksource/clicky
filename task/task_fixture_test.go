@@ -10,7 +10,7 @@ import (
 	"github.com/flanksource/clicky/task"
 	flanksourceContext "github.com/flanksource/commons/context"
 	"github.com/flanksource/commons/logger"
-	"github.com/flanksource/gomplate/v3"
+	"github.com/flanksource/gomplate/v4"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"gopkg.in/yaml.v3"
