@@ -4,10 +4,10 @@
 package gomplatefilter
 
 import (
+	"cel.dev/cel-go/cel"
 	"github.com/flanksource/clicky/api/filter"
 	"github.com/flanksource/clicky/api/filter/celfilter"
-	"github.com/flanksource/gomplate/v3"
-	"github.com/google/cel-go/cel"
+	"github.com/flanksource/gomplate/v4"
 )
 
 // EnvOptions returns the gomplate CEL functions for other CEL environments.
