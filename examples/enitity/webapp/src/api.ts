@@ -50,7 +50,7 @@ async function request(
   const upper = method.toUpperCase();
   const init: RequestInit = {
     method: upper,
-    headers: { Accept: "application/json", ...(headers ?? {}) },
+    headers: { Accept: "application/json", ...headers },
   };
   if (upper !== "GET" && body !== undefined) {
     init.headers = { "Content-Type": "application/json", ...init.headers };
@@ -130,7 +130,7 @@ export const apiClient: OperationsApiClient = {
     const url = `${resolved}?${searchParams.toString()}`;
     const response = await fetch(url, {
       method: "GET",
-      headers: { Accept: "application/json+clicky", ...(headers ?? {}) },
+      headers: { Accept: "application/json+clicky", ...headers },
     });
     if (!response.ok) {
       throw new Error(
