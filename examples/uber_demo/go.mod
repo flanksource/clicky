@@ -1,10 +1,10 @@
 module github.com/flanksource/clicky/examples/uber_demo
 
-go 1.27.1
+go 1.27.4
 
 require (
 	github.com/flanksource/clicky v1.21.95
-	github.com/flanksource/commons v1.64.1
+	github.com/flanksource/commons v1.64.2
 	github.com/google/uuid v1.6.0
 	github.com/spf13/cobra v1.10.2
 	golang.org/x/term v0.47.0
