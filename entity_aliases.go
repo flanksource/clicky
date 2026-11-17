@@ -102,6 +102,7 @@ var (
 	GetCommandResponseMeta   = entity.GetCommandResponseMeta
 	SetCommandResponseMeta   = entity.SetCommandResponseMeta
 	AnnotateTool             = entity.AnnotateTool
+	AnnotateRoutePath        = entity.AnnotateRoutePath
 	AnnotateSchedule         = entity.AnnotateSchedule
 	MarkLocalOnly            = entity.MarkLocalOnly
 	MarkServedOnly           = entity.MarkServedOnly
