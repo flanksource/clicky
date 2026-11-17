@@ -6,9 +6,9 @@ import (
 	"regexp"
 	"strings"
 
+	"cel.dev/cel-go/cel"
+	"cel.dev/cel-go/ext"
 	"github.com/flanksource/clicky/api/filter"
-	"github.com/google/cel-go/cel"
-	"github.com/google/cel-go/ext"
 )
 
 var identifier = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)

@@ -5,10 +5,10 @@ import (
 	"reflect"
 	"time"
 
+	"cel.dev/cel-go/cel"
+	"cel.dev/cel-go/common/types"
+	"cel.dev/cel-go/common/types/ref"
 	"github.com/golang-jwt/jwt/v5"
-	"github.com/google/cel-go/cel"
-	"github.com/google/cel-go/common/types"
-	"github.com/google/cel-go/common/types/ref"
 	"github.com/labstack/echo/v4"
 )
 
