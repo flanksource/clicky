@@ -7,6 +7,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 	"github.com/flanksource/clicky/api"
+	"github.com/flanksource/clicky/api/tailwind"
 )
 
 type Model struct {
@@ -93,7 +94,8 @@ func (m Model) View() string {
 	if m.Detail {
 		return m.detailView()
 	}
-	columns, widths := m.layout(width - 2)
+	prefixWidth := min(2, width)
+	columns, widths := m.layout(width - prefixWidth)
 	line := func(row api.TableRow, header bool) string {
 		parts := []string{}
 		for i, column := range columns {
@@ -103,22 +105,16 @@ func (m Model) View() string {
 			}
 			parts = append(parts, fit(text, widths[i]))
 		}
-		// Space left after the last column pads the line, not the column, so
-		// a column never renders wider than its MaxWidth.
-		used := len(parts) - 1
-		for _, w := range widths {
-			used += w
-		}
-		return strings.Join(parts, " ") + strings.Repeat(" ", max(0, width-2-used))
+		return strings.Join(parts, " ")
 	}
-	lines := []string{"  " + line(nil, true)}
+	lines := []string{strings.Repeat(" ", prefixWidth) + line(nil, true)}
 	start := max(0, m.Index()-height+2)
 	for i := start; i < min(len(m.Table.Rows), start+height-1); i++ {
 		prefix := "  "
 		if i == m.Index() {
 			prefix = "› "
 		}
-		lines = append(lines, prefix+line(m.Table.Rows[i], false))
+		lines = append(lines, ansi.Truncate(prefix, prefixWidth, "")+line(m.Table.Rows[i], false))
 	}
 	if len(m.Table.Rows) == 0 && height > 1 {
 		lines = append(lines, fit("No rows match this sample.", width))
@@ -138,20 +134,25 @@ func (m Model) layout(width int) ([]api.PrettyField, []int) {
 		if index == 0 {
 			maximum = max(maximum, width/3)
 		}
-		if column.MaxWidth > 0 {
-			maximum = min(maximum, column.MaxWidth)
+		if limit := tailwind.ParseStyle(column.Style).MaxWidth; limit > 0 {
+			maximum = limit
 		}
-		wanted := min(maximum, max(8, ansi.StringWidth(column.Label)))
+		wanted := min(maximum, max(1, ansi.StringWidth(column.Label)))
 		for _, row := range m.Table.Rows {
-			wanted = max(wanted, min(maximum, ansi.StringWidth(row[column.Name].String())))
+			if cell, ok := row[column.Name]; ok {
+				wanted = max(wanted, min(maximum, ansi.StringWidth(strings.ReplaceAll(cell.ANSI(), "\n", " "))))
+			}
 		}
-		if remaining < 5 {
+		if len(columns) > 0 {
+			remaining--
+		}
+		if remaining < min(wanted, 5) {
 			break
 		}
 		wanted = min(wanted, remaining)
 		columns = append(columns, column)
 		widths = append(widths, wanted)
-		remaining -= wanted + 1
+		remaining -= wanted
 	}
 	return columns, widths
 }

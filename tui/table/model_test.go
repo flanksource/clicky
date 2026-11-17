@@ -56,14 +56,15 @@ var _ = Describe("table state", func() {
 		}
 	})
 	It("keeps a column within its MaxWidth when the viewport has room to spare", func() {
-		m := table.Model{Table: api.TextTable{
-			Columns: []api.PrettyField{{Name: "status", Label: "Status of the deployment", MaxWidth: 8}},
-			Rows:    []api.TableRow{{"status": api.NewTypedValue("ready")}},
-		}, IDs: []string{"1"}, Selected: "1"}
+		const limit = 8
+		data := api.NewEmptyTable([]api.ColumnDef{api.Column("status").Label("Status of the deployment").MaxWidth(limit).Build()})
+		data.Rows = []api.TableRow{{"status": api.NewTypedValue("ready")}}
+		m := table.Model{}
+		Expect(m.Set(data, []string{"1"})).To(Succeed())
 		m.SetSize(80, 4)
 		header := strings.Split(m.View(), "\n")[0]
 		Expect(header).To(HavePrefix("  Status …"))
-		Expect(ansi.StringWidth(header)).To(Equal(80))
+		Expect(ansi.StringWidth(header)).To(Equal(len("  ") + limit))
 	})
 	It("fits Unicode rows and column headers to both requested terminal sizes", func() {
 		m := table.Model{}
