@@ -14,6 +14,8 @@ output := view.View()
 
 `Set` rejects missing or duplicate identities and keeps the selected identity through reordering. `SetSize(width, height)` records the viewport in terminal cells. `View()` prioritizes declared column order, hides default-hidden columns, respects column width limits and clips by terminal cells. Put identity, primary metric and status first. Additional fields belong in `RowDetail()` as well as the column picker of a web consumer.
 
+Columns use their header and rendered content widths, without a fixed minimum or padding the last column to fill the terminal. `Column.MaxWidth` character limits are honored; browser pixel limits do not size terminal columns. When space runs out, later columns are omitted or clipped.
+
 Pass `enter` to open detail, `esc` to close it, and arrows or `j/k` to move or scroll. Detail scrolling stops at the last line that fits the viewport. A model in detail mode retains its inspected table when `Set` is called. The host should pin the corresponding sample and require an explicit resume action before applying a newer sample. `Selected`, `Detail` and `DetailOffset` are available for controlled host state.
 
 ```sh
