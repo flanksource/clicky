@@ -307,6 +307,18 @@ func inheritEntityAnnotations(cmd *cobra.Command, parent *cobra.Command) {
 	AnnotateTool(cmd, meta.ToolHints)
 }
 
+// AnnotateRoutePath publishes cmd's operation at path (see
+// CommandOpenAPIMeta.RoutePath) instead of the route its command tree would
+// derive. It is the public helper for commands that are not generated from an
+// EntityBuilder, such as one that gains a positional argument but must keep
+// the route its callers already use.
+func AnnotateRoutePath(cmd *cobra.Command, path string) {
+	if cmd == nil {
+		return
+	}
+	setCommandAnnotation(cmd, annotationClickyOperationPath, path)
+}
+
 // AnnotateTool attaches MCP-facing tool hints to cmd. It is the public helper
 // for commands that are not generated from an EntityBuilder.
 func AnnotateTool(cmd *cobra.Command, hints MCPToolHints) {

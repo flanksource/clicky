@@ -20,18 +20,19 @@ func TestConvertValueToStringEncodesNestedObjectsAsJSON(t *testing.T) {
 	}
 }
 
-func TestConvertValueToStringKeepsExistingEncodings(t *testing.T) {
+func TestConvertValueToStringEncodesScalarAndArrayValues(t *testing.T) {
 	for _, test := range []struct {
 		name  string
 		value interface{}
 		want  string
 	}{
 		{"string", "plain", "plain"},
+		{"empty string", "", ""},
 		{"whole number", float64(25), "25"},
 		{"fractional number", 2.5, "2.5"},
 		{"true", true, "true"},
 		{"false", false, "false"},
-		{"nil", nil, ""},
+		{"null", nil, "null"},
 		{"array", []interface{}{"a", "b"}, "a,b"},
 	} {
 		if got := convertValueToString(test.value); got != test.want {
