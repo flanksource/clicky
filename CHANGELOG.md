@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.21.97](https://github.com/flanksource/clicky/compare/v1.21.96...v1.21.97) (2026-11-18)
+
+
+### 🔧 Maintenance
+
+* **deps:** bump the go_modules group across 4 directories with 1 update ([26f9bf2](https://github.com/flanksource/clicky/commit/26f9bf23aad41c0dba9804fbf28f13422d719e72))
+
 ## [1.21.96](https://github.com/flanksource/clicky/compare/v1.21.95...v1.21.96) (2026-11-17)
 
 
