@@ -1,3 +1,6 @@
+// The supervise loop: starts, restarts and stops a SupervisedProcess's generations, finishing each
+// generation's task run, and watches each run's ports and startup state.
+
 package exec
 
 import (
@@ -188,9 +191,18 @@ func (s *SupervisedProcess) runLoop() {
 			now := time.Now()
 			s.mu.Lock()
 			if !s.desired || s.stopping || s.gen != myGen {
+				stopped := !s.desired || s.stopping
 				s.mu.Unlock()
 				s.killGracefully(proc)
 				<-runDone
+				// A stop or restart landed before this generation's process was
+				// published, so its task run ends here, as the run loop would end it
+				// below: a background server's stop is its normal shutdown.
+				if stopped && s.opts.Task.Background {
+					s.finishTaskGeneration(taskRun, task.StatusSuccess, nil)
+				} else {
+					s.finishTaskGeneration(taskRun, task.StatusCancelled, proc.Result().Error)
+				}
 				if s.isStopping() {
 					s.setStatus(StatusStopped)
 					return

@@ -1,5 +1,8 @@
 //go:build unix
 
+// Tests the task runs of supervised processes: one per generation, its controls, output, metadata
+// and how it ends when stopped or restarted, even while its process is still launching.
+
 package exec
 
 import (
@@ -168,6 +171,76 @@ var _ = Describe("Supervised process task runs", func() {
 		Eventually(func() string {
 			return task.SnapshotByID(latest.ID)[0].Status
 		}, 5*time.Second).Should(Equal(string(task.StatusCancelled)))
+	})
+
+	It("cancels a generation stopped while its process is still launching", func() {
+		label := fmt.Sprintf("stop-while-launching-%d", time.Now().UnixNano())
+		var supervisor *SupervisedProcess
+		supervisor = NewExec("sleep 30").WithProcessGroup().Supervise(SuperviseOptions{
+			Task: SupervisedTaskOptions{Labels: map[string]string{"spec": label}},
+			// OnStart runs once the generation's task run exists and before its
+			// process is published, so the stop lands in between.
+			OnStart: func() {
+				go supervisor.Stop()
+				Eventually(supervisor.isStopping, 5*time.Second).Should(BeTrue())
+			},
+		})
+		supervisor.Start()
+		supervisor.Wait()
+
+		runs := task.Runs(task.RunFilter{Labels: map[string]string{"spec": label}})
+		Expect(runs).To(HaveLen(1))
+		Expect(task.SnapshotByID(runs[0].ID)[0].Status).To(Equal(string(task.StatusCancelled)))
+	})
+
+	It("finishes a background process stopped while still launching as a success", func() {
+		label := fmt.Sprintf("background-stop-while-launching-%d", time.Now().UnixNano())
+		var supervisor *SupervisedProcess
+		supervisor = NewExec("sleep 30").WithProcessGroup().Supervise(SuperviseOptions{
+			Task: SupervisedTaskOptions{Background: true, Labels: map[string]string{"spec": label}},
+			OnStart: func() {
+				go supervisor.Stop()
+				Eventually(supervisor.isStopping, 5*time.Second).Should(BeTrue())
+			},
+		})
+		supervisor.Start()
+		supervisor.Wait()
+
+		runs := task.Runs(task.RunFilter{Labels: map[string]string{"spec": label}})
+		Expect(runs).To(HaveLen(1))
+		snapshot := task.SnapshotByID(runs[0].ID)[0]
+		Expect([]string{snapshot.Status, snapshot.Error}).To(Equal([]string{string(task.StatusSuccess), ""}))
+	})
+
+	It("cancels a generation restarted while its process is still launching", func() {
+		label := fmt.Sprintf("restart-while-launching-%d", time.Now().UnixNano())
+		var supervisor *SupervisedProcess
+		restarted := false
+		supervisor = NewExec("sleep 30").WithProcessGroup().Supervise(SuperviseOptions{
+			Task: SupervisedTaskOptions{Labels: map[string]string{"spec": label}},
+			OnStart: func() {
+				if restarted {
+					return
+				}
+				restarted = true
+				go supervisor.Restart()
+				Eventually(func() int {
+					supervisor.mu.RLock()
+					defer supervisor.mu.RUnlock()
+					return supervisor.gen
+				}, 5*time.Second).Should(Equal(1))
+			},
+		})
+		supervisor.Start()
+		DeferCleanup(supervisor.Stop)
+
+		var runs []task.RunMeta
+		Eventually(func() int {
+			runs = task.Runs(task.RunFilter{Labels: map[string]string{"spec": label}})
+			return len(runs)
+		}, 5*time.Second).Should(Equal(2))
+		first := runs[len(runs)-1]
+		Expect(task.SnapshotByID(first.ID)[0].Status).To(Equal(string(task.StatusCancelled)))
 	})
 
 	It("finishes a deliberately stopped background process as a success, not a cancellation", func() {
