@@ -3,7 +3,7 @@ module github.com/flanksource/clicky/telltale
 go 1.27.1
 
 require (
-	github.com/flanksource/clicky v1.21.97
+	github.com/flanksource/clicky v1.21.98
 	github.com/flanksource/commons v1.64.1
 	github.com/flanksource/telltale/sdk v0.0.3
 	github.com/flanksource/telltale/sdk/commonslog v0.0.1

@@ -5,6 +5,13 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.21.98](https://github.com/flanksource/clicky/compare/v1.21.97...v1.21.98) (2026-11-20)
+
+
+### 🐛 Bug Fixes
+
+* **exec:** end a generation's task run when a stop or restart beats its process ([69060a7](https://github.com/flanksource/clicky/commit/69060a75c645d2d0d9e9eefcce2274ee99a34f37))
+
 ## [1.21.97](https://github.com/flanksource/clicky/compare/v1.21.96...v1.21.97) (2026-11-18)
 
 
