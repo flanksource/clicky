@@ -582,7 +582,7 @@ func generateBulkActionCommand(parent *cobra.Command, ba BulkActionInfo) {
 			}
 			result, err := execute(ContextWithOperationSurface(ctx, "cli"), flagMap, args)
 			if err != nil {
-				return err
+				return renderCommandError(ctx, ba.Name, err)
 			}
 			if result != nil {
 				return RenderResult(c.Context(), result)
