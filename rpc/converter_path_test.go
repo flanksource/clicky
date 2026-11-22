@@ -55,6 +55,25 @@ func TestGenerateRESTPath_SingleIdActionLiftsToIDSegment(t *testing.T) {
 		restPathFor("intake", "records <id> [flags]"))
 }
 
+// TestGenerateRESTPath_AnnotatedRoutePathWins: a plain (non-entity) command
+// that gains an optional positional keeps the route its callers already use
+// once it declares that route, instead of lifting the positional into it.
+func TestGenerateRESTPath_AnnotatedRoutePathWins(t *testing.T) {
+	root := &cobra.Command{Use: "app"}
+	parent := &cobra.Command{Use: "jvm"}
+	child := &cobra.Command{Use: "deploy [target]", RunE: func(*cobra.Command, []string) error { return nil }}
+	root.AddCommand(parent)
+	parent.AddCommand(child)
+	c := NewConverter(DefaultConfig())
+	require.Equal(t, "/api/v1/jvm/{target}/deploy", c.generateRESTPath(child, getCommandPath(child)), "the derived route lifts the positional")
+
+	entity.AnnotateRoutePath(child, "jvm/deploy")
+	assert.Equal(t, "/api/v1/jvm/deploy", c.generateRESTPath(child, getCommandPath(child)))
+	op, err := c.ConvertCommand(child)
+	require.NoError(t, err)
+	assert.Equal(t, "/api/v1/jvm/deploy", op.Path)
+}
+
 // TestGenerateRESTPath_TwoOperandActionStaysFlat is the regression guard for the
 // scheme/policy diff bug: a two-operand `diff <a> <b>` must stay flat at
 // /entity/diff and not lift the first operand into /entity/{a}/diff.

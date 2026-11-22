@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"iter"
 	"slices"
+	"sync/atomic"
 	"time"
 
 	"github.com/alicebob/miniredis/v2"
+	miniserver "github.com/alicebob/miniredis/v2/server"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	valkeygo "github.com/valkey-io/valkey-go"
@@ -334,6 +336,72 @@ var _ = Describe("valkey.NewStore adapter", func() {
 
 		Expect(server.CommandCount() - before).To(Equal(1))
 	})
+
+	Describe("a server slower than the read budget", func() {
+		const op, payload = 20 * time.Millisecond, time.Second
+		var (
+			delay  time.Duration
+			reads  atomic.Int32
+			slow   cache.Store
+			server *miniredis.Miniredis
+		)
+
+		BeforeEach(func() {
+			reads.Store(0)
+			var err error
+			server, err = miniredis.Run()
+			Expect(err).NotTo(HaveOccurred())
+			DeferCleanup(server.Close)
+			single, err := valkeygo.NewClient(valkeygo.ClientOption{
+				InitAddress: []string{server.Addr()}, DisableCache: true, ForceSingleClient: true, PipelineMultiplex: -1,
+			})
+			Expect(err).NotTo(HaveOccurred())
+			DeferCleanup(single.Close)
+			Expect(server.Set("a", "1")).To(Succeed())
+			server.Server().SetPreHook(func(_ *miniserver.Peer, cmd string, _ ...string) bool {
+				if cmd == "MGET" {
+					reads.Add(1)
+					time.Sleep(delay)
+				}
+				return false
+			})
+			slow = valkey.NewStoreWithTimeouts(single, op, payload)
+		})
+
+		It("reads the batch again with a larger budget until it arrives", func() {
+			delay = 100 * time.Millisecond
+			Expect(collectMGet(slow.MGet(context.Background(), slices.Values([]string{"a", "b"})))).To(Equal([]mgetEntry{
+				{Key: "a", Value: "1", Found: true}, {Key: "b"},
+			}))
+			Expect(reads.Load()).To(BeNumerically(">", 1))
+		})
+
+		It("fails once the attempts spent the whole payload budget", func() {
+			delay = 3 * payload
+			started := time.Now()
+			entries := collectMGet(slow.MGet(context.Background(), slices.Values([]string{"a"})))
+			Expect(entries).To(HaveLen(1))
+			Expect(entries[0].Err).To(MatchError(context.DeadlineExceeded))
+			Expect(time.Since(started)).To(BeNumerically("~", payload, payload/2))
+		})
+
+		It("stops at the caller's own deadline without reading again", func() {
+			delay = 3 * payload
+			ctx, cancel := context.WithTimeout(context.Background(), op)
+			defer cancel()
+			entries := collectMGet(slow.MGet(ctx, slices.Values([]string{"a"})))
+			Expect(entries).To(HaveLen(1))
+			Expect(entries[0].Err).To(MatchError(context.DeadlineExceeded))
+			Expect(reads.Load()).To(BeNumerically("<=", 1))
+		})
+	})
+
+	DescribeTable("budgets a write by its size",
+		func(size int, want time.Duration) { Expect(valkey.SetTimeout(size)).To(Equal(want)) },
+		Entry("nothing", 0, 250*time.Millisecond),
+		Entry("six megabytes", 6<<20, 12250*time.Millisecond),
+		Entry("more than the ceiling allows", 100<<20, 30*time.Second),
+	)
 
 	It("sets a ttl that miniredis observes", func() {
 		Expect(kv.Set(context.Background(), "k", []byte("v"), time.Hour)).To(Succeed())

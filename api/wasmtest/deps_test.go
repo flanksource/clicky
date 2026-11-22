@@ -25,7 +25,7 @@ var browserPackages = []string{
 var forbiddenModules = []string{
 	"github.com/alecthomas/chroma",
 	"github.com/charmbracelet/lipgloss",
-	"github.com/google/cel-go",
+	"cel.dev/cel-go",
 	"github.com/fatih/color",
 	"github.com/flanksource/commons",
 	"github.com/flanksource/gomplate",

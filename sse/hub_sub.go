@@ -155,6 +155,16 @@ func (c *hubConn) relaySub(sub *hubSub, body io.Reader) error {
 	pending := false
 	emit := func(ev streamEvent) error {
 		pending = true
+		if sub.resume {
+			payload, err := json.Marshal(struct {
+				Cursor string `json:"cursor,omitempty"`
+				Data   string `json:"data"`
+			}{Cursor: ev.id, Data: strings.Join(ev.data, "\n")})
+			if err != nil {
+				return err
+			}
+			ev.id, ev.data = "", []string{string(payload)}
+		}
 		return c.write(encodeSubEvent(sub.id, ev), false)
 	}
 	idle := func() error {

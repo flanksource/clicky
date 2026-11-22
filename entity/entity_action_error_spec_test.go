@@ -45,4 +45,34 @@ var _ = Describe("entity action errors", func() {
 		Expect(err).To(MatchError("lint failed"))
 		Expect(rendered).To(BeAssignableToTypeOf(&prettyErr{}))
 	})
+
+	It("renders a bulk action's structured error before returning it", func() {
+		name := "entity-bulk-action-rich-error-spec"
+		RegisterEntity(Entity[actionErrorEntity, struct{}, any]{
+			Name: name,
+			List: func(struct{}) ([]actionErrorEntity, error) {
+				return nil, nil
+			},
+			BulkActions: []EntityBulkAction{BulkActionWithContext("recycle", func(context.Context, []string, map[string]string) (any, error) {
+				return nil, &prettyErr{msg: "recycle refused"}
+			})},
+		})
+
+		var rendered any
+		originalRender := RenderResult
+		RenderResult = func(_ context.Context, value any) error {
+			rendered = value
+			return nil
+		}
+		DeferCleanup(func() { RenderResult = originalRender })
+
+		root := &cobra.Command{Use: "test"}
+		GenerateCLI(root)
+		root.SetArgs([]string{name, "recycle", "entity-1", "entity-2"})
+
+		err := root.Execute()
+
+		Expect(err).To(MatchError("recycle refused"))
+		Expect(rendered).To(BeAssignableToTypeOf(&prettyErr{}))
+	})
 })

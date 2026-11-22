@@ -498,7 +498,7 @@ func convertValueToString(value interface{}) string {
 		}
 		return fmt.Sprintf("%g", v)
 	case nil:
-		return ""
+		return "null"
 	case []interface{}:
 		return csvRecord(v)
 	case []string:
