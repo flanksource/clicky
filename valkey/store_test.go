@@ -340,7 +340,7 @@ var _ = Describe("valkey.NewStore adapter", func() {
 	Describe("a server slower than the read budget", func() {
 		const op, payload = 20 * time.Millisecond, time.Second
 		var (
-			delay  time.Duration
+			delay  atomic.Int64
 			reads  atomic.Int32
 			slow   cache.Store
 			server *miniredis.Miniredis
@@ -348,6 +348,7 @@ var _ = Describe("valkey.NewStore adapter", func() {
 
 		BeforeEach(func() {
 			reads.Store(0)
+			delay.Store(0)
 			var err error
 			server, err = miniredis.Run()
 			Expect(err).NotTo(HaveOccurred())
@@ -358,10 +359,16 @@ var _ = Describe("valkey.NewStore adapter", func() {
 			Expect(err).NotTo(HaveOccurred())
 			DeferCleanup(single.Close)
 			Expect(server.Set("a", "1")).To(Succeed())
+			reply := make(chan struct{})
+			DeferCleanup(func() { close(reply) })
 			server.Server().SetPreHook(func(_ *miniserver.Peer, cmd string, _ ...string) bool {
 				if cmd == "MGET" {
 					reads.Add(1)
-					time.Sleep(delay)
+					if wait := time.Duration(delay.Load()); wait > 0 {
+						time.Sleep(wait)
+					} else {
+						<-reply
+					}
 				}
 				return false
 			})
@@ -369,7 +376,7 @@ var _ = Describe("valkey.NewStore adapter", func() {
 		})
 
 		It("reads the batch again with a larger budget until it arrives", func() {
-			delay = 100 * time.Millisecond
+			delay.Store(int64(100 * time.Millisecond))
 			Expect(collectMGet(slow.MGet(context.Background(), slices.Values([]string{"a", "b"})))).To(Equal([]mgetEntry{
 				{Key: "a", Value: "1", Found: true}, {Key: "b"},
 			}))
@@ -377,7 +384,6 @@ var _ = Describe("valkey.NewStore adapter", func() {
 		})
 
 		It("fails once the attempts spent the whole payload budget", func() {
-			delay = 3 * payload
 			started := time.Now()
 			entries := collectMGet(slow.MGet(context.Background(), slices.Values([]string{"a"})))
 			Expect(entries).To(HaveLen(1))
@@ -386,7 +392,6 @@ var _ = Describe("valkey.NewStore adapter", func() {
 		})
 
 		It("stops at the caller's own deadline without reading again", func() {
-			delay = 3 * payload
 			ctx, cancel := context.WithTimeout(context.Background(), op)
 			defer cancel()
 			entries := collectMGet(slow.MGet(ctx, slices.Values([]string{"a"})))

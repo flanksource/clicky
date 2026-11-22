@@ -6,8 +6,8 @@ require (
 	github.com/flanksource/captain v0.0.71
 	github.com/flanksource/clicky v1.21.98
 	github.com/flanksource/clicky/aichat v1.21.98
-	github.com/onsi/ginkgo/v2 v2.32.1
-	github.com/onsi/gomega v1.42.1
+	github.com/onsi/ginkgo/v2 v2.33.1
+	github.com/onsi/gomega v1.44.0
 	github.com/spf13/cobra v1.10.2
 )
 

@@ -11,8 +11,10 @@ package valkey
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"iter"
+	"os"
 	"time"
 
 	"github.com/valkey-io/valkey-go"
@@ -51,6 +53,13 @@ type kvStore struct {
 // NewStore returns a cache.Store backed by client. The client is owned by the
 // caller (NewStore does not close it), so an app can share its existing
 // connection rather than opening a second one.
+//
+// Keep DisableAutoPipelining false and use the default BlockingPipeline for
+// cluster clients so Set and MGet can stop waiting when the caller cancels.
+// AlwaysPipelining is supported with these settings. Set ConnWriteTimeout to at
+// least 30 seconds when operations need the full payload budget, since the
+// client's connection health checks use that timeout. Commands already sent
+// to the server may still complete after cancellation.
 func NewStore(client valkey.Client) cache.Store {
 	return &kvStore{client: client, opTimeout: opTimeout, payloadTimeout: payloadTimeout}
 }
@@ -58,6 +67,12 @@ func NewStore(client valkey.Client) cache.Store {
 func (s *kvStore) ctx(parent context.Context) (context.Context, context.CancelFunc) {
 	return context.WithTimeout(parent, s.opTimeout)
 }
+
+// A cancellable context with no advertised deadline selects valkey-go's
+// pipelined path even for a single command. The store's timer still closes Done.
+type pipelineContext struct{ context.Context }
+
+func (pipelineContext) Deadline() (time.Time, bool) { return time.Time{}, false }
 
 func (s *kvStore) Set(ctx context.Context, key string, value []byte, ttl time.Duration) error {
 	ctx, cancel := context.WithTimeout(ctx, s.setTimeout(len(value)))
@@ -69,7 +84,7 @@ func (s *kvStore) Set(ctx context.Context, key string, value []byte, ttl time.Du
 	} else {
 		cmd = set.Build()
 	}
-	return s.client.Do(ctx, cmd).Error()
+	return s.client.Do(pipelineContext{ctx}, cmd).Error()
 }
 
 // setTimeout is the budget of writing size bytes.
@@ -131,9 +146,10 @@ func (s *kvStore) mgetAdaptive(parent context.Context, keys []string, budget *ti
 	*budget = max(*budget, s.opTimeout+time.Duration(len(keys))*perKeyTimeout)
 	started := time.Now()
 	for {
-		ctx, cancel := context.WithTimeout(parent, min(*budget, s.payloadTimeout-time.Since(started)))
-		entries, err := s.mget(ctx, keys)
-		expired := ctx.Err() != nil
+		remaining := s.payloadTimeout - time.Since(started)
+		ctx, cancel := context.WithTimeout(parent, min(*budget, remaining))
+		entries, err := s.mget(pipelineContext{ctx}, keys)
+		expired := ctx.Err() == context.DeadlineExceeded || errors.Is(err, context.DeadlineExceeded) || errors.Is(err, os.ErrDeadlineExceeded)
 		cancel()
 		if err == nil || !expired || parent.Err() != nil {
 			return entries, err
@@ -141,7 +157,10 @@ func (s *kvStore) mgetAdaptive(parent context.Context, keys []string, budget *ti
 		if spent := time.Since(started); spent >= s.payloadTimeout {
 			return nil, fmt.Errorf("after %s: %w", spent.Round(time.Millisecond), err)
 		}
-		*budget *= 2
+		if *budget >= remaining {
+			return nil, err
+		}
+		*budget = min(s.payloadTimeout, *budget*2)
 	}
 }
 
