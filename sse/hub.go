@@ -85,6 +85,7 @@ type hubConn struct {
 
 type hubSub struct {
 	id     string
+	resume bool
 	ctx    context.Context
 	cancel context.CancelFunc
 	done   chan struct{}
@@ -199,8 +200,10 @@ type hubHello struct {
 }
 
 type hubSubRequest struct {
-	ID   string `json:"id"`
-	Path string `json:"path"`
+	ID     string `json:"id"`
+	Path   string `json:"path"`
+	Resume bool   `json:"resume,omitempty"`
+	Cursor string `json:"cursor,omitempty"`
 }
 
 func (h *Hub) handleSubscribe(w http.ResponseWriter, r *http.Request) {
@@ -225,10 +228,17 @@ func (h *Hub) handleSubscribe(w http.ResponseWriter, r *http.Request) {
 		writeJSONError(w, http.StatusBadRequest, err)
 		return
 	}
+	if body.Cursor != "" {
+		if !body.Resume || strings.ContainsAny(body.Cursor, "\r\n\x00") {
+			writeJSONError(w, http.StatusBadRequest, errors.New("invalid subscription cursor"))
+			return
+		}
+		req.Header.Set("Last-Event-ID", body.Cursor)
+	}
 	// WORKAROUND(codeql-reflected-xss): the pattern above already admits no HTML metacharacters, so escaping is an identity; CodeQL's Go XSS model has no regexp barrier.
 	// Correct fix: stop echoing a client-chosen id — JSON-encode sub frames (`event: sub`, data {sub,event,id,data}) with the matching clicky-ui event-hub change.
 	// Ref: discussed with user 2026-10-08
-	status, err := conn.startSub(html.EscapeString(body.ID), req, h.root)
+	status, err := conn.startSub(html.EscapeString(body.ID), req, h.root, body.Resume)
 	if err != nil {
 		writeJSONError(w, status, err)
 		return
@@ -257,7 +267,7 @@ func (h *Hub) handleUnsubscribe(w http.ResponseWriter, r *http.Request) {
 
 // startSub registers the sub and launches it. The returned status is the HTTP
 // status to answer the subscribe request with when err is non-nil.
-func (c *hubConn) startSub(id string, req *http.Request, root http.Handler) (int, error) {
+func (c *hubConn) startSub(id string, req *http.Request, root http.Handler, resume bool) (int, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.subsClosed {
@@ -269,7 +279,7 @@ func (c *hubConn) startSub(id string, req *http.Request, root http.Handler) (int
 	// The marker exempts the sub request from Guard: it is the hub-served
 	// replacement for the direct stream that guard refuses.
 	ctx, cancel := context.WithCancel(withHubSub(c.ctx))
-	sub := &hubSub{id: id, ctx: ctx, cancel: cancel, done: make(chan struct{})}
+	sub := &hubSub{id: id, resume: resume, ctx: ctx, cancel: cancel, done: make(chan struct{})}
 	c.subs[id] = sub
 	c.wg.Add(1)
 	go c.runSub(sub, req.WithContext(ctx), root)

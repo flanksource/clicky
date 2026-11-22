@@ -21,26 +21,38 @@ import (
 )
 
 const (
-	// opTimeout caps any single round-trip so a store operation never stalls
-	// the caller. Mirrors the timeout the cache browser applies to its
-	// single-key ops.
+	// opTimeout caps a round-trip that carries no payload to speak of, so a
+	// store operation never stalls the caller; MGet and Set grow it. Mirrors the
+	// timeout the cache browser applies to its single-key ops.
 	opTimeout = 250 * time.Millisecond
 
-	// mgetBatch is how many keys one MGet round trip reads. It keeps a batch of
-	// large values well inside opTimeout, and bounds what a reader holds.
+	// mgetBatch is how many keys one MGet round trip reads, which bounds what a
+	// reader holds.
 	mgetBatch = 100
+
+	// perKeyTimeout is what each key adds to a batch read's first budget.
+	perKeyTimeout = 10 * time.Millisecond
+
+	// perMBTimeout is what each megabyte adds to a write's budget: a shared L2 a
+	// network hop away sustains 0.5-1 MB/s.
+	perMBTimeout = 2 * time.Second
+
+	// payloadTimeout bounds the budgets that grow with the payload, so a wedged
+	// server still fails. It is all the attempts of one batch read together.
+	payloadTimeout = 30 * time.Second
 )
 
 type kvStore struct {
-	client    valkey.Client
-	opTimeout time.Duration
+	client         valkey.Client
+	opTimeout      time.Duration
+	payloadTimeout time.Duration
 }
 
 // NewStore returns a cache.Store backed by client. The client is owned by the
 // caller (NewStore does not close it), so an app can share its existing
 // connection rather than opening a second one.
 func NewStore(client valkey.Client) cache.Store {
-	return &kvStore{client: client, opTimeout: opTimeout}
+	return &kvStore{client: client, opTimeout: opTimeout, payloadTimeout: payloadTimeout}
 }
 
 func (s *kvStore) ctx(parent context.Context) (context.Context, context.CancelFunc) {
@@ -48,7 +60,7 @@ func (s *kvStore) ctx(parent context.Context) (context.Context, context.CancelFu
 }
 
 func (s *kvStore) Set(ctx context.Context, key string, value []byte, ttl time.Duration) error {
-	ctx, cancel := s.ctx(ctx)
+	ctx, cancel := context.WithTimeout(ctx, s.setTimeout(len(value)))
 	defer cancel()
 	set := s.client.B().Set().Key(key).Value(string(value))
 	var cmd valkey.Completed
@@ -60,6 +72,13 @@ func (s *kvStore) Set(ctx context.Context, key string, value []byte, ttl time.Du
 	return s.client.Do(ctx, cmd).Error()
 }
 
+// setTimeout is the budget of writing size bytes.
+func (s *kvStore) setTimeout(size int) time.Duration {
+	return min(s.opTimeout+time.Duration(float64(size)/(1<<20)*float64(perMBTimeout)), s.payloadTimeout)
+}
+
+// Get reads one small value inside opTimeout. Read a value of megabytes with
+// MGet, whose budget grows.
 func (s *kvStore) Get(ctx context.Context, key string) ([]byte, error) {
 	ctx, cancel := s.ctx(ctx)
 	defer cancel()
@@ -74,12 +93,15 @@ func (s *kvStore) Get(ctx context.Context, key string) ([]byte, error) {
 }
 
 // MGet pulls up to mgetBatch keys at a time and reads each batch in one round
-// trip — one MGET, or one per hash slot on a cluster — before yielding it.
+// trip — one MGET, or one per hash slot on a cluster — before yielding it. How
+// much a batch holds is only known once it arrives, so the budget adapts: a
+// batch that outlives it is read again with double, and later batches keep it.
 func (s *kvStore) MGet(ctx context.Context, keys iter.Seq[string]) iter.Seq2[cache.Entry, error] {
 	return func(yield func(cache.Entry, error) bool) {
 		batch := make([]string, 0, mgetBatch)
+		var budget time.Duration
 		flush := func() bool {
-			entries, err := s.mget(ctx, batch)
+			entries, err := s.mgetAdaptive(ctx, batch, &budget)
 			batch = batch[:0]
 			if err != nil {
 				yield(cache.Entry{}, err)
@@ -103,9 +125,27 @@ func (s *kvStore) MGet(ctx context.Context, keys iter.Seq[string]) iter.Seq2[cac
 	}
 }
 
+// mgetAdaptive reads keys within budget, at least what their number needs,
+// doubling it whenever it expires until the attempts spent payloadTimeout.
+func (s *kvStore) mgetAdaptive(parent context.Context, keys []string, budget *time.Duration) ([]cache.Entry, error) {
+	*budget = max(*budget, s.opTimeout+time.Duration(len(keys))*perKeyTimeout)
+	started := time.Now()
+	for {
+		ctx, cancel := context.WithTimeout(parent, min(*budget, s.payloadTimeout-time.Since(started)))
+		entries, err := s.mget(ctx, keys)
+		expired := ctx.Err() != nil
+		cancel()
+		if err == nil || !expired || parent.Err() != nil {
+			return entries, err
+		}
+		if spent := time.Since(started); spent >= s.payloadTimeout {
+			return nil, fmt.Errorf("after %s: %w", spent.Round(time.Millisecond), err)
+		}
+		*budget *= 2
+	}
+}
+
 func (s *kvStore) mget(ctx context.Context, keys []string) ([]cache.Entry, error) {
-	ctx, cancel := s.ctx(ctx)
-	defer cancel()
 	replies, err := valkey.MGet(s.client, ctx, keys)
 	if err != nil {
 		return nil, fmt.Errorf("mget %d keys: %w", len(keys), err)
