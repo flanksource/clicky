@@ -10,11 +10,29 @@ import (
 	"testing"
 	"time"
 
+	"github.com/flanksource/clicky/entity"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
 
 var _ = Describe("multiplexed events hub", func() {
+	It("forwards the topic cursor and relays a cursor only on its own event", func() {
+		server := newEventsTestServer(map[string]http.HandlerFunc{
+			"GET /api/test/tail": func(w http.ResponseWriter, r *http.Request) {
+				writer := NewWriter(w)
+				_ = writer.Send(entity.StreamEvent{ID: "next", Data: r.Header.Get("Last-Event-ID")})
+				_ = writer.Send(entity.StreamEvent{Name: "end", Data: "finished"})
+			},
+		})
+		client := openEvents(server.URL, DefaultPrefix)
+		body := strings.NewReader(`{"id":"tail","path":"/api/test/tail","resume":true,"cursor":"previous"}`)
+		response, err := http.Post(server.URL+DefaultPrefix+"/"+client.conn+"/subs", "application/json", body)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(response.Body.Close()).To(Succeed())
+		Expect(response.StatusCode).To(Equal(http.StatusNoContent))
+		Expect(client.nextFrame("tail/").Data).To(MatchJSON(`{"cursor":"next","data":"previous"}`))
+		Expect(client.nextFrame("tail/").Data).To(MatchJSON(`{"data":"finished"}`))
+	})
 	It("sends a hello frame naming the connection and the UI build", func() {
 		server := newEventsTestServer(nil)
 		client := openEvents(server.URL, DefaultPrefix)

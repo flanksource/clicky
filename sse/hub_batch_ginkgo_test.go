@@ -57,7 +57,7 @@ var _ = Describe("hub sub batching", func() {
 			<-r.Context().Done()
 		})
 
-		_, err := conn.startSub("s", httptest.NewRequest(http.MethodGet, "/api/test/burst", nil), burst)
+		_, err := conn.startSub("s", httptest.NewRequest(http.MethodGet, "/api/test/burst", nil), burst, false)
 		Expect(err).NotTo(HaveOccurred())
 
 		Eventually(func() string { flushed, _ := recorder.visible(); return flushed }).Should(ContainSubstring("event: s/three"))
