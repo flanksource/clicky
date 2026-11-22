@@ -4,7 +4,7 @@ go 1.27.4
 
 require (
 	github.com/flanksource/captain v0.0.71
-	github.com/flanksource/clicky v1.21.98
+	github.com/flanksource/clicky v1.21.99
 	github.com/onsi/ginkgo/v2 v2.33.1
 	github.com/onsi/gomega v1.44.0
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3

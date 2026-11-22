@@ -5,7 +5,7 @@ go 1.27.4
 replace github.com/flanksource/clicky => ../
 
 require (
-	github.com/flanksource/clicky v1.21.98
+	github.com/flanksource/clicky v1.21.99
 	github.com/spf13/cobra v1.10.2
 )
 

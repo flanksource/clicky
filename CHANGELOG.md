@@ -5,6 +5,32 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.21.99](https://github.com/flanksource/clicky/compare/v1.21.98...v1.21.99) (2026-11-22)
+
+
+### ⚠ BREAKING CHANGES
+
+* **deps:** consumers importing github.com/flanksource/gomplate/v3 or github.com/google/cel-go must switch to gomplate/v4 and cel.dev/cel-go.
+
+Claude-Session-Id: cd49c5e0-4ae9-4347-9830-9badc3d2b9a7
+
+### ✨ Features
+
+* **rpc:** add AnnotateRoutePath and render nil flag values as null ([c317e40](https://github.com/flanksource/clicky/commit/c317e403f8b6b75989f8098c5084cc8ecc5b6fb4))
+* **schemaform:** add icon, badges and group fields to lookup options ([df22192](https://github.com/flanksource/clicky/commit/df221925f6259fe119fc11a751857f7270d43701))
+* **sse:** add resumable cursor support to sse hub subscriptions ([c89f97d](https://github.com/flanksource/clicky/commit/c89f97d2fe09c9797e219c3600e2caffa0a08291))
+
+
+### 🐛 Bug Fixes
+
+* **tui:** fix table column sizing to use content widths and honor character limits ([6b64a90](https://github.com/flanksource/clicky/commit/6b64a90d7422bf2305de1f588d24cd6ff58b97f4))
+* **valkey:** Keep valkey store commands cancellable and retry transport deadlines ([7754018](https://github.com/flanksource/clicky/commit/7754018466e18f377fc124c3b7c879d488f0ac83))
+
+
+### dependency
+
+* **deps:** Bump dependencies and migrate cel-go and gomplate to v4 ([8caeee5](https://github.com/flanksource/clicky/commit/8caeee5c7ab3cbfb2e33ed27436861dfad450f1a))
+
 ## [1.21.98](https://github.com/flanksource/clicky/compare/v1.21.97...v1.21.98) (2026-11-20)
 
 
