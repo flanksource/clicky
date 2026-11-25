@@ -137,6 +137,41 @@ func TestCode_HTML(t *testing.T) {
 	}
 }
 
+func TestCodeLiteralStyle_HTMLKeepsChromaWrapperClass(t *testing.T) {
+	html := Code{Content: `x = "value"`, Language: "python", LiteralStyle: "text-amber-600 italic"}.HTML()
+	if !strings.Contains(html, `<pre class="chroma" style="`) {
+		t.Errorf("inline-styled Code.HTML() should keep the chroma class on <pre>, got: %s", html)
+	}
+	if strings.Count(html, `class="chroma"`) != 1 {
+		t.Errorf("Code.HTML() should emit the chroma class exactly once, got: %s", html)
+	}
+	if plain := (Code{Content: `x = "value"`, Language: "python"}).HTML(); strings.Count(plain, `class="chroma"`) != 1 {
+		t.Errorf("class-styled Code.HTML() should emit the chroma class exactly once, got: %s", plain)
+	}
+}
+
+func TestCodeLiteralStyle_AlphaHexColoursDoNotPanic(t *testing.T) {
+	tests := []struct {
+		style      string
+		wantColour string
+	}{
+		{"text-[#ff000080]", "255;0;0"},
+		{"text-[#f008]", "255;0;0"},
+		{"text-[#ff0000]", "255;0;0"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.style, func(t *testing.T) {
+			code := Code{Content: `x = "value"`, Language: "python", LiteralStyle: tt.style}
+			if got := code.ANSI(); !strings.Contains(got, "38;2;"+tt.wantColour+"m") {
+				t.Errorf("Code.ANSI() should colour literals with %s, got %q", tt.wantColour, got)
+			}
+			if got := code.HTML(); !strings.Contains(got, `<span style="color:#f00">&#34;value&#34;</span>`) {
+				t.Errorf("Code.HTML() should colour literals with #f00, got %s", got)
+			}
+		})
+	}
+}
+
 func TestCodeHTML_XMLFormatterPanicFallsBackToHighlightedContent(t *testing.T) {
 	code := Code{
 		Content:  `<AddressScreen><Events><Event TYPE="ONLOAD"><ActionSet><Condition IF="1=1"></Condition></ActionSet></Event></Events></AddressScreen>`,

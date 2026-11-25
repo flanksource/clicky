@@ -79,6 +79,8 @@ func TestUseFlags_RedirectedStdoutKeepsLogColor(t *testing.T) {
 		t.Setenv(env, "")
 	}
 	t.Setenv("TERM", "xterm-256color")
+	previous := defaultOpts
+	t.Cleanup(func() { UseFormatter(previous) })
 	flags := AllFlags{}
 
 	flags.UseFlags()
