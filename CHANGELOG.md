@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.21.101](https://github.com/flanksource/clicky/compare/v1.21.100...v1.21.101) (2026-11-25)
+
+
+### ✨ Features
+
+* **api:** add column grow, colored help, and literal code styling ([6d05274](https://github.com/flanksource/clicky/commit/6d05274833b45a82aaae39b38e29239a6cf93cd2))
+
+
+### 🐛 Bug Fixes
+
+* **api:** Fix chroma pre class, alpha hex colours, and help shortcut wrapping ([5587d49](https://github.com/flanksource/clicky/commit/5587d493f69fc436742702685a2ff4b4db965d3e))
+
 ## [1.21.100](https://github.com/flanksource/clicky/compare/v1.21.99...v1.21.100) (2026-11-22)
 
 
