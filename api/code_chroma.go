@@ -83,11 +83,15 @@ func (c Code) HTML() string {
 		style = styles.Fallback
 	}
 
-	formatter := chromahtml.New(
+	options := []chromahtml.Option{
 		chromahtml.WithClasses(c.LiteralStyle == ""),
 		chromahtml.WithLineNumbers(false),
 		chromahtml.TabWidth(4),
-	)
+	}
+	if c.LiteralStyle != "" {
+		options = append(options, chromahtml.WithPreWrapper(inlineStylePreWrapper{}))
+	}
+	formatter := chromahtml.New(options...)
 
 	iterator, err := lexer.Tokenise(nil, c.Content)
 	if err != nil {
@@ -105,9 +109,43 @@ func (c Code) HTML() string {
 	return buf.String()
 }
 
+// inlineStylePreWrapper keeps the "chroma" class on the <pre> when token styles
+// are inline (chroma then drops it), so the pre.chroma wrapping rules in
+// GetChromaCSS still apply.
+type inlineStylePreWrapper struct{}
+
+func (inlineStylePreWrapper) Start(code bool, styleAttr string) string {
+	if code {
+		return `<pre class="chroma"` + styleAttr + `><code>`
+	}
+	return `<pre class="chroma"` + styleAttr + `>`
+}
+
+func (inlineStylePreWrapper) End(code bool) string {
+	if code {
+		return `</code></pre>`
+	}
+	return `</pre>`
+}
+
+// parseOpaqueColour parses a Tailwind foreground colour for chroma, which only
+// supports #rgb and #rrggbb: it drops the alpha channel of #rgba and #rrggbbaa,
+// whose 32-bit value would overflow chroma.Colour.
+func parseOpaqueColour(color string) chroma.Colour {
+	if digits, isHex := strings.CutPrefix(color, "#"); isHex {
+		switch len(digits) {
+		case 4:
+			color = "#" + digits[:3]
+		case 8:
+			color = "#" + digits[:6]
+		}
+	}
+	return chroma.ParseColour(color)
+}
+
 func (c Code) styleLiterals(base *chroma.Style, tokens chroma.Iterator) (*chroma.Style, chroma.Iterator) {
 	_, appearance := ApplyTailwindStyle("", c.LiteralStyle)
-	entry := chroma.StyleEntry{Colour: chroma.ParseColour(appearance.Foreground), NoInherit: true}
+	entry := chroma.StyleEntry{Colour: parseOpaqueColour(appearance.Foreground), NoInherit: true}
 	if appearance.Italic {
 		entry.Italic = chroma.Yes
 	}

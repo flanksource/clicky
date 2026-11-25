@@ -11,6 +11,7 @@ import (
 	"github.com/flanksource/clicky/api"
 	flagmeta "github.com/flanksource/clicky/flags"
 	"github.com/flanksource/clicky/formatters"
+	"github.com/muesli/termenv"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"golang.org/x/term"
@@ -73,8 +74,18 @@ func SetColoredHelp(cmd *cobra.Command, theme HelpTheme) {
 		doc := CommandHelp{Command: c, Theme: theme}.Pretty()
 		var rendered string
 		if useHelpColor(c, output) {
-			rendered = doc.ANSI()
-		} else {
+			// A Windows console without virtual terminal processing prints raw escapes.
+			restore, err := termenv.EnableVirtualTerminalProcessing(termenv.NewOutput(output, termenv.WithProfile(termenv.TrueColor)))
+			if err == nil {
+				rendered = doc.ANSI()
+				defer func() {
+					if err := restore(); err != nil {
+						c.PrintErrln(err)
+					}
+				}()
+			}
+		}
+		if rendered == "" {
 			rendered = ansi.Strip(doc.String())
 		}
 		if _, err := io.WriteString(output, rendered); err != nil {
@@ -237,9 +248,31 @@ func helpDescriptionIndent(label, description string) int {
 
 func (h CommandHelp) shortcuts(names []string, indent int) api.Textable {
 	const title = "Shortcuts: "
-	flags := strings.Join(names, " ")
-	if indent+len(title)+ansi.StringWidth(flags) > api.GetTerminalWidth() {
+	width := api.GetTerminalWidth()
+	if indent+len(title)+ansi.StringWidth(strings.Join(names, " ")) > width {
 		indent = 2
 	}
-	return Text(strings.Repeat(" ", indent)+title).Append(flags, h.Theme.Flag).NewLine()
+	hanging := indent + len(title)
+	lines := [][]string{nil}
+	lineWidth := hanging
+	for _, name := range names {
+		last := len(lines) - 1
+		if len(lines[last]) > 0 && lineWidth+1+len(name) > width {
+			lines, lineWidth = append(lines, nil), hanging
+			last++
+		}
+		if len(lines[last]) > 0 {
+			lineWidth++
+		}
+		lines[last] = append(lines[last], name)
+		lineWidth += len(name)
+	}
+	doc := Text(strings.Repeat(" ", indent) + title)
+	for i, line := range lines {
+		if i > 0 {
+			doc = doc.Append(strings.Repeat(" ", hanging))
+		}
+		doc = doc.Append(strings.Join(line, " "), h.Theme.Flag).NewLine()
+	}
+	return doc
 }

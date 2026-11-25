@@ -103,6 +103,30 @@ var _ = Describe("colored CLI help", func() {
 		Entry("at 80 columns, aligned to fit the shortcuts on one line", 80, 2),
 	)
 
+	It("wraps the shortcuts between names when they exceed a narrow terminal", func() {
+		const width = 50
+		const hangingIndent = 2 + len("Shortcuts: ")
+		api.SetTerminalWidth(width)
+		DeferCleanup(api.InvalidateTerminalSize)
+		formatters.BindPFlags(child.Flags(), &formatters.FormatOptions{})
+		formatting := groupedHelpSection(clicky.CommandHelp{Command: child, Theme: theme}.Pretty().String(), "Formatting")
+		var names, shortcutLines []string
+		for _, line := range strings.Split(formatting, "\n") {
+			if rest, found := strings.CutPrefix(line, "  Shortcuts: "); found {
+				shortcutLines = append(shortcutLines, line)
+				names = strings.Fields(rest)
+			} else if len(shortcutLines) > 0 && strings.HasPrefix(line, strings.Repeat(" ", hangingIndent)+"--") {
+				shortcutLines = append(shortcutLines, line)
+				names = append(names, strings.Fields(line)...)
+			}
+		}
+		Expect(names).To(Equal(strings.Fields("--csv --html --json --llm --markdown --pdf --pretty --slack --yaml")), formatting)
+		Expect(len(shortcutLines)).To(BeNumerically(">", 1), formatting)
+		for _, line := range shortcutLines {
+			Expect(len(line)).To(BeNumerically("<=", width), line)
+		}
+	})
+
 	It("colors --help for an interactive destination while keeping UsageString plain", func() {
 		theme.Heading = "text-purple-600 font-bold"
 		clicky.SetColoredHelp(root, theme)
