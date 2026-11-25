@@ -40,7 +40,8 @@ var knownFormats = map[string]bool{
 	"tree":        true,
 }
 
-const FormatSpecHelp = "Output format. Use one stdout format (pretty|json|ndjson|toon|yaml|yml|csv|markdown|md|llm|html|html-static|html-react|clicky-json|pdf|slack|excel|xlsx|tree), " +
+const FormatSpecHelp = "Output format. Use one stdout format " +
+	"(pretty | json | ndjson | toon | yaml | yml | csv | markdown | md | llm | html | html-static | html-react | clicky-json | pdf | slack | excel | xlsx | tree), " +
 	"or comma-separated format=file sinks such as 'pretty,json=out.json,markdown=summary.md'."
 
 // canonicalFormat normalises common aliases (e.g. "md" -> "markdown").
@@ -362,9 +363,12 @@ func BindPFlags(flags *pflag.FlagSet, options *FormatOptions) {
 	flags.BoolVar(&options.Table, "table", false, "Display in table structure (additive with format)")
 	for _, name := range []string{
 		"format", "output", "no-color", "dump-schema", "filter",
-		"json", "yaml", "csv", "markdown", "llm", "pretty", "html", "pdf", "slack", "tree", "table",
+		"tree", "table",
 	} {
 		flagmeta.SetCategory(flags.Lookup(name), flagmeta.CategoryFormatting)
+	}
+	for _, name := range []string{"json", "yaml", "csv", "markdown", "llm", "pretty", "html", "pdf", "slack"} {
+		flagmeta.MarkOutputFormatShortcut(flags.Lookup(name))
 	}
 }
 

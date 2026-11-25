@@ -55,6 +55,7 @@ type PrettyField struct {
 	SortKey       string            `json:"sortKey,omitempty" yaml:"sortKey,omitempty"`
 	MinWidth      int               `json:"minWidth,omitempty" yaml:"minWidth,omitempty"`
 	MaxWidth      int               `json:"maxWidth,omitempty" yaml:"maxWidth,omitempty"`
+	Grow          bool              `json:"grow,omitempty" yaml:"grow,omitempty"`
 	DefaultHidden bool              `json:"defaultHidden,omitempty" yaml:"defaultHidden,omitempty"`
 	Label         string            `json:"label,omitempty" yaml:"label,omitempty"`
 	Default       string            `json:"default,omitempty" yaml:"default,omitempty"`

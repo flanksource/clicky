@@ -20,7 +20,8 @@ type RenderOptions struct {
 
 func main() {
 	root := &cobra.Command{Use: "grouped-help"}
-	clicky.BindAllFlagsToCommand(root, "format")
+	clicky.BindAllFlags(root.PersistentFlags(), "format")
+	clicky.SetColoredHelp(root, clicky.DefaultHelpTheme())
 	clicky.AddNamedCommand("render", root, RenderOptions{}, func(options RenderOptions) (string, error) {
 		return options.File, nil
 	})

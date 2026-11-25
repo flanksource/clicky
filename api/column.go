@@ -22,6 +22,7 @@ type ColumnDef struct {
 	MaxWidth       int
 	MinWidthPixels int
 	MaxWidthPixels int
+	Grow           bool
 	Hidden         bool
 	DefaultHidden  bool
 }
@@ -128,6 +129,15 @@ func (b *ColumnBuilder) MaxWidthPixels(width int) *ColumnBuilder {
 	return b
 }
 
+// Grow lets the browser column absorb the table's leftover width instead of
+// asking for its content's width, so a long text column (a SQL statement)
+// stops pushing the other columns past the viewport. MinWidthPixels keeps it
+// readable and MaxWidthPixels bounds its share.
+func (b *ColumnBuilder) Grow() *ColumnBuilder {
+	b.col.Grow = true
+	return b
+}
+
 // Hidden removes the column from the table schema: its values ride along only
 // as row metadata (row identity, raw filter values), so no column picker can
 // offer it. Hidden wins over DefaultHidden.
@@ -204,6 +214,7 @@ func NewEmptyTable(columns []ColumnDef) TextTable {
 			SortKey:       col.SortKey,
 			MinWidth:      col.MinWidthPixels,
 			MaxWidth:      col.MaxWidthPixels,
+			Grow:          col.Grow,
 			FormatOptions: col.FormatOptions,
 			DefaultHidden: col.DefaultHidden,
 		})

@@ -77,6 +77,7 @@ type ClickyColumn struct {
 	SortKey       string      `json:"sortKey,omitempty"`
 	MinWidth      int         `json:"minWidth,omitempty"`
 	MaxWidth      int         `json:"maxWidth,omitempty"`
+	Grow          bool        `json:"grow,omitempty"`
 	Header        *ClickyNode `json:"header,omitempty"`
 	Align         string      `json:"align,omitempty"`
 	DefaultHidden bool        `json:"defaultHidden,omitempty"`
@@ -525,6 +526,7 @@ func convertTable(table *api.TextTable) ClickyNode {
 				column.SortKey = table.Columns[i].SortKey
 				column.MinWidth = table.Columns[i].MinWidth
 				column.MaxWidth = table.Columns[i].MaxWidth
+				column.Grow = table.Columns[i].Grow
 				column.DefaultHidden = table.Columns[i].DefaultHidden
 				column.Align = alignFromStyle(table.Columns[i].Style)
 			}
@@ -556,6 +558,7 @@ func convertTable(table *api.TextTable) ClickyNode {
 				SortKey:       columnDef.SortKey,
 				MinWidth:      columnDef.MinWidth,
 				MaxWidth:      columnDef.MaxWidth,
+				Grow:          columnDef.Grow,
 				Align:         alignFromStyle(columnDef.Style),
 				DefaultHidden: columnDef.DefaultHidden,
 			}

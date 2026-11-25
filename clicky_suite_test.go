@@ -35,6 +35,7 @@ var _ = Describe("grouped CLI help", func() {
 	It("merges inherited categories and preserves command flags and local overrides", func() {
 		root := &cobra.Command{Use: "demo"}
 		clicky.BindAllFlagsToCommand(root, "format", "tasks")
+		Expect(root.PersistentFlags().MarkHidden("yaml")).To(Succeed())
 		root.PersistentFlags().String("context", "", "Database context")
 		root.PersistentFlags().String("model", "", "Inherited model")
 		Expect(root.PersistentFlags().SetAnnotation("model", clicky.FlagCategoryAnnotation, []string{"Model selection"})).To(Succeed())
@@ -60,7 +61,11 @@ var _ = Describe("grouped CLI help", func() {
 		Expect(help).To(ContainSubstring("demo prompt render [id]"))
 		Expect(groupedHelpSection(help, "Command flags")).To(ContainSubstring("--source"))
 		Expect(groupedHelpSection(help, "Model selection")).To(And(ContainSubstring("--fallback"), ContainSubstring("--model"), ContainSubstring("Local model")))
-		Expect(groupedHelpSection(help, "Formatting")).To(And(ContainSubstring("--json"), ContainSubstring("Local formatting override")))
+		formatting := groupedHelpSection(help, "Formatting")
+		Expect(formatting).To(ContainSubstring("Local formatting override"))
+		_, shortcuts, _ := strings.Cut(formatting, "Shortcuts: ")
+		shortcuts, _, _ = strings.Cut(shortcuts, "\n")
+		Expect(shortcuts).To(Equal("--csv --html --json --llm --markdown --pdf"))
 		Expect(groupedHelpSection(help, "Global flags")).To(ContainSubstring("--context"))
 		Expect(help).NotTo(ContainSubstring("--secret"))
 		Expect(help).NotTo(ContainSubstring("Inherited model"))
@@ -75,6 +80,9 @@ var _ = Describe("grouped CLI help", func() {
 		var actual []string
 		for _, match := range regexp.MustCompile(`(?m)^\s+(?:-\w, )?--([a-z0-9-]+)(?:[ \t]|$)`).FindAllStringSubmatch(help, -1) {
 			actual = append(actual, match[1])
+		}
+		for _, shortcut := range strings.Fields(shortcuts) {
+			actual = append(actual, strings.TrimPrefix(shortcut, "--"))
 		}
 		Expect(actual).To(ConsistOf(expected))
 		output.Reset()

@@ -44,6 +44,10 @@ func (c Code) ANSI() string {
 	if err != nil {
 		return c.Content
 	}
+	if c.LiteralStyle != "" {
+		style, iterator = c.styleLiterals(style, iterator)
+		formatter = formatters.TTY16m
+	}
 
 	var buf bytes.Buffer
 	if err := formatter.Format(&buf, style, iterator); err != nil {
@@ -79,9 +83,8 @@ func (c Code) HTML() string {
 		style = styles.Fallback
 	}
 
-	// Use CSS classes for cleaner HTML
 	formatter := chromahtml.New(
-		chromahtml.WithClasses(true),
+		chromahtml.WithClasses(c.LiteralStyle == ""),
 		chromahtml.WithLineNumbers(false),
 		chromahtml.TabWidth(4),
 	)
@@ -90,6 +93,9 @@ func (c Code) HTML() string {
 	if err != nil {
 		return html.EscapeString(c.Content)
 	}
+	if c.LiteralStyle != "" {
+		style, iterator = c.styleLiterals(style, iterator)
+	}
 
 	var buf bytes.Buffer
 	if err := formatter.Format(&buf, style, iterator); err != nil {
@@ -97,6 +103,25 @@ func (c Code) HTML() string {
 	}
 
 	return buf.String()
+}
+
+func (c Code) styleLiterals(base *chroma.Style, tokens chroma.Iterator) (*chroma.Style, chroma.Iterator) {
+	_, appearance := ApplyTailwindStyle("", c.LiteralStyle)
+	entry := chroma.StyleEntry{Colour: chroma.ParseColour(appearance.Foreground), NoInherit: true}
+	if appearance.Italic {
+		entry.Italic = chroma.Yes
+	}
+	style, err := base.Builder().AddEntry(chroma.Literal, entry).Build()
+	if err != nil {
+		panic(err)
+	}
+	return style, func() chroma.Token {
+		token := tokens()
+		if token.Type.InCategory(chroma.Literal) || token.Type.InSubCategory(chroma.NameVariable) {
+			token.Type = chroma.Literal
+		}
+		return token
+	}
 }
 
 func formatXMLBestEffort(content string) (formatted string) {

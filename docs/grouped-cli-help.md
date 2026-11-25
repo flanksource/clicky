@@ -22,6 +22,18 @@ Run the complete example from the Clicky checkout:
 go run ./examples/grouped-help/main.go render --help
 ```
 
+## Colored help
+
+Call `clicky.SetColoredHelp` to install grouped usage and themed `--help` for a Cobra command tree. `DefaultHelpTheme()` supplies Clicky style classes for headings, usage, commands, flags, hints, and values. Bash examples use the value style for quoted strings, numbers, and variables. Flag descriptions wrap at word boundaries with indented continuation lines.
+
+```go
+theme := clicky.DefaultHelpTheme()
+theme.Heading = "text-indigo-600 font-bold"
+clicky.SetColoredHelp(root, theme)
+```
+
+Help uses color on terminal output and respects `NO_COLOR` and the `--no-color` flag when registered. `cmd.UsageString()` returns plain text for embedding. For custom help, use `clicky.CommandHelp{Command: cmd, Theme: theme}.Pretty()` to compose the help with other Clicky content, or pass the struct to `clicky.Format`.
+
 ## Categories
 
 | Section | Contents |
@@ -36,6 +48,8 @@ go run ./examples/grouped-help/main.go render --help
 | Global flags | Uncategorized persistent and inherited flags |
 
 Empty sections are omitted. Custom category names follow the known categories in alphabetical order, before Global flags. Local and inherited flags share a category section, with flags sorted alphabetically and local overrides taking precedence. Hidden flags stay hidden. Positional arguments remain in the command's usage signature.
+
+The Formatting section lists output shortcuts such as `--html` and `--pdf` together immediately below the `--format` description.
 
 ## Manually bound flags
 

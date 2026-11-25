@@ -123,7 +123,7 @@ type structuredCellRow struct{ SQL string }
 
 func (structuredCellRow) Columns() []ColumnDef {
 	return []ColumnDef{
-		Column("sql").Label("Statement").FilterKey("filter.sql").MinWidthPixels(360).MaxWidthPixels(720).Build(),
+		Column("sql").Label("Statement").FilterKey("filter.sql").MinWidthPixels(360).MaxWidthPixels(720).Grow().Build(),
 	}
 }
 
@@ -153,6 +153,7 @@ var _ = Describe("Column", func() {
 				MaxWidth(15).
 				MinWidthPixels(360).
 				MaxWidthPixels(720).
+				Grow().
 				Build()
 
 			Expect(col.Name).To(Equal("salary"))
@@ -165,6 +166,7 @@ var _ = Describe("Column", func() {
 			Expect(col.MaxWidth).To(Equal(15))
 			Expect(col.MinWidthPixels).To(Equal(360))
 			Expect(col.MaxWidthPixels).To(Equal(720))
+			Expect(col.Grow).To(BeTrue())
 			Expect(col.Hidden).To(BeFalse())
 		})
 
@@ -236,6 +238,7 @@ var _ = Describe("Column", func() {
 			Expect(table.Rows[0]["sql"].FilterValue).To(Equal(statement))
 			Expect(table.Columns[0].MinWidth).To(Equal(360))
 			Expect(table.Columns[0].MaxWidth).To(Equal(720))
+			Expect(table.Columns[0].Grow).To(BeTrue())
 		})
 
 		DescribeTable("keeps the raw scalar of an explicitly presented cell on a visible column without a filter key",

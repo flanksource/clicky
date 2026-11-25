@@ -1,10 +1,8 @@
 package clicky
 
 import (
-	"fmt"
 	"io"
 	"sort"
-	"strings"
 
 	flagmeta "github.com/flanksource/clicky/flags"
 	"github.com/flanksource/clicky/formatters"
@@ -88,7 +86,7 @@ func BindAllFlags(flags *pflag.FlagSet, filters ...string) *AllFlags {
 
 	if collections.MatchItems("format", filters...) {
 		flags.StringVar(&Flags.Format, "format", "",
-			"Output format. Either a single format (pretty|json|ndjson|toon|yaml|csv|html|markdown|llm|pdf|slack) "+
+			"Output format. Either a single format (pretty | json | ndjson | toon | yaml | csv | html | markdown | llm | pdf | slack) "+
 				"rendered to stdout, or a comma-separated list of format=file sinks "+
 				"(e.g. 'json=out.json,markdown=summary.md') written to files. "+
 				"A bare format and format=file pairs may be mixed in one spec.")
@@ -111,10 +109,12 @@ func BindAllFlags(flags *pflag.FlagSet, filters ...string) *AllFlags {
 		flags.BoolVar(&Flags.Table, "table", false, "Display in table structure (additive with format)")
 		for _, n := range []string{
 			"format", "filter", "no-color", "dump-schema",
-			"json", "yaml", "csv", "markdown", "llm", "pretty", "html", "pdf",
 			"tree", "table",
 		} {
 			setCategory(flags, n, CategoryFormat)
+		}
+		for _, n := range []string{"json", "yaml", "csv", "markdown", "llm", "pretty", "html", "pdf"} {
+			flagmeta.MarkOutputFormatShortcut(flags.Lookup(n))
 		}
 	}
 
@@ -136,67 +136,16 @@ func BindAllFlagsToCommand(cmd *cobra.Command, filters ...string) *AllFlags {
 // inheritance gives subcommands the same grouping for inherited flags.
 func SetGroupedUsage(cmd *cobra.Command) {
 	cmd.SetUsageFunc(func(c *cobra.Command) error {
-		return renderGroupedUsage(c, c.OutOrStderr())
+		help := CommandHelp{Command: c}
+		_, err := io.WriteString(c.OutOrStderr(), help.usage().String())
+		return err
 	})
-}
-
-func renderGroupedUsage(c *cobra.Command, w io.Writer) error {
-	if c.Runnable() || c.HasAvailableSubCommands() {
-		fmt.Fprint(w, "Usage:")
-		if c.Runnable() {
-			fmt.Fprintf(w, "\n  %s", c.UseLine())
-		}
-		if c.HasAvailableSubCommands() {
-			fmt.Fprintf(w, "\n  %s [command]", c.CommandPath())
-		}
-		fmt.Fprintln(w)
-	}
-
-	if len(c.Aliases) > 0 {
-		fmt.Fprintf(w, "\nAliases:\n  %s\n", c.NameAndAliases())
-	}
-
-	if c.HasExample() {
-		fmt.Fprintf(w, "\nExamples:\n%s\n", c.Example)
-	}
-
-	if c.HasAvailableSubCommands() {
-		fmt.Fprintln(w, "\nAvailable Commands:")
-		for _, sub := range c.Commands() {
-			if sub.IsAvailableCommand() || sub.Name() == "help" {
-				fmt.Fprintf(w, "  %s %s\n", rpad(sub.Name(), sub.NamePadding()), sub.Short)
-			}
-		}
-	}
-
-	writeGroupedFlags(w, c)
-
-	if c.HasHelpSubCommands() {
-		fmt.Fprintln(w, "\nAdditional help topics:")
-		for _, sub := range c.Commands() {
-			if sub.IsAdditionalHelpTopicCommand() {
-				fmt.Fprintf(w, "  %s %s\n", rpad(sub.CommandPath(), sub.CommandPathPadding()), sub.Short)
-			}
-		}
-	}
-
-	if c.HasAvailableSubCommands() {
-		fmt.Fprintf(w, "\nUse \"%s [command] --help\" for more information about a command.\n", c.CommandPath())
-	}
-
-	return nil
 }
 
 // FlagGroup is one nonempty section of a command's visible flags.
 type FlagGroup struct {
 	Title string
 	Flags *pflag.FlagSet
-}
-
-func writeGroupedFlags(w io.Writer, cmd *cobra.Command) {
-	for _, group := range CommandFlagGroups(cmd) {
-		writeFlagSection(w, group.Title, group.Flags)
-	}
 }
 
 // CommandFlagGroups groups local and inherited flags for standard and custom help.
@@ -242,12 +191,6 @@ func collectGroupedFlag(flag *pflag.Flag, uncategorized *pflag.FlagSet, groups m
 	groups[category].AddFlag(flag)
 }
 
-func writeFlagSection(w io.Writer, heading string, fs *pflag.FlagSet) {
-	if fs.HasAvailableFlags() {
-		fmt.Fprintf(w, "\n%s:\n%s\n", heading, strings.TrimRight(fs.FlagUsages(), " \n"))
-	}
-}
-
 // orderedCategories returns category keys in the canonical order, with unknown
 // categories sorted alphabetically at the end.
 func orderedCategories(groups map[string]*pflag.FlagSet) []string {
@@ -267,13 +210,6 @@ func orderedCategories(groups map[string]*pflag.FlagSet) []string {
 	}
 	sort.Strings(extras)
 	return append(out, extras...)
-}
-
-func rpad(s string, padding int) string {
-	if padding <= len(s) {
-		return s
-	}
-	return s + strings.Repeat(" ", padding-len(s))
 }
 
 func (a *AllFlags) String() string {

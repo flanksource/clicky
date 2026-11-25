@@ -11,9 +11,10 @@ import (
 // chroma-highlighted natively (code_chroma.go) and plain on wasm
 // (code_wasm.go).
 type Code struct {
-	Content  string `json:"content,omitempty"`  // The source code content
-	Language string `json:"language,omitempty"` // Language identifier (sql, java, javascript, go, xml, xslt, conf, etc.)
-	Style    string `json:"style,omitempty"`    // Optional Tailwind CSS styling for wrapper (HTML only)
+	Content      string `json:"content,omitempty"`      // The source code content
+	Language     string `json:"language,omitempty"`     // Language identifier (sql, java, javascript, go, xml, xslt, conf, etc.)
+	Style        string `json:"style,omitempty"`        // Optional Tailwind CSS styling for wrapper (HTML only)
+	LiteralStyle string `json:"literalStyle,omitempty"` // Optional foreground and italic styles for literal and variable tokens
 }
 
 // NewCode creates a new Code instance with the given content and language.
