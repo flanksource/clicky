@@ -184,7 +184,7 @@ func TestHTMLReactConvertTable(t *testing.T) {
 		},
 		Columns: []api.PrettyField{
 			{Name: "Name", Label: "Name"},
-			{Name: "Status", Label: "Status", Kind: "status", Type: api.ColumnTypeKeyValue, FilterKey: "filter.status", SortKey: "status", MinWidth: 360, MaxWidth: 720},
+			{Name: "Status", Label: "Status", Kind: "status", Type: api.ColumnTypeKeyValue, FilterKey: "filter.status", SortKey: "status", MinWidth: 360, MaxWidth: 720, Grow: true},
 		},
 		Rows: []api.TableRow{
 			{
@@ -221,8 +221,8 @@ func TestHTMLReactConvertTable(t *testing.T) {
 	if node.Columns[1].SortKey != "status" {
 		t.Fatalf("expected sort key to survive clicky conversion, got %#v", node.Columns[1])
 	}
-	if node.Columns[1].MinWidth != 360 || node.Columns[1].MaxWidth != 720 {
-		t.Fatalf("expected pixel widths to survive clicky conversion, got %#v", node.Columns[1])
+	if node.Columns[1].MinWidth != 360 || node.Columns[1].MaxWidth != 720 || !node.Columns[1].Grow {
+		t.Fatalf("expected pixel widths and grow to survive clicky conversion, got %#v", node.Columns[1])
 	}
 	if len(node.Rows) != 2 {
 		t.Fatalf("expected 2 rows, got %d", len(node.Rows))

@@ -51,10 +51,10 @@ file input can be rendered with --input-format.
 
 For backward compatibility, you can use the root command directly, or use the
 'pretty' subcommand explicitly.`,
-		Example: `  clicky --schema order-schema.yaml order1.json order2.yaml
-  clicky pretty --schema user-schema.yaml --format html --output reports/ users.json
-  cat examples/kitchen-sink.md | clicky --input-format auto --format clicky-json
-  clicky --input-format auto --format html examples/kitchen-sink.md
+		Example: `  clicky --schema 'order-schema.yaml' 'order1.json' 'order2.yaml'
+  clicky pretty --schema 'user-schema.yaml' --format 'html' --output 'reports/' 'users.json'
+  cat 'examples/kitchen-sink.md' | clicky --input-format 'auto' --format 'clicky-json'
+  clicky --input-format 'auto' --format 'html' 'examples/kitchen-sink.md'
   clicky version`,
 		Args: func(cmd *cobra.Command, args []string) error {
 			if len(args) == 0 && schemaFile == "" && inputFormat == "" && !hasStdinInput(cmd) {
@@ -83,7 +83,7 @@ For backward compatibility, you can use the root command directly, or use the
 	rootCmd.Flags().StringVar(&schemaFile, "schema", "", "YAML file containing PrettyObject schema")
 	rootCmd.Flags().StringVar(&inputFormat, "input-format", "", "Schema-less input format for stdin/files: auto, markdown/md, json, yaml/yml, text")
 	formatters.BindPFlags(rootCmd.Flags(), &options)
-	clicky.SetGroupedUsage(rootCmd)
+	clicky.SetColoredHelp(rootCmd, clicky.DefaultHelpTheme())
 
 	rootCmd.AddCommand(newPrettyCommand())
 	rootCmd.AddCommand(newVersionCommand())
@@ -133,9 +133,9 @@ raw data into beautifully formatted output using customizable schemas.
 
 For the full pretty-printing API guide, run:
   clicky help pretty`,
-		Example: `  clicky pretty --schema order-schema.yaml order1.json order2.yaml
-  clicky pretty --schema user-schema.yaml --format html --output reports/ users.json
-  clicky pretty --schema product-schema.yaml --format csv products.json`,
+		Example: `  clicky pretty --schema 'order-schema.yaml' 'order1.json' 'order2.yaml'
+  clicky pretty --schema 'user-schema.yaml' --format 'html' --output 'reports/' 'users.json'
+  clicky pretty --schema 'product-schema.yaml' --format 'csv' 'products.json'`,
 		Args: cobra.MinimumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if schemaFile == "" {
